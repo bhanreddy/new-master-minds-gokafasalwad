@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { getApp } from '@react-native-firebase/app';
 import { getMessaging, getInitialNotification, onNotificationOpenedApp } from '@react-native-firebase/messaging';
 import { useRouter } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useAuth } from './useAuth';
 
 // Global variable to store deep link if user is not logged in
@@ -42,9 +43,32 @@ export function useNotificationObserver() {
             }
         });
 
+        // 4. Handle Expo Notifications (Cold Start from killed state)
+        Notifications.getLastNotificationResponseAsync().then(response => {
+            if (response && isMounted) {
+                const data = response.notification.request.content.data;
+                const deepLink = data?.deepLink || data?.url || data?.screen;
+                if (deepLink) {
+                    console.log('[NotificationObserver] Found Expo initial deep link:', deepLink);
+                    handleDeepLink(deepLink as string);
+                }
+            }
+        });
+
+        // 5. Handle Expo Notifications (Foreground/Background Taps)
+        const expoSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+            const data = response.notification.request.content.data;
+            const deepLink = data?.deepLink || data?.url || data?.screen;
+            if (deepLink) {
+                console.log('[NotificationObserver] Received Expo tap:', deepLink);
+                handleDeepLink(deepLink as string);
+            }
+        });
+
         return () => {
             isMounted = false;
             unsubscribe();
+            expoSubscription.remove();
         };
     }, []);
 
@@ -54,24 +78,39 @@ export function useNotificationObserver() {
             console.log('[NotificationObserver] Processing pending navigation:', PendingNavigation);
             const target = PendingNavigation;
             PendingNavigation = null;
-            // Small delay to ensure router is ready/auth guarded
+            // Small delay to ensure router is ready/auth guarded and hasn't just replaced the route
             setTimeout(() => {
-                router.replace(target as any);
-            }, 100);
+                Linking.openURL(target).catch(() => {
+                    // Fallback to router push if linking fails, ensure valid path by removing protocol and deduping slashes
+                    const cleanPath = '/' + target.replace(/^testapp:\/+/, '').replace(/^\/+/, '');
+                    router.push(cleanPath as any);
+                });
+            }, 500);
         }
     }, [user, loading]);
 
     const handleDeepLink = (path: string) => {
-        console.log('[NotificationObserver] Handling deep link:', path);
+        // Ensure path is properly formatted as a deep link URL
+        const formattedPath = path.startsWith('testapp://')
+            ? path
+            : `testapp://${path.startsWith('/') ? path : `/${path}`}`;
+
+        console.log('[NotificationObserver] Handling deep link:', formattedPath);
 
         // Always set pending first
-        PendingNavigation = path;
+        PendingNavigation = formattedPath;
 
         // If already logged in and not loading, navigate immediately
         if (user && !loading) {
-            console.log('[NotificationObserver] User active, navigating immediately.');
+            console.log('[NotificationObserver] User active, queuing navigation with delay to avoid AuthGuard collision.');
             PendingNavigation = null;
-            router.replace(path as any);
+            setTimeout(() => {
+                Linking.openURL(formattedPath).catch(() => {
+                    // Fallback to router push if linking fails
+                    const cleanPath = '/' + path.replace(/^testapp:\/+/, '').replace(/^\/+/, '');
+                    router.push(cleanPath as any);
+                });
+            }, 500);
         } else {
             console.log('[NotificationObserver] User not ready, queuing navigation.');
         }

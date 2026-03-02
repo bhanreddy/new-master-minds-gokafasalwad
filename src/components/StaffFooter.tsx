@@ -12,7 +12,6 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Shadows } from '../theme/themes';
-import { MaterialTopTabBarProps } from '@react-navigation/material-top-tabs';
 
 const { width } = Dimensions.get('window');
 
@@ -27,17 +26,17 @@ const TAB_CONFIG: Record<string, { icon: string; iconFilled: string; label: stri
 // Define the desired order of tabs
 const ORDERED_TABS = ['dashboard', 'manage-students', 'timetable', 'results'];
 
-export default function StaffFooter({ state, descriptors, navigation, position }: MaterialTopTabBarProps) {
+export default function StaffFooter({ state, descriptors, navigation }: any) {
     const isDark = false; // We can context this later if needed
 
     // Filter and sort routes to only show the main 4 tabs
     const visibleRoutes = state.routes
-        .filter(route => ORDERED_TABS.includes(route.name))
-        .sort((a, b) => ORDERED_TABS.indexOf(a.name) - ORDERED_TABS.indexOf(b.name));
+        .filter((route: any) => ORDERED_TABS.includes(route.name))
+        .sort((a: any, b: any) => ORDERED_TABS.indexOf(a.name) - ORDERED_TABS.indexOf(b.name));
 
     // Calculate active index relative to visible routes
     const currentRouteName = state.routes[state.index].name;
-    const activeIndex = visibleRoutes.findIndex(route => route.name === currentRouteName);
+    const activeIndex = visibleRoutes.findIndex((route: any) => route.name === currentRouteName);
 
     // If the current route is not in the visible footer (e.g. profile), we might want to hide the indicator 
     // or just not render it. For now, we'll clamp it or handle it cleanly.
@@ -93,7 +92,7 @@ export default function StaffFooter({ state, descriptors, navigation, position }
                         />
                     </Animated.View>
 
-                    {visibleRoutes.map((route, index) => {
+                    {visibleRoutes.map((route: any, index: number) => {
                         const { options } = descriptors[route.key];
                         // If the route is in TAB_CONFIG, use it, otherwise fallback (though we filtered so should be fine)
                         const config = TAB_CONFIG[route.name] || { icon: 'ellipse', label: 'Tab' };

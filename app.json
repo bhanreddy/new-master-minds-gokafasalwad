@@ -15,10 +15,19 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "requireFullScreen": false,
       "bundleIdentifier": "com.testapp.native",
+      "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "development"
       }
     },
     "android": {
@@ -36,6 +45,10 @@
         "VIBRATE"
       ]
     },
+    "notification": {
+      "icon": "./assets/images/android-icon-monochrome.png",
+      "color": "#E6F4FE"
+    },
     "plugins": [
       "expo-router",
       [
@@ -49,7 +62,19 @@
       "expo-secure-store",
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "./plugins/withNotifee.js",
+      "./plugins/withManifestMerger.js",
+      "./plugins/withAndroidSounds.js",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

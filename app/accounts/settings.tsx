@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Switch, Image, Alert } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import {
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
+    StatusBar, Switch, Image, Alert, Linking
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -10,248 +14,400 @@ import { useBiometric } from '../../src/hooks/useBiometric';
 import { Theme } from '../../src/theme/themes';
 import { useTranslation } from 'react-i18next';
 
+// ─── SettingRow ───────────────────────────────────────────────────────────────
+
+interface SettingRowProps {
+    icon: string;
+    iconColor: string;
+    iconBg: string;
+    label: string;
+    isLast?: boolean;
+    rightElement?: React.ReactNode;
+    onPress?: () => void;
+    labelColor?: string;
+}
+
+function SettingRow({ icon, iconColor, iconBg, label, isLast, rightElement, onPress, labelColor }: SettingRowProps) {
+    const Wrapper = onPress ? TouchableOpacity : View;
+    return (
+        <>
+            <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
+                <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
+                    <Ionicons name={icon as any} size={18} color={iconColor} />
+                </View>
+                <Text style={[RS.label, labelColor ? { color: labelColor } : {}]}>{label}</Text>
+                <View style={RS.right}>{rightElement}</View>
+            </Wrapper>
+            {!isLast && <View style={RS.divider} />}
+        </>
+    );
+}
+
+const RS = StyleSheet.create({
+    row: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingVertical: 13, paddingHorizontal: 16,
+    },
+    iconBox: {
+        width: 38, height: 38, borderRadius: 11,
+        justifyContent: 'center', alignItems: 'center', marginRight: 13,
+    },
+    label: { flex: 1, fontSize: 15, fontWeight: '500', color: '#111827' },
+    right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    divider: {
+        height: StyleSheet.hairlineWidth, backgroundColor: '#F3F4F6', marginLeft: 67,
+    },
+});
+
+// ─── Group ────────────────────────────────────────────────────────────────────
+
+interface GroupProps {
+    title: string;
+    delay: number;
+    borderColor?: string;
+    children: React.ReactNode;
+    theme: Theme;
+}
+
+function Group({ title, delay, borderColor, children, theme }: GroupProps) {
+    return (
+        <Animated.View entering={FadeInDown.delay(delay).duration(480)} style={GS.container}>
+            <Text style={GS.title}>{title}</Text>
+            <View style={[
+                GS.card, { backgroundColor: theme.colors.card },
+                borderColor
+                    ? { borderColor, borderWidth: 1 }
+                    : { borderWidth: 1, borderColor: theme.colors.border }
+            ]}>
+                {children}
+            </View>
+        </Animated.View>
+    );
+}
+
+const GS = StyleSheet.create({
+    container: { marginBottom: 22 },
+    title: {
+        fontSize: 10, fontWeight: '700', letterSpacing: 1.5,
+        color: '#9CA3AF', marginBottom: 9, marginLeft: 4,
+        textTransform: 'uppercase',
+    },
+    card: {
+        borderRadius: 18, overflow: 'hidden',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+    },
+});
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 export default function AccountsSettings() {
     const { theme, isDark, toggleTheme } = useTheme();
     const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
     const { i18n } = useTranslation();
-
     const router = useRouter();
-    const { user, logout } = useAuth();
-    const [notifications, setNotifications] = useState(true);
+    const { user, logout, refreshSession } = useAuth();
+    const [notifications, setNotifications] = useState(user?.notification_sound !== 'default');
+    const [updating, setUpdating] = useState(false);
     const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
-    const toggleSwitch = (setter: React.Dispatch<React.SetStateAction<boolean>>) => {
-        setter(previousState => !previousState);
+    const toggleNotifications = async () => {
+        if (updating) return;
+        setUpdating(true);
+        const newValue = !notifications;
+        setNotifications(newValue);
+        const soundPref = newValue ? 'custom' : 'default';
+        try {
+            await AsyncStorage.setItem('notification_sound', soundPref);
+            const { api } = await import('../../src/services/apiClient');
+            await api.put('/users/settings', { notification_sound: soundPref });
+            await refreshSession();
+        } catch (error) {
+            console.error('Failed to update notification settings', error);
+            setNotifications(!newValue);
+            Alert.alert('Error', 'Failed to update notification settings');
+        } finally {
+            setUpdating(false);
+        }
     };
 
-    const handlePress = (item: string) => {
-        Alert.alert(item, "This feature will be available in the next update.");
-    };
+    const handlePress = (item: string) =>
+        Alert.alert(item, 'This feature will be available in the next update.');
+
+    const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
+    const redChevron = <MaterialIcons name="chevron-right" size={18} color="#EF4444" />;
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.background} />
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
             <AdminHeader title="Settings" showBackButton={true} />
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-                {/* Profile Section */}
-                <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.profileCard}>
-                    <Image
-                        source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png' }}
-                        style={styles.avatar}
-                    />
-                    <View style={styles.profileInfo}>
-                        <Text style={styles.profileName}>{user?.display_name || user?.first_name || 'Accountant'}</Text>
-                        <Text style={styles.profileRole}>ID: {user?.id?.substring(0, 8).toUpperCase() || 'N/A'}</Text>
-                        <TouchableOpacity onPress={() => handlePress("Edit Profile")}>
-                            <Text style={styles.editProfileText}>Edit Profile</Text>
+                {/* ── Profile card ── */}
+                <Animated.View entering={FadeInDown.delay(80).duration(600)} style={styles.profileCard}>
+                    <View style={styles.blob1} />
+                    <View style={styles.blob2} />
+
+                    <View style={styles.profileTop}>
+                        <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
+                            <Image
+                                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png' }}
+                                style={styles.avatar}
+                            />
+                            <View style={styles.onlineDot} />
+                        </Animated.View>
+
+                        <View style={styles.profileMeta}>
+                            <Text style={styles.profileName}>
+                                {user?.display_name || user?.first_name || 'Accountant'}
+                            </Text>
+                            <View style={styles.idBadge}>
+                                <FontAwesome5 name="id-badge" size={9} color="#F59E0B" />
+                                <Text style={styles.idText}>
+                                    {user?.id?.substring(0, 8).toUpperCase() || 'N/A'}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.editChip}
+                            onPress={() => handlePress('Edit Profile')}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="pencil" size={11} color="#F59E0B" />
+                            <Text style={styles.editChipText}>Edit</Text>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
 
-                {/* Settings Groups */}
-                <View style={styles.groupContainer}>
-                    <Text style={styles.groupTitle}>General</Text>
-                    <View style={styles.groupCard}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="moon" size={20} color="#6366F1" />
-                            </View>
-                            <Text style={styles.settingLabel}>Dark Mode</Text>
+                {/* ── General ── */}
+                <Group title="General" delay={170} theme={theme}>
+                    <SettingRow
+                        icon="moon" iconColor="#6366F1" iconBg="#EEF2FF"
+                        label="Dark Mode"
+                        rightElement={
                             <Switch
-                                trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-                                thumbColor={"#fff"}
+                                trackColor={{ false: theme.colors.border, true: '#818CF8' }}
+                                thumbColor="#fff"
                                 onValueChange={() => toggleTheme()}
                                 value={isDark}
                             />
-                        </View>
-                        <View style={styles.divider} />
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="notifications" size={20} color="#F59E0B" />
-                            </View>
-                            <Text style={styles.settingLabel}>Notifications</Text>
+                        }
+                    />
+                    <SettingRow
+                        icon="notifications" iconColor="#F59E0B" iconBg="#FEF3C7"
+                        label="Custom Alert Sounds"
+                        rightElement={
                             <Switch
-                                trackColor={{ false: "#E5E7EB", true: "#FCD34D" }}
-                                thumbColor={notifications ? "#fff" : "#f4f3f4"}
-                                onValueChange={() => toggleSwitch(setNotifications)}
+                                trackColor={{ false: '#E5E7EB', true: '#FCD34D' }}
+                                thumbColor={notifications ? '#fff' : '#f4f3f4'}
+                                onValueChange={toggleNotifications}
                                 value={notifications}
+                                disabled={updating}
                             />
-                        </View>
-                        <View style={styles.divider} />
-                        <View style={styles.settingRow}>
-                            <View style={[styles.settingIconBox, { backgroundColor: isDark ? 'rgba(59, 130, 246, 0.1)' : '#EFF6FF' }]}>
-                                <Ionicons name="language" size={20} color="#3B82F6" />
-                            </View>
-                            <Text style={styles.settingLabel}>Language (Telugu)</Text>
+                        }
+                    />
+                    <SettingRow
+                        icon="language" iconColor="#3B82F6" iconBg="#EFF6FF"
+                        label="Language (Telugu)"
+                        isLast
+                        rightElement={
                             <Switch
                                 trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-                                thumbColor={"#fff"}
-                                onValueChange={(val) => { i18n.changeLanguage(val ? 'te' : 'en'); }}
+                                thumbColor="#fff"
+                                onValueChange={(val) => { console.log(val); i18n.changeLanguage(val ? 'te' : 'en') }}
                                 value={i18n.language === 'te'}
                             />
-                        </View>
-                    </View>
-                </View>
+                        }
+                    />
+                </Group>
 
-                <View style={styles.groupContainer}>
-                    <Text style={styles.groupTitle}>Security</Text>
-                    <View style={styles.groupCard}>
-                        <View style={styles.settingRow}>
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="finger-print" size={20} color="#EC4899" />
-                            </View>
-                            <Text style={styles.settingLabel}>
-                                {isBiometricAvailable ? 'Biometric Login' : 'Biometric (Not Available)'}
-                            </Text>
+                {/* ── Security ── */}
+                <Group title="Security" delay={250} theme={theme}>
+                    <SettingRow
+                        icon="finger-print" iconColor="#EC4899" iconBg="#FDF2F8"
+                        label={isBiometricAvailable ? 'Biometric Login' : 'Biometric (Not Available)'}
+                        rightElement={
                             <Switch
-                                trackColor={{ false: "#E5E7EB", true: "#F472B6" }}
-                                thumbColor={isBiometricEnabled ? "#fff" : "#f4f3f4"}
+                                trackColor={{ false: '#E5E7EB', true: '#F472B6' }}
+                                thumbColor={isBiometricEnabled ? '#fff' : '#f4f3f4'}
                                 onValueChange={toggleBiometric}
                                 value={isBiometricEnabled}
                                 disabled={!isBiometricAvailable || biometricLoading}
                             />
-                        </View>
-                        <View style={styles.divider} />
-                        <TouchableOpacity style={styles.settingRow} onPress={() => router.push('/change-password')}>
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="lock-closed" size={20} color="#3B82F6" />
-                            </View>
-                            <Text style={styles.settingLabel}>Change Password</Text>
-                            <MaterialIcons name="chevron-right" size={20} color={theme.colors.textSecondary} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                <TouchableOpacity style={styles.logoutButton} onPress={() => Alert.alert("Logout", "Are you sure?", [
-                    { text: "Cancel" },
-                    {
-                        text: "Logout", style: "destructive", onPress: async () => {
-                            await logout();
-                            router.replace('/');
                         }
-                    }
-                ])}>
-                    <Text style={styles.logoutText}>Log Out</Text>
-                </TouchableOpacity>
+                    />
+                    <SettingRow
+                        icon="lock-closed" iconColor="#3B82F6" iconBg="#EFF6FF"
+                        label="Change Password"
+                        isLast
+                        onPress={() => router.push('/change-password')}
+                        rightElement={chevron}
+                    />
+                </Group>
+
+                {/* ── Support ── */}
+                <Group title="Support" delay={330} theme={theme}>
+                    <SettingRow
+                        icon="help-buoy" iconColor="#8B5CF6" iconBg="#F5F3FF"
+                        label="Help Center"
+                        onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hey%2C%20I%20have%20a%20problem%20in%20the%20app')}
+                        rightElement={chevron}
+                    />
+                    <SettingRow
+                        icon="shield-checkmark" iconColor="#06B6D4" iconBg="#ECFEFF"
+                        label="Privacy Policy"
+                        onPress={() => Linking.openURL('https://schoolims.nexsyrus.com/privacy')}
+                        rightElement={chevron}
+                    />
+                    <SettingRow
+                        icon="megaphone-outline" iconColor="#F59E0B" iconBg="#FEF3C7"
+                        label="Why do we show Ads"
+                        onPress={() => (router as any).push('/why-ads')}
+                        rightElement={chevron}
+                    />
+                    <SettingRow
+                        icon="logo-whatsapp" iconColor="#25D366" iconBg="#F0FDF4"
+                        label="Contact Us"
+                        onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hi%20there...')}
+                        rightElement={chevron}
+                    />
+                    <SettingRow
+                        icon="code-slash" iconColor="#8B5CF6" iconBg="#F5F3FF"
+                        label="Dev Contact"
+                        isLast
+                        onPress={() => Linking.openURL('https://bhanureddy.nexsyrus.com')}
+                        rightElement={chevron}
+                    />
+                </Group>
+
+                {/* ── Danger Zone ── */}
+                <Group title="Danger Zone" delay={410} borderColor="#FECACA" theme={theme}>
+                    <SettingRow
+                        icon="trash-outline" iconColor="#EF4444" iconBg="#FEF2F2"
+                        label="Delete Account"
+                        labelColor="#EF4444"
+                        isLast
+                        onPress={() =>
+                            Alert.alert(
+                                'Delete Account',
+                                'This is permanent and cannot be undone. Continue?',
+                                [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { text: 'Delete', style: 'destructive', onPress: () => Linking.openURL('https://example.com/delete-account') },
+                                ]
+                            )
+                        }
+                        rightElement={redChevron}
+                    />
+                </Group>
+
+                {/* ── Logout ── */}
+                <Animated.View entering={FadeInDown.delay(470).duration(500)}>
+                    <TouchableOpacity
+                        style={styles.logoutBtn}
+                        activeOpacity={0.8}
+                        onPress={() =>
+                            Alert.alert('Logout', 'Are you sure?', [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                    text: 'Logout', style: 'destructive', onPress: async () => {
+                                        await logout();
+                                        router.replace('/');
+                                    }
+                                }
+                            ])
+                        }
+                    >
+                        <View style={styles.logoutIconWrap}>
+                            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                        </View>
+                        <Text style={styles.logoutText}>Log Out</Text>
+                    </TouchableOpacity>
+                </Animated.View>
+
+                {/* ── Version footer ── */}
+                <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
+                    <View style={styles.footerDot} />
+                    <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+                    <View style={styles.footerDot} />
+                </Animated.View>
 
             </ScrollView>
         </View>
     );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: theme.colors.background,
-    },
-    scrollContent: {
-        padding: 20,
-        paddingBottom: 40,
-    },
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    scroll: { padding: 20, paddingBottom: 60 },
+
+    // Profile card — amber accent for Accounts role
     profileCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: theme.colors.card,
-        padding: 20,
-        borderRadius: 20,
-        marginBottom: 25,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.card, borderRadius: 22, padding: 20,
+        marginBottom: 26, overflow: 'hidden',
+        borderWidth: 1, borderColor: theme.colors.border,
+        shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08, shadowRadius: 12, elevation: 3,
     },
+    blob1: {
+        position: 'absolute', top: -40, right: -30,
+        width: 120, height: 120, borderRadius: 60,
+        backgroundColor: '#F59E0B', opacity: 0.07,
+    },
+    blob2: {
+        position: 'absolute', bottom: -20, left: -20,
+        width: 90, height: 90, borderRadius: 45,
+        backgroundColor: '#EF4444', opacity: 0.05,
+    },
+    profileTop: { flexDirection: 'row', alignItems: 'center' },
+    avatarWrap: { position: 'relative', marginRight: 14 },
     avatar: {
-        width: 70,
-        height: 70,
-        borderRadius: 35,
-        borderWidth: 3,
-        borderColor: theme.colors.background,
+        width: 62, height: 62, borderRadius: 18,
+        borderWidth: 2, borderColor: theme.colors.border,
     },
-    profileInfo: {
-        marginLeft: 20,
-        flex: 1,
+    onlineDot: {
+        position: 'absolute', bottom: 2, right: 2,
+        width: 14, height: 14, borderRadius: 7,
+        backgroundColor: '#10B981',
+        borderWidth: 2, borderColor: theme.colors.card,
     },
-    profileName: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: theme.colors.text,
+    profileMeta: { flex: 1 },
+    profileName: { fontSize: 17, fontWeight: '800', color: theme.colors.text, marginBottom: 6 },
+    idBadge: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4,
+        borderRadius: 6, alignSelf: 'flex-start',
     },
-    profileRole: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        marginBottom: 8,
+    idText: { fontSize: 11, fontWeight: '600', color: '#D97706' },
+    editChip: {
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 7,
+        borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A',
     },
-    editProfileText: {
-        fontSize: 14,
-        color: theme.colors.primary,
-        fontWeight: '600',
+    editChipText: { fontSize: 12, fontWeight: '700', color: '#F59E0B' },
+
+    // Logout
+    logoutBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+        backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2',
+        paddingVertical: 15, borderRadius: 16,
+        marginTop: 4, borderWidth: 1, borderColor: '#FECACA',
     },
-    groupContainer: {
-        marginBottom: 25,
+    logoutIconWrap: {
+        width: 30, height: 30, borderRadius: 9,
+        backgroundColor: '#FFE4E6', justifyContent: 'center', alignItems: 'center',
     },
-    groupTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.textSecondary,
-        marginBottom: 10,
-        marginLeft: 10,
-        textTransform: 'uppercase',
+    logoutText: { fontSize: 15, fontWeight: '700', color: '#EF4444' },
+
+    // Footer
+    footer: {
+        flexDirection: 'row', alignItems: 'center',
+        justifyContent: 'center', gap: 8, marginTop: 20,
     },
-    groupCard: {
-        backgroundColor: theme.colors.card,
-        borderRadius: 20,
-        overflow: 'hidden',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
-        elevation: 1,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-    },
-    settingRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-    },
-    settingIconBox: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 15,
-    },
-    settingLabel: {
-        flex: 1,
-        fontSize: 16,
-        color: theme.colors.text,
-        fontWeight: '500',
-    },
-    divider: {
-        height: 1,
-        backgroundColor: theme.colors.border,
-        marginLeft: 70,
-    },
-    logoutButton: {
-        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
-        paddingVertical: 16,
-        borderRadius: 16,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    logoutText: {
-        color: theme.colors.danger,
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
+    footerDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB' },
+    footerText: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic' },
 });
-
-

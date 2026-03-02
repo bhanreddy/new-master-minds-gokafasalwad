@@ -85,7 +85,8 @@ export default function StaffLMSUpload() {
         material_type: 'video',
         // defaulting to video for now
         content_url: videoUrl,
-        sort_order: 1
+        sort_order: 1,
+        is_published: true
       });
       Alert.alert('Success', 'Content uploaded successfully!', [{
         text: 'OK',
@@ -100,77 +101,77 @@ export default function StaffLMSUpload() {
     }
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-            <StaffHeader title="Upload LMS Content" showBackButton={true} />
+    <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <StaffHeader title="Upload LMS Content" showBackButton={true} />
 
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{
       flex: 1
     }}>
-                <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-                    <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.formCard}>
-                        <Text style={styles.cardTitle}>Add New Content</Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.formCard}>
+          <Text style={styles.cardTitle}>Add New Content</Text>
 
-                        {/* Class Selection */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Select Class & Subject <Text style={styles.required}>*</Text></Text>
-                            {assignments.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-                                    {assignments.map(assign => {
-return <TouchableOpacity key={assign.assignment_id} style={[styles.chip, selectedAssignment?.assignment_id === assign.assignment_id && styles.chipActive]} onPress={() => setSelectedAssignment(assign)}>
-                                            <Text style={[styles.chipText, selectedAssignment?.assignment_id === assign.assignment_id && styles.chipTextActive]}>
-                                                {assign.class_name}-{assign.section_name} : {assign.subject_name}
-                                            </Text>
-                                        </TouchableOpacity>;
+          {/* Class Selection */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Select Class & Subject <Text style={styles.required}>*</Text></Text>
+            {assignments.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {assignments.map(assign => {
+                return <TouchableOpacity key={assign.assignment_id} style={[styles.chip, selectedAssignment?.assignment_id === assign.assignment_id && styles.chipActive]} onPress={() => setSelectedAssignment(assign)}>
+                  <Text style={[styles.chipText, selectedAssignment?.assignment_id === assign.assignment_id && styles.chipTextActive]}>
+                    {assign.class_name}-{assign.section_name} : {assign.subject_name}
+                  </Text>
+                </TouchableOpacity>;
               })}
-                                </ScrollView> : <Text style={styles.errorText}>No classes assigned to you.</Text>}
-                        </View>
+            </ScrollView> : <Text style={styles.errorText}>No classes assigned to you.</Text>}
+          </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Course Title (Subject) <Text style={styles.required}>*</Text></Text>
-                            <TextInput style={styles.input} placeholder="e.g. Mathematics" value={topic} onChangeText={setTopic} placeholderTextColor="#9CA3AF" />
-                        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Course Title (Subject) <Text style={styles.required}>*</Text></Text>
+            <TextInput style={styles.input} placeholder="e.g. Mathematics" value={topic} onChangeText={setTopic} placeholderTextColor="#9CA3AF" />
+          </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Material Title (Topic) <Text style={styles.required}>*</Text></Text>
-                            <TextInput style={styles.input} placeholder="e.g. Algebra - Quadratic Equations" value={subTopic} onChangeText={setSubTopic} placeholderTextColor="#9CA3AF" />
-                        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Material Title (Topic) <Text style={styles.required}>*</Text></Text>
+            <TextInput style={styles.input} placeholder="e.g. Algebra - Quadratic Equations" value={subTopic} onChangeText={setSubTopic} placeholderTextColor="#9CA3AF" />
+          </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>YouTube Video Link <Text style={styles.required}>*</Text></Text>
-                            <View style={styles.inputIconWrapper}>
-                                <Ionicons name="logo-youtube" size={20} color="#EF4444" style={styles.inputIcon} />
-                                <TextInput style={[styles.input, {
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>YouTube Video Link <Text style={styles.required}>*</Text></Text>
+            <View style={styles.inputIconWrapper}>
+              <Ionicons name="logo-youtube" size={20} color="#EF4444" style={styles.inputIcon} />
+              <TextInput style={[styles.input, {
                 paddingLeft: 45
               }]} placeholder="https://youtube.com/..." value={videoUrl} onChangeText={setVideoUrl} autoCapitalize="none" placeholderTextColor="#9CA3AF" />
-                            </View>
-                        </View>
+            </View>
+          </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Description</Text>
-                            <TextInput style={[styles.input, {
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Description</Text>
+            <TextInput style={[styles.input, {
               height: 100,
               textAlignVertical: 'top'
             }]} placeholder="Enter a brief description of the content..." value={description} onChangeText={setDescription} multiline numberOfLines={4} placeholderTextColor="#9CA3AF" />
-                        </View>
+          </View>
 
-                        <TouchableOpacity style={styles.uploadButton} onPress={handleUpload} activeOpacity={0.8} disabled={loading}>
-                            <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.gradientButton} start={{
+          <TouchableOpacity style={styles.uploadButton} onPress={handleUpload} activeOpacity={0.8} disabled={loading}>
+            <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.gradientButton} start={{
               x: 0,
               y: 0
             }} end={{
               x: 1,
               y: 0
             }}>
-                                {loading ? <ActivityIndicator color="#FFF" /> : <>
-                                        <MaterialIcons name="cloud-upload" size={24} color="#FFF" />
-                                        <Text style={styles.uploadButtonText}>Upload Content</Text>
-                                    </>}
-                            </LinearGradient>
-                        </TouchableOpacity>
+              {loading ? <ActivityIndicator color="#FFF" /> : <>
+                <MaterialIcons name="cloud-upload" size={24} color="#FFF" />
+                <Text style={styles.uploadButtonText}>Upload Content</Text>
+              </>}
+            </LinearGradient>
+          </TouchableOpacity>
 
-                    </Animated.View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </View>;
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  </View>;
 }
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {

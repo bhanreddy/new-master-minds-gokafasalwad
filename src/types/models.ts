@@ -23,6 +23,8 @@ export interface User {
     readonly classId?: string; // Mapped from class_section_id
     readonly class_section_id?: string;
     readonly staff_id?: string;
+    readonly staff_code?: string;
+    readonly notification_sound?: 'custom' | 'default';
 }
 
 export interface AccountsUser extends User {

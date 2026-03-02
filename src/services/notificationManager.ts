@@ -1,7 +1,7 @@
 
 import { getApp } from '@react-native-firebase/app';
 import { getMessaging, getToken, onMessage, onTokenRefresh, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { api } from './apiClient';
 
@@ -12,72 +12,42 @@ class NotificationManager {
     private unsubscribeOnTokenRefresh?: () => void;
 
     /**
-     * Create all Android notification channels.
+     * Create all Android notification channels (Default and Custom variants).
      * Must be called before any notification is displayed.
      */
     async createChannels() {
         if (Platform.OS !== 'android') return;
 
-        // 1. Emergency Channel
-        await notifee.createChannel({
-            id: 'emergency',
-            name: 'Emergency Alerts',
-            importance: AndroidImportance.HIGH,
-            sound: 'emergency',
-            vibration: true,
-            vibrationPattern: [1, 500, 500, 500],
-            lights: true,
-            lightColor: '#FF0000',
-            visibility: AndroidVisibility.PUBLIC,
-        });
+        // Base sets of channels for the 5 categories
+        const categories = [
+            { id: 'emergency', name: 'Emergency Alerts', sound: 'emergency.wav', priority: Notifications.AndroidNotificationPriority.MAX, vibrate: [0, 500, 500, 500] },
+            { id: 'exam', name: 'Exam & Admin Updates', sound: 'exam.wav', priority: Notifications.AndroidNotificationPriority.HIGH, vibrate: [0, 250, 250, 250] },
+            { id: 'fee_reminder', name: 'Fee Reminders', sound: 'fee_reminder.wav', priority: Notifications.AndroidNotificationPriority.HIGH, vibrate: [0, 250, 250, 250] },
+            { id: 'voice_alert', name: 'General Alerts', sound: 'voice_alert.wav', priority: Notifications.AndroidNotificationPriority.HIGH, vibrate: [0, 250, 250, 250] },
+            { id: 'attendance_absent_alert', name: 'Absent Alerts', sound: 'attendance_absent_alert.wav', priority: Notifications.AndroidNotificationPriority.MAX, vibrate: [0, 500, 500, 500] },
+        ];
 
-        // 2. Exam Channel (leaves, payroll, expenses)
-        await notifee.createChannel({
-            id: 'exam',
-            name: 'Exam & Admin Updates',
-            importance: AndroidImportance.HIGH,
-            sound: 'exam',
-            vibration: true,
-            vibrationPattern: [1, 250, 250, 250],
-            lights: true,
-            lightColor: '#FF231F7C',
-        });
+        for (const cat of categories) {
+            // 1. Create Default version (No custom sound)
+            await Notifications.setNotificationChannelAsync(`${cat.id}_default`, {
+                name: `${cat.name} (Default)`,
+                importance: Notifications.AndroidImportance.HIGH,
+                sound: 'default',
+                vibrationPattern: cat.vibrate,
+                lightColor: '#FF231F7C',
+                lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            });
 
-        // 3. Fee Reminder Channel
-        await notifee.createChannel({
-            id: 'fee_reminder',
-            name: 'Fee Reminders',
-            importance: AndroidImportance.HIGH,
-            sound: 'fee_reminder',
-            vibration: true,
-            vibrationPattern: [1, 250, 250, 250],
-            lights: true,
-            lightColor: '#FF231F7C',
-        });
-
-        // 4. Voice Alert Channel (diary, results, LMS, timetable, notices, fee collected, attendance present)
-        await notifee.createChannel({
-            id: 'voice_alert',
-            name: 'General Alerts',
-            importance: AndroidImportance.HIGH,
-            sound: 'voice_alert',
-            vibration: true,
-            vibrationPattern: [1, 250, 250, 250],
-            lights: true,
-            lightColor: '#FF231F7C',
-        });
-
-        // 5. Attendance Absent Alert Channel
-        await notifee.createChannel({
-            id: 'attendance_absent_alert',
-            name: 'Absent Alerts',
-            importance: AndroidImportance.HIGH,
-            sound: 'attendance_absent_alert',
-            vibration: true,
-            vibrationPattern: [1, 500, 500, 500],
-            lights: true,
-            lightColor: '#FF0000',
-        });
+            // 2. Create Custom version (With custom bundled .wav sound)
+            await Notifications.setNotificationChannelAsync(`${cat.id}_custom`, {
+                name: `${cat.name} (Custom)`,
+                importance: Notifications.AndroidImportance.MAX, // Max to ensure sound plays
+                sound: cat.sound,
+                vibrationPattern: cat.vibrate,
+                lightColor: '#FF231F7C',
+                lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            });
+        }
     }
 
     async registerForPushNotificationsAsync() {
@@ -132,6 +102,20 @@ class NotificationManager {
         }
     }
 
+    /**
+     * Unregister FCM token from backend.
+     *
+     * ⚠️ IMPORTANT: Only call this on EXPLICIT user-initiated logout.
+     * Do NOT call on:
+     *   - Temporary auth failures
+     *   - Network disconnections
+     *   - Token refresh failures
+     *   - Session policy expiry
+     *
+     * FCM token delivery is independent of access token lifecycle.
+     * The backend stores FCM tokens against userId, not against sessions.
+     * Notifications must continue to be delivered even if the access token is expired.
+     */
     async unregisterPushToken() {
         try {
             await api.post('/notifications/unregister', {}, { silent: true });
@@ -147,21 +131,35 @@ class NotificationManager {
         const msg = getMessaging(app);
 
         // 1. Foreground: FCM suppresses notification payloads in foreground.
-        //    We use notifee to display them manually.
+        //    We use expo-notifications to display them manually.
         this.unsubscribeOnMessage = onMessage(msg, async remoteMessage => {
             console.log('FCM Foreground Message:', remoteMessage);
 
-            const channelId = remoteMessage.notification?.android?.channelId || 'voice_alert';
+            let channelId = remoteMessage.notification?.android?.channelId || 'voice_alert';
 
-            await notifee.displayNotification({
-                title: remoteMessage.notification?.title,
-                body: remoteMessage.notification?.body,
-                data: remoteMessage.data,
-                android: {
-                    channelId,
-                    smallIcon: 'notification_icon',
-                    pressAction: { id: 'default' },
+            // Add suffix if missing (fallback for backend)
+            if (!channelId.endsWith('_default') && !channelId.endsWith('_custom')) {
+                try {
+                    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                    const pref = await AsyncStorage.getItem('notification_sound');
+                    // 'default' is the default logic, unless they explicitly chose 'custom'
+                    const suffix = pref === 'custom' ? '_custom' : '_default';
+                    channelId = `${channelId}${suffix}`;
+                } catch (err) {
+                    channelId = `${channelId}_default`;
+                }
+            }
+
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: remoteMessage.notification?.title || '',
+                    body: remoteMessage.notification?.body || '',
+                    data: remoteMessage.data,
                 },
+                // Pass channelId inside trigger for Android
+                trigger: {
+                    channelId,
+                } as any,
             });
         });
 

@@ -10,27 +10,15 @@ import { useContext } from 'react';
 import { useNotifications } from '../src/hooks/useNotifications';
 import { useAuthGuard } from '../src/hooks/useAuthGuard';
 import { useNotificationObserver } from '../src/hooks/useNotificationObserver';
+import { AuthGate } from '../src/components/AuthGate';
 
 export default function Layout() {
-  // useNotifications must be inside AuthProvider
-
   return (
     <AuthProvider>
-      <AuthGuardWrapper />
+      <ThemeProvider>
+        <ThemeSyncWrapper />
+      </ThemeProvider>
     </AuthProvider>
-  );
-}
-
-
-function AuthGuardWrapper() {
-  useAuthGuard();
-  useNotifications();
-  useNotificationObserver(); // Handle Deep Links
-
-  return (
-    <ThemeProvider>
-      <ThemeSyncWrapper />
-    </ThemeProvider>
   );
 }
 
@@ -57,14 +45,30 @@ function ThemeSyncWrapper() {
     <NavThemeProvider value={navTheme}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
       <ErrorBoundary>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: theme.colors.background },
-          }}
-        />
+        <AuthGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: 'slide_from_right',
+              contentStyle: { backgroundColor: theme.colors.background },
+            }}
+          />
+        </AuthGate>
       </ErrorBoundary>
+      {/* Auth guard and hooks run AFTER the Stack navigator has mounted */}
+      <NavigationReady />
     </NavThemeProvider>
   );
+}
+
+/**
+ * This component runs hooks that depend on React Navigation being fully mounted.
+ * It must render AFTER the Stack navigator, not before.
+ * Renders nothing visually.
+ */
+function NavigationReady() {
+  useAuthGuard();
+  useNotifications();
+  useNotificationObserver();
+  return null;
 }

@@ -40,26 +40,26 @@ const StaffProfileScreen = () => {
     isLink?: boolean;
     onPress?: () => void;
   }) => {
-return <TouchableOpacity style={styles.infoRow} activeOpacity={isLink ? 0.7 : 1} onPress={isLink ? onPress : undefined} disabled={!isLink}>
-            <View style={styles.iconBox}>
-                <Ionicons name={icon} size={20} color="#6366F1" />
-            </View>
-            <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>{label}</Text>
-                <Text style={[styles.infoValue, isLink && styles.linkText]}>{value}</Text>
-            </View>
-            {isLink && <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />}
-        </TouchableOpacity>;
+    return <TouchableOpacity style={styles.infoRow} activeOpacity={isLink ? 0.7 : 1} onPress={isLink ? onPress : undefined} disabled={!isLink}>
+      <View style={styles.iconBox}>
+        <Ionicons name={icon} size={20} color="#6366F1" />
+      </View>
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={[styles.infoValue, isLink && styles.linkText]}>{value}</Text>
+      </View>
+      {isLink && <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />}
+    </TouchableOpacity>;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-            <StaffHeader title="My Profile" showBackButton={true} />
+    <StaffHeader title="My Profile" showBackButton={true} />
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* --- Header Profile Card --- */}
-                <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.headerCard}>
-                    <LinearGradient colors={['#4F46E5', '#4338CA']} start={{
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      {/* --- Header Profile Card --- */}
+      <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.headerCard}>
+        <LinearGradient colors={['#4F46E5', '#4338CA']} start={{
           x: 0,
           y: 0
         }} end={{
@@ -67,113 +67,113 @@ return <TouchableOpacity style={styles.infoRow} activeOpacity={isLink ? 0.7 : 1}
           y: 1
         }} style={styles.headerBackground} />
 
-                    <View style={styles.profileContent}>
-                        <View style={styles.avatarContainer}>
-                            <Image source={{
+        <View style={styles.profileContent}>
+          <View style={styles.avatarContainer}>
+            <Image source={{
               uri: user?.photoUrl || 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
             }} style={styles.avatar} />
-                            <View style={styles.statusBadge}>
-                                <View style={styles.statusDot} />
-                                <Text style={styles.statusText}>Active</Text>
-                            </View>
-                        </View>
+            <View style={styles.statusBadge}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>Active</Text>
+            </View>
+          </View>
 
-                        <Text style={styles.name}>{user?.name || 'Staff Member'}</Text>
-                        <Text style={styles.designation}>{user?.role ? user?.role.charAt(0).toUpperCase() + user?.role.slice(1) : 'Staff'}</Text>
-                        <Text style={styles.staffId}>ID: {user?.id || 'N/A'}</Text>
+          <Text style={styles.name}>{user?.name || 'Staff Member'}</Text>
+          <Text style={styles.designation}>{user?.role ? user?.role.charAt(0).toUpperCase() + user?.role.slice(1) : 'Staff'}</Text>
+          <Text style={styles.staffId}>Staff ID: {user?.staff_code || user?.staff_id || 'N/A'}</Text>
 
-                        <View style={styles.quickStatsRow}>
-                            <View style={styles.quickStat}>
-                                <Text style={styles.statNumber}>10+ Years</Text>
-                                <Text style={styles.statLabel}>Experience</Text>
-                            </View>
-                            <View style={styles.statDivider} />
-                            <View style={styles.quickStat}>
-                                <Text style={styles.statNumber}>M.Sc, B.Ed</Text>
-                                <Text style={styles.statLabel}>Qualification</Text>
-                            </View>
-                            <View style={styles.statDivider} />
-                            <View style={styles.quickStat}>
-                                <Text style={styles.statNumber}>Full Time</Text>
-                                <Text style={styles.statLabel}>Shift</Text>
-                            </View>
-                        </View>
-                    </View>
-                </Animated.View>
+          <View style={styles.quickStatsRow}>
+            <View style={styles.quickStat}>
+              <Text style={styles.statNumber}>10+ Years</Text>
+              <Text style={styles.statLabel}>Experience</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.quickStat}>
+              <Text style={styles.statNumber}>M.Sc, B.Ed</Text>
+              <Text style={styles.statLabel}>Qualification</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.quickStat}>
+              <Text style={styles.statNumber}>Full Time</Text>
+              <Text style={styles.statLabel}>Shift</Text>
+            </View>
+          </View>
+        </View>
+      </Animated.View>
 
-                {/* --- Personal Information --- */}
-                <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>Personal Information</Text>
-                    <View style={styles.infoCard}>
-                        <InfoRow icon="mail-outline" label="Email Address" value={user?.email || 'N/A'} isLink onPress={() => user?.email && handleEmail(user.email)} />
-                        <View style={styles.divider} />
-                        <InfoRow icon="call-outline" label="Phone Number" value={user?.phone || 'N/A'} isLink onPress={() => user?.phone && handleCall(user.phone)} />
-                        <View style={styles.divider} />
-                        <InfoRow icon="calendar-outline" label="Date of Birth" value="-" />
-                        <View style={styles.divider} />
-                        <InfoRow icon="water-outline" label="Blood Group" value="-" />
-                        <View style={styles.divider} />
-                        <InfoRow icon="location-outline" label="Current Address" value="-" />
-                    </View>
-                </Animated.View>
+      {/* --- Personal Information --- */}
+      <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Personal Information</Text>
+        <View style={styles.infoCard}>
+          <InfoRow icon="mail-outline" label="Email Address" value={user?.email || 'N/A'} isLink onPress={() => user?.email && handleEmail(user.email)} />
+          <View style={styles.divider} />
+          <InfoRow icon="call-outline" label="Phone Number" value={user?.phone || 'N/A'} isLink onPress={() => user?.phone && handleCall(user.phone)} />
+          <View style={styles.divider} />
+          <InfoRow icon="calendar-outline" label="Date of Birth" value="-" />
+          <View style={styles.divider} />
+          <InfoRow icon="water-outline" label="Blood Group" value="-" />
+          <View style={styles.divider} />
+          <InfoRow icon="location-outline" label="Current Address" value="-" />
+        </View>
+      </Animated.View>
 
-                {/* --- Academic Details --- */}
-                <Animated.View entering={FadeInUp.delay(300).duration(600)} style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>Academic Details</Text>
-                    <View style={styles.infoCard}>
-                        <View style={styles.infoRow}>
-                            <View style={[styles.iconBox, {
+      {/* --- Academic Details --- */}
+      <Animated.View entering={FadeInUp.delay(300).duration(600)} style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Academic Details</Text>
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <View style={[styles.iconBox, {
               backgroundColor: '#ECFDF5'
             }]}>
-                                <Ionicons name="school-outline" size={20} color="#10B981" />
-                            </View>
-                            <View style={styles.infoContent}>
-                                <Text style={styles.infoLabel}>Primary Subject</Text>
-                                <Text style={styles.infoValue}>Mathematics</Text>
-                            </View>
-                        </View>
-                        <View style={styles.divider} />
-                        <View style={styles.infoRow}>
-                            <View style={[styles.iconBox, {
+              <Ionicons name="school-outline" size={20} color="#10B981" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Primary Subject</Text>
+              <Text style={styles.infoValue}>Mathematics</Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <View style={[styles.iconBox, {
               backgroundColor: '#EEF2FF'
             }]}>
-                                <Ionicons name="book-outline" size={20} color="#4F46E5" />
-                            </View>
-                            <View style={styles.infoContent}>
-                                <Text style={styles.infoLabel}>Secondary Subject</Text>
-                                <Text style={styles.infoValue}>Physics</Text>
-                            </View>
-                        </View>
-                        <View style={styles.divider} />
-                        <View style={styles.infoRow}>
-                            <View style={[styles.iconBox, {
+              <Ionicons name="book-outline" size={20} color="#4F46E5" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Secondary Subject</Text>
+              <Text style={styles.infoValue}>Physics</Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <View style={[styles.iconBox, {
               backgroundColor: '#FFFBEB'
             }]}>
-                                <Ionicons name="people-outline" size={20} color="#F59E0B" />
-                            </View>
-                            <View style={styles.infoContent}>
-                                <Text style={styles.infoLabel}>Class Teacher</Text>
-                                <Text style={styles.infoValue}>Class 10th - Section A</Text>
-                            </View>
-                        </View>
-                    </View>
-                </Animated.View>
+              <Ionicons name="people-outline" size={20} color="#F59E0B" />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Class Teacher</Text>
+              <Text style={styles.infoValue}>Class 10th - Section A</Text>
+            </View>
+          </View>
+        </View>
+      </Animated.View>
 
-                {/* --- Emergency Contact --- */}
-                <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.sectionContainer}>
-                    <Text style={styles.sectionTitle}>Emergency Contact</Text>
-                    <View style={styles.infoCard}>
-                        <InfoRow icon="person-outline" label="Contact Person" value="Suresh Reddy (Brother)" />
-                        <View style={styles.divider} />
-                        <InfoRow icon="call-outline" label="Emergency Number" value="+91 98989 89898" isLink onPress={() => handleCall('+919898989898')} />
-                    </View>
-                </Animated.View>
+      {/* --- Emergency Contact --- */}
+      <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.sectionContainer}>
+        <Text style={styles.sectionTitle}>Emergency Contact</Text>
+        <View style={styles.infoCard}>
+          <InfoRow icon="person-outline" label="Contact Person" value="Suresh Reddy (Brother)" />
+          <View style={styles.divider} />
+          <InfoRow icon="call-outline" label="Emergency Number" value="+91 98989 89898" isLink onPress={() => handleCall('+919898989898')} />
+        </View>
+      </Animated.View>
 
-                <View style={{
+      <View style={{
         height: 40
       }} />
-            </ScrollView>
-        </View>;
+    </ScrollView>
+  </View>;
 };
 export default StaffProfileScreen;
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({

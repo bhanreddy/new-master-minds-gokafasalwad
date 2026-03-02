@@ -6,6 +6,9 @@ import { Alert } from 'react-native';
 import { EnrollmentService } from './enrollmentService';
 import { notificationManager } from './notificationManager';
 import BiometricService from './biometricService';
+import { SessionManager } from './sessionManager';
+import { SessionPolicy } from './sessionPolicyService';
+import { clearBackupRefreshToken } from './secureTokenStore';
 
 const mapBackendRole = (roles: string[], hasStudentProfile: boolean = false, hasStaffProfile: boolean = false): Role => {
     if (roles.includes('admin')) return 'admin';
@@ -30,10 +33,30 @@ const mapBackendRole = (roles: string[], hasStudentProfile: boolean = false, has
 
 const USER_CACHE_KEY = 'user_profile_cache';
 
-// Module-level guard to prevent auth listeners from reviving a dead session during logout
+// Module-level trackers for deduplication and lockouts
 let isLoggingOut = false;
+let isUserInitiatedLogout = false;
+let isFetchingProfile = false;
+let lastValidatedUserId: string | null = null;
 
 export const listenAuth = (callback: (user: User | null) => void) => {
+
+    // ─── Wire up SessionManager fatal logout ─────────────────────────
+    SessionManager.setLogoutCallback(async (reason: string) => {
+        if (__DEV__) console.log('[AuthService] SessionManager triggered forced logout:', reason);
+        // This is NOT user-initiated (it's a server revocation)
+        await performLogout(false);
+        callback(null);
+    });
+
+    // ─── Wire up SessionPolicy TTL logout ────────────────────────────
+    SessionPolicy.setLogoutCallback(async (reason: string) => {
+        if (__DEV__) console.log('[AuthService] SessionPolicy triggered forced logout:', reason);
+        Alert.alert('Session Expired', reason);
+        await performLogout(false);
+        callback(null);
+    });
+
     return supabase.auth.onAuthStateChange(async (event, session) => {
         if (__DEV__) console.log(`[AuthService] onAuthStateChange: ${event}`);
 
@@ -63,6 +86,22 @@ export const listenAuth = (callback: (user: User | null) => void) => {
                     );
                 }
             }
+
+            // ─── CRITICAL: On TOKEN_REFRESHED, ONLY sync tokens. ─────────
+            // Do NOT re-fetch profile or call callback(user).
+            // The user was already validated during INITIAL_SESSION.
+            // Re-triggering the callback causes cascading React re-renders
+            // that corrupt React Navigation's internal state ('stale' crash).
+            if (event === 'TOKEN_REFRESHED') {
+                if (__DEV__) console.log('[AuthService] TOKEN_REFRESHED — tokens synced, skipping profile re-fetch');
+                return;
+            }
+
+            // On INITIAL_SESSION (app launch), ensure we start standard tracking
+            if (event === 'INITIAL_SESSION' && session.user) {
+                if (__DEV__) console.log('[AuthService] INITIAL_SESSION detected');
+                // The actual setup happens in the block below, we just log it here
+            }
         } else if (event === 'SIGNED_OUT') {
             console.log('[AuthService] Received SIGNED_OUT event. Clearing tokens.');
             // Prevent recursive loop by NOT calling AuthService.logout() here.
@@ -70,6 +109,9 @@ export const listenAuth = (callback: (user: User | null) => void) => {
             await clearTokens();
             // Also need to clear user cache so next load doesn't show stale data
             await AsyncStorage.removeItem(USER_CACHE_KEY);
+            // Stop session monitoring
+            SessionManager.stopMonitoring();
+            SessionPolicy.stopPeriodicCheck();
             callback(null);
             return;
         }
@@ -81,17 +123,41 @@ export const listenAuth = (callback: (user: User | null) => void) => {
             try {
                 const cachedUser = await AsyncStorage.getItem(USER_CACHE_KEY);
                 if (cachedUser) {
-                    callback(JSON.parse(cachedUser));
+                    const parsedUser = JSON.parse(cachedUser);
+                    callback(parsedUser);
                     loadedFromCache = true;
+
+                    // Start session monitoring immediately with cached data
+                    SessionManager.startMonitoring();
+
+                    // Start policy check for non-students
+                    if (parsedUser.role !== 'student') {
+                        SessionPolicy.startPeriodicCheck();
+                    }
                 }
             } catch (e) {
                 // Ignore cache error
             }
 
             // 2. Validate with Backend (Background)
+            // DEDUPLICATION: 
+            // - Skip if already fetching
+            // - Skip on TOKEN_REFRESHED if we already validated this specific user
+            if (isFetchingProfile) {
+                if (__DEV__) console.log('[AuthService] Profile fetch already in progress, skipping redundant call.');
+                return;
+            }
+
+            if (event === 'TOKEN_REFRESHED' && lastValidatedUserId === session.user.id) {
+                if (__DEV__) console.log('[AuthService] Skip background profile fetch on TOKEN_REFRESHED (already validated)');
+                return;
+            }
+
             try {
+                isFetchingProfile = true;
                 // FORCE re-validation via backend /auth/me
                 const backendUser = await api.get<any>('/auth/me');
+                lastValidatedUserId = backendUser.id;
 
                 const user: User = {
                     id: backendUser.id,
@@ -111,8 +177,10 @@ export const listenAuth = (callback: (user: User | null) => void) => {
                     has_student_profile: backendUser.has_student_profile,
                     has_staff_profile: backendUser.has_staff_profile,
                     staff_id: backendUser.staff_id,
+                    staff_code: backendUser.staff_code,
                     class_section_id: backendUser.class_section_id,
-                    classId: backendUser.class_section_id
+                    classId: backendUser.class_section_id,
+                    notification_sound: backendUser.notification_sound || 'custom'
                 };
 
                 // AUTO-ENROLLMENT CHECK
@@ -130,7 +198,21 @@ export const listenAuth = (callback: (user: User | null) => void) => {
                 // Update cache
                 await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
 
-                // Update specific callback
+                // Start session monitoring if not already started
+                SessionManager.startMonitoring();
+
+                // Start policy check
+                if (user.role !== 'student') {
+                    SessionPolicy.startPeriodicCheck();
+                }
+
+                // If this is the initial session load and we don't have a started_at timestamp, make sure to start one
+                // This covers the case where students kill the app and re-launch
+                const existingRole = await SessionPolicy.getStoredRole();
+                if (!existingRole) {
+                    await SessionPolicy.startSession(user.role);
+                }
+
                 if (!isLoggingOut) {
                     callback(user);
                 }
@@ -142,32 +224,119 @@ export const listenAuth = (callback: (user: User | null) => void) => {
                     callback(null);
                     return;
                 }
+
+                // ─── NETWORK RESILIENCE: Do NOT logout on network errors ─────
                 console.warn('Session validation failed (offline/server down), keeping session:', error);
 
-                // CRITICAL CHANGE: Do NOT logout if backend is down.
-                // Only logout if we have NO cache and NO backend (new login failed) 
-                // but even then, if we have a valid Supabase session, we should probably stay logged in 
-                // and just show a "Offline" state, unless the token is actually rejected (401).
-
-                // If the error is 401, it means the token is invalid. THEN we logout.
                 const status = error?.status || error?.statusCode || error?.response?.status;
+
+                // Only logout on confirmed 401 auth rejection (NOT network failure)
                 if (status === 401) {
-                    console.warn('Invalid token detected, logging out.');
-                    await clearTokens();
-                    await supabase.auth.signOut();
-                    callback(null);
+                    // Check if this is a network error masquerading as a failure
+                    const isNetworkError = !SessionManager.isNetworkAvailable() ||
+                        error?.message?.includes('Network') ||
+                        error?.message?.includes('network') ||
+                        error?.message?.includes('timeout') ||
+                        error?.message?.includes('fetch');
+
+                    if (isNetworkError) {
+                        if (__DEV__) console.log('[AuthService] 401 appears to be network-related — NOT logging out');
+                        // Keep cached data, don't logout
+                        if (!loadedFromCache) {
+                            // If we have no cache AND no backend, we can't authenticate
+                            // but still don't logout if we have a valid Supabase session
+                            if (__DEV__) console.warn('[AuthService] No cache + network failure. Keeping Supabase session alive.');
+                        }
+                    } else {
+                        console.warn('Invalid token detected, logging out.');
+                        await clearTokens();
+                        await supabase.auth.signOut();
+                        callback(null);
+                    }
                 } else if (!loadedFromCache) {
                     // If we have no cache and backend failed, we can't authenticate the user reliably
                     // We must unblock the loader by returning null (logged out state)
                     callback(null);
                 }
                 // Otherwise, keep the user logged in (with cached data if available)
+            } finally {
+                isFetchingProfile = false;
             }
         } else {
             callback(null);
         }
     });
 };
+
+/**
+ * Core logout logic shared between user-initiated and system-initiated logout.
+ * @param userInitiated — true if user tapped "Logout", false if forced by system
+ */
+async function performLogout(userInitiated: boolean): Promise<void> {
+    if (isLoggingOut) return;
+    isLoggingOut = true;
+    isUserInitiatedLogout = userInitiated;
+
+    try {
+        console.log(`[AuthService] Initiating Logout (userInitiated=${userInitiated})...`);
+
+        // Stop session monitoring FIRST
+        SessionManager.stopMonitoring();
+        SessionPolicy.stopPeriodicCheck();
+        await SessionPolicy.clearSession();
+
+        // Race network calls with a STRICT 800ms timeout
+        await Promise.race([
+            Promise.all([
+                // Only unregister FCM token if user explicitly logged out
+                userInitiated
+                    ? notificationManager.unregisterPushToken().catch(() => { })
+                    : Promise.resolve(), // Skip FCM unregister on system logout
+                api.post('/auth/logout', {}, { silent: true }).catch(() => { }),
+                // Wait for Supabase SignOut too, but don't let it hang forever
+                supabase.auth.signOut().catch((e) => console.warn('Supabase SignOut Error:', e))
+            ]),
+            new Promise((resolve) => setTimeout(resolve, 800))
+        ]);
+    } catch (e) {
+        // Suppress errors
+    }
+
+    // Always Clean Local State Aggressively
+    await clearTokens();
+
+    // Clear SecureStore backup
+    await clearBackupRefreshToken();
+
+    // Clear biometric session ONLY on user-initiated logout
+    if (userInitiated) {
+        await BiometricService.clearBiometricSession();
+    }
+
+    // Exhaustive Cleanup (EXCEPT internal Supabase keys - let Supabase handle those)
+    // Clearing `@supabase.auth.token` manually can cause permanent unrecoverable state if this is a false-positive logout
+    const keysToClear = [
+        USER_CACHE_KEY,
+        'user_role',
+        'user_profile',
+        'auth_state',
+        'loglevel:webpack-dev-server',
+    ];
+
+    try {
+        await AsyncStorage.multiRemove(keysToClear);
+        // Double check user cache
+        await AsyncStorage.removeItem(USER_CACHE_KEY);
+    } catch (e) {
+        // Ignore storage errors
+    } finally {
+        // Small delay before allowing login again to ensure all listeners have settled
+        setTimeout(() => {
+            isLoggingOut = false;
+            isUserInitiatedLogout = false;
+        }, 1000);
+    }
+}
 
 const AuthService = {
     login: async (email: string, password: string): Promise<{ user: User }> => {
@@ -207,11 +376,23 @@ const AuthService = {
                 has_student_profile: backendUser.has_student_profile,
                 has_staff_profile: backendUser.has_staff_profile,
                 staff_id: backendUser.staff_id,
+                staff_code: backendUser.staff_code,
                 class_section_id: backendUser.class_section_id,
                 classId: backendUser.class_section_id
             };
 
             await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+
+            // 5. Start session policy tracking (role-based TTL)
+            await SessionPolicy.startSession(user.role);
+
+            // 6. Start session monitoring (network-aware refresh)
+            SessionManager.startMonitoring();
+
+            // 7. Start periodic policy check for non-students
+            if (user.role !== 'student') {
+                SessionPolicy.startPeriodicCheck();
+            }
 
             return { user };
         } catch (error) {
@@ -220,58 +401,29 @@ const AuthService = {
         }
     },
 
+    /**
+     * User-initiated logout. Clears FCM token and all session data.
+     */
     logout: async () => {
-        if (isLoggingOut) return;
-        isLoggingOut = true;
+        await performLogout(true);
+    },
 
-        try {
-            console.log('[AuthService] Initiating Logout...');
-            // Race network calls with a STRICT 500ms timeout
-            await Promise.race([
-                Promise.all([
-                    notificationManager.unregisterPushToken().catch(() => { }),
-                    api.post('/auth/logout', {}, { silent: true }).catch(() => { }),
-                    // Wait for Supabase SignOut too, but don't let it hang forever
-                    supabase.auth.signOut().catch((e) => console.warn('Supabase SignOut Error:', e))
-                ]),
-                new Promise((resolve) => setTimeout(resolve, 800))
-            ]);
-        } catch (e) {
-            // Suppress errors
-        }
-
-        // Always Clean Local State Aggressively
-        await clearTokens();
-
-        // Clear biometric session on logout
-        await BiometricService.clearBiometricSession();
-
-        // Exhaustive Cleanup
-        const keysToClear = [
-            USER_CACHE_KEY,
-            'supabase.auth.token',
-            '@supabase.auth.token',
-            'user_role',
-            'user_profile',
-            'auth_state',
-            'loglevel:webpack-dev-server',
-        ];
-
-        try {
-            await AsyncStorage.multiRemove(keysToClear);
-            // Double check user cache
-            await AsyncStorage.removeItem(USER_CACHE_KEY);
-        } catch (e) {
-            // Ignore storage errors
-        } finally {
-            // Small delay before allowing login again to ensure all listeners have settled
-            setTimeout(() => {
-                isLoggingOut = false;
-            }, 1000);
-        }
+    /**
+     * System-initiated logout. Forced logout, clears cache but KEEPS biometric enablement preference.
+     */
+    systemLogout: async () => {
+        await performLogout(false);
     },
 
     getCurrentUser: async (): Promise<User | null> => {
+        // Check session policy first
+        const policyValid = await SessionPolicy.checkSessionExpiry();
+        if (!policyValid) {
+            if (__DEV__) console.log('[AuthService] Session expired by policy. Logging out.');
+            await performLogout(false);
+            return null;
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
@@ -297,11 +449,28 @@ const AuthService = {
                     has_student_profile: backendUser.has_student_profile,
                     has_staff_profile: backendUser.has_staff_profile,
                     staff_id: backendUser.staff_id,
+                    staff_code: backendUser.staff_code,
                     class_section_id: backendUser.class_section_id,
                     classId: backendUser.class_section_id
                 };
 
             } catch (err: any) {
+                // ─── NETWORK RESILIENCE: Don't force logout on network errors ───
+                const isNetworkError = !SessionManager.isNetworkAvailable() ||
+                    err?.message?.includes('Network') ||
+                    err?.message?.includes('network') ||
+                    err?.message?.includes('timeout');
+
+                if (isNetworkError) {
+                    if (__DEV__) console.warn('[AuthService] getCurrentUser: Network error, keeping session');
+                    // Try to return cached user
+                    try {
+                        const cached = await AsyncStorage.getItem(USER_CACHE_KEY);
+                        if (cached) return JSON.parse(cached);
+                    } catch { }
+                    return null;
+                }
+
                 console.error("Failed to fetch fresh profile, force logging out:", err.message);
                 await clearTokens();
                 await supabase.auth.signOut();

@@ -287,6 +287,7 @@ export interface TeacherClassAssignment {
     class_section_id: string;
     class_id: string; // Added for LMS
     class_name: string;
+    section_id: string;
     section_name: string;
     subject_id: string;
     subject_name: string;

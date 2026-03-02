@@ -1,8 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { supabase } from './supabaseConfig';
+import { SessionManager } from './sessionManager';
+import NetInfo from '@react-native-community/netinfo';
 
-const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3000/api/v1').trim();
+const getApiBaseUrl = () => {
+    let url = (process.env.EXPO_PUBLIC_API_URL || 'https://supabasebackend-c442.onrender.com/api/v1').trim();
+    if (Platform.OS === 'web' && url.includes('10.0.2.2')) {
+        url = url.replace('10.0.2.2', 'localhost');
+    }
+    return url;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 console.log('DEBUG: API_BASE_URL is:', API_BASE_URL);
 
 const TOKEN_KEY = 'access_token';
@@ -30,6 +40,9 @@ export const registerLogoutCallback = (fn: () => Promise<void>) => {
     logoutCallback = fn;
 };
 
+// Single-flight refresh promise to prevent parallel redundant refreshes
+let refreshPromise: Promise<any> | null = null;
+
 // API Error class
 export class APIError extends Error {
     constructor(
@@ -52,14 +65,19 @@ export class APIError extends Error {
 export interface APIOptions extends RequestInit {
     silent?: boolean;
     _isRetry?: boolean;
+    _retryCount?: number; // tracks 503 retry attempts
 }
 
 export async function apiRequest<T>(
     endpoint: string,
     options: APIOptions = {}
 ): Promise<T> {
-    const { silent, _isRetry, ...fetchOptions } = options;
+    const { silent, _isRetry, _retryCount = 0, ...fetchOptions } = options;
     const token = await getAccessToken();
+
+    // Add a 60-second timeout to prevent fetch from hanging indefinitely on Android but allow Render backend to wake up
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -76,7 +94,11 @@ export async function apiRequest<T>(
         const response = await fetch(url, {
             ...fetchOptions,
             headers,
+            // @ts-ignore - React Native setup might not have full AbortSignal types
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         const requestId = response.headers.get('x-request-id') || response.headers.get('request-id') || undefined;
 
@@ -106,7 +128,14 @@ export async function apiRequest<T>(
                     if (__DEV__) console.log('[API] Attempting token refresh after 401...');
 
                     try {
-                        const { data, error: refreshError } = await supabase.auth.refreshSession();
+                        // Use single-flight promise to avoid duplicate refreshes
+                        if (!refreshPromise) {
+                            refreshPromise = supabase.auth.refreshSession().finally(() => {
+                                refreshPromise = null;
+                            });
+                        }
+
+                        const { data, error: refreshError } = await refreshPromise;
 
                         if (!refreshError && data.session) {
                             if (__DEV__) console.log('[API] Token refresh successful. Retrying original request.');
@@ -132,10 +161,26 @@ export async function apiRequest<T>(
                     }
                 }
 
-                // 3. Trigger Global Logout if refresh fails or it was already a retry
+                // 3. Network-aware logout decision
+                // CRITICAL: Do NOT logout if the device is offline
+
+                // Do a fresh active check just in case the cached state is wrong
+                const netState = await NetInfo.fetch();
+                const isOnline = netState.isConnected && netState.isInternetReachable !== false;
+
+                if (!isOnline) {
+                    if (__DEV__) console.log('[API] Device offline — suppressing 401 logout, keeping session alive');
+                    if (silent) return null as T;
+                    throw new APIError('Network unavailable. Logging suspended.', 0, undefined, requestId);
+                }
+
+                // Only trigger logout if we are genuinely online and the token is rejected
                 if (logoutCallback) {
                     if (!silent) console.warn('[API] Session expired or refresh failed, triggering global logout.');
-                    logoutCallback(); // Fire and forget
+                    // Small delay to ensure no inflight token writes are happening
+                    setTimeout(() => {
+                        logoutCallback?.();
+                    }, 1000);
                 }
 
                 if (silent) {
@@ -143,6 +188,21 @@ export async function apiRequest<T>(
                 }
 
                 throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
+            }
+
+            // Handle Service Unavailable (503) — transient backend timeout
+            if (response.status === 503) {
+                if (_retryCount < 2) {
+                    if (__DEV__) console.log(`[API] 503 Service Unavailable at ${endpoint}. Retrying (${_retryCount + 1}/2)...`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    return await apiRequest<T>(endpoint, {
+                        ...options,
+                        _retryCount: _retryCount + 1,
+                    });
+                }
+                const message = errorData.error || 'Server temporarily unavailable. Please try again.';
+                if (!silent) Alert.alert('Service Unavailable', message);
+                throw new APIError(message, 503, undefined, requestId);
             }
 
             // Handle validation errors (422)
@@ -192,10 +252,16 @@ export async function apiRequest<T>(
         }
 
         return await response.json();
-    } catch (error) {
+    } catch (error: any) {
         if (error instanceof APIError) {
             throw error;
         }
+
+        if (error?.name === 'AbortError') {
+            if (!silent) Alert.alert('Network Timeout', 'The server took too long to respond. Please check your internet connection or try again later.');
+            throw new APIError('Request timed out. Please try again.');
+        }
+
         // Network error
         if (!silent) Alert.alert('Network Error', 'Please check your internet connection.');
         throw new APIError('Network error. Please check your connection.');

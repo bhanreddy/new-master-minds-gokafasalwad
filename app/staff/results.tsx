@@ -110,6 +110,8 @@ export default function UploadMarks() {
   useEffect(() => {
     if (selectedCategory && selectedAssignment) {
       fetchStudents();
+    } else {
+      setStudents([]);
     }
   }, [selectedCategory, selectedAssignment]);
 
@@ -154,7 +156,8 @@ export default function UploadMarks() {
     try {
       setLoading(true);
       const response = await StudentService.getAll<StudentWithDetails>({
-        class_section_id: selectedAssignment.class_section_id,
+        class_id: selectedAssignment.class_id,
+        section_id: selectedAssignment.section_id,
         limit: 100
       });
       setStudents(response.data);
@@ -226,82 +229,82 @@ export default function UploadMarks() {
 
   // Render Dashboard (Selection Grid)
   const renderDashboard = () => {
-return <ScrollView contentContainerStyle={styles.dashboardContent}>
-            <View style={styles.headerSection}>
-                <Text style={styles.pageTitle}>Marks Entry</Text>
-                <Text style={styles.pageSubtitle}>Select an exam category to upload marks</Text>
-            </View>
+    return <ScrollView contentContainerStyle={styles.dashboardContent}>
+      <View style={styles.headerSection}>
+        <Text style={styles.pageTitle}>Marks Entry</Text>
+        <Text style={styles.pageSubtitle}>Select an exam category to upload marks</Text>
+      </View>
 
-            <View style={styles.gridContainer}>
-                {EXAM_CATEGORIES.map((cat, index) => {
-return <Animated.View key={cat.key} entering={FadeInDown.delay(index * 100).duration(600)} style={styles.cardContainer}>
-                        <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => {
+      <View style={styles.gridContainer}>
+        {EXAM_CATEGORIES.map((cat, index) => {
+          return <Animated.View key={cat.key} entering={FadeInDown.delay(index * 100).duration(600)} style={styles.cardContainer}>
+            <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => {
               setSelectedCategory(cat);
               if (cat.subExams && cat.subExams.length > 0) {
                 setSelectedSubExam(cat.subExams[0]);
               }
             }}>
-                            <View style={[styles.iconBox, {
+              <View style={[styles.iconBox, {
                 backgroundColor: cat.color + '20'
               }]}>
-                                <Ionicons name={cat.icon} size={24} color={cat.color} />
-                            </View>
-                            <View style={styles.textContainer}>
-                                <Text style={styles.cardTitle}>{cat.title}</Text>
-                                <Text style={styles.cardSubtitle}>{cat.description}</Text>
-                            </View>
-                            <View style={styles.arrowBox}>
-                                <Ionicons name="arrow-forward" size={18} color="#fff" />
-                            </View>
-                        </TouchableOpacity>
-                    </Animated.View>;
+                <Ionicons name={cat.icon} size={24} color={cat.color} />
+              </View>
+              <View style={styles.textContainer}>
+                <Text style={styles.cardTitle}>{cat.title}</Text>
+                <Text style={styles.cardSubtitle}>{cat.description}</Text>
+              </View>
+              <View style={styles.arrowBox}>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </View>
+            </TouchableOpacity>
+          </Animated.View>;
         })}
-            </View>
-        </ScrollView>;
+      </View>
+    </ScrollView>;
   };
 
   // Render Upload Form
   const renderUploadForm = () => {
-return <>
-            <View style={styles.filterSection}>
-                {/* Dynamic Class & Subject Selection */}
-                {assignments.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{
+    return <>
+      <View style={styles.filterSection}>
+        {/* Dynamic Class & Subject Selection */}
+        {assignments.length > 0 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{
           marginBottom: 15
         }}>
-                        {assignments.map(assign => {
-return <TouchableOpacity key={assign.assignment_id} style={[styles.dropdown, selectedAssignment?.assignment_id === assign.assignment_id && styles.dropdownActive]} onPress={() => setSelectedAssignment(assign)}>
-                                <Text style={[styles.dropdownText, selectedAssignment?.assignment_id === assign.assignment_id && styles.dropdownTextActive]}>
-                                    {assign.class_name}-{assign.section_name} : {assign.subject_name}
-                                </Text>
-                            </TouchableOpacity>;
+          {assignments.map(assign => {
+            return <TouchableOpacity key={assign.assignment_id} style={[styles.dropdown, selectedAssignment?.assignment_id === assign.assignment_id && styles.dropdownActive]} onPress={() => setSelectedAssignment(assign)}>
+              <Text style={[styles.dropdownText, selectedAssignment?.assignment_id === assign.assignment_id && styles.dropdownTextActive]}>
+                {assign.class_name}-{assign.section_name} : {assign.subject_name}
+              </Text>
+            </TouchableOpacity>;
           })}
-                    </ScrollView> : <Text style={{
+        </ScrollView> : <Text style={{
           color: 'red',
           marginBottom: 10
         }}>No classes assigned to you.</Text>}
 
 
-                {/* Dynamic Sub-Exam Tabs */}
-                {/* ... (existing sub-exam tabs) ... */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
-                    <View style={styles.examTabs}>
-                        {selectedCategory?.subExams?.map((exam: string) => {
-return <TouchableOpacity key={exam} style={[styles.examTab, selectedSubExam === exam && styles.examTabActive]} onPress={() => setSelectedSubExam(exam)}>
-                                <Text style={[styles.examTabText, selectedSubExam === exam && styles.examTabTextActive]}>
-                                    {exam}
-                                </Text>
-                            </TouchableOpacity>;
+        {/* Dynamic Sub-Exam Tabs */}
+        {/* ... (existing sub-exam tabs) ... */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
+          <View style={styles.examTabs}>
+            {selectedCategory?.subExams?.map((exam: string) => {
+              return <TouchableOpacity key={exam} style={[styles.examTab, selectedSubExam === exam && styles.examTabActive]} onPress={() => setSelectedSubExam(exam)}>
+                <Text style={[styles.examTabText, selectedSubExam === exam && styles.examTabTextActive]}>
+                  {exam}
+                </Text>
+              </TouchableOpacity>;
             }) || null}
-                    </View>
-                </ScrollView>
-            </View>
+          </View>
+        </ScrollView>
+      </View>
 
-            {/* Total Marks Input */}
-            <View style={{
+      {/* Total Marks Input */}
+      <View style={{
         paddingHorizontal: 20,
         marginBottom: 10
       }}>
-                <View style={{
+        <View style={{
           flexDirection: 'row',
           alignItems: 'center',
           backgroundColor: '#fff',
@@ -310,82 +313,82 @@ return <TouchableOpacity key={exam} style={[styles.examTab, selectedSubExam === 
           borderWidth: 1,
           borderColor: '#E5E7EB'
         }}>
-                    <Text style={{
+          <Text style={{
             fontSize: 14,
             fontWeight: '600',
             color: '#374151',
             marginRight: 10
           }}>Total Marks:</Text>
-                    <TextInput style={{
+          <TextInput style={{
             flex: 1,
             fontSize: 16,
             color: '#111827',
             fontWeight: 'bold'
           }} value={maxMarks} onChangeText={handleMaxMarksChange} keyboardType="numeric" maxLength={3} />
-                </View>
-            </View>
+        </View>
+      </View>
 
-            {/* Student List */}
-            <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-                {/* ... (existing table header and list) ... */}
-                <View style={styles.tableHeader}>
-                    <Text style={[styles.headerCell, {
+      {/* Student List */}
+      <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+        {/* ... (existing table header and list) ... */}
+        <View style={styles.tableHeader}>
+          <Text style={[styles.headerCell, {
             flex: 2
           }]}>Student Name</Text>
-                    <Text style={[styles.headerCell, {
+          <Text style={[styles.headerCell, {
             flex: 1,
             textAlign: 'center'
           }]}>Marks / {maxMarks}</Text>
-                </View>
+        </View>
 
-                {loading ? <ActivityIndicator size="large" /> : students.length > 0 ? students.map((student, index) => {
-return <Animated.View key={student.id} entering={FadeInDown.delay(index * 50).duration(400)} style={styles.studentRow}>
-                        <View style={{
+        {loading ? <ActivityIndicator size="large" /> : students.length > 0 ? students.map((student, index) => {
+          return <Animated.View key={student.id} entering={FadeInDown.delay(index * 50).duration(400)} style={styles.studentRow}>
+            <View style={{
               flex: 2
             }}>
-                            <Text style={styles.studentName}>{student.person.display_name || `${student.person.first_name} ${student.person.last_name}`}</Text>
-                            <Text style={styles.studentRoll}>Roll No: {student.admission_no}</Text>
-                        </View>
-                        <View style={{
+              <Text style={styles.studentName}>{student.person.display_name || `${student.person.first_name} ${student.person.last_name}`}</Text>
+              <Text style={styles.studentRoll}>Roll No: {student.admission_no}</Text>
+            </View>
+            <View style={{
               flex: 1,
               alignItems: 'center'
             }}>
-                            <TextInput style={styles.markInput} placeholder="--" keyboardType="numeric" maxLength={3} value={marks[student.id] || ''} onChangeText={text => handleMarkChange(student.id, text)} />
-                        </View>
-                    </Animated.View>;
+              <TextInput style={styles.markInput} placeholder="--" keyboardType="numeric" maxLength={3} value={marks[student.id] || ''} onChangeText={text => handleMarkChange(student.id, text)} />
+            </View>
+          </Animated.View>;
         }) : <Text style={{
           textAlign: 'center',
           marginTop: 20,
           color: '#666'
         }}>No students found in this class.</Text>}
-            </ScrollView>
+      </ScrollView>
 
-            {/* ... (floating action) ... */}
-            <View style={styles.floatingAction}>
-                {/* ... */}
-                <TouchableOpacity style={[styles.submitButton, loading && {
+      {/* ... (floating action) ... */}
+      <View style={styles.floatingAction}>
+        {/* ... */}
+        <TouchableOpacity style={[styles.submitButton, loading && {
           opacity: 0.7
         }]} onPress={handleSubmit} disabled={loading}>
-                    <Text style={styles.submitText}>Upload Results</Text>
-                    <Ionicons name="cloud-upload" size={20} color="#fff" style={{
+          <Text style={styles.submitText}>Upload Results</Text>
+          <Ionicons name="cloud-upload" size={20} color="#fff" style={{
             marginLeft: 8
           }} />
-                </TouchableOpacity>
-            </View>
-        </>;
+        </TouchableOpacity>
+      </View>
+    </>;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-            {/* Header adapts based on view */}
-            <StaffHeader title={selectedCategory?.title ?? "Upload Marks"} showBackButton={true} />
-            {selectedCategory && <TouchableOpacity style={styles.backToDash} onPress={handleBackToDashboard}>
-                    <Ionicons name="arrow-back" size={16} color="#6B7280" />
-                    <Text style={styles.backText}>All Exams</Text>
-                </TouchableOpacity>}
+    {/* Header adapts based on view */}
+    <StaffHeader title={selectedCategory?.title ?? "Upload Marks"} showBackButton={true} />
+    {selectedCategory && <TouchableOpacity style={styles.backToDash} onPress={handleBackToDashboard}>
+      <Ionicons name="arrow-back" size={16} color="#6B7280" />
+      <Text style={styles.backText}>All Exams</Text>
+    </TouchableOpacity>}
 
-            {selectedCategory ? renderUploadForm() : renderDashboard()}
-        </View>;
+    {selectedCategory ? renderUploadForm() : renderDashboard()}
+  </View>;
 }
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {

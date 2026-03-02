@@ -22,7 +22,6 @@ if (Platform.OS === 'web') {
     const SQLiteAdapter = require('@nozbe/watermelondb/adapters/sqlite').default
     adapter = new SQLiteAdapter({
         schema,
-        jsi: true,
         onSetUpError: (error: any) => {
             console.error('Database setup failed', error)
         }

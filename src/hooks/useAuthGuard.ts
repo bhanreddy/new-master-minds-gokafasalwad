@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useAuth } from './useAuth';
 
 // List of public routes that don't require authentication
@@ -11,8 +11,11 @@ export function useAuthGuard() {
     const { user, loading } = useAuth();
     const router = useRouter();
     const segments = useSegments();
+    const rootNavigationState = useRootNavigationState();
 
     useEffect(() => {
+        if (!rootNavigationState?.key) return; // Wait until router is ready
+
         if (__DEV__) console.log('[AuthGuard] Run:', { user: user?.role, loading, segments });
         if (loading) return;
 
@@ -41,8 +44,11 @@ export function useAuthGuard() {
             // debug logs
             if (__DEV__) console.log('[AuthGuard] Check:', { currentRoute, normalizedHome, userRole: user.role });
 
-            // Only stop if we are strictly at the home route
+            // If they are on a route matching their home dashboard strictly, we're fine.
+            // But we don't want to return early if they are deeper in the route, we just want to ensure
+            // they aren't on another role's route.
             if (currentRoute === normalizedHome) {
+                // we're safely on home.
                 return;
             }
 
@@ -72,8 +78,12 @@ export function useAuthGuard() {
                 return;
             }
 
-            // Redirect from public/auth screens to dashboard if logged in
-            if (inAuthGroup) {
+            // We do NOT want to force the user to `homeRoute` if they are deeper in a valid protected group.
+            // That breaks deep linking from notifications.
+
+            // Only redirect to home if they are explicitly sitting on an auth/public screen OR the root index
+            if (inAuthGroup || currentRoute === '') {
+                if (__DEV__) console.log(`[AuthGuard] Redirecting ${user.role} from public/root to ${homeRoute}`);
                 router.replace(homeRoute);
             }
 
@@ -98,7 +108,7 @@ export function useAuthGuard() {
             }
         }
 
-    }, [user, loading, segments]);
+    }, [user, loading, segments, rootNavigationState?.key]);
 }
 
 const getHomeRoute = (role: string) => {

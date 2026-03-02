@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
-import { Map, Camera, GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
+import { Map, Camera, GeoJSONSource, Layer, Marker } from '../../src/components/MapWrapper';
 import { supabase } from '../../src/services/supabaseConfig';
 import { useLocalSearchParams } from 'expo-router';
 
