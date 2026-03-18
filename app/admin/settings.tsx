@@ -7,7 +7,7 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useRouter } from 'expo-router';
-import AuthService from '../../src/services/authService';
+import { AuthService } from '../../src/services/authService';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useBiometric } from '../../src/hooks/useBiometric';
@@ -140,7 +140,7 @@ export default function AdminSettings() {
                         <View style={styles.profileMeta}>
                             <View style={styles.nameRow}>
                                 <Text style={styles.profileName}>
-                                    {user?.display_name || user?.first_name || 'Admin User'}
+                                    {user?.displayName || 'Admin User'}
                                 </Text>
                                 <View style={styles.adminBadge}>
                                     <FontAwesome5 name="crown" size={8} color="#7C3AED" />
@@ -150,7 +150,7 @@ export default function AdminSettings() {
                             <View style={styles.idBadge}>
                                 <FontAwesome5 name="id-badge" size={9} color="#7C3AED" />
                                 <Text style={styles.idText} numberOfLines={1}>
-                                    {user?.id?.substring(0, 8).toUpperCase() || 'UNKNOWN'}
+                                    {user?.userId?.substring(0, 8).toUpperCase() || 'UNKNOWN'}
                                 </Text>
                             </View>
                         </View>
@@ -290,7 +290,7 @@ export default function AdminSettings() {
                                 {
                                     text: 'Logout', style: 'destructive',
                                     onPress: async () => {
-                                        await AuthService.logout();
+                                        await AuthService.signOut();
                                         router.replace('/welcome');
                                     }
                                 }

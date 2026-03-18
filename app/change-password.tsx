@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useTheme } from '../src/hooks/useTheme';
 import { ThemeColors } from '../src/theme/themes';
-import AuthService from '../src/services/authService';
+import { AuthService } from '../src/services/authService';
 import { useAuth } from '../src/hooks/useAuth';
 import AnimatedInput from '../src/components/AnimatedInput';
 import PremiumButton from '../src/components/PremiumButton';
@@ -13,7 +13,7 @@ import PremiumButton from '../src/components/PremiumButton';
 export default function ChangePasswordScreen() {
     const router = useRouter();
     const { theme } = useTheme();
-    const { logout } = useAuth();
+    const { signOut } = useAuth();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
 
     const [currentPassword, setCurrentPassword] = useState('');
@@ -66,7 +66,7 @@ export default function ChangePasswordScreen() {
             Alert.alert("Success", "Password changed successfully. Please log in again.", [
                 {
                     text: 'OK', onPress: async () => {
-                        await logout();
+                        await signOut();
                         router.replace('/welcome');
                     }
                 }

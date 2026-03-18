@@ -13,13 +13,12 @@ export function useExpenses() {
     setLoading(true);
     setError(null);
     try {
-      // Get current user to determine school_id (if we had multi-tenant logic on client)
-      // But RLS handles visibility. We just select * 
+      // RLS handles visibility. We just select * 
 
       let query = supabase.
-      from('expenses').
-      select('*').
-      order('expense_date', { ascending: false });
+        from('expenses').
+        select('*').
+        order('expense_date', { ascending: false });
 
       if (searchQuery) {
         // ILIKE search on title or category
@@ -45,36 +44,12 @@ export function useExpenses() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // school_id should logically come from the user's profile.
-      // For now, we fetch the profile to get school_id ?? 
-      // Or, if we assume single tenant for this user's context or stored in metadata.
-      // Let's assume we can fetch it from the 'users' table or 'students'/'staff' linked.
-      // SIMPLIFICATION: In this specific codebase, we might not have 'school_id' explicitly on 'users' yet exposed?
-      // Checking schema... 'expenses' requires 'school_id'. 
-      // The prompt says: "Assume school_id comes from logged-in user profile".
-      // We need to fetch it.
-
-      // 1. Get user profile
-      /*
-      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
-      */
-      // Wait, looking at schema, 'users' table DOES NOT have school_id in the view I saw earlier?
-      // 'users' has person_id. 
-      // Let's check schema.sql again? Or just use a hardcoded UUID if strict, or fetch from a 'schools' table?
-      // Actually, in many implementations here, school_id is implicit or linked via roles.
-      // CHECK: schema.sql lines 184+ (users table). NO school_id.
-      // CHECK: 'staff' table? 'students' table?
-      // If I can't find school_id, I'll need to fallback to a dummy implementation or assume it's stored in metadata.
-      // FIX: I will use a placeholder UUID or generic one for now if I can't find it, OR add it to the insert if I can derive it.
-      // The prompt says "Assume school_id comes from logged-in user profile". 
-      // We have removed school_id for single-tenancy.
-
       const { error } = await supabase.
-      from('expenses').
-      insert({
-        ...expenseData,
-        created_by: user.id
-      });
+        from('expenses').
+        insert({
+          ...expenseData,
+          created_by: user.id
+        });
 
       if (error) throw error;
 
@@ -91,9 +66,9 @@ export function useExpenses() {
   const updateStatus = async (id: string, newStatus: ExpenseStatus) => {
     try {
       const { error } = await supabase.
-      from('expenses').
-      update({ status: newStatus }).
-      eq('id', id);
+        from('expenses').
+        update({ status: newStatus }).
+        eq('id', id);
 
       if (error) throw error;
 

@@ -224,7 +224,7 @@ export default function Index() {
                   <ActionCard
                     icon={<MaterialIcons name="admin-panel-settings" size={22} color="#7C3AED" />}
                     title={t("index.admin_login")}
-                    subtitle="Full school management"
+                    subtitle="Admin & Principal portal"
                     accent="#7C3AED"
                     onPress={() => router.push("/admin-login")}
                   />

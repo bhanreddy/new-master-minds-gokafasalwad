@@ -1,536 +1,212 @@
+import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
-import { User, Role } from '../types/models';
-import { api, setTokens, clearTokens, registerLogoutCallback } from './apiClient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import { Alert, Platform } from 'react-native';
-import { EnrollmentService } from './enrollmentService';
-import { notificationManager } from './notificationManager';
-import BiometricService from './biometricService';
-import { SessionManager } from './sessionManager';
-import { SessionPolicy } from './sessionPolicyService';
-import { clearBackupRefreshToken } from './secureTokenStore';
-import { AccessControlService } from './accessControlService';
+import { AuthSession, ValidatedUser } from '../types/auth';
+import { api } from './apiClient';
+import { SCHOOL_NAME, SCHOOL_ID } from '../constants/school';
 
-const mapBackendRole = (roles: string[], hasStudentProfile: boolean = false, hasStaffProfile: boolean = false): Role => {
-  if (roles.includes('admin')) return 'admin';
-  if (roles.includes('accounts') || roles.includes('accountant')) return 'accountant';
+const STORAGE_KEY = 'auth_session';
 
-  // Strict Profile Check
-  // Only return 'staff', 'teacher', or 'driver' if they actually have a staff profile
-  if (hasStaffProfile) {
-    if (roles.includes('driver')) return 'driver';
-    if (roles.includes('teacher')) return 'teacher';
-    if (roles.includes('staff')) return 'staff';
-  }
-
-  // Only return 'student' if they explicitly have a student profile
-  if (hasStudentProfile) return 'student';
-
-  // Fallback for users with no profile (will be caught by AuthGuard)
-
-  Alert.alert("Access Denied", "You do not have a valid role assigned. Please contact support.");
-  throw new Error('NO_ACCESS');
-};
-
-const USER_CACHE_KEY = 'user_profile_cache';
-
-// Module-level trackers for deduplication and lockouts
-let isLoggingOut = false;
-let isUserInitiatedLogout = false;
-let isFetchingProfile = false;
-let lastValidatedUserId: string | null = null;
-
-export const listenAuth = (callback: (user: User | null) => void) => {
-
-  // ─── Wire up SessionManager fatal logout ─────────────────────────
-  SessionManager.setLogoutCallback(async () => {
-    if (__DEV__) { }
-    // This is NOT user-initiated (it's a server revocation)
-    await performLogout(false);
-    callback(null);
-  });
-
-  // ─── Wire up SessionPolicy TTL logout ────────────────────────────
-  SessionPolicy.setLogoutCallback(async (reason: string) => {
-    if (__DEV__) { }
-    Alert.alert('Session Expired', reason);
-    await performLogout(false);
-    callback(null);
-  });
-
-  return supabase.auth.onAuthStateChange(async (event, session) => {
-    if (__DEV__) { }
-
-    // STRICT GUARD: If we are effectively logging out, IGNORE any "signed in" or "token refreshed" events
-    // that might be firing from pending promises or background timers.
-    if (isLoggingOut) {
-      if (event === 'SIGNED_OUT') {
-
-        // Allow the sign-out event to proceed as it helps cleanup
-      } else {
-        if (__DEV__) { }
-        return;
-      }
-    }
-
-    // Sync tokens to AsyncStorage whenever Supabase updates the session (Refreshes, Login, etc.)
-    if (session?.access_token && session?.refresh_token) {
-      await setTokens(session.access_token, session.refresh_token);
-
-      // Keep biometric session fresh with latest refresh token
-      const biometricEnabled = await BiometricService.isBiometricEnabled();
-      if (biometricEnabled) {
-        const existingSession = await BiometricService.getBiometricSession();
-        if (existingSession) {
-          await BiometricService.storeBiometricSession(
-            session.refresh_token,
-            existingSession.userId
-          );
-        }
-      }
-
-      // ─── CRITICAL: On TOKEN_REFRESHED, ONLY sync tokens. ─────────
-      // Do NOT re-fetch profile or call callback(user).
-      // The user was already validated during INITIAL_SESSION.
-      // Re-triggering the callback causes cascading React re-renders
-      // that corrupt React Navigation's internal state ('stale' crash).
-      if (event === 'TOKEN_REFRESHED') {
-        if (__DEV__) { }
-        return;
-      }
-
-      // On INITIAL_SESSION (app launch), ensure we start standard tracking
-      if (event === 'INITIAL_SESSION' && session.user) {
-        if (__DEV__) { }
-        // The actual setup happens in the block below, we just log it here
-      }
-    } else if (event === 'SIGNED_OUT') {
-
-      // Prevent recursive loop by NOT calling AuthService.logout() here.
-      // Just ensure local tokens are cleared so the UI reacts.
-      await clearTokens();
-      // Also need to clear user cache so next load doesn't show stale data
-      await AsyncStorage.removeItem(USER_CACHE_KEY);
-      // Stop session monitoring
-      SessionManager.stopMonitoring();
-      SessionPolicy.stopPeriodicCheck();
-      callback(null);
-      return;
-    }
-
-    if (session?.user) {
-      let loadedFromCache = false;
-
-      // 1. Try to load from cache immediately so App opens FAST
-      try {
-        const cachedUser = await AsyncStorage.getItem(USER_CACHE_KEY);
-        if (cachedUser) {
-          const parsedUser = JSON.parse(cachedUser);
-          callback(parsedUser);
-          loadedFromCache = true;
-
-          // Start session monitoring immediately with cached data
-          SessionManager.startMonitoring();
-
-          // Start policy check for non-students
-          if (parsedUser.role !== 'student') {
-            SessionPolicy.startPeriodicCheck();
-          }
-        }
-      } catch (e) {
-
-        // Ignore cache error
-      }
-      // 2. Validate with Backend (Background)
-      // DEDUPLICATION: 
-      // - Skip if already fetching
-      // - Skip on TOKEN_REFRESHED if we already validated this specific user
-      if (isFetchingProfile) {
-        if (__DEV__) { }
-        return;
-      }
-
-      if (event === 'TOKEN_REFRESHED' && lastValidatedUserId === session.user.id) {
-        if (__DEV__) { }
-        return;
-      }
-
-      try {
-        isFetchingProfile = true;
-        // FORCE re-validation via backend /auth/me
-        const backendUser = await api.get<any>('/auth/me');
-        lastValidatedUserId = backendUser.id;
-
-        const user: User = {
-          id: backendUser.id,
-          email: backendUser.email || session.user.email,
-          first_name: backendUser.first_name,
-          last_name: backendUser.last_name,
-          display_name: backendUser.display_name,
-          photo_url: backendUser.photo_url,
-          role: mapBackendRole(
-            backendUser.roles || [],
-            backendUser.has_student_profile,
-            backendUser.has_staff_profile
-          ),
-          roles: backendUser.roles || [],
-          permissions: backendUser.permissions || [],
-          admission_no: backendUser.admission_no,
-          has_student_profile: backendUser.has_student_profile,
-          has_staff_profile: backendUser.has_staff_profile,
-          staff_id: backendUser.staff_id,
-          staff_code: backendUser.staff_code,
-          class_section_id: backendUser.class_section_id,
-          classId: backendUser.class_section_id,
-          notification_sound: backendUser.notification_sound || 'custom',
-          gender: backendUser.gender
-        };
-
-        // AUTO-ENROLLMENT CHECK
-        // Only attempt auto-enrollment if the user does NOT already have a class section assigned.
-        if ((user.role === 'student' || user.roles.includes('student')) && !user.class_section_id) {
-          EnrollmentService.ensureEnrollment(user.id).
-            then((res) => {
-              if (res?.status === 'created') { }
-            }).
-            catch(() => {
-
-            });
-        }
-
-        // Update cache
-        await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
-
-        // Start session monitoring if not already started
-        SessionManager.startMonitoring();
-
-        // Start policy check
-        if (user.role !== 'student') {
-          SessionPolicy.startPeriodicCheck();
-        }
-
-        // If this is the initial session load and we don't have a started_at timestamp, make sure to start one
-        // This covers the case where students kill the app and re-launch
-        const existingRole = await SessionPolicy.getStoredRole();
-        if (!existingRole) {
-          await SessionPolicy.startSession(user.role);
-        }
-
-        if (!isLoggingOut) {
-          callback(user);
-        }
-      } catch (error: any) {
-        if (error.message === 'NO_ACCESS') {
-
-          await clearTokens();
-          await supabase.auth.signOut();
-          callback(null);
-          return;
-        }
-
-        // ─── NETWORK RESILIENCE: Do NOT logout on network errors ─────
-
-        const status = error?.status || error?.statusCode || error?.response?.status;
-
-        // Only logout on confirmed 401 auth rejection (NOT network failure)
-        if (status === 401) {
-          // Check if this is a network error masquerading as a failure
-          const isNetworkError = !SessionManager.isNetworkAvailable() ||
-            error?.message?.includes('Network') ||
-            error?.message?.includes('network') ||
-            error?.message?.includes('timeout') ||
-            error?.message?.includes('fetch');
-
-          if (isNetworkError) {
-            if (__DEV__) { }
-            // Keep cached data, don't logout
-            if (!loadedFromCache) {
-              // If we have no cache AND no backend, we can't authenticate
-              // but still don't logout if we have a valid Supabase session
-              if (__DEV__) { }
-            }
-          } else {
-
-            await clearTokens();
-            await supabase.auth.signOut();
-            callback(null);
-          }
-        } else if (!loadedFromCache) {
-          // If we have no cache and backend failed, we can't authenticate the user reliably
-          // We must unblock the loader by returning null (logged out state)
-          callback(null);
-        }
-        // Otherwise, keep the user logged in (with cached data if available)
-      } finally {
-        isFetchingProfile = false;
-      }
-    } else {
-      callback(null);
-    }
-  });
-};
-
-/**
- * Core logout logic shared between user-initiated and system-initiated logout.
- * @param userInitiated — true if user tapped "Logout", false if forced by system
- */
-async function performLogout(userInitiated: boolean): Promise<void> {
-  if (isLoggingOut) return;
-  isLoggingOut = true;
-  isUserInitiatedLogout = userInitiated;
-
-  try {
-
-    // Stop session monitoring FIRST
-    SessionManager.stopMonitoring();
-    SessionPolicy.stopPeriodicCheck();
-    await SessionPolicy.clearSession();
-
-    // Race network calls with a STRICT 800ms timeout
-    await Promise.race([
-      Promise.all([
-        // Only unregister FCM token if user explicitly logged out
-        userInitiated ?
-          notificationManager.unregisterPushToken().catch(() => { }) :
-          Promise.resolve(), // Skip FCM unregister on system logout
-        api.post('/auth/logout', {}, { silent: true }).catch(() => { }),
-        // Wait for Supabase SignOut too, but don't let it hang forever
-        supabase.auth.signOut().catch(() => { })]
-      ),
-      new Promise((resolve) => setTimeout(resolve, 800))]
-    );
-  } catch (e) {
-
-    // Suppress errors
-  }
-  // Always Clean Local State Aggressively
-  await clearTokens();
-
-  // Clear SecureStore backup
-  await clearBackupRefreshToken();
-
-  // Clear biometric session and saved credentials ONLY on user-initiated logout
-  if (userInitiated) {
-    await BiometricService.clearBiometricSession();
-    await AsyncStorage.removeItem('student_saved_email');
-    if (Platform.OS !== 'web') {
-      await SecureStore.deleteItemAsync('student_saved_password');
-    } else {
-      await AsyncStorage.removeItem('student_saved_password');
-    }
-  }
-
-  // Exhaustive Cleanup (EXCEPT internal Supabase keys - let Supabase handle those)
-  // Clearing `@supabase.auth.token` manually can cause permanent unrecoverable state if this is a false-positive logout
-  const keysToClear = [
-    USER_CACHE_KEY,
-    'user_role',
-    'user_profile',
-    'auth_state',
-    'loglevel:webpack-dev-server'];
-
-  try {
-    await AsyncStorage.multiRemove(keysToClear);
-    // Double check user cache
-    await AsyncStorage.removeItem(USER_CACHE_KEY);
-  } catch (e) {
-
-    // Ignore storage errors
-  } finally {// Small delay before allowing login again to ensure all listeners have settled
-    setTimeout(() => {
-      isLoggingOut = false;
-      isUserInitiatedLogout = false;
-    }, 1000);
-  }
+async function setSecureItem(key: string, value: string) {
+  await SecureTokenStore.setItem(key, value);
 }
 
-const AuthService = {
-  login: async (email: string, password: string): Promise<{ user: User; }> => {
+async function getSecureItem(key: string): Promise<string | null> {
+  return await SecureTokenStore.getItem(key);
+}
+
+async function removeSecureItem(key: string) {
+  await SecureTokenStore.removeItem(key);
+}
+
+export const clearAuthState = async (): Promise<void> => {
+  await removeSecureItem(STORAGE_KEY);
+};
+
+export const AuthService = {
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  },
+
+  signIn: async (email: string, password: string): Promise<{ session?: AuthSession; error?: string }> => {
+    // 1. clearAuthState() — always clear before new login
+    await clearAuthState();
+
+    // 2. supabase.auth.signInWithPassword({ email, password })
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    // 3. If Supabase error → return { error: "Invalid credentials" }
+    if (signInError || !signInData.session) {
+      return { error: 'Invalid credentials' };
+    }
+
+    // 4. Call POST /api/auth/validate-school-user with JWT
     try {
-      // 1. Call Backend Login API
-      const response = await api.post<any>('/auth/login', { email, password });
+      const validatedUser = await api.post<ValidatedUser>('/auth/validate-school-user', {}, {
+        headers: {
+          'Authorization': `Bearer ${signInData.session.access_token}`
+        },
+        silent: true
+      });
 
-      // 2. Set Tokens
-      if (response.token && response.refresh_token) {
-        await setTokens(response.token, response.refresh_token);
-
-        // 3. Sync with Supabase Client
-        await supabase.auth.setSession({
-          access_token: response.token,
-          refresh_token: response.refresh_token
-        });
+      // Guard: If validation failed (e.g. 401/403 returned null due to silent: true)
+      if (!validatedUser) {
+        throw new Error('Verification failed. Your session could not be validated.');
       }
 
-      const backendUser = response.user;
+      // 5. Multitenancy gate: verify user belongs to THIS school build
+      if (validatedUser.schoolId !== SCHOOL_ID) {
+        await AuthService.signOut();
+        return { error: `This account does not belong to ${SCHOOL_NAME}.\nContact your school administrator.` };
+      }
 
-      // 4. Construct User Object with strict mapping
-      const user: User = {
-        id: backendUser.id,
-        email: backendUser.email,
-        first_name: backendUser.first_name,
-        last_name: backendUser.last_name,
-        display_name: backendUser.display_name,
-        photo_url: backendUser.photo_url,
-        role: mapBackendRole(
-          backendUser.roles || [],
-          backendUser.has_student_profile,
-          backendUser.has_staff_profile
-        ),
-        roles: backendUser.roles || [],
-        permissions: backendUser.permissions || [],
-        admission_no: backendUser.admission_no,
-        has_student_profile: backendUser.has_student_profile,
-        has_staff_profile: backendUser.has_staff_profile,
-        staff_id: backendUser.staff_id,
-        staff_code: backendUser.staff_code,
-        class_section_id: backendUser.class_section_id,
-        classId: backendUser.class_section_id,
-        gender: backendUser.gender
+      // 7. Store AuthSession in SecureStore
+      const authSession: AuthSession = {
+        supabaseSession: signInData.session,
+        validatedUser,
+        tokenExpiresAt: signInData.session.expires_at ? signInData.session.expires_at * 1000 : Date.now() + 3600000,
       };
 
-      await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+      await setSecureItem(STORAGE_KEY, JSON.stringify(authSession));
 
-      // Save credentials for pre-fill if user is a student
-      if (user.role === 'student' || user.roles.includes('student')) {
-        await AsyncStorage.setItem('student_saved_email', email);
-        if (Platform.OS !== 'web') {
-          await SecureStore.setItemAsync('student_saved_password', password);
-        } else {
-          await AsyncStorage.setItem('student_saved_password', password);
-        }
+      // 8. Return { session: AuthSession }
+      return { session: authSession };
+    } catch (err: any) {
+      // 5. If 403 account_not_in_school → signOut(), return { error: "This account does not belong to this school." }
+      // 6. If 403 account_locked → signOut(), return { error: "Your account is locked. Contact your admin." }
+
+      // OUT_OF_HOURS: Re-throw so accounts-login.tsx can catch and show the access request modal
+      const errCode = err?.code;
+      const errMsg = err?.message || '';
+      
+      const isOutOfHours =
+        errCode === 'OUT_OF_HOURS_NO_ACCESS' ||
+        errMsg.includes('Accounts department access is restricted to school hours') ||
+        errMsg.indexOf('OUT_OF_HOURS_NO_ACCESS') !== -1;
+
+      if (isOutOfHours) {
+        await AuthService.signOut();
+        const outOfHoursError: any = new Error(errMsg || 'Access restricted to school hours');
+        outOfHoursError.code = 'OUT_OF_HOURS_NO_ACCESS';
+        outOfHoursError.userId = signInData.user.id;
+        throw outOfHoursError;
       }
 
-      // OUT_OF_HOURS_NO_ACCESS logic for accounts
-      if (user.role === 'accountant' || user.roles.includes('accounts') || user.roles.includes('accountant')) {
-        const now = new Date();
-        const dayOfWeek = now.getDay(); // 1=Mon, 5=Fri
-        const currentHours = now.getHours();
-        const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
-        // School hours: 08:00 to 17:00
-        const isOutsideSchoolHours = !isWeekday || currentHours < 8 || currentHours >= 17;
-
-        if (isOutsideSchoolHours) {
-          const hasTempAccess = await AccessControlService.checkTempAccess('accounts');
-          if (!hasTempAccess) {
-            await clearTokens();
-            await supabase.auth.signOut();
-            const error: any = new Error('Access denied. Accounts department access is restricted to school hours.');
-            error.code = 'OUT_OF_HOURS_NO_ACCESS';
-            error.userId = user.id;
-            throw error;
-          }
-        }
+      let errorMsg = err?.message || 'Validation failed. Contact support.';
+      
+      const errMsgLc = errMsg.toLowerCase();
+      if (errMsgLc.includes('account_not_in_school') || errMsgLc.includes('is not registered with')) {
+        errorMsg = `This account is not registered with ${SCHOOL_NAME}.\nContact your school administrator.`;
+      } else if (err?.code === 'SCHOOL_MISMATCH' || errMsgLc.includes('user does not belong to this school')) {
+        errorMsg = `This account does not belong to ${SCHOOL_NAME}.\nContact your school administrator.`;
+      } else if (errMsgLc.includes('account_locked')) {
+        errorMsg = `Your account has been locked. Contact ${SCHOOL_NAME} admin.`;
+      } else if (errMsgLc.includes('account_not_active')) {
+        errorMsg = `Your account is not active. Contact ${SCHOOL_NAME} admin.`;
+      } else if (errMsgLc.includes('school_id is required')) {
+        errorMsg = 'Tenant context missing. Please restart the app and try again.';
       }
 
-      // 5. Start session policy tracking (role-based TTL)
-      await SessionPolicy.startSession(user.role);
-
-      // 6. Start session monitoring (network-aware refresh)
-      SessionManager.startMonitoring();
-
-      // 7. Start periodic policy check for non-students
-      if (user.role !== 'student') {
-        SessionPolicy.startPeriodicCheck();
-      }
-
-      return { user };
-    } catch (error) {
-
-      throw error;
+      await AuthService.signOut();
+      return { error: errorMsg };
     }
   },
 
-  /**
-   * User-initiated logout. Clears FCM token and all session data.
-   */
-  logout: async () => {
-    await performLogout(true);
+  signOut: async (): Promise<void> => {
+    // 1. Remove from SecureStore
+    await removeSecureItem(STORAGE_KEY);
+    // 2. supabase.auth.signOut()
+    await supabase.auth.signOut();
+    // 3. Clear any in-memory cache (handled by useAuth state wiping)
   },
 
-  /**
-   * System-initiated logout. Forced logout, clears cache but KEEPS biometric enablement preference.
-   */
-  systemLogout: async () => {
-    await performLogout(false);
+  getSession: async (): Promise<AuthSession | null> => {
+    // Read from SecureStore
+    const sessionStr = await getSecureItem(STORAGE_KEY);
+    if (!sessionStr) return null;
+
+    try {
+      const session = JSON.parse(sessionStr) as AuthSession;
+      // If token expired → call refreshSession()
+      if (Date.now() >= session.tokenExpiresAt) {
+        return await AuthService.refreshSession();
+      }
+      return session;
+    } catch {
+      return null;
+    }
   },
 
-  getCurrentUser: async (): Promise<User | null> => {
-    // Check session policy first
-    const policyValid = await SessionPolicy.checkSessionExpiry();
-    if (!policyValid) {
-      if (__DEV__) { }
-      await performLogout(false);
+  refreshSession: async (): Promise<AuthSession | null> => {
+    // 1. supabase.auth.refreshSession()
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+    // 2. If fails → clearAuthState(), return null
+    if (refreshError || !refreshData.session) {
+      await clearAuthState();
       return null;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      // 3. Re-validate with backend (call validate-school-user again)
+      const validatedUser = await api.post<ValidatedUser>('/auth/validate-school-user', {}, {
+        headers: {
+          'Authorization': `Bearer ${refreshData.session.access_token}`
+        },
+        silent: true
+      });
 
-    if (session?.user) {
-      try {
-        // Always fetch fresh profile to ensure role integrity
-        const backendUser = await api.get<any>('/auth/me');
-
-        return {
-          id: backendUser.id,
-          email: backendUser.email || session.user.email,
-          first_name: backendUser.first_name,
-          last_name: backendUser.last_name,
-          display_name: backendUser.display_name,
-          photo_url: backendUser.photo_url,
-          role: mapBackendRole(
-            backendUser.roles || [],
-            backendUser.has_student_profile,
-            backendUser.has_staff_profile
-          ),
-          roles: backendUser.roles || [],
-          permissions: backendUser.permissions || [],
-          admission_no: backendUser.admission_no,
-          has_student_profile: backendUser.has_student_profile,
-          has_staff_profile: backendUser.has_staff_profile,
-          staff_id: backendUser.staff_id,
-          staff_code: backendUser.staff_code,
-          class_section_id: backendUser.class_section_id,
-          classId: backendUser.class_section_id,
-          gender: backendUser.gender
-        };
-
-      } catch (err: any) {
-        // ─── NETWORK RESILIENCE: Don't force logout on network errors ───
-        const isNetworkError = !SessionManager.isNetworkAvailable() ||
-          err?.message?.includes('Network') ||
-          err?.message?.includes('network') ||
-          err?.message?.includes('timeout');
-
-        if (isNetworkError) {
-          if (__DEV__) { }
-          // Try to return cached user
-          try {
-            const cached = await AsyncStorage.getItem(USER_CACHE_KEY);
-            if (cached) return JSON.parse(cached);
-          } catch { }
-          return null;
-        }
-
-        await clearTokens();
-        await supabase.auth.signOut();
+      // 3b. Multitenancy gate on refresh
+      if (validatedUser.schoolId !== SCHOOL_ID) {
+        await AuthService.signOut();
         return null;
       }
+
+      // 4. Update SecureStore with new session
+      const authSession: AuthSession = {
+        supabaseSession: refreshData.session,
+        validatedUser,
+        tokenExpiresAt: refreshData.session.expires_at ? refreshData.session.expires_at * 1000 : Date.now() + 3600000,
+      };
+
+      await setSecureItem(STORAGE_KEY, JSON.stringify(authSession));
+
+      // 5. Return updated AuthSession
+      return authSession;
+    } catch {
+      // If backend validation fails during refresh (e.g., account locked midway)
+      await AuthService.signOut();
+      return null;
     }
-    return null;
   },
 
-  changePassword: async (current_password: string, new_password: string): Promise<void> => {
-    try {
-      await api.post('/auth/change-password', { current_password, new_password });
-    } catch (error) {
-
-      throw error;
-    }
+  // Role check helpers
+  isAdmin: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    return session?.validatedUser?.role?.code === 'admin';
+  },
+  isStaff: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    const c = session?.validatedUser?.role?.code;
+    return c === 'staff' || c === 'teacher';
+  },
+  isStudent: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    return session?.validatedUser?.role?.code === 'student';
+  },
+  isAccounts: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    return session?.validatedUser?.role?.code === 'accountant';
+  },
+  isPrincipal: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    return session?.validatedUser?.role?.code === 'principal';
+  },
+  isDriver: async (): Promise<boolean> => {
+    const session = await AuthService.getSession();
+    return session?.validatedUser?.role?.code === 'driver';
   }
 };
-
-export default AuthService;
-
-// Register the logout callback to handle API 401s
-registerLogoutCallback(AuthService.systemLogout);

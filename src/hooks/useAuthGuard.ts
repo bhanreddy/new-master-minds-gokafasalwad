@@ -33,8 +33,9 @@ export function useAuthGuard() {
 
     // 1. User IS logged in
     if (user) {
+      const roleCode = typeof user.role === 'object' && user.role !== null ? (user.role as any).code : user.role;
       // Strictly prevent loop if already on the correct dashboard
-      const homeRoute = getHomeRoute(user.role);
+      const homeRoute = getHomeRoute(roleCode);
       const normalizedHome = homeRoute.replace(/^\//, '');
 
       // Check if current route matches home route to avoid infinite replacement
@@ -53,27 +54,27 @@ export function useAuthGuard() {
       }
 
       // Strict Segment Guarding for Role Based Access
-      if (inAdminGroup && user.role !== 'admin') {
+      if (inAdminGroup && !['admin', 'principal'].includes(roleCode)) {
         router.replace(homeRoute);
         return;
       }
 
-      if (inStaffGroup && !['staff', 'teacher'].includes(user.role)) {
+      if (inStaffGroup && !['staff', 'teacher'].includes(roleCode)) {
         router.replace(homeRoute);
         return;
       }
 
-      if (inAccountsGroup && user.role !== 'accountant') {
+      if (inAccountsGroup && roleCode !== 'accountant') {
         router.replace(homeRoute);
         return;
       }
 
-      if (inDriverGroup && user.role !== 'driver') {
+      if (inDriverGroup && roleCode !== 'driver') {
         router.replace(homeRoute);
         return;
       }
 
-      if (inTabsGroup && user.role !== 'student') {
+      if (inTabsGroup && roleCode !== 'student') {
         router.replace(homeRoute);
         return;
       }
@@ -90,9 +91,9 @@ export function useAuthGuard() {
 
       // CHECK FOR MISSING PROFILES (Safety Net)
       // If user is stuck in a role that requires a profile they don't have
-      if (user.role === 'student' && user.has_student_profile === false) {
+      if (roleCode === 'student' && user.has_student_profile === false) {
         router.replace('/no-profile');
-      } else if ((user.role === 'staff' || user.role === 'teacher') && user.has_staff_profile === false) {
+      } else if ((roleCode === 'staff' || roleCode === 'teacher') && user.has_staff_profile === false) {
         router.replace('/no-profile');
       }
 
@@ -115,6 +116,7 @@ export function useAuthGuard() {
 const getHomeRoute = (role: string) => {
   switch (role) {
     case 'admin':return '/admin/dashboard';
+    case 'principal':return '/admin/dashboard';
     case 'accountant':return '/accounts/dashboard';
     case 'staff':
     case 'teacher':return '/staff/dashboard';

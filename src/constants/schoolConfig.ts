@@ -24,5 +24,11 @@ export const SCHOOL_CONFIG = {
     contact: "9999999999",
 
     // Website or Email
-    website: "www.schoolims.com"
+    website: "www.schoolims.com",
+
+    // CBSE Affiliation No (if applicable)
+    cbseAffiliationNo: "NA",
+
+    // School Code (if applicable)
+    schoolCode: "NA"
 };

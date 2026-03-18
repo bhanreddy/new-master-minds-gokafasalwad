@@ -31,11 +31,11 @@ const FeesScreen = () => {
 
   useEffect(() => {
     loadFees();
-  }, [user]);
+  }, [user?.userId]);
   const loadFees = async () => {
     if (!user) return;
     try {
-      const data = await StudentService.getFees(user.id);
+      const data = await StudentService.getFees(user.userId);
       setFeeData(data);
     } catch (error) {
 

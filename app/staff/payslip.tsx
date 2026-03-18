@@ -29,7 +29,7 @@ export default function PaySlip() {
   useEffect(() => {
     if (user) {
       // Priority: Use staff_id if available, fallback to user.id (though backend expects staff_id)
-      const targetId = user.staff_id || user.id;
+      const targetId = (user as any).staff_id || user.userId;
 
       StaffService.getPayslips(targetId).then((data) => {
 
@@ -39,7 +39,7 @@ export default function PaySlip() {
         Alert.alert('Error', 'Failed to load payslips');
       });
     }
-  }, [user]);
+  }, [user?.userId]);
 
   // Calculate totals dynamically
   const totalEarnings = React.useMemo(() => {

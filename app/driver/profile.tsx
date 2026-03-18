@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useAuth } from '../../src/hooks/useAuth';
-import AuthService from '../../src/services/authService';
+import { AuthService } from '../../src/services/authService';
 import { StaffService } from '../../src/services/staffService';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -91,13 +91,13 @@ export default function DriverProfile() {
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [loadingPayslips, setLoadingPayslips] = useState(true);
 
-  const displayName = user?.display_name || user?.first_name || 'Driver';
+  const displayName = user?.displayName || (user as any)?.first_name || 'Driver';
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-  const email = user?.email || 'N/A';
+  const email = (user as any)?.email || 'N/A';
 
   useEffect(() => {
     if (user) {
-      const targetId = user.staff_id || user.id;
+      const targetId = (user as any).staff_id || user.userId;
       StaffService.getPayslips(targetId).
       then((data) => setPayslips(data)).
       catch(() => {
@@ -105,7 +105,7 @@ export default function DriverProfile() {
       }).
       finally(() => setLoadingPayslips(false));
     }
-  }, [user]);
+  }, [user?.userId]);
 
   const totalEarnings = React.useMemo(() => {
     if (!payslips.length) return '₹0';
@@ -120,7 +120,7 @@ export default function DriverProfile() {
   const handleDownload = () => {Alert.alert('Coming Soon', 'PDF download will be available soon.');};
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await AuthService.logout();
+    await AuthService.signOut();
     router.replace('/driver-login' as any);
   };
 
@@ -160,7 +160,7 @@ export default function DriverProfile() {
                             <Ionicons name="bus" size={12} color="#FFF" />
                             <Text style={styles.rolePillText}>Driver</Text>
                         </View>
-                        <Text style={styles.heroId}>ID: {user?.staff_id || user?.id?.slice(0, 8) || 'N/A'}</Text>
+                        <Text style={styles.heroId}>ID: {(user as any)?.staff_id || user?.userId?.slice(0, 8) || 'N/A'}</Text>
                         {/* Quick Stats */}
                         <View style={styles.quickStats}>
                             <View style={styles.qStat}>

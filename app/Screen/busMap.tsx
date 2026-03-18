@@ -134,14 +134,15 @@ const BusProfileScreen = () => {
           if (busData?.route_id) await loadRouteAndStops(busData.route_id);
         } else if (user) {
           // Authenticated parent or student resolving their own route
-          const { data: userData } = await supabase.from('users').select('person_id').eq('id', user.id).single();
+          const { data: userData } = await supabase.from('users').select('person_id').eq('id', user.userId).single();
           if (!userData?.person_id) return;
 
           let targetStudentId = null;
-          if (user.role === 'student') {
+          const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+          if (roleCode === 'student') {
             const { data: std } = await supabase.from('students').select('id').eq('person_id', userData.person_id).single();
             if (std) targetStudentId = std.id;
-          } else if (user.role === 'parent') {
+          } else if (roleCode === 'parent') {
             const { data: parent } = await supabase.from('parents').select('id').eq('person_id', userData.person_id).single();
             if (parent) {
               // Assume primary child for parent (can be expanded to select sibling)
@@ -186,7 +187,7 @@ const BusProfileScreen = () => {
     };
 
     fetchRouteData();
-  }, [user, busId]);
+  }, [user?.userId, busId]);
 
   const handleNewLocation = (lat: number, lon: number, speedVal: number, currentRoute: Coord[], targetStop: any) => {
     setBusLocation({ latitude: lat, longitude: lon });

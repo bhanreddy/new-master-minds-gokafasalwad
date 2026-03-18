@@ -93,18 +93,18 @@ class NotificationManager {
     // Check if previous registration failed — force retry
     const needsSync = await AsyncStorage.getItem('push_token_needs_sync');
     if (needsSync === 'true') {
-      console.log('[NotificationManager] Previous sync failed — retrying...');
+      if (__DEV__) console.log('[NotificationManager] Previous sync failed — retrying...');
       await AsyncStorage.removeItem('fcm_token_last_synced');
     }
 
     let token: string | undefined;
 
     try {
-      console.log('[NotificationManager] Starting registration...');
+      if (__DEV__) console.log('[NotificationManager] Starting registration...');
       // 1. Create channels first
       if (Platform.OS === 'android') {
         await this.createChannels();
-        console.log('[NotificationManager] Channels created successfully');
+        if (__DEV__) console.log('[NotificationManager] Channels created successfully');
       }
 
       if (Platform.OS === 'web') {
@@ -134,7 +134,7 @@ class NotificationManager {
         authStatus === AuthorizationStatus.AUTHORIZED ||
         authStatus === AuthorizationStatus.PROVISIONAL;
 
-      console.log('[NotificationManager] Firebase auth status:', authStatus, 'enabled:', enabled);
+      if (__DEV__) console.log('[NotificationManager] Firebase auth status:', authStatus, 'enabled:', enabled);
       if (!enabled) {
         console.warn('[NotificationManager] Firebase messaging permission NOT enabled');
         return undefined;
@@ -146,7 +146,7 @@ class NotificationManager {
         try {
           token = await getToken(msg);
           if (token) {
-            console.log(`[NotificationManager] Token obtained on attempt ${attempt}:`, `${token.substring(0, 20)}...`);
+            if (__DEV__) console.log(`[NotificationManager] Token obtained on attempt ${attempt}:`, `${token.substring(0, 20)}...`);
             break;
           }
         } catch (err) {
@@ -159,7 +159,7 @@ class NotificationManager {
       }
 
       if (!token && lastError) {
-        console.error('[NotificationManager] All token attempts failed:', lastError);
+        if (__DEV__) console.error('[NotificationManager] All token attempts failed:', lastError);
         await AsyncStorage.setItem('push_token_needs_sync', 'true');
         return undefined;
       }
@@ -170,18 +170,18 @@ class NotificationManager {
 
         if (token !== lastSyncedToken || needsSync === 'true') {
           try {
-            console.log('[NotificationManager] Syncing token to backend...');
+            if (__DEV__) console.log('[NotificationManager] Syncing token to backend...');
             await this.syncToken(token);
             await AsyncStorage.setItem('fcm_token_last_synced', token);
             await AsyncStorage.setItem('last_fcm_token', token);
             await AsyncStorage.removeItem('push_token_needs_sync');
-            console.log('[NotificationManager] Token synced successfully');
+            if (__DEV__) console.log('[NotificationManager] Token synced successfully');
           } catch (syncErr) {
-            console.error('[NotificationManager] Token sync FAILED:', syncErr);
+            if (__DEV__) console.error('[NotificationManager] Token sync FAILED:', syncErr);
             await AsyncStorage.setItem('push_token_needs_sync', 'true');
           }
         } else {
-          console.log('[NotificationManager] Token already synced, skipping');
+          if (__DEV__) console.log('[NotificationManager] Token already synced, skipping');
         }
       } else {
         console.warn('[NotificationManager] No FCM token returned!');
@@ -202,7 +202,7 @@ class NotificationManager {
       fcm_token: token,
       platform: Platform.OS,
       language_code: languageCode
-    });
+    }, { silent: true });
   }
 
   /**
@@ -250,7 +250,7 @@ class NotificationManager {
    *   7. Fire-and-forget persist + translation
    */
   async displayNotification(remoteMessage: any, source: 'foreground' | 'background') {
-    console.log(`[NotificationManager] displayNotification called (${source})`, JSON.stringify(remoteMessage?.data || {}).substring(0, 200));
+    if (__DEV__) console.log(`[NotificationManager] displayNotification called (${source})`, JSON.stringify(remoteMessage?.data || {}).substring(0, 200));
 
     // 1. Phantom filter
     if (
@@ -362,15 +362,15 @@ class NotificationManager {
 
     // 2. Token Refresh: Re-sync whenever FCM rotates the token
     this.unsubscribeOnTokenRefresh = onTokenRefresh(msg, async (newToken) => {
-      console.log('[NotificationManager] Token refreshed:', newToken ? `${newToken.substring(0, 20)}...` : 'NULL');
+      if (__DEV__) console.log('[NotificationManager] Token refreshed:', newToken ? `${newToken.substring(0, 20)}...` : 'NULL');
       try {
         await this.syncToken(newToken);
         await AsyncStorage.setItem('fcm_token_last_synced', newToken);
         await AsyncStorage.setItem('last_fcm_token', newToken);
         await AsyncStorage.removeItem('push_token_needs_sync');
-        console.log('[NotificationManager] Refreshed token synced');
+        if (__DEV__) console.log('[NotificationManager] Refreshed token synced');
       } catch (err) {
-        console.error('[NotificationManager] Token refresh sync FAILED:', err);
+        if (__DEV__) console.error('[NotificationManager] Token refresh sync FAILED:', err);
         await AsyncStorage.setItem('push_token_needs_sync', 'true');
       }
     });

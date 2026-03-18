@@ -3,16 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Platform } from 'react-native';
 import { supabase } from './supabaseConfig';
 import NetInfo from '@react-native-community/netinfo';
+import { API_URL, SCHOOL_ID } from '../constants/school';
+
+/** school_id for all API requests — from build-time env. Never hardcode. */
+const SCHOOL_ID_PARAM = String(SCHOOL_ID);
 
 const getApiBaseUrl = () => {
-  const url = (process.env.EXPO_PUBLIC_API_URL || '').trim();
-  if (!url) {
-    throw new Error(
-      '[FATAL] Missing required environment variable: EXPO_PUBLIC_API_URL\n' +
-      'Set this to your Express backend API URL (e.g. https://your-server.onrender.com/api/v1).\n' +
-      'This must point to the correct school\'s backend server.'
-    );
-  }
+  const url = API_URL.trim();
   if (Platform.OS === 'web' && url.includes('10.0.2.2')) {
     return url.replace('10.0.2.2', 'localhost');
   }
@@ -24,37 +21,47 @@ const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
-// ── SecureStore helpers with web fallback ──────────────────────────────
-async function secureGet(key: string): Promise<string | null> {
-  if (Platform.OS === 'web') return AsyncStorage.getItem(key);
+// ── Token storage helpers ──────────────────────────────────────────────
+// Use SecureStore for tokens to guarantee encryption on device.
+// Limits are respected since JWT tokens generally won't exceed SecureStore's 2048-byte limit across most identities.
+async function tokenGet(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return AsyncStorage.getItem(key);
+  }
   return SecureStore.getItemAsync(key);
 }
-async function secureSet(key: string, value: string): Promise<void> {
-  if (Platform.OS === 'web') { await AsyncStorage.setItem(key, value); return; }
-  await SecureStore.setItemAsync(key, value);
+async function tokenSet(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.setItem(key, value);
+  } else {
+    await SecureStore.setItemAsync(key, value);
+  }
 }
-async function secureDelete(key: string): Promise<void> {
-  if (Platform.OS === 'web') { await AsyncStorage.removeItem(key); return; }
-  await SecureStore.deleteItemAsync(key);
+async function tokenDelete(key: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.removeItem(key);
+  } else {
+    await SecureStore.deleteItemAsync(key).catch(() => { });
+  }
 }
 
-// Token management — all stored in SecureStore (hardware-encrypted on device)
+// Token management
 export async function getAccessToken(): Promise<string | null> {
-  return await secureGet(TOKEN_KEY);
+  return await tokenGet(TOKEN_KEY);
 }
 
 export async function setTokens(accessToken: string, refreshToken: string): Promise<void> {
-  await secureSet(TOKEN_KEY, accessToken);
-  await secureSet(REFRESH_TOKEN_KEY, refreshToken);
+  await tokenSet(TOKEN_KEY, accessToken);
+  await tokenSet(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export async function clearTokens(): Promise<void> {
-  await secureDelete(TOKEN_KEY);
-  await secureDelete(REFRESH_TOKEN_KEY);
-  // Also clear additional auth fields stored in SecureStore
-  await secureDelete('user_id').catch(() => { });
-  await secureDelete('user_role').catch(() => { });
-  await secureDelete('session_expiry').catch(() => { });
+  await tokenDelete(TOKEN_KEY);
+  await tokenDelete(REFRESH_TOKEN_KEY);
+  // Also clear additional auth fields
+  await tokenDelete('user_id').catch(() => { });
+  await tokenDelete('user_role').catch(() => { });
+  await tokenDelete('session_expiry').catch(() => { });
 }
 
 // Global Logout Callback to avoid circular dependency
@@ -73,7 +80,8 @@ export class APIError extends Error {
     message: string,
     public statusCode?: number,
     public errors?: Record<string, string[]>,
-    public requestId?: string) {
+    public requestId?: string,
+    public code?: string) {
     super(message);
     this.name = 'APIError';
   }
@@ -96,7 +104,12 @@ export async function apiRequest<T>(
   options: APIOptions = {})
   : Promise<T> {
   const { silent, _isRetry, _retryCount = 0, ...fetchOptions } = options;
-  const token = await getAccessToken();
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? null;
+
+  if (__DEV__) {
+    console.log(`[apiClient] ${fetchOptions.method || 'GET'} ${endpoint} — session: ${session ? 'YES' : 'NULL'}, token: ${token ? token.substring(0, 15) + '...' : 'NULL'}`);
+  }
 
   // Add a 60-second timeout to prevent fetch from hanging indefinitely on Android but allow Render backend to wake up
   const controller = new AbortController();
@@ -111,11 +124,26 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE_URL}${endpoint}`;
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+
+  // SchoolIMS: every request MUST include school_id (GET/DELETE: query; POST/PUT/PATCH: body)
+  let finalEndpoint = endpoint;
+  let finalBody = fetchOptions.body;
+
+  if (method === 'GET' || method === 'DELETE') {
+    const sep = endpoint.includes('?') ? '&' : '?';
+    finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
+  } else if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+    const parsed = fetchOptions.body ? JSON.parse(fetchOptions.body as string) : {};
+    finalBody = JSON.stringify({ school_id: SCHOOL_ID_PARAM, ...parsed });
+  }
+
+  const url = `${API_BASE_URL}${finalEndpoint}`;
 
   try {
     const response = await fetch(url, {
       ...fetchOptions,
+      body: finalBody,
       headers,
       // @ts-ignore - React Native setup might not have full AbortSignal types
       signal: controller.signal
@@ -150,16 +178,17 @@ export async function apiRequest<T>(
 
           try {
             // Try backend refresh FIRST (single source of truth for session validity)
-            const storedRefreshToken = await secureGet(REFRESH_TOKEN_KEY);
+            const storedRefreshToken = await tokenGet(REFRESH_TOKEN_KEY);
             if (storedRefreshToken) {
               try {
                 const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ refresh_token: storedRefreshToken }),
+                  body: JSON.stringify({ school_id: SCHOOL_ID_PARAM, refresh_token: storedRefreshToken }),
                 });
                 if (refreshResponse.ok) {
-                  const refreshData = await refreshResponse.json();
+                  const refreshBody = await refreshResponse.json();
+                  const refreshData = refreshBody?.data ?? refreshBody;
                   await setTokens(refreshData.token, refreshData.refresh_token);
                   // Sync with Supabase client
                   await supabase.auth.setSession({
@@ -229,17 +258,17 @@ export async function apiRequest<T>(
           throw new APIError('Network unavailable. Logging suspended.', 0, undefined, requestId);
         }
 
+        // Silent requests (e.g. background token sync) should NOT trigger logout
+        if (silent) {
+          return null as T;
+        }
+
         // Only trigger logout if we are genuinely online and the token is rejected
         if (logoutCallback) {
-          if (!silent) { }
           // Small delay to ensure no inflight token writes are happening
           setTimeout(() => {
             logoutCallback?.();
           }, 1000);
-        }
-
-        if (silent) {
-          return null as T;
         }
 
         throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
@@ -260,9 +289,12 @@ export async function apiRequest<T>(
         throw new APIError(message, 503, undefined, requestId);
       }
 
-      // Handle validation errors (422)
+      // Handle validation errors (422) and B1-style 400 (school_id required)
       if (response.status === 422 || response.status === 400) {
-        const message = errorData.message || errorData.error || 'Validation failed';
+        const rawError = errorData.error || errorData.message;
+        const message = rawError === 'school_id is required'
+          ? 'Tenant context missing. Please restart the app and try again.'
+          : (errorData.message || rawError || 'Validation failed');
         if (!silent) {
           Alert.alert('Error', message);
         }
@@ -285,8 +317,9 @@ export async function apiRequest<T>(
       // Handle forbidden (403)
       if (response.status === 403) {
         const message = errorData.error || errorData.message || 'Access denied';
+        const code = errorData.code;
         if (!silent) Alert.alert('Access Denied', message);
-        throw new APIError(message, 403, undefined, requestId);
+        throw new APIError(message, 403, undefined, requestId, code);
       }
 
       // Generic error
@@ -306,7 +339,19 @@ export async function apiRequest<T>(
       return null as T;
     }
 
-    return await response.json();
+    const json = await response.json();
+
+    // SchoolIMS F4: validate school_id in response matches build-time tenant
+    if (json && typeof json.school_id !== 'undefined' && String(json.school_id) !== SCHOOL_ID_PARAM) {
+      throw new APIError('Tenant mismatch — response school_id does not match this app. Abort.', 403);
+    }
+
+    // SchoolIMS: unwrap { success, school_id, data } envelope so callers receive payload directly
+    if (json && json.success === true && 'data' in json) {
+      return json.data as T;
+    }
+
+    return json as T;
   } catch (error: any) {
     if (error instanceof APIError) {
       throw error;

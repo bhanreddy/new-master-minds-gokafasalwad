@@ -1,0 +1,115 @@
+{
+  "expo": {
+    "name": "{{SCHOOL_NAME}}",
+    "slug": "schoolims-{{SCHOOL_CODE_LOWER}}",
+    "version": "2.0.0",
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/images/icon-v2.png",
+    "scheme": "testapp",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "requireFullScreen": false,
+      "bundleIdentifier": "com.nexsyrus.schoolims.{{SCHOOL_CODE_LOWER}}",
+      "buildNumber": "1",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "development"
+      }
+    },
+    "android": {
+      "package": "com.nexsyrus.schoolims.{{SCHOOL_CODE_LOWER}}",
+      "jsEngine": "hermes",
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "enableShrinkResources": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground-v2.png",
+        "backgroundColor": "#E6F4FE",
+        "monochromeImage": "./assets/images/android-icon-monochrome-v2.png"
+      },
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "VIBRATE",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "notification": {
+      "icon": "./assets/images/android-icon-monochrome-v2.png",
+      "color": "#FFFFFF"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "backgroundColor": "#FFFFFF",
+          "resizeMode": "contain"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome-v2.png",
+          "color": "#FFFFFF",
+          "sounds": [
+            "./assets/sounds/attendance_absent_alert.wav",
+            "./assets/sounds/notification_default.wav",
+            "./assets/sounds/emergency.wav",
+            "./assets/sounds/fee_reminder.wav",
+            "./assets/sounds/voice_alert.wav"
+          ]
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "@react-native-community/datetimepicker",
+      "./plugins/withManifestMerger.js",
+      "./plugins/withAndroidSounds.js",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/fbae42b2-8952-43b1-9e9a-87f5822aca79"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fbae42b2-8952-43b1-9e9a-87f5822aca79"
+      }
+    }
+  }
+}

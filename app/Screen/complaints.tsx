@@ -45,12 +45,12 @@ export default function ComplaintsScreen() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     loadComplaints();
-  }, [user]);
+  }, [user?.userId]);
   const loadComplaints = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const data = await ComplaintService.getStudentComplaints(user.id || '');
+      const data = await ComplaintService.getStudentComplaints(user.userId || '');
       // Map to UI format
       const uiData = data.map((c) => {
         const severity = c.priority === 'urgent' || c.priority === 'high' ? 'High' : c.priority === 'medium' ? 'Medium' : 'Low';

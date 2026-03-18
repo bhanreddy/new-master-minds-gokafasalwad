@@ -97,6 +97,7 @@ export interface Student {
     readonly photo_url?: string;
     readonly current_enrollment?: StudentEnrollment;
     readonly parents?: Parent[];
+    readonly category?: { id: number; name: string };
 }
 
 // ================= ATTENDANCE =================

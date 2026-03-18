@@ -12,8 +12,9 @@ import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
 import { Alert } from 'react-native';
-import AuthService from '@/src/services/authService';
+import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
+import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
 
@@ -26,7 +27,7 @@ const StudentLoginScreen: React.FC = () => {
   const [error, setError] = useState(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
 
   useEffect(() => {
     const loadSavedCredentials = async () => {
@@ -66,14 +67,20 @@ const StudentLoginScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await AuthService.login(email, password);
-      const userRole = response.user.role;
+      const response = await signIn(email, password);
+
+      if (response.error || !response.session) {
+        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        return;
+      }
+
+      const userRole = response.session.validatedUser.role.code;
 
       if (userRole === 'student') {
-        if (__DEV__) {}
+        if (__DEV__) { }
       } else {
         Alert.alert('Access Restricted', 'This login is for students only. Please use the Staff or Admin login.');
-        await AuthService.logout();
+        await AuthService.signOut();
       }
     } catch (error: any) {
 
@@ -91,8 +98,8 @@ const StudentLoginScreen: React.FC = () => {
 
           {/* Unified Premium Header */}
           <AuthHeader
-            title={t('login.login_to') || "Student Portal"}
-            subtitle={t('accessYourGradesTimetable') || "Access your grades, timetable, and campus services."}
+            title={SCHOOL_NAME}
+            subtitle={`${t('login.login_to') || "Student Portal"} • ${t('accessYourGradesTimetable') || "Access your grades, timetable, and campus services."}`}
             glowColor="rgba(6,182,212,0.15)" />
 
           {/* Overlapping Form Body */}
@@ -108,7 +115,7 @@ const StudentLoginScreen: React.FC = () => {
                     icon={({ color }) => <Ionicons name="mail-outline" size={20} color={color} style={styles.inputIcon} />}
                     placeholder={t('emailAddress')}
                     value={email}
-                    onChangeText={(text) => {setEmail(text);setError(false);}}
+                    onChangeText={(text) => { setEmail(text); setError(false); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     error={error && !email}
@@ -121,12 +128,12 @@ const StudentLoginScreen: React.FC = () => {
                     icon={({ color }) => <Ionicons name="lock-closed-outline" size={20} color={color} style={styles.inputIcon} />}
                     placeholder={t('password')}
                     value={password}
-                    onChangeText={(text) => {setPassword(text);setError(false);}}
+                    onChangeText={(text) => { setPassword(text); setError(false); }}
                     secureTextEntry={!showPassword}
                     error={error && !password}
                     accentColor="#06B6D4"
                     rightAccessory={
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                         <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#94A3B8" />
                       </TouchableOpacity>
                     } />

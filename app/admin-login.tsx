@@ -10,8 +10,9 @@ import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
 import { Alert } from 'react-native';
-import AuthService from '@/src/services/authService';
+import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
+import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
 
@@ -24,7 +25,7 @@ const AdminLoginScreen: React.FC = () => {
   const [error, setError] = useState(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
 
   if (authLoading || user) {
     return (
@@ -42,16 +43,22 @@ const AdminLoginScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await AuthService.login(email, password);
-      const role = response.user.role;
+      const response = await signIn(email, password);
+
+      if (response.error || !response.session) {
+        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        return;
+      }
+
+      const role = response.session.validatedUser.role.code;
       if (role === 'admin') {
-        if (__DEV__) {}
+        if (__DEV__) { }
       } else {
         Alert.alert('Access Denied', 'You do not have administrative privileges.');
-        await AuthService.logout();
+        await AuthService.signOut();
       }
     } catch (error: any) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       Alert.alert('Login Failed', error.message || 'Invalid credentials');
     } finally {
       setLoading(false);
@@ -66,8 +73,8 @@ const AdminLoginScreen: React.FC = () => {
 
           {/* Unified Premium Header */}
           <AuthHeader
-            title={t('login.admin') || "Admin Portal"}
-            subtitle="Full system control and reporting."
+            title={SCHOOL_NAME}
+            subtitle={`${t('login.admin') || "Admin Portal"} • Full system control and reporting.`}
             glowColor="rgba(124,58,237,0.15)" // #7C3AED Purple
             showLangToggle={false} />
 
@@ -84,7 +91,7 @@ const AdminLoginScreen: React.FC = () => {
                     icon={({ color }) => <FontAwesome5 name="user-tie" size={18} color={color} style={styles.inputIcon} />}
                     placeholder="Admin Email"
                     value={email}
-                    onChangeText={(text) => {setEmail(text);setError(false);}}
+                    onChangeText={(text) => { setEmail(text); setError(false); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     error={error && !email}
@@ -97,12 +104,12 @@ const AdminLoginScreen: React.FC = () => {
                     icon={({ color }) => <Ionicons name="lock-closed-outline" size={20} color={color} style={styles.inputIcon} />}
                     placeholder={t('login.enter_pass')}
                     value={password}
-                    onChangeText={(text) => {setPassword(text);setError(false);}}
+                    onChangeText={(text) => { setPassword(text); setError(false); }}
                     secureTextEntry={!showPassword}
                     error={error && !password}
                     accentColor="#7C3AED"
                     rightAccessory={
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                         <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#94A3B8" />
                       </TouchableOpacity>
                     } />

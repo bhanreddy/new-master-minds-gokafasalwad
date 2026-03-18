@@ -4,7 +4,7 @@ import { View, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoleGuard } from '../../src/hooks/useRoleGuard';
+import { useRequireRole } from '../../src/hooks/useRequireRole';
 import { ErrorBoundary } from '../../src/components/ErrorBoundary';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -13,7 +13,7 @@ export default function TabLayout() {
     const insets = useSafeAreaInsets();
     const { t } = useTranslation();
     const { user } = useAuth();
-    useRoleGuard(['student']);
+    useRequireRole('student');
 
     return (
         <ErrorBoundary>

@@ -6,265 +6,563 @@ import { Invoice } from '../types/invoices';
 import { FeeTransaction } from '../types/models';
 import { SCHOOL_CONFIG } from '../constants/schoolConfig';
 
+// ─── Logo Loader ───────────────────────────────────────────────────────────────
 const loadLogoAsBase64 = async (imageAsset: any): Promise<string | null> => {
   try {
+    // If it's a remote URL already, return as is
+    if (typeof imageAsset === 'string' && imageAsset.startsWith('http')) {
+      return imageAsset;
+    }
+
     const asset = Asset.fromModule(imageAsset);
     await asset.downloadAsync();
-    if (!asset.localUri) return null;
 
-    const base64 = await FileSystem.readAsStringAsync(asset.localUri, {
+    // Fallback to asset.uri if localUri is not available
+    const uri = asset.localUri || asset.uri;
+    if (!uri) return null;
+
+    // If it's a web URL (especially in dev/expo go), we can use it directly in <img>
+    if (uri.startsWith('http')) {
+      return uri;
+    }
+
+    // Read local file as base64
+    const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: 'base64'
     });
 
-    return `data:image/png;base64,${base64}`;
-  } catch (error) {
+    // Determine mime type (default to png)
+    const extension = uri.split('.').pop()?.toLowerCase();
+    const mimeType = extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : 'image/png';
 
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.warn('PDF Logo Error:', error);
     return null;
   }
 };
 
+// ─── Amount to Words (for receipts) ───────────────────────────────────────────
+const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+  'Seventeen', 'Eighteen', 'Nineteen'];
+const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+const numToWords = (n: number): string => {
+  if (n === 0) return 'Zero';
+  if (n < 20) return ones[n];
+  if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+  if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + numToWords(n % 100) : '');
+  if (n < 100000) return numToWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + numToWords(n % 1000) : '');
+  if (n < 10000000) return numToWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + numToWords(n % 100000) : '');
+  return numToWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + numToWords(n % 10000000) : '');
+};
+
+const amountInWords = (amount: number): string => {
+  const rupees = Math.floor(amount);
+  const paise = Math.round((amount - rupees) * 100);
+  let result = numToWords(rupees) + ' Rupees';
+  if (paise > 0) result += ' and ' + numToWords(paise) + ' Paise';
+  return result + ' Only';
+};
+
+// ─── Shared CSS ────────────────────────────────────────────────────────────────
+const BASE_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #1F2937;
+    background: #fff;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .page { padding: 36px 40px; max-width: 680px; margin: 0 auto; }
+
+  /* ── Watermark ── */
+  .watermark {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-35deg);
+    font-size: 72px; font-weight: 800;
+    opacity: 0.04; color: #4F46E5;
+    pointer-events: none; z-index: 0;
+    white-space: nowrap; letter-spacing: 8px;
+  }
+
+  /* ── Header ── */
+  .doc-header {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; margin-bottom: 28px;
+    padding-bottom: 24px;
+    border-bottom: 3px solid #4F46E5;
+  }
+  .school-logo { width: 64px; height: 64px; object-fit: contain; margin-bottom: 8px; }
+  .school-name { font-size: 17px; font-weight: 800; color: #111827; }
+  .school-sub { font-size: 11px; color: #6B7280; margin-top: 2px; max-width: 260px; line-height: 1.5; }
+
+  .doc-title-block { text-align: right; }
+  .doc-title {
+    font-size: 30px; font-weight: 800; letter-spacing: -1px;
+    color: #4F46E5;
+  }
+  .doc-no { font-size: 12px; color: #6B7280; margin-top: 4px; font-weight: 600; }
+
+  /* ── Info grid ── */
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 28px;
+  }
+  .info-box {
+    background: #F9FAFB; border-radius: 10px;
+    padding: 14px 16px; border: 1px solid #F3F4F6;
+  }
+  .info-box.highlight { background: #EEF2FF; border-color: #C7D2FE; }
+  .info-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; color: #9CA3AF; margin-bottom: 6px;
+  }
+  .info-value { font-size: 14px; font-weight: 700; color: #111827; }
+  .info-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  thead tr { background: #4F46E5; }
+  thead th {
+    padding: 12px 14px; text-align: left;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; color: #fff;
+  }
+  thead th:last-child { text-align: right; }
+  tbody tr:nth-child(even) { background: #F9FAFB; }
+  tbody td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #F3F4F6; }
+  tbody td:last-child { text-align: right; font-weight: 600; }
+  .td-desc-main { font-weight: 600; color: #111827; }
+  .td-desc-sub { font-size: 11px; color: #9CA3AF; margin-top: 2px; }
+
+  /* ── Totals ── */
+  .totals-section { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+  .totals-box { width: 260px; }
+  .totals-row {
+    display: flex; justify-content: space-between;
+    padding: 7px 0; font-size: 13px; color: #4B5563;
+    border-bottom: 1px dashed #E5E7EB;
+  }
+  .totals-row:last-child { border-bottom: none; }
+  .totals-row.grand {
+    font-size: 16px; font-weight: 800;
+    color: #111827; padding-top: 12px; margin-top: 4px;
+    border-top: 2px solid #4F46E5; border-bottom: none;
+  }
+  .totals-row.paid-row { color: #059669; font-weight: 600; }
+  .totals-row.due-row  { color: #DC2626; font-weight: 700; }
+
+  /* ── Amount in words ── */
+  .amount-words {
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 24px; font-size: 12px;
+    color: #065F46; font-weight: 500;
+  }
+  .amount-words strong { font-weight: 700; }
+
+  /* ── Status badge ── */
+  .badge {
+    display: inline-block; padding: 4px 12px;
+    border-radius: 20px; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .badge-paid    { background: #D1FAE5; color: #065F46; }
+  .badge-pending { background: #FEF3C7; color: #92400E; }
+  .badge-partial { background: #DBEAFE; color: #1E40AF; }
+  .badge-unpaid  { background: #FEE2E2; color: #991B1B; }
+
+  /* ── Payment method chip ── */
+  .method-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #EEF2FF; color: #4F46E5;
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  }
+
+  /* ── Signature ── */
+  .signature-row {
+    display: flex; justify-content: space-between;
+    align-items: flex-end; margin-top: 32px; padding-top: 20px;
+    border-top: 1px dashed #D1D5DB;
+  }
+  .sig-block { text-align: center; }
+  .sig-line { border-top: 1px solid #9CA3AF; width: 160px; padding-top: 6px; font-size: 11px; color: #6B7280; margin-top: 28px; }
+  .qr-placeholder {
+    width: 64px; height: 64px; border: 1px dashed #D1D5DB;
+    border-radius: 6px; display: flex; align-items: center;
+    justify-content: center; font-size: 9px; color: #9CA3AF;
+    text-align: center; padding: 4px; line-height: 1.3;
+  }
+
+  /* ── Footer ── */
+  .doc-footer {
+    margin-top: 28px; padding-top: 16px;
+    border-top: 1px solid #F3F4F6;
+    text-align: center; font-size: 10px; color: #9CA3AF; line-height: 1.8;
+  }
+  .doc-footer strong { color: #6B7280; }
+
+  /* ── Divider ── */
+  .section-divider { border: none; border-top: 1px solid #F3F4F6; margin: 20px 0; }
+
+  /* ── Receipt specific ── */
+  .receipt-banner {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .receipt-banner-label { font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+  .receipt-banner-amount { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+  .receipt-banner-right { text-align: right; }
+  .receipt-banner-date { font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 4px; }
+`;
+
+// ─── Receipt PDF ───────────────────────────────────────────────────────────────
 export const generateReceiptPDF = async (transaction: FeeTransaction) => {
   try {
     const studentName = transaction.student_name || 'Student';
     const admissionNo = transaction.admission_no || 'N/A';
     const paidAtStr = transaction.paid_at || new Date().toISOString();
-    const date = new Date(paidAtStr).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const dateObj = new Date(paidAtStr);
+    const dateFull = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const dateTime = dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
     const feeName = transaction.fee_type || 'School Fee';
     const amountNum = Number(transaction.amount || 0);
-    const amount = amountNum.toLocaleString('en-IN');
+    const amountFmt = amountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 });
     const paymentMethod = (transaction.payment_method || 'Cash').toUpperCase();
-    const receiptNo = transaction.transaction_ref || (transaction.id ? transaction.id.slice(0, 8).toUpperCase() : 'N/A');
+    const receiptNo = transaction.transaction_ref || (transaction.id ? `RCP-${transaction.id.slice(0, 8).toUpperCase()}` : 'N/A');
+    const words = amountInWords(amountNum);
 
-    // Load Logo
     const logoBase64 = await loadLogoAsBase64(SCHOOL_CONFIG.logo);
-    const logoHtml = logoBase64 ?
-    `<img src="${logoBase64}" style="width: 60px; height: 60px; object-fit: contain;" />` :
-    `<div style="font-size: 24px; font-weight: bold;">${SCHOOL_CONFIG.name}</div>`;
+    const logoHtml = logoBase64
+      ? `<img src="${logoBase64}" class="school-logo" />`
+      : `<div style="font-size:20px;font-weight:800;color:#4F46E5;">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
 
     const html = `
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-            <style>
-              body { font-family: 'Helvetica', Arial, sans-serif; padding: 20px; color: #333; line-height: 1.4; }
-              .receipt-container { border: 1px solid #eee; padding: 20px; max-width: 600px; margin: auto; }
-              .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 1px dashed #ccc; padding-bottom: 15px; }
-              .school-info { flex: 1; }
-              .school-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-              .school-sub { font-size: 11px; color: #666; }
-              .receipt-label { font-size: 22px; font-weight: bold; color: #111; text-align: right; }
-              .details { margin-bottom: 20px; display: flex; justify-content: space-between; }
-              .detail-box h3 { font-size: 11px; color: #888; text-transform: uppercase; margin: 0 0 4px 0; }
-              .detail-box p { font-size: 14px; font-weight: 500; margin: 0; }
-              .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-              .table th { text-align: left; padding: 10px; background: #f5f5f5; font-size: 12px; border-bottom: 1px solid #ddd; }
-              .table td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
-              .total-section { text-align: right; margin-top: 10px; }
-              .total-amount { font-size: 18px; font-weight: bold; color: #059669; }
-              .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 15px; }
-              .signature { margin-top: 40px; display: flex; justify-content: flex-end; }
-              .sig-line { border-top: 1px solid #333; width: 150px; text-align: center; padding-top: 5px; font-size: 11px; }
-            </style>
-          </head>
-          <body>
-            <div class="receipt-container">
-              <div class="header">
-                <div class="school-info">
-                  ${logoHtml}
-                  <div class="school-name">${SCHOOL_CONFIG.name}</div>
-                  <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
-                </div>
-                <div>
-                  <div class="receipt-label">RECEIPT</div>
-                  <div style="text-align: right; font-size: 12px; color: #666;">No: #${receiptNo}</div>
-                </div>
-              </div>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+          <style>${BASE_CSS}</style>
+        </head>
+        <body>
+          <div class="watermark">RECEIPT</div>
+          <div class="page">
 
-              <div class="details">
-                <div class="detail-box">
-                  <h3>Paid By</h3>
-                  <p>${studentName}</p>
-                  <p style="font-size: 12px; color: #666;">Adm No: ${admissionNo}</p>
-                </div>
-                <div class="detail-box" style="text-align: right;">
-                  <h3>Date</h3>
-                  <p>${date}</p>
-                  <p style="font-size: 12px; color: #666;">Mode: ${paymentMethod}</p>
-                </div>
-              </div>
-
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th style="text-align: right;">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Payment for <strong>${feeName}</strong></td>
-                    <td style="text-align: right;">₹${amount}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="total-section">
-                <span style="font-size: 14px; margin-right: 10px;">Total Received:</span>
-                <span class="total-amount">₹${amount}</span>
-              </div>
-
-              <div class="signature">
-                <div class="sig-line">Authorized Signatory</div>
-              </div>
-
-              <div class="footer">
-                <p>This is a computer generated receipt and does not require a physical signature.</p>
-                <p>${SCHOOL_CONFIG.contact ? `Contact: ${SCHOOL_CONFIG.contact}` : ''} | ${SCHOOL_CONFIG.website || ''}</p>
-              </div>
-            </div>
-          </body>
-        </html>
-    `;
-
-    const { uri } = await Print.printToFileAsync({ html });
-    await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-
-  } catch (error) {
-
-    throw error;
-  }
-};
-
-export const generateInvoicePDF = async (invoice: Invoice) => {
-  try {
-    const studentName = invoice.student?.person?.display_name || 'Student';
-    const admissionNo = invoice.student?.admission_no || 'N/A';
-    const invoiceDate = new Date(invoice.created_at).toLocaleDateString('en-IN');
-    const feeName = invoice.fee_structure?.fee_type?.name || 'School Fee';
-    const amount = invoice.amount_due.toLocaleString('en-IN');
-    const status = invoice.status.toUpperCase();
-
-    // Load Logo
-    const logoBase64 = await loadLogoAsBase64(SCHOOL_CONFIG.logo);
-    const logoHtml = logoBase64 ?
-    `<img src="${logoBase64}" style="width: 80px; height: 80px; object-fit: contain;" />` :
-    `<div class="logo">${SCHOOL_CONFIG.name}</div>`;
-
-    const invoiceNo = `INV-${new Date(invoice.created_at).getFullYear()}-${invoice.id.slice(0, 8).toUpperCase()}`;
-
-    const html = `
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-            <style>
-              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; }
-              .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
-              .logo-container { display: flex; flex-direction: column; align-items: flex-start; }
-              .school-name { font-size: 20px; font-weight: bold; color: #111; margin-top: 5px; }
-              .invoice-title { font-size: 32px; font-weight: bold; color: #111; text-align: right; }
-              .meta { display: flex; justify-content: space-between; margin-bottom: 40px; }
-              .meta-box h3 { font-size: 14px; color: #888; margin-bottom: 5px; text-transform: uppercase; }
-              .meta-box p { font-size: 16px; font-weight: 500; margin: 0; }
-              .table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-              .table th { text-align: left; padding: 15px; background: #f9f9f9; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; }
-              .table td { padding: 15px; border-bottom: 1px solid #eee; }
-              .total-row { display: flex; justify-content: flex-end; margin-top: 20px; }
-              .total-box { width: 200px; }
-              .total-item { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
-              .grand-total { font-size: 20px; font-weight: bold; border-top: 2px solid #333; padding-top: 10px; }
-              .footer { margin-top: 60px; text-align: center; color: #aaa; font-size: 12px; }
-              .status { display: inline-block; padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-              .status-paid { background: #d1fae5; color: #065f46; }
-              .status-pending { background: #fef3c7; color: #92400e; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="logo-container">
-                  ${logoHtml}
-                  <div class="school-name">${SCHOOL_CONFIG.name}</div>
-                  <div style="font-size: 12px; color: #666;">${SCHOOL_CONFIG.address || ''}</div>
-              </div>
+            <!-- Header -->
+            <div class="doc-header">
               <div>
-                <div class="invoice-title">INVOICE</div>
-                <div style="text-align: right; color: #666; margin-top: 5px;">#${invoiceNo}</div>
+                ${logoHtml}
+                <div class="school-name">${SCHOOL_CONFIG.name}</div>
+                <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
               </div>
-            </div>
-
-            <div class="meta">
-              <div class="meta-box">
-                <h3>Bill To</h3>
-                <p>${studentName}</p>
-                <p>Adm No: ${admissionNo}</p>
-              </div>
-              <div class="meta-box" style="text-align: right;">
-                <h3>Date</h3>
-                <p>${invoiceDate}</p>
-                <div style="margin-top: 10px;">
-                    <span class="status status-${invoice.status === 'paid' ? 'paid' : 'pending'}">${status}</span>
+              <div class="doc-title-block">
+                <div class="doc-title">RECEIPT</div>
+                <div class="doc-no">${receiptNo}</div>
+                <div style="margin-top:10px;">
+                  <span class="badge badge-paid">✓ PAYMENT RECEIVED</span>
                 </div>
               </div>
             </div>
 
-            <table class="table">
+            <!-- Banner: Paid Amount -->
+            <div class="receipt-banner">
+              <div>
+                <div class="receipt-banner-label">Amount Received</div>
+                <div class="receipt-banner-amount">₹${amountFmt}</div>
+              </div>
+              <div class="receipt-banner-right">
+                <span class="method-chip">⚡ ${paymentMethod}</span>
+                <div class="receipt-banner-date">${dateFull} · ${dateTime}</div>
+              </div>
+            </div>
+
+            <!-- Info Grid -->
+            <div class="info-grid">
+              <div class="info-box highlight">
+                <div class="info-label">Received From</div>
+                <div class="info-value">${studentName}</div>
+                <div class="info-sub">Admission No: ${admissionNo}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">Payment Details</div>
+                <div class="info-value">${feeName}</div>
+                <div class="info-sub">Academic Year: ${dateObj.getFullYear()}–${dateObj.getFullYear() + 1}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">Receipt Date</div>
+                <div class="info-value">${dateFull}</div>
+                <div class="info-sub">Time: ${dateTime}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">Payment Mode</div>
+                <div class="info-value">${paymentMethod}</div>
+                <div class="info-sub">Ref: ${receiptNo}</div>
+              </div>
+            </div>
+
+            <!-- Table -->
+            <table>
               <thead>
                 <tr>
-                  <th>Description</th>
-                  <th style="text-align: right;">Amount</th>
+                  <th style="width:50%;">Description</th>
+                  <th>Fee Type</th>
+                  <th>Academic Year</th>
+                  <th>Amount (₹)</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>
-                    <strong>${feeName}</strong><br>
-                    <span style="font-size: 12px; color: #888;">${invoice.fee_structure?.fee_type?.description || ''}</span>
+                    <div class="td-desc-main">${feeName}</div>
+                    <div class="td-desc-sub">Payment by ${studentName}</div>
                   </td>
-                  <td style="text-align: right;">₹${amount}</td>
+                  <td>${feeName}</td>
+                  <td>${dateObj.getFullYear()}–${dateObj.getFullYear() + 1}</td>
+                  <td>${amountFmt}</td>
                 </tr>
               </tbody>
             </table>
 
-            <div class="total-row">
-              <div class="total-box">
-                <div class="total-item">
-                  <span>Subtotal:</span>
-                  <span>₹${amount}</span>
+            <!-- Totals -->
+            <div class="totals-section">
+              <div class="totals-box">
+                <div class="totals-row">
+                  <span>Sub Total</span>
+                  <span>₹${amountFmt}</span>
                 </div>
-                <div class="total-item">
-                  <span>Discount:</span>
-                  <span>₹${invoice.discount.toLocaleString('en-IN')}</span>
+                <div class="totals-row">
+                  <span>Discount</span>
+                  <span>₹0.00</span>
                 </div>
-                 <div class="total-item">
-                  <span>Paid:</span>
-                  <span>₹${invoice.amount_paid.toLocaleString('en-IN')}</span>
-                </div>
-                <div class="total-item grand-total">
-                  <span>Due:</span>
-                  <span>₹${(invoice.amount_due - invoice.discount - invoice.amount_paid).toLocaleString('en-IN')}</span>
+                <div class="totals-row grand">
+                  <span>Total Received</span>
+                  <span>₹${amountFmt}</span>
                 </div>
               </div>
             </div>
 
-            <div class="footer">
-              <p>Thank you for your business. Please pay by the due date.</p>
-              <p>System Generated Invoice</p>
-              <p>${SCHOOL_CONFIG.contact ? `Contact: ${SCHOOL_CONFIG.contact}` : ''} | ${SCHOOL_CONFIG.website || ''}</p>
+            <!-- Amount in Words -->
+            <div class="amount-words">
+              <strong>Amount in Words:</strong> ${words}
             </div>
-          </body>
-        </html>
-        `;
+
+            <!-- Signature -->
+            <div class="signature-row">
+              <div>
+                <div style="font-size:11px; color:#9CA3AF; margin-bottom:4px;">SCAN TO VERIFY</div>
+                <div class="qr-placeholder">QR<br/>Verify</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Authorized Signatory</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Receiver's Signature</div>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="doc-footer">
+              <p>🖨️ This is a computer-generated receipt and is valid without a physical signature.</p>
+              <p>
+                ${SCHOOL_CONFIG.contact ? `<strong>Phone:</strong> ${SCHOOL_CONFIG.contact}` : ''}
+                ${SCHOOL_CONFIG.website ? ` &nbsp;|&nbsp; <strong>Web:</strong> ${SCHOOL_CONFIG.website}` : ''}
+              </p>
+              <p style="margin-top:4px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+            </div>
+
+          </div>
+        </body>
+      </html>
+    `;
 
     const { uri } = await Print.printToFileAsync({ html });
     await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-
   } catch (error) {
+    throw error;
+  }
+};
 
+// ─── Invoice PDF ───────────────────────────────────────────────────────────────
+export const generateInvoicePDF = async (invoice: Invoice) => {
+  try {
+    const studentName = invoice.student?.person?.display_name || 'Student';
+    const admissionNo = invoice.student?.admission_no || 'N/A';
+    const dateObj = new Date(invoice.created_at);
+    const invoiceDate = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const feeName = invoice.fee_structure?.fee_type?.name || 'School Fee';
+    const feeDesc = invoice.fee_structure?.fee_type?.description || '';
+    const invoiceNo = `INV-${dateObj.getFullYear()}-${invoice.id.slice(0, 8).toUpperCase()}`;
+
+    const subtotal = invoice.amount_due;
+    const discount = invoice.discount ?? 0;
+    const paid = invoice.amount_paid ?? 0;
+    const netDue = Math.max(subtotal - discount - paid, 0);
+
+    const statusKey = invoice.status?.toLowerCase() === 'paid' ? 'paid'
+      : paid > 0 ? 'partial' : 'unpaid';
+    const statusLabel = statusKey === 'paid' ? 'PAID' : statusKey === 'partial' ? 'PARTIAL' : 'UNPAID';
+
+    const dueDateObj = new Date(dateObj);
+    dueDateObj.setDate(dueDateObj.getDate() + 30);
+    const dueDate = dueDateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const logoBase64 = await loadLogoAsBase64(SCHOOL_CONFIG.logo);
+    const logoHtml = logoBase64
+      ? `<img src="${logoBase64}" class="school-logo" />`
+      : `<div style="font-size:20px;font-weight:800;color:#4F46E5;">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
+
+    const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+    const html = `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+          <style>${BASE_CSS}</style>
+        </head>
+        <body>
+          <div class="watermark">${statusLabel}</div>
+          <div class="page">
+
+            <!-- Header -->
+            <div class="doc-header">
+              <div>
+                ${logoHtml}
+                <div class="school-name">${SCHOOL_CONFIG.name}</div>
+                <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
+              </div>
+              <div class="doc-title-block">
+                <div class="doc-title">INVOICE</div>
+                <div class="doc-no"># ${invoiceNo}</div>
+                <div style="margin-top:10px;">
+                  <span class="badge badge-${statusKey}">${statusLabel}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Info Grid -->
+            <div class="info-grid">
+              <div class="info-box highlight">
+                <div class="info-label">Bill To</div>
+                <div class="info-value">${studentName}</div>
+                <div class="info-sub">Admission No: ${admissionNo}</div>
+              </div>
+              <div class="info-box highlight">
+                <div class="info-label">Bill From</div>
+                <div class="info-value">${SCHOOL_CONFIG.name}</div>
+                <div class="info-sub">${SCHOOL_CONFIG.address || ''}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">Invoice Date</div>
+                <div class="info-value">${invoiceDate}</div>
+                <div class="info-sub">Ref: ${invoiceNo}</div>
+              </div>
+              <div class="info-box">
+                <div class="info-label">Due Date</div>
+                <div class="info-value" style="color:${statusKey === 'unpaid' ? '#DC2626' : 'inherit'};">${dueDate}</div>
+                <div class="info-sub">Academic Year: ${dateObj.getFullYear()}–${dateObj.getFullYear() + 1}</div>
+              </div>
+            </div>
+
+            <!-- Table -->
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:5%;">#</th>
+                  <th style="width:45%;">Description</th>
+                  <th>Fee Type</th>
+                  <th>Academic Year</th>
+                  <th>Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="color:#9CA3AF;">01</td>
+                  <td>
+                    <div class="td-desc-main">${feeName}</div>
+                    ${feeDesc ? `<div class="td-desc-sub">${feeDesc}</div>` : ''}
+                  </td>
+                  <td>${feeName}</td>
+                  <td>${dateObj.getFullYear()}–${dateObj.getFullYear() + 1}</td>
+                  <td>${fmtINR(subtotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Totals -->
+            <div class="totals-section">
+              <div class="totals-box">
+                <div class="totals-row">
+                  <span>Sub Total</span>
+                  <span>₹${fmtINR(subtotal)}</span>
+                </div>
+                ${discount > 0 ? `
+                <div class="totals-row" style="color:#059669;">
+                  <span>Discount</span>
+                  <span>− ₹${fmtINR(discount)}</span>
+                </div>` : ''}
+                ${paid > 0 ? `
+                <div class="totals-row paid-row">
+                  <span>Amount Paid</span>
+                  <span>− ₹${fmtINR(paid)}</span>
+                </div>` : ''}
+                <div class="totals-row grand ${statusKey === 'paid' ? '' : 'due-row'}">
+                  <span>${statusKey === 'paid' ? '✓ Settled' : 'Balance Due'}</span>
+                  <span>₹${fmtINR(netDue)}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Amount in words -->
+            <div class="amount-words">
+              <strong>Amount Due in Words:</strong> ${amountInWords(netDue)}
+            </div>
+
+            <!-- Payment instructions -->
+            ${statusKey !== 'paid' ? `
+            <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:10px; padding:14px 16px; margin-bottom:24px;">
+              <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#92400E; margin-bottom:8px;">Payment Instructions</div>
+              <div style="font-size:12px; color:#78350F; line-height:1.7;">
+                Please make the payment before <strong>${dueDate}</strong> to avoid late fees.<br/>
+                ${SCHOOL_CONFIG.contact ? `For queries, contact: <strong>${SCHOOL_CONFIG.contact}</strong>` : ''}
+              </div>
+            </div>` : ''}
+
+            <!-- Signature row -->
+            <div class="signature-row">
+              <div>
+                <div style="font-size:11px; color:#9CA3AF; margin-bottom:4px;">SCAN TO VERIFY</div>
+                <div class="qr-placeholder">QR<br/>Verify</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Principal / Authorized</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Accounts Department</div>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="doc-footer">
+              <p>📄 This is a system-generated invoice. Please retain for your records.</p>
+              <p>
+                ${SCHOOL_CONFIG.contact ? `<strong>Phone:</strong> ${SCHOOL_CONFIG.contact}` : ''}
+                ${SCHOOL_CONFIG.website ? ` &nbsp;|&nbsp; <strong>Web:</strong> ${SCHOOL_CONFIG.website}` : ''}
+              </p>
+              <p style="margin-top:4px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+            </div>
+
+          </div>
+        </body>
+      </html>
+    `;
+
+    const { uri } = await Print.printToFileAsync({ html });
+    await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+  } catch (error) {
     throw error;
   }
 };

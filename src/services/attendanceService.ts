@@ -108,4 +108,16 @@ export const AttendanceService = {
             throw error;
         }
     },
+
+    /**
+     * Get the logged-in staff member's attendance history
+     */
+    getMyStaffAttendance: async (params?: { from_date?: string; to_date?: string }): Promise<Array<{
+        id: string;
+        attendance_date: string;
+        status: AttendanceStatus;
+        marked_at: string;
+    }>> => {
+        return api.get('/attendance/staff/me', params);
+    },
 };

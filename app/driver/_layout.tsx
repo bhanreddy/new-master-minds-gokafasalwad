@@ -1,12 +1,12 @@
 import React from 'react';
 import { MaterialTopTabs } from '../../src/layouts/MaterialTopTabs';
 import DriverFooter from '../../src/components/DriverFooter';
-import { useRoleGuard } from '../../src/hooks/useRoleGuard';
+import { useRequireRole } from '../../src/hooks/useRequireRole';
 import { ErrorBoundary } from '../../src/components/ErrorBoundary';
 
 export default function DriverLayout() {
     // Ensure only drivers can access this segment
-    useRoleGuard(['driver']);
+    useRequireRole('driver', 'admin');
 
     return (
         <ErrorBoundary>

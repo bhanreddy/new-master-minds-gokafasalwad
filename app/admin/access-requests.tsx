@@ -51,7 +51,7 @@ export default function AccessRequestsScreen() {
         if (!user) return;
         setProcessingId(request.id);
         try {
-            await AccessControlService.grantAccess(user.id, request.id);
+            await AccessControlService.grantAccess(user.userId, request.id);
             Alert.alert('Success', 'Access granted until 11:59 PM tonight');
             setRequests(prev => prev.filter(r => r.id !== request.id));
         } catch (error: any) {
@@ -65,7 +65,7 @@ export default function AccessRequestsScreen() {
         if (!user) return;
         setProcessingId(request.id);
         try {
-            await AccessControlService.denyRequest(user.id, request.id);
+            await AccessControlService.denyRequest(user.userId, request.id);
             Alert.alert('Request Denied', 'The request has been dismissed.');
             setRequests(prev => prev.filter(r => r.id !== request.id));
         } catch (error: any) {

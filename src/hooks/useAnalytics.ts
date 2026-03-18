@@ -1,76 +1,185 @@
-import { useState, useEffect, useCallback } from 'react';
-import { AnalyticsService, FinancialAnalytics, AttendanceAnalytics, Insight } from '../services/analyticsService';
-import { startOfMonth, startOfYear, subQuarters, format } from 'date-fns';
+/**
+ * useAnalytics.ts
+ * Feature-complete hook that drives the AdminReports screen.
+ * Manages loading, error, caching, range switching, and refresh.
+ */
 
-export type TimeRange = 'month' | 'quarter' | 'year';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  AnalyticsService,
+  AnalyticsData,
+  FeeCollectionSummary,
+  AttendanceSummary,
+  AcademicSummary,
+  StaffSummary,
+  Insight,
+  TimeRange,
+} from '../services/analyticsService';
 
-export function useAnalytics() {
-  const [range, setRange] = useState<TimeRange>('month');
-  const [loading, setLoading] = useState(true);
-  const [financials, setFinancials] = useState<FinancialAnalytics | null>(null);
-  const [attendance, setAttendance] = useState<AttendanceAnalytics | null>(null);
-  const [insights, setInsights] = useState<Insight[]>([]);
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
-  // Date State
-  const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
-  const [toDate, setToDate] = useState<Date>(new Date());
+export type { TimeRange };
 
-  const refreshData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const fDate = format(fromDate, 'yyyy-MM-dd');
-      const tDate = format(toDate, 'yyyy-MM-dd');
+export interface UseAnalyticsReturn {
+  // Data
+  financials:  FeeCollectionSummary | null;
+  attendance:  AttendanceSummary    | null;
+  academics:   AcademicSummary      | null;
+  staff:       StaffSummary         | null;
+  insights:    Insight[];
+  generatedAt: string | null;
 
-      const [finData, attData, insData] = await Promise.all([
-      AnalyticsService.getFinancials(fDate, tDate, range === 'year' ? 'month' : 'week'),
-      AnalyticsService.getAttendance(fDate, tDate),
-      AnalyticsService.getInsights()]
-      );
+  // UI state
+  loading:        boolean;
+  refreshing:     boolean;
+  error:          string | null;
+  range:          TimeRange;
+  activeSection:  Section;
 
-      setFinancials(finData);
-      setAttendance(attData);
-      setInsights(insData);
-    } catch (error) {
+  // Actions
+  setRange:        (r: TimeRange)  => void;
+  setActiveSection:(s: Section)    => void;
+  refreshData:     ()              => Promise<void>;
+  dismissInsight:  (id: string)    => Promise<void>;
+  exportReport:    ()              => Promise<string | null>;
+}
 
-    } finally {
-      setLoading(false);
-    }
-  }, [fromDate, toDate, range]);
+export type Section = 'overview' | 'finance' | 'attendance' | 'academic' | 'staff';
 
-  // Handle Preset Changes
+// ─── Simple in-memory cache ─────────────────────────────────────────────────
+interface CacheEntry {
+  data: AnalyticsData;
+  fetchedAt: number; // ms timestamp
+}
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const cache: Record<TimeRange, CacheEntry | null> = {
+  month:   null,
+  quarter: null,
+  year:    null,
+};
+
+// ─── Hook ───────────────────────────────────────────────────────────────────
+
+export function useAnalytics(): UseAnalyticsReturn {
+  const [range, setRangeState]         = useState<TimeRange>('month');
+  const [activeSection, setActiveSection] = useState<Section>('overview');
+
+  const [financials,  setFinancials]  = useState<FeeCollectionSummary | null>(null);
+  const [attendance,  setAttendance]  = useState<AttendanceSummary    | null>(null);
+  const [academics,   setAcademics]   = useState<AcademicSummary      | null>(null);
+  const [staff,       setStaff]       = useState<StaffSummary          | null>(null);
+  const [insights,    setInsights]    = useState<Insight[]>([]);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+
+  const [loading,   setLoading]   = useState(false);
+  const [refreshing,setRefreshing]= useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+
+  // Abort controller to cancel in-flight requests on unmount/range change
+  const abortRef = useRef<AbortController | null>(null);
+
+  // ── Core fetch ─────────────────────────────────────────────────────────────
+  const fetchData = useCallback(
+    async (selectedRange: TimeRange, isRefresh = false) => {
+      // Cancel any previous request
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+
+      // Check cache
+      const cached = cache[selectedRange];
+      const now = Date.now();
+      if (!isRefresh && cached && now - cached.fetchedAt < CACHE_TTL_MS) {
+        applyData(cached.data);
+        return;
+      }
+
+      isRefresh ? setRefreshing(true) : setLoading(true);
+      setError(null);
+
+      try {
+        const data = await AnalyticsService.getAnalytics(selectedRange);
+
+        // Store in cache
+        cache[selectedRange] = { data, fetchedAt: now };
+
+        applyData(data);
+      } catch (err: any) {
+        if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+        const msg = err?.response?.data?.message || err?.message || 'Failed to load analytics';
+        setError(msg);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
+
+  function applyData(data: AnalyticsData) {
+    setFinancials(data.financials);
+    setAttendance(data.attendance);
+    setAcademics(data.academics);
+    setStaff(data.staff);
+    setInsights(data.insights ?? []);
+    setGeneratedAt(data.generated_at);
+  }
+
+  // ── Range change ───────────────────────────────────────────────────────────
+  const setRange = useCallback((r: TimeRange) => {
+    setRangeState(r);
+  }, []);
+
+  // ── Effect: fetch on range change ──────────────────────────────────────────
   useEffect(() => {
-    const today = new Date();
-    let start = new Date();
-
-    switch (range) {
-      case 'month':
-        start = startOfMonth(today);
-        break;
-      case 'quarter':
-        start = subQuarters(today, 1);
-        break;
-      case 'year':
-        start = startOfYear(today);
-        break;
-    }
-    setFromDate(start);
-    setToDate(today);
+    fetchData(range);
+    return () => { abortRef.current?.abort(); };
   }, [range]);
 
-  // Fetch on date change
-  useEffect(() => {
-    refreshData();
-  }, [fromDate, toDate]); // Range change triggers date change, which triggers this
+  // ── Pull-to-refresh ────────────────────────────────────────────────────────
+  const refreshData = useCallback(async () => {
+    await fetchData(range, true);
+  }, [range, fetchData]);
+
+  // ── Dismiss an insight optimistically ─────────────────────────────────────
+  const dismissInsight = useCallback(async (id: string) => {
+    // Optimistic update
+    setInsights(prev => prev.filter(i => i.id !== id));
+    try {
+      await AnalyticsService.dismissInsight(id);
+      // Invalidate cache for current range
+      cache[range] = null;
+    } catch {
+      // Revert by re-fetching silently
+      fetchData(range, true);
+    }
+  }, [range, fetchData]);
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  const exportReport = useCallback(async (): Promise<string | null> => {
+    try {
+      const { download_url } = await AnalyticsService.exportReport(range);
+      return download_url;
+    } catch {
+      return null;
+    }
+  }, [range]);
 
   return {
     financials,
     attendance,
+    academics,
+    staff,
     insights,
+    generatedAt,
     loading,
+    refreshing,
+    error,
     range,
+    activeSection,
     setRange,
-    fromDate,
-    toDate,
-    refreshData
+    setActiveSection,
+    refreshData,
+    dismissInsight,
+    exportReport,
   };
 }

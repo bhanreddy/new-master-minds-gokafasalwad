@@ -24,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
-import AuthService from '../services/authService';
+import { AuthService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -192,14 +192,14 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         closeDrawer();
         setTimeout(async () => {
-            await AuthService.logout();
+            await AuthService.signOut();
             router.replace(userType === 'staff' ? '/staff-login' as any : userType === 'driver' ? '/driver-login' as any : '/');
         }, 300);
     };
 
     if (!visible) return null;
 
-    const displayName = user?.display_name || (userType === 'staff' ? 'Staff Member' : 'Student');
+    const displayName = user?.displayName || (userType === 'staff' ? 'Staff Member' : 'Student');
     const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
 
     return (

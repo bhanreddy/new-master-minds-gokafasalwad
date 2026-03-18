@@ -18,6 +18,7 @@ interface FormData {
   password: string;
   dob: Date | null;
   gender_id: number;
+  salary?: string;
 }
 export default function AddAccountsStaff() {
   const {
@@ -39,7 +40,8 @@ export default function AddAccountsStaff() {
     dob: null,
     gender_id: 1,
     // Default to Male
-    staff_code: ''
+    staff_code: '',
+    salary: ''
   });
   const updateField = (field: keyof typeof formData, value: any) => {
     setFormData((prev) => ({
@@ -92,7 +94,8 @@ export default function AddAccountsStaff() {
         // Default to today
         status_id: 1,
         // Active
-        role_code: 'accounts'
+        role_code: 'accounts',
+        salary: formData.salary ? parseFloat(formData.salary) : undefined
       });
       Alert.alert('Success', `Accounts staff ${formData.first_name} ${formData.last_name} has been created successfully!`, [{
         text: 'OK',
@@ -204,6 +207,14 @@ export default function AddAccountsStaff() {
                                     Other
                                 </Text>
                             </TouchableOpacity>
+                        </View>
+                    </View>
+                    {/* Salary */}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Salary</Text>
+                        <View style={styles.inputWrapper}>
+                            <Ionicons name="cash-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <TextInput style={styles.input} placeholder="e.g. 50000" value={formData.salary} onChangeText={(text) => updateField('salary', text)} keyboardType="numeric" />
                         </View>
                     </View>
                     {/* Login Credentials */}

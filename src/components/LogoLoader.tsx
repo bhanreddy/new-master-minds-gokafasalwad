@@ -261,15 +261,21 @@ export default function LogoLoader({ size = 30, color = '#111111', style }: Logo
   };
 
   useEffect(() => {
+    let cancelled = false;
     const loop = () => {
+      if (cancelled) return;
       loopRef.current = buildSequence();
-      loopRef.current.start(({ finished }: { finished: boolean }) => {
-        if (finished) loop(); // restart immediately
+      loopRef.current.start(() => {
+        // Always restart the loop regardless of `finished`.
+        // On Android with animation scaling off, `finished` can be false
+        // which previously killed the loop silently.
+        if (!cancelled) loop();
       });
     };
     loop();
 
     return () => {
+      cancelled = true;
       loopRef.current?.stop();
     };
   }, []);

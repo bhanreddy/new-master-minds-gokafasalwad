@@ -34,30 +34,30 @@ export default function AccountsInvoices() {
   }: {
     item: Invoice;
   }) => {
-// Derived Invoice Number
+    // Derived Invoice Number
     const invoiceNo = `INV-${new Date(item.created_at).getFullYear()}-${item.id.slice(0, 5).toUpperCase()}`;
     const studentName = item.student?.person?.display_name || 'Student';
     const feeName = item.fee_structure?.fee_type?.name || 'Fee';
     return <View style={styles.card}>
-                <View style={styles.iconBox}>
-                    <Ionicons name="document-text" size={24} color="#6366F1" />
-                </View>
+      <View style={styles.iconBox}>
+        <Ionicons name="document-text" size={24} color="#6366F1" />
+      </View>
 
-                <View style={styles.info}>
-                    <Text style={styles.invoiceNo}>{invoiceNo}</Text>
-                    <Text style={styles.name}>{studentName}</Text>
-                    <Text style={styles.date}>
-                        {new Date(item.created_at).toLocaleDateString('en-GB')} • {feeName}
-                    </Text>
-                </View>
+      <View style={styles.info}>
+        <Text style={styles.invoiceNo}>{invoiceNo}</Text>
+        <Text style={styles.name}>{studentName}</Text>
+        <Text style={styles.date}>
+          {new Date(item.created_at).toLocaleDateString('en-GB')} • {feeName}
+        </Text>
+      </View>
 
-                <View style={styles.amountBox}>
-                    <Text style={styles.amount}>₹{item.amount_due.toLocaleString('en-IN')}</Text>
-                    <TouchableOpacity onPress={() => handleDownload(item)} style={styles.downloadBtn}>
-                        <MaterialIcons name="file-download" size={22} color="#4F46E5" />
-                    </TouchableOpacity>
-                </View>
-            </View>;
+      <View style={styles.amountBox}>
+        <Text style={styles.amount}>₹{item.amount_due.toLocaleString('en-IN')}</Text>
+        <TouchableOpacity onPress={() => handleDownload(item)} style={styles.downloadBtn}>
+          <MaterialIcons name="file-download" size={22} color="#4F46E5" />
+        </TouchableOpacity>
+      </View>
+    </View>;
   };
   const renderFooter = () => {
     if (!loading) return null;
@@ -66,17 +66,17 @@ export default function AccountsInvoices() {
     }} color="#4F46E5" />;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <AdminHeader title="Invoices" showBackButton={true} />
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AdminHeader title="Invoices" showBackButton={true} />
 
-            {error && <View style={styles.errorBox}>
-                    <Text style={styles.errorText}>Error loading invoices: {error}</Text>
-                </View>}
+    {error && <View style={styles.errorBox}>
+      <Text style={styles.errorText}>Error loading invoices: {error}</Text>
+    </View>}
 
-            <FlatList data={invoices} keyExtractor={item => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} onEndReached={hasMore ? loadMore : null} onEndReachedThreshold={0.5} ListFooterComponent={renderFooter} ListEmptyComponent={!loading ? <View style={styles.centered}>
-                            <Text style={styles.emptyText}>No invoices found</Text>
-                        </View> : null} refreshing={loading && invoices.length === 0} onRefresh={refresh} />
-        </View>;
+    <FlatList data={invoices} keyExtractor={item => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} onEndReached={hasMore ? loadMore : null} onEndReachedThreshold={0.5} ListFooterComponent={renderFooter} ListEmptyComponent={!loading ? <View style={styles.centered}>
+      <Text style={styles.emptyText}>No invoices found</Text>
+    </View> : null} refreshing={loading && invoices.length === 0} onRefresh={refresh} />
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {

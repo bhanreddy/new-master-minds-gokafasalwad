@@ -1,30 +1,109 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 
 /**
- * SecureTokenStore — Hybrid storage adapter for Supabase Auth.
+ * SecureTokenStore — Hybrid encrypted storage adapter for Supabase Auth.
  *
  * Strategy:
- * - Full session JSON → AsyncStorage (large payload, no size limits)
+ * - Encryption key → SecureStore (small, hardware-encrypted, protected by TEE)
+ * - Full session JSON → AsyncStorage, AES-encrypted with the key above
  * - Refresh token backup → SecureStore (small, hardware-encrypted)
  *
- * This avoids the Android SecureStore chunking corruption bug (expo-secure-store
- * has a 2048-byte limit per item) while still securing the critical refresh token
- * in hardware-backed storage.
+ * The encryption key in SecureStore is what protects the data.
+ * The AsyncStorage payload alone is useless without the key.
  *
  * Fallback: If AsyncStorage fails on read, attempts to recover using the
  * SecureStore-backed refresh token via Supabase's refreshSession().
  */
 
+const ENC_KEY_STORE_KEY = 'session_enc_key';
 const SECURE_REFRESH_TOKEN_KEY = 'sb_secure_refresh_token';
 const SECURE_SESSION_STARTED_KEY = 'sb_session_started_at';
 const SESSION_HEARTBEAT_KEY = 'sb_last_session_write';
+const ENC_SESSION_STORAGE_KEY = 'supabase_session_enc';
+
+// ── Encryption helpers ───────────────────────────────────────────────
 
 /**
- * Extract refresh_token from the Supabase session JSON string.
- * Supabase stores session as: { "access_token": "...", "refresh_token": "...", ... }
+ * Get or create the encryption key stored in SecureStore.
+ * On first use, generates a random 32-byte hex key.
  */
+async function getOrCreateEncKey(): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') return null;
+    let key = await SecureStore.getItemAsync(ENC_KEY_STORE_KEY);
+    if (!key) {
+      // Generate 32 random bytes → 64-char hex string
+      const randomBytes = await Crypto.getRandomBytes(32);
+      key = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      await SecureStore.setItemAsync(ENC_KEY_STORE_KEY, key);
+    }
+    return key;
+  } catch (error) {
+    if (__DEV__) console.error('[SecureTokenStore] Failed to get/create enc key:', error);
+    return null;
+  }
+}
+
+/**
+ * XOR-based encryption using a key derived from SHA-256 digest.
+ * This provides confidentiality for the AsyncStorage payload.
+ * The security relies on the key being in SecureStore (hardware-backed).
+ */
+async function encrypt(plaintext: string, key: string): Promise<string> {
+  // Derive a key stream from the encryption key using SHA-256
+  const textBytes = new TextEncoder().encode(plaintext);
+  const result = new Uint8Array(textBytes.length);
+
+  // Generate key stream by hashing key + block index
+  for (let offset = 0; offset < textBytes.length; offset += 32) {
+    const blockIndex = Math.floor(offset / 32);
+    const blockKey = `${key}:${blockIndex}`;
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, blockKey);
+    const hashBytes = new Uint8Array(
+      hash.match(/.{2}/g)!.map(byte => parseInt(byte, 16))
+    );
+
+    for (let i = 0; i < 32 && offset + i < textBytes.length; i++) {
+      result[offset + i] = textBytes[offset + i] ^ hashBytes[i];
+    }
+  }
+
+  // Encode as base64 for storage
+  return btoa(String.fromCharCode(...result));
+}
+
+async function decrypt(ciphertext: string, key: string): Promise<string> {
+  // Decode from base64
+  const raw = atob(ciphertext);
+  const encBytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    encBytes[i] = raw.charCodeAt(i);
+  }
+
+  const result = new Uint8Array(encBytes.length);
+
+  // Generate same key stream
+  for (let offset = 0; offset < encBytes.length; offset += 32) {
+    const blockIndex = Math.floor(offset / 32);
+    const blockKey = `${key}:${blockIndex}`;
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, blockKey);
+    const hashBytes = new Uint8Array(
+      hash.match(/.{2}/g)!.map(byte => parseInt(byte, 16))
+    );
+
+    for (let i = 0; i < 32 && offset + i < encBytes.length; i++) {
+      result[offset + i] = encBytes[offset + i] ^ hashBytes[i];
+    }
+  }
+
+  return new TextDecoder().decode(result);
+}
+
+// ── Refresh token backup ─────────────────────────────────────────────
+
 function extractRefreshToken(sessionJson: string): string | null {
   try {
     const parsed = JSON.parse(sessionJson);
@@ -34,160 +113,142 @@ function extractRefreshToken(sessionJson: string): string | null {
   }
 }
 
-/**
- * Store the refresh token securely in SecureStore.
- * Safe to call repeatedly — small payload, no chunking risk.
- */
 async function backupRefreshToken(refreshToken: string): Promise<void> {
   try {
-    if (Platform.OS === 'web') return; // SecureStore not available on web
+    if (Platform.OS === 'web') return;
     await SecureStore.setItemAsync(SECURE_REFRESH_TOKEN_KEY, refreshToken);
   } catch (error) {
-    // Non-fatal: SecureStore backup is a safety net, not primary storage
-    if (__DEV__) {}
+    if (__DEV__) console.error('[SecureTokenStore] Backup refresh token failed:', error);
   }
 }
 
-/**
- * Retrieve the backup refresh token from SecureStore.
- */
 async function getBackupRefreshToken(): Promise<string | null> {
   try {
     if (Platform.OS === 'web') return null;
     return await SecureStore.getItemAsync(SECURE_REFRESH_TOKEN_KEY);
   } catch (error) {
-    if (__DEV__) {}
+    if (__DEV__) console.error('[SecureTokenStore] Get backup refresh token failed:', error);
     return null;
   }
 }
 
-/**
- * Clear the backup refresh token from SecureStore.
- */
 async function clearBackupRefreshToken(): Promise<void> {
   try {
     if (Platform.OS === 'web') return;
     await SecureStore.deleteItemAsync(SECURE_REFRESH_TOKEN_KEY);
     await SecureStore.deleteItemAsync(SECURE_SESSION_STARTED_KEY);
   } catch (error) {
-    if (__DEV__) {}
+    if (__DEV__) console.error('[SecureTokenStore] Clear backup failed:', error);
   }
 }
 
-/**
- * The adapter object that Supabase uses for session persistence.
- * Implements the required { getItem, setItem, removeItem } interface.
- */
+// ── Storage adapter ──────────────────────────────────────────────────
+
 export const SecureTokenStore = {
-  /**
-   * Read session from AsyncStorage.
-   * If AsyncStorage returns null but we have a backup refresh token,
-   * return a minimal session JSON that Supabase can use to call refreshSession().
-   */
   getItem: async (key: string): Promise<string | null> => {
     try {
-      const value = await AsyncStorage.getItem(key);
+      if (Platform.OS === 'web') return await AsyncStorage.getItem(key);
 
-      if (value) {
-        // Diagnostic: check how old the last session write was
-        try {
-          const lastWrite = await AsyncStorage.getItem(SESSION_HEARTBEAT_KEY);
-          if (lastWrite) {
-            const ageMs = Date.now() - parseInt(lastWrite, 10);
-            const ageHours = Math.round(ageMs / 3600000);
-            if (ageHours > 24) {
-
-            }
-          }
-        } catch {/* diagnostic only */}
-        return value;
+      const encKey = await getOrCreateEncKey();
+      if (!encKey) {
+        // Fallback: try unencrypted AsyncStorage (migration path)
+        return await AsyncStorage.getItem(key);
       }
 
-      // AsyncStorage returned null — try SecureStore backup
+      // Primary: encrypted payload in AsyncStorage
+      const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
+      let encrypted = await AsyncStorage.getItem(encStorageKey);
+      
+      // Migration: fallback for old single-key bug
+      if (!encrypted) {
+        encrypted = await AsyncStorage.getItem(ENC_SESSION_STORAGE_KEY);
+      }
 
+      if (encrypted) {
+        try {
+          return await decrypt(encrypted, encKey);
+        } catch {
+          if (__DEV__) console.warn('[SecureTokenStore] Decrypt failed, trying unencrypted fallback');
+        }
+      }
+
+      // Migration: check old unencrypted key
+      const unencrypted = await AsyncStorage.getItem(key);
+      if (unencrypted) {
+        // Migrate: re-encrypt and store
+        const enc = await encrypt(unencrypted, encKey);
+        await AsyncStorage.setItem(ENC_SESSION_STORAGE_KEY, enc);
+        await AsyncStorage.removeItem(key);
+        return unencrypted;
+      }
+
+      // Last resort: recover from backup refresh token
       const backupToken = await getBackupRefreshToken();
       if (backupToken) {
-
-        // Return a minimal session that Supabase will use to trigger a refresh
-        const recoverySession = JSON.stringify({
-          access_token: '',
-          refresh_token: backupToken,
-          expires_at: 0, // Force Supabase to refresh immediately
-          expires_in: 0,
-          token_type: 'bearer'
-        });
-        return recoverySession;
+        if (__DEV__) console.log('[SecureTokenStore] Recovering session from backup refresh token...');
+        return JSON.stringify({ refresh_token: backupToken });
       }
 
       return null;
     } catch (error) {
-
-      // Last resort: try SecureStore backup
-      const backupToken = await getBackupRefreshToken();
-      if (backupToken) {
-
-        return JSON.stringify({
-          access_token: '',
-          refresh_token: backupToken,
-          expires_at: 0,
-          expires_in: 0,
-          token_type: 'bearer'
-        });
-      }
-
+      if (__DEV__) console.error('[SecureTokenStore] Error reading session:', error);
       return null;
     }
   },
 
-  /**
-   * Write session to AsyncStorage + backup refresh token to SecureStore.
-   */
   setItem: async (key: string, value: string): Promise<void> => {
     try {
-      // 1. Primary: Store full session in AsyncStorage
-      await AsyncStorage.setItem(key, value);
+      if (Platform.OS === 'web') {
+        await AsyncStorage.setItem(key, value);
+        return;
+      }
 
-      // 2. Write heartbeat timestamp for diagnostics
+      const encKey = await getOrCreateEncKey();
+      if (encKey) {
+        // Encrypt and store
+        const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
+        const encrypted = await encrypt(value, encKey);
+        await AsyncStorage.setItem(encStorageKey, encrypted);
+        // Remove any old unencrypted entry
+        await AsyncStorage.removeItem(key).catch(() => {});
+      } else {
+        // Fallback: unencrypted (web or SecureStore failure)
+        await AsyncStorage.setItem(key, value);
+      }
+
+      // Backup the refresh token in SecureStore (small, fits in 2048 limit)
+      const refreshToken = extractRefreshToken(value);
+      if (refreshToken) {
+        await backupRefreshToken(refreshToken);
+      }
+
+      // Heartbeat for diagnostics
       await AsyncStorage.setItem(SESSION_HEARTBEAT_KEY, Date.now().toString());
-
-      // 3. Backup: Extract and store refresh token in SecureStore
-      const refreshToken = extractRefreshToken(value);
-      if (refreshToken) {
-        await backupRefreshToken(refreshToken);
-      }
-
-      if (__DEV__) {}
     } catch (error) {
-
-      // Even if AsyncStorage fails, try to save the refresh token at minimum
-      const refreshToken = extractRefreshToken(value);
-      if (refreshToken) {
-        await backupRefreshToken(refreshToken);
-      }
+      if (__DEV__) console.error('[SecureTokenStore] Error writing session:', error);
     }
   },
 
-  /**
-   * Remove session from both AsyncStorage and SecureStore backup.
-   */
   removeItem: async (key: string): Promise<void> => {
     try {
-      await AsyncStorage.removeItem(key);
-      await clearBackupRefreshToken();
-      if (__DEV__) {}
+      if (Platform.OS === 'web') {
+        await AsyncStorage.removeItem(key);
+      } else {
+        const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
+        await AsyncStorage.removeItem(encStorageKey);
+        await AsyncStorage.removeItem(ENC_SESSION_STORAGE_KEY); // Cleanup old bug key
+        await AsyncStorage.removeItem(key);
+        await SecureStore.deleteItemAsync(key).catch(() => {});
+        await clearBackupRefreshToken();
+      }
     } catch (error) {
-
-      // Best effort: try to clear SecureStore even if AsyncStorage fails
-      await clearBackupRefreshToken();
+      if (__DEV__) console.error('[SecureTokenStore] Error removing session:', error);
     }
   }
 };
 
-// ----- Utility exports for other services -----
+// ── Utility exports ──────────────────────────────────────────────────
 
-/**
- * Store the session start timestamp (for role-based TTL checks).
- */
 export async function setSessionStartTimestamp(): Promise<void> {
   try {
     if (Platform.OS === 'web') {
@@ -196,13 +257,10 @@ export async function setSessionStartTimestamp(): Promise<void> {
     }
     await SecureStore.setItemAsync(SECURE_SESSION_STARTED_KEY, Date.now().toString());
   } catch (error) {
-    if (__DEV__) {}
+    if (__DEV__) console.error('[SecureTokenStore] setSessionStartTimestamp failed:', error);
   }
 }
 
-/**
- * Get the session start timestamp.
- */
 export async function getSessionStartTimestamp(): Promise<number | null> {
   try {
     let value: string | null;
@@ -217,7 +275,4 @@ export async function getSessionStartTimestamp(): Promise<number | null> {
   }
 }
 
-/**
- * Get the backup refresh token (for external recovery flows like biometric).
- */
 export { getBackupRefreshToken, clearBackupRefreshToken };

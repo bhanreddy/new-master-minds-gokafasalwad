@@ -10,8 +10,9 @@ import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
 import { Alert } from 'react-native';
-import AuthService from '@/src/services/authService';
+import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
+import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
 
@@ -24,7 +25,7 @@ const StaffLoginScreen: React.FC = () => {
   const [error, setError] = useState(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
 
   if (authLoading || user) {
     return (
@@ -42,16 +43,22 @@ const StaffLoginScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await AuthService.login(email, password);
-      const role = response.user.role;
+      const response = await signIn(email, password);
+
+      if (response.error || !response.session) {
+        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        return;
+      }
+
+      const role = response.session.validatedUser.role.code;
       if (role === 'staff' || role === 'teacher') {
-        if (__DEV__) {}
+        if (__DEV__) { }
       } else {
         Alert.alert('Access Denied', 'You do not have staff or teacher privileges.');
-        await AuthService.logout();
+        await AuthService.signOut();
       }
     } catch (error: any) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       Alert.alert('Login Failed', error.message || 'Invalid credentials');
     } finally {
       setLoading(false);
@@ -66,8 +73,8 @@ const StaffLoginScreen: React.FC = () => {
 
           {/* Unified Premium Header */}
           <AuthHeader
-            title={t('login.staff') + " " + t('login.login_btn')}
-            subtitle="Manage classes, attendance, and student records."
+            title={SCHOOL_NAME}
+            subtitle={`${t('login.staff') + " " + t('login.login_btn')} • Manage classes, attendance, and student records.`}
             glowColor="rgba(5,150,105,0.15)" // #059669 Green
           />
 
@@ -84,7 +91,7 @@ const StaffLoginScreen: React.FC = () => {
                     icon={({ color }) => <FontAwesome5 name="id-card" size={18} color={color} style={styles.inputIcon} />}
                     placeholder={t('emailAddress') || "Staff Email"}
                     value={email}
-                    onChangeText={(text) => {setEmail(text);setError(false);}}
+                    onChangeText={(text) => { setEmail(text); setError(false); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     error={error && !email}
@@ -97,12 +104,12 @@ const StaffLoginScreen: React.FC = () => {
                     icon={({ color }) => <Ionicons name="lock-closed-outline" size={20} color={color} style={styles.inputIcon} />}
                     placeholder={t('login.enter_pass')}
                     value={password}
-                    onChangeText={(text) => {setPassword(text);setError(false);}}
+                    onChangeText={(text) => { setPassword(text); setError(false); }}
                     secureTextEntry={!showPassword}
                     error={error && !password}
                     accentColor="#059669"
                     rightAccessory={
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                         <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#94A3B8" />
                       </TouchableOpacity>
                     } />

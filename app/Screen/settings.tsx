@@ -100,7 +100,7 @@ const GS = StyleSheet.create({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-    const { user, logout } = useAuth();
+    const { user, signOut } = useAuth();
     const router = useRouter();
     const { theme, isDark, toggleTheme } = useTheme();
     const { t, i18n } = useTranslation();
@@ -111,7 +111,7 @@ export default function Settings() {
         Alert.alert(item, 'This feature will be available in the next update.');
 
     const handleLogout = async () => {
-        await logout();
+        await signOut();
         router.replace('/welcome');
     };
 
@@ -137,7 +137,7 @@ export default function Settings() {
                     <View style={styles.profileTop}>
                         <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
                             <Image
-                                source={{ uri: user?.photo_url || 'https://cdn-icons-png.flaticon.com/512/2922/2922506.png' }}
+                                source={{ uri: user?.photoUrl || 'https://cdn-icons-png.flaticon.com/512/2922/2922506.png' }}
                                 style={styles.avatar}
                             />
                             <View style={styles.onlineDot} />
@@ -145,12 +145,12 @@ export default function Settings() {
 
                         <View style={styles.profileMeta}>
                             <Text style={styles.profileName}>
-                                {user?.display_name || user?.first_name || 'Student Name'}
+                                {user?.displayName || 'Student Name'}
                             </Text>
                             <View style={styles.idBadge}>
                                 <FontAwesome5 name="id-card" size={9} color="#10B981" />
                                 <Text style={styles.idText}>
-                                    {user?.admission_no || user?.id || 'N/A'}
+                                    {(user as any)?.admission_no || user?.userId || 'N/A'}
                                 </Text>
                             </View>
                         </View>

@@ -12,8 +12,9 @@ export default function NoProfileScreen() {
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const {
-    logout,
-    user
+    signOut,
+    user,
+    session
   } = useAuth();
   return <SafeAreaView style={styles.container}>
             <View style={styles.content}>
@@ -22,14 +23,14 @@ export default function NoProfileScreen() {
                 <Text style={styles.message}>
                     You are logged in as <Text style={{
           fontWeight: 'bold'
-        }}>{user?.email}</Text>,
-                    but no matching {user?.role} profile was found for your account.
+        }}>{session?.supabaseSession?.user?.email || (user as any)?.email}</Text>,
+                    but no matching {user?.role?.name || user?.role?.code || 'user'} profile was found for your account.
                 </Text>
                 <Text style={styles.subMessage}>
                     Please contact the school administrator to verify your account setup.
                 </Text>
 
-                <TouchableOpacity style={styles.button} onPress={logout}>
+                <TouchableOpacity style={styles.button} onPress={signOut}>
                     <Text style={styles.buttonText}>Logout</Text>
                 </TouchableOpacity>
             </View>

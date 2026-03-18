@@ -125,7 +125,7 @@ const SP = StyleSheet.create({
 
 export default function StaffSettings() {
     const router = useRouter();
-    const { user, logout } = useAuth();
+    const { user, signOut } = useAuth();
     const { theme, isDark, toggleTheme } = useTheme();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
     const [updating, setUpdating] = useState(false);
@@ -136,7 +136,7 @@ export default function StaffSettings() {
     const handleLogout = () =>
         Alert.alert('Log Out', 'Are you sure you want to log out?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Log Out', style: 'destructive', onPress: async () => { await logout(); router.replace('/welcome'); } },
+            { text: 'Log Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/welcome'); } },
         ]);
 
     const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
@@ -167,12 +167,12 @@ export default function StaffSettings() {
 
                         <View style={styles.profileMeta}>
                             <Text style={styles.profileName}>
-                                {user?.display_name || user?.first_name || 'Staff Member'}
+                                {user?.displayName || 'Staff Member'}
                             </Text>
                             <View style={styles.roleRow}>
                                 <FontAwesome5 name="id-badge" size={10} color="#6366F1" />
                                 <Text style={styles.roleText}>
-                                    {user?.staff_code || user?.staff_id || 'N/A'}
+                                    {(user as any)?.staff_code || (user as any)?.staff_id || 'N/A'}
                                 </Text>
                             </View>
                         </View>

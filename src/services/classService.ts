@@ -73,6 +73,10 @@ export const ClassService = {
         return api.post<ClassSection>('/academics/class-sections', data);
     },
 
+    deleteClassSection: async (id: string): Promise<void> => {
+        return api.delete(`/academics/class-sections/${id}`);
+    },
+
     deleteClass: async (id: string): Promise<void> => {
         return api.delete(`/academics/classes/${id}`);
     },

@@ -75,9 +75,10 @@ const ResultsScreen = () => {
   const [summary, setSummary] = useState<ExamSummary[]>([]);
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+  }, [user?.userId]);
   const loadData = async () => {
-    if (!user?.id || user.role !== 'student') return;
+    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+    if (!user?.userId || roleCode !== 'student') return;
     try {
       const student = await StudentService.getProfile();
       if (!student?.id) {

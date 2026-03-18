@@ -57,7 +57,7 @@ export const ThemeProvider = ({ children }: {children: ReactNode;}) => {
         const { data } = await supabase.
         from('users').
         select('theme').
-        eq('id', user.id) // Assuming user.id is the UUID in users table
+        eq('id', user.userId) // Assuming user.userId is the UUID in users table
         .single();
 
         if (data && data.theme) {
@@ -88,7 +88,7 @@ export const ThemeProvider = ({ children }: {children: ReactNode;}) => {
         await supabase.
         from('users').
         update({ theme: mode }).
-        eq('id', user.id);
+        eq('id', user.userId);
       }
     } catch (error) {
 

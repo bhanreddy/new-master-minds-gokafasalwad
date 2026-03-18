@@ -6,6 +6,7 @@ import { Role } from '../types/models';
 const getRoleHome = (role: string) => {
   switch (role) {
     case 'admin':return '/admin/dashboard';
+    case 'principal':return '/admin/dashboard';
     case 'accountant':return '/accounts/dashboard';
     case 'staff':
     case 'teacher':return '/staff/dashboard';
@@ -26,10 +27,11 @@ export function useRoleGuard(allowedRoles: Role[]) {
       return;
     }
 
-    if (!allowedRoles.includes(user.role)) {
-      // Unauthorized — redirect to their own dashboard
+    const roleCode = typeof user.role === 'object' && user.role !== null ? (user.role as any).code : user.role;
 
-      router.replace(getRoleHome(user.role));
+    if (!allowedRoles.includes(roleCode)) {
+      // Unauthorized — redirect to their own dashboard
+      router.replace(getRoleHome(roleCode));
     }
   }, [user, loading]);
 }

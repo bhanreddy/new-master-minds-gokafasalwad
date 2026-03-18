@@ -1,22 +1,75 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import { View, Text, StyleSheet, Dimensions, StatusBar, BackHandler, Pressable } from 'react-native';
+import {
+  View, Text, StyleSheet, Dimensions,
+  StatusBar, BackHandler, TouchableOpacity, ScrollView,
+} from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring, useAnimatedScrollHandler } from 'react-native-reanimated';
-import StaffHeader from '@/src/components/StaffHeader';
-import StaffDashboardCard from '@/src/components/StaffDashboardCard';
+import { Ionicons, MaterialIcons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Path, Ellipse } from 'react-native-svg';
+import Animated, {
+  FadeInDown, FadeInUp, FadeIn, ZoomIn,
+  useAnimatedStyle, useSharedValue,
+  withSpring, withTiming, withSequence, withRepeat, withDelay,
+  useAnimatedScrollHandler, interpolate, Extrapolate,
+  runOnJS,
+} from 'react-native-reanimated';
 import { useAuth } from '@/src/hooks/useAuth';
 import { AttendanceService } from '@/src/services/attendanceService';
 import { LeaveService } from '@/src/services/commonServices';
 import { useTheme } from '@/src/hooks/useTheme';
-import { Spacing, Radii, Shadows, CardGradients } from '@/src/theme/themes';
-import { Springs } from '@/src/utils/motion';
-const {
-  width
-} = Dimensions.get('window');
+import StaffHeader from '@/src/components/StaffHeader';
 
-// ── Types ───────────────────────────────────
+const { width: SW, height: SH } = Dimensions.get('window');
+const MENU_GAP = 14;
+const MENU_CARD_W = (SW - 40 - MENU_GAP) / 2;
+
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const D = {
+  dark: {
+    bg: '#080B14',
+    bgCard: 'rgba(255,255,255,0.055)',
+    bgCardElevated: 'rgba(255,255,255,0.08)',
+    border: 'rgba(255,255,255,0.08)',
+    borderHigh: 'rgba(255,255,255,0.14)',
+    text1: '#F0F2FF',
+    text2: 'rgba(240,242,255,0.55)',
+    text3: 'rgba(240,242,255,0.30)',
+    shimmer: 'rgba(255,255,255,0.10)',
+    orbA: 'rgba(108,99,255,0.14)',
+    orbB: 'rgba(0,196,160,0.08)',
+    orbC: 'rgba(255,77,106,0.06)',
+    menuTextBg: '#0C0F1C',
+    menuTextBorder: 'rgba(255,255,255,0.07)',
+  },
+  light: {
+    bg: '#F0F2F8',
+    bgCard: '#FFFFFF',
+    bgCardElevated: '#FFFFFF',
+    border: 'rgba(0,0,0,0.07)',
+    borderHigh: 'rgba(0,0,0,0.12)',
+    text1: '#0A0E1A',
+    text2: 'rgba(10,14,26,0.55)',
+    text3: 'rgba(10,14,26,0.32)',
+    shimmer: 'rgba(255,255,255,0.80)',
+    orbA: 'rgba(108,99,255,0.08)',
+    orbB: 'rgba(0,196,160,0.06)',
+    orbC: 'rgba(255,77,106,0.04)',
+    menuTextBg: '#FFFFFF',
+    menuTextBorder: 'rgba(0,0,0,0.06)',
+  },
+};
+
+const ACCENT = {
+  violet: '#6C63FF',
+  violetMid: '#8B85FF',
+  emerald: '#00C4A0',
+  rose: '#FF4D6A',
+  amber: '#FFB01A',
+  blue: '#3D8EFF',
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface DashboardMetrics {
   totalStudents: number;
   presentToday: number;
@@ -25,451 +78,1021 @@ interface DashboardMetrics {
   classId?: string;
 }
 
-// ── Helpers ─────────────────────────────────
-function getGreeting(): string {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const getGreeting = () => {
   const h = new Date().getHours();
+  if (h < 5) return 'Late Night';
   if (h < 12) return 'Good Morning';
   if (h < 17) return 'Good Afternoon';
   return 'Good Evening';
-}
-function getTodayDate(): string {
-  const d = new Date();
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric'
-  });
+};
+const getTodayDate = () =>
+  new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' });
+const getGreetingEmoji = () => {
+  const h = new Date().getHours();
+  if (h < 12) return '🌤';
+  if (h < 17) return '☀️';
+  return '🌙';
+};
+
+// ─── Background Orbs ─────────────────────────────────────────────────────────
+function BgOrbs({ isDark }: { isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
+  const f1 = useSharedValue(0);
+  const f2 = useSharedValue(0);
+  useEffect(() => {
+    f1.value = withRepeat(withSequence(withTiming(1, { duration: 7000 }), withTiming(0, { duration: 7000 })), -1, false);
+    f2.value = withDelay(3500, withRepeat(withSequence(withTiming(1, { duration: 6000 }), withTiming(0, { duration: 6000 })), -1, false));
+  }, []);
+  const a1 = useAnimatedStyle(() => ({ opacity: interpolate(f1.value, [0, 1], [0.6, 1]) }));
+  const a2 = useAnimatedStyle(() => ({ opacity: interpolate(f2.value, [0, 1], [0.4, 0.9]) }));
+  return (
+    <>
+      <Animated.View style={[styles.orb, { width: 340, height: 340, top: -100, right: -120, borderRadius: 170, backgroundColor: t.orbA }, a1]} />
+      <Animated.View style={[styles.orb, { width: 260, height: 260, top: 200, left: -120, borderRadius: 130, backgroundColor: t.orbB }, a2]} />
+      <Animated.View style={[styles.orb, { width: 200, height: 200, bottom: 280, right: -60, borderRadius: 100, backgroundColor: t.orbC }]} />
+    </>
+  );
 }
 
-// ── Attendance Widget (Professional) ────────
-function AttendanceWidget({
-  data,
-  onPress,
-  theme,
-  isDark
-}: {data: DashboardMetrics | null;onPress: () => void;theme: any;isDark: boolean;loading: boolean;}) {
-  const styles = React.useMemo(() => getStyles(), []);
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{
-      scale: scale.value
-    }]
-  }));
+// ─── Circular Attendance Arc ──────────────────────────────────────────────────
+function AttendanceArc({
+  pct, present, absent, total, unmarked, isDark,
+}: { pct: number; present: number; absent: number; total: number; unmarked: number; isDark: boolean }) {
+  const SIZE = 164;
+  const STROKE = 13;
+  const R = (SIZE - STROKE) / 2;
+  const CIRC = 2 * Math.PI * R;
+  const ARC_DEG = 240;
+  const START_DEG = 150;
+  const arcLen = (ARC_DEG / 360) * CIRC;
+  const fillLen = (pct / 100) * arcLen;
+  const gapLen = CIRC - arcLen;
+  const t = isDark ? D.dark : D.light;
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+
+  return (
+    <View style={styles.arcContainer}>
+      <Svg width={SIZE} height={SIZE} style={{ overflow: 'visible' }}>
+        <Defs>
+          <SvgGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <Stop offset="0%" stopColor={ACCENT.emerald} stopOpacity="1" />
+            <Stop offset="60%" stopColor={ACCENT.violet} stopOpacity="1" />
+            <Stop offset="100%" stopColor={ACCENT.violetMid} stopOpacity="1" />
+          </SvgGradient>
+          <SvgGradient id="trackGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <Stop offset="0%" stopColor={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'} stopOpacity="1" />
+            <Stop offset="100%" stopColor={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'} stopOpacity="1" />
+          </SvgGradient>
+        </Defs>
+        <Circle
+          cx={cx} cy={cy} r={R}
+          fill="none"
+          stroke="url(#trackGrad)"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${arcLen} ${gapLen + STROKE}`}
+          strokeDashoffset={-(gapLen / 2 + STROKE / 2)}
+          transform={`rotate(${START_DEG}, ${cx}, ${cy})`}
+        />
+        <Circle
+          cx={cx} cy={cy} r={R}
+          fill="none"
+          stroke="url(#arcGrad)"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${fillLen > 0 ? fillLen : 0.01} ${CIRC}`}
+          strokeDashoffset={-(gapLen / 2 + STROKE / 2)}
+          transform={`rotate(${START_DEG}, ${cx}, ${cy})`}
+        />
+      </Svg>
+      <View style={styles.arcCenter}>
+        <Text style={[styles.arcPct, { color: t.text1 }]}>{pct}<Text style={[styles.arcPctSymbol, { color: t.text2 }]}>%</Text></Text>
+        <Text style={[styles.arcLabel, { color: t.text3 }]}>Attendance</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
+function StatPill({ value, label, color, isDark }: { value: number | string; label: string; color: string; isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
+  return (
+    <View style={[styles.statPill, { backgroundColor: `${color}14`, borderColor: `${color}22` }]}>
+      <Text style={[styles.statPillVal, { color }]}>{value}</Text>
+      <Text style={[styles.statPillLbl, { color: t.text3 }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Attendance Hero Card ─────────────────────────────────────────────────────
+function AttendanceHero({ data, onPress, isDark }: { data: DashboardMetrics | null; onPress: () => void; isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
   const total = data?.totalStudents || 0;
   const present = data?.presentToday || 0;
   const absent = data?.absentToday || 0;
   const unmarked = Math.max(0, total - present - absent);
-  const pct = total > 0 ? Math.round(present / total * 100) : 0;
+  const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+  const pressScale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
+  let statusText = total === 0 ? 'No Class Assigned' : unmarked === 0 ? 'Fully Marked ✓' : `${unmarked} left to mark`;
+  let statusColor = total === 0 ? t.text3 : unmarked === 0 ? ACCENT.emerald : ACCENT.amber;
 
-  // Status logic
-  let statusText = 'Attendance Not Marked';
-  let statusColor = theme.colors.textTertiary;
-  let iconName = 'alert-circle-outline';
-  if (total === 0) {
-    statusText = 'No Class Assigned';
-  } else if (unmarked === 0) {
-    statusText = 'Attendance Complete';
-    statusColor = theme.colors.success;
-    iconName = 'checkmark-circle';
-  } else if (unmarked < total) {
-    statusText = `${unmarked} Remaining`;
-    statusColor = theme.colors.warning;
-    iconName = 'time-outline';
-  }
-  return <Animated.View style={[animStyle, {
-    marginBottom: Spacing.lg
-  }]}>
-    <Pressable onPressIn={() => scale.value = withSpring(0.98, Springs.cardPress)} onPressOut={() => scale.value = withSpring(1, Springs.cardRelease)} onPress={onPress} style={[styles.attendanceCard, {
-      backgroundColor: theme.colors.card,
-      borderColor: theme.colors.border
-    }, Shadows.sm]}>
-      {/* Header Row */}
-      <View style={styles.attHeader}>
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8
-        }}>
-          <View style={[styles.attIconBox, {
-            backgroundColor: isDark ? 'rgba(79, 70, 229, 0.15)' : '#EEF2FF'
-          }]}>
-            <Ionicons name="people" size={18} color={theme.colors.primary} />
+  return (
+    <Animated.View entering={FadeInDown.delay(100).duration(550).springify().damping(16)} style={[anim, { marginBottom: 20 }]}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPressIn={() => { pressScale.value = withSpring(0.975, { damping: 18 }); }}
+        onPressOut={() => { pressScale.value = withSpring(1, { damping: 14 }); }}
+        onPress={onPress}
+      >
+        <View style={[styles.heroCard, { backgroundColor: t.bgCard, borderColor: t.border }]}>
+          {isDark && <View style={[styles.cardTopGlow, { backgroundColor: `${ACCENT.violet}18` }]} />}
+          {isDark && <View style={styles.cardShimmerLine} />}
+          <View style={styles.heroCardHeader}>
+            <View>
+              <Text style={[styles.heroCardTitle, { color: t.text1 }]}>Today's Class</Text>
+              <Text style={[styles.heroCardSub, { color: t.text2 }]}>Tap to manage attendance</Text>
+            </View>
+            <View style={[styles.heroCardChip, { backgroundColor: isDark ? 'rgba(108,99,255,0.18)' : 'rgba(108,99,255,0.10)' }]}>
+              <Ionicons name="people" size={12} color={ACCENT.violet} style={{ marginRight: 4 }} />
+              <Text style={[styles.heroCardChipText, { color: ACCENT.violet }]}>{total} students</Text>
+            </View>
           </View>
-          <Text style={[styles.attTitle, {
-            color: theme.colors.textStrong
-          }]}>Class Attendance</Text>
+          <View style={styles.heroCardBody}>
+            <AttendanceArc pct={pct} present={present} absent={absent} total={total} unmarked={unmarked} isDark={isDark} />
+            <View style={styles.heroStatCol}>
+              <StatPill value={present} label="Present" color={ACCENT.emerald} isDark={isDark} />
+              <StatPill value={absent} label="Absent" color={ACCENT.rose} isDark={isDark} />
+              <StatPill value={unmarked} label="Pending" color={ACCENT.amber} isDark={isDark} />
+            </View>
+          </View>
+          <View style={[styles.heroCardFooter, { backgroundColor: isDark ? 'rgba(0,0,0,0.20)' : '#F7F9FD', borderTopColor: t.border }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.heroCardFooterText, { color: statusColor }]}>{statusText}</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={[styles.heroCardFooterLink, { color: ACCENT.violet }]}>Manage →</Text>
+          </View>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={theme.colors.textTertiary} />
-      </View>
-
-      {/* Metrics Row */}
-      <View style={styles.attMetrics}>
-        <View style={styles.metricItem}>
-          <Text style={[styles.metricValue, {
-            color: theme.colors.textStrong
-          }]}>
-            {present}<Text style={{
-              fontSize: 16,
-              color: theme.colors.textTertiary
-            }}>/{total}</Text>
-          </Text>
-          <Text style={[styles.metricLabel, {
-            color: theme.colors.textSecondary
-          }]}>Present</Text>
-        </View>
-
-        <View style={[styles.verticalDivider, {
-          backgroundColor: theme.colors.border
-        }]} />
-
-        <View style={styles.metricItem}>
-          <Text style={[styles.metricValue, {
-            color: theme.colors.danger
-          }]}>
-            {absent}
-          </Text>
-          <Text style={[styles.metricLabel, {
-            color: theme.colors.textSecondary
-          }]}>Absent</Text>
-        </View>
-
-        <View style={[styles.verticalDivider, {
-          backgroundColor: theme.colors.border
-        }]} />
-
-        <View style={styles.metricItem}>
-          <Text style={[styles.metricValue, {
-            color: theme.colors.primary
-          }]}>{pct}%</Text>
-          <Text style={[styles.metricLabel, {
-            color: theme.colors.textSecondary
-          }]}>Rate</Text>
-        </View>
-      </View>
-
-      {/* Status Footer */}
-      <View style={[styles.attFooter, {
-        backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#F8FAFC',
-        borderTopColor: theme.colors.border
-      }]}>
-        <Ionicons name={iconName as any} size={14} color={statusColor} />
-        <Text style={[styles.attStatusText, {
-          color: statusColor
-        }]}>{statusText}</Text>
-      </View>
-    </Pressable>
-  </Animated.View>;
+      </TouchableOpacity>
+    </Animated.View>
+  );
 }
 
-// ── Alert Row (Simpler) ─────────────────────
-function AlertRow({
-  icon,
-  color,
+// ─── Hero Banner ──────────────────────────────────────────────────────────────
+function HeroBanner({ name, isDark }: { name: string; isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
+  return (
+    <Animated.View entering={FadeInDown.duration(480).springify()} style={styles.heroBanner}>
+      <View style={styles.heroBannerLeft}>
+        <View style={[styles.dateBadge, { backgroundColor: isDark ? 'rgba(108,99,255,0.16)' : 'rgba(108,99,255,0.10)' }]}>
+          <Text style={[styles.dateBadgeText, { color: ACCENT.violetMid }]}>
+            {getGreetingEmoji()}  {getTodayDate()}
+          </Text>
+        </View>
+        <Text style={[styles.greetLine, { color: t.text2 }]}>{getGreeting()},</Text>
+        <Text style={[styles.nameLine, { color: t.text1 }]} numberOfLines={1}>{name}</Text>
+      </View>
+      <LinearGradient colors={[ACCENT.violet, ACCENT.emerald]} style={styles.avatarBubble} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <Text style={styles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>
+      </LinearGradient>
+    </Animated.View>
+  );
+}
+
+// ─── Leave Alert ──────────────────────────────────────────────────────────────
+function LeaveAlert({ count, onPress, isDark }: { count: number; onPress: () => void; isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 900 }), withTiming(1, { duration: 900 })), -1, false);
+  }, []);
+  const dotAnim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  return (
+    <Animated.View entering={FadeInDown.delay(60).duration(420).springify()} style={{ marginBottom: 20 }}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient
+          colors={isDark ? ['rgba(255,176,26,0.15)', 'rgba(255,176,26,0.07)'] : ['rgba(255,176,26,0.12)', 'rgba(255,176,26,0.05)']}
+          style={[styles.leaveAlert, { borderColor: 'rgba(255,176,26,0.25)' }]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        >
+          <View style={styles.leaveAlertLeft}>
+            <Animated.View style={[styles.leaveAlertDot, dotAnim]} />
+            <View style={[styles.leaveAlertIconBox, { backgroundColor: 'rgba(255,176,26,0.20)' }]}>
+              <Ionicons name="time" size={15} color={ACCENT.amber} />
+            </View>
+            <View>
+              <Text style={styles.leaveAlertTitle}>{count} Leave {count === 1 ? 'Request' : 'Requests'} Awaiting</Text>
+              <Text style={[styles.leaveAlertSub, { color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.42)' }]}>Tap to review & approve</Text>
+            </View>
+          </View>
+          <View style={styles.leaveCountBubble}>
+            <Text style={styles.leaveCountText}>{count}</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+function SectionLabel({ label, isDark }: { label: string; isDark: boolean }) {
+  const t = isDark ? D.dark : D.light;
+  return (
+    <View style={styles.sectionLabel}>
+      <LinearGradient colors={[ACCENT.violet, ACCENT.emerald]} style={styles.sectionAccent} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />
+      <Text style={[styles.sectionLabelText, { color: t.text3 }]}>{label}</Text>
+    </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── ENHANCED MENU CARD SYSTEM ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface MenuConfig {
+  icon: React.ReactNode;
+  grad: readonly [string, string, string];
+  accentLight: string;       // Light highlight color for accents
+  accentBar: [string, string];
+  shadowColor: string;
+  category: string;
+  shimmerColor: string;
+  patternType: 'rings' | 'diagonal' | 'dots' | 'arc';
+}
+
+const MENU_CONFIGS: Record<string, MenuConfig> = {
+  diary: {
+    icon: <FontAwesome5 name="book" size={26} color="#fff" />,
+    grad: ['#2D7FFF', '#1254D4', '#0830A0'] as const,
+    accentLight: '#90C4FF',
+    accentBar: ['#70BAFF', '#2D7FFF'],
+    shadowColor: '#1254D4',
+    category: 'RECORDS',
+    shimmerColor: 'rgba(120,190,255,0.38)',
+    patternType: 'diagonal',
+  },
+  timetable: {
+    icon: <Ionicons name="calendar" size={27} color="#fff" />,
+    grad: ['#00D4A8', '#00A882', '#006858'] as const,
+    accentLight: '#80FFE8',
+    accentBar: ['#80FFE8', '#00C4A0'],
+    shadowColor: '#00A882',
+    category: 'SCHEDULE',
+    shimmerColor: 'rgba(100,255,220,0.35)',
+    patternType: 'dots',
+  },
+  attendance: {
+    icon: <FontAwesome5 name="fingerprint" size={27} color="#fff" />,
+    grad: ['#FF8040', '#E8520A', '#B83600'] as const,
+    accentLight: '#FFCC90',
+    accentBar: ['#FFCC90', '#FF7428'],
+    shadowColor: '#E8520A',
+    category: 'TRACKING',
+    shimmerColor: 'rgba(255,200,100,0.32)',
+    patternType: 'rings',
+  },
+  leaves: {
+    icon: <FontAwesome5 name="calendar-check" size={24} color="#fff" />,
+    grad: ['#FF3D5C', '#D41040', '#9E0030'] as const,
+    accentLight: '#FFAABC',
+    accentBar: ['#FFAABC', '#FF2D52'],
+    shadowColor: '#D41040',
+    category: 'APPROVALS',
+    shimmerColor: 'rgba(255,140,160,0.34)',
+    patternType: 'arc',
+  },
+  results: {
+    icon: <MaterialIcons name="assessment" size={30} color="#fff" />,
+    grad: ['#FFAA00', '#E08000', '#A85800'] as const,
+    accentLight: '#FFE090',
+    accentBar: ['#FFE090', '#FFB31A'],
+    shadowColor: '#E08000',
+    category: 'ACADEMIC',
+    shimmerColor: 'rgba(255,225,120,0.38)',
+    patternType: 'diagonal',
+  },
+  complaints: {
+    icon: <Ionicons name="chatbubble-ellipses" size={26} color="#fff" />,
+    grad: ['#8070FF', '#5548E0', '#3530B0'] as const,
+    accentLight: '#C8C0FF',
+    accentBar: ['#C8C0FF', '#7268FF'],
+    shadowColor: '#5548E0',
+    category: 'SUPPORT',
+    shimmerColor: 'rgba(180,160,255,0.34)',
+    patternType: 'rings',
+  },
+  lms: {
+    icon: <MaterialIcons name="cloud-upload" size={28} color="#fff" />,
+    grad: ['#FF4EC0', '#D01898', '#920070'] as const,
+    accentLight: '#FFB8E8',
+    accentBar: ['#FFB8E8', '#FF4DB4'],
+    shadowColor: '#D01898',
+    category: 'CONTENT',
+    shimmerColor: 'rgba(255,155,220,0.34)',
+    patternType: 'dots',
+  },
+  payslips: {
+    icon: <FontAwesome5 name="file-invoice-dollar" size={24} color="#fff" />,
+    grad: ['#20CEC8', '#0AABA4', '#027A74'] as const,
+    accentLight: '#A0F0EC',
+    accentBar: ['#A0F0EC', '#2EBFB8'],
+    shadowColor: '#0AABA4',
+    category: 'FINANCE',
+    shimmerColor: 'rgba(100,240,235,0.32)',
+    patternType: 'arc',
+  },
+};
+
+// ─── Shimmer Sweep (kept from original) ──────────────────────────────────────
+function ShimmerSweep({ color, width, delay }: { color: string; width: number; delay: number }) {
+  const sweep = useSharedValue(-80);
+  useEffect(() => {
+    sweep.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(width + 80, { duration: 780 }),
+          withDelay(4200 + Math.random() * 1200, withTiming(-80, { duration: 0 }))
+        ),
+        -1, false
+      )
+    );
+  }, []);
+  const sweepStyle = useAnimatedStyle(() => ({ transform: [{ translateX: sweep.value }] }));
+  return (
+    <Animated.View
+      style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 68, zIndex: 8, overflow: 'hidden' }, sweepStyle]}
+      pointerEvents="none"
+    >
+      <LinearGradient colors={['transparent', color, 'transparent']} style={{ flex: 1 }} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
+    </Animated.View>
+  );
+}
+
+// ─── Card Pattern Decoration ──────────────────────────────────────────────────
+// Each pattern type adds a unique geometric decoration to the gradient zone
+function CardPattern({ type, accentLight }: { type: MenuConfig['patternType']; accentLight: string }) {
+  if (type === 'rings') {
+    // Concentric quarter-arc rings in the bottom-right corner
+    return (
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {[0, 1, 2].map((i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              width: 60 + i * 36,
+              height: 60 + i * 36,
+              borderRadius: (60 + i * 36) / 2,
+              borderWidth: 1.2,
+              borderColor: `rgba(255,255,255,${0.14 - i * 0.04})`,
+              bottom: -(30 + i * 18),
+              right: -(30 + i * 18),
+            }}
+          />
+        ))}
+        <View style={{ position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', top: 18, right: 14 }} />
+      </View>
+    );
+  }
+
+  if (type === 'diagonal') {
+    // Diagonal ruled lines going top-right to bottom-left
+    return (
+      <View style={[StyleSheet.absoluteFillObject, { overflow: 'hidden' }]} pointerEvents="none">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              height: 1,
+              width: 160,
+              backgroundColor: 'rgba(255,255,255,0.09)',
+              top: -20 + i * 28,
+              right: -30,
+              transform: [{ rotate: '-38deg' }],
+            }}
+          />
+        ))}
+        <View style={{ position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.18)', top: 16, right: 16 }} />
+        <View style={{ position: 'absolute', width: 7, height: 7, borderRadius: 3.5, backgroundColor: 'rgba(255,255,255,0.14)', top: 32, right: 32 }} />
+      </View>
+    );
+  }
+
+  if (type === 'dots') {
+    // 3×3 dot grid in the top-right
+    const dots = [];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        dots.push(
+          <View
+            key={`${row}-${col}`}
+            style={{
+              position: 'absolute',
+              width: 4,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: `rgba(255,255,255,${0.18 - row * 0.04})`,
+              top: 14 + row * 14,
+              right: 14 + col * 14,
+            }}
+          />
+        );
+      }
+    }
+    return (
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {dots}
+        <View style={{ position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(0,0,0,0.14)', bottom: -20, left: -20 }} />
+      </View>
+    );
+  }
+
+  if (type === 'arc') {
+    // Single large arc sweeping from top-right corner
+    return (
+      <View style={[StyleSheet.absoluteFillObject, { overflow: 'hidden' }]} pointerEvents="none">
+        <View
+          style={{
+            position: 'absolute',
+            width: 110,
+            height: 110,
+            borderRadius: 55,
+            borderWidth: 1.5,
+            borderColor: 'rgba(255,255,255,0.13)',
+            top: -44,
+            right: -44,
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            width: 74,
+            height: 74,
+            borderRadius: 37,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.09)',
+            top: -22,
+            right: -22,
+          }}
+        />
+        <View style={{ position: 'absolute', width: 9, height: 9, borderRadius: 4.5, backgroundColor: 'rgba(255,255,255,0.22)', top: 18, right: 52 }} />
+        <View style={{ position: 'absolute', width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.16)', top: 30, right: 38 }} />
+      </View>
+    );
+  }
+  return null;
+}
+
+// ─── Live Badge (notification indicator) ─────────────────────────────────────
+function LiveBadge({ count }: { count: string }) {
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(withTiming(1.15, { duration: 750 }), withTiming(1, { duration: 750 })),
+      -1, true
+    );
+  }, []);
+  const dotStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  return (
+    <View style={mc.badgeOuter}>
+      <Animated.View style={[mc.badgePulseDot, dotStyle]} />
+      <View style={mc.badgeInner}>
+        <Text style={mc.badgeCountText}>{count}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Enhanced Menu Card ───────────────────────────────────────────────────────
+function MenuCard({
   title,
   subtitle,
+  configKey,
+  badge,
   onPress,
-  theme
+  index,
+  isDark,
+}: {
+  title: string;
+  subtitle: string;
+  configKey: string;
+  badge?: string;
+  onPress: () => void;
+  index: number;
+  isDark: boolean;
+}) {
+  const cfg = MENU_CONFIGS[configKey];
+  const t = isDark ? D.dark : D.light;
 
-}: {icon: string;color: string;title: string;subtitle: string;onPress: () => void;theme: any;}) {
-  const {
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(), []);
-  return <Pressable onPress={onPress} style={({
-    pressed
-  }) => {
-    return [styles.alertRow, {
-      backgroundColor: theme.colors.alertBgInfo,
-      borderColor: theme.colors.alertBorderInfo
-    }, pressed && {
-      opacity: 0.8
-    }];
-  }}>
-    <Ionicons name={icon as any} size={20} color={color} style={{
-      marginRight: 12
-    }} />
-    <View style={{
-      flex: 1
-    }}>
-      <Text style={[styles.alertTitle, {
-        color: theme.colors.alertTextInfo
-      }]}>{title}</Text>
-      <Text style={[styles.alertSubtitle, {
-        color: theme.colors.alertTextInfo
-      }]}>{subtitle}</Text>
-    </View>
-    <Ionicons name="arrow-forward" size={16} color={color} />
-  </Pressable>;
+  const pressScale = useSharedValue(1);
+  const pressDepth = useSharedValue(0);
+
+  const wrapperStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pressScale.value }],
+  }));
+
+  const gradZoneStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pressDepth.value, [0, 1], [1, 0.82]),
+  }));
+
+  const shimmerDelay = 800 + index * 500;
+
+  return (
+    <Animated.View
+      entering={
+        FadeInUp
+          .delay(180 + index * 65)
+          .duration(560)
+          .springify()
+          .damping(15)
+          .stiffness(90)
+      }
+      style={[
+        wrapperStyle,
+        {
+          width: MENU_CARD_W,
+          shadowColor: cfg.shadowColor,
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.38,
+          shadowRadius: 22,
+          elevation: 18,
+        },
+      ]}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPressIn={() => {
+          pressScale.value = withSpring(0.93, { damping: 22, stiffness: 340 });
+          pressDepth.value = withTiming(1, { duration: 100 });
+        }}
+        onPressOut={() => {
+          pressScale.value = withSpring(1, { damping: 12, stiffness: 170 });
+          pressDepth.value = withTiming(0, { duration: 220 });
+        }}
+        onPress={onPress}
+      >
+        {/* ── Outer Card Shell ── */}
+        <View style={[mc.card, {
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+        }]}>
+
+          {/* ══════════════════════════════════════
+              ZONE 1 — GRADIENT ICON PANEL
+          ══════════════════════════════════════ */}
+          <Animated.View style={[{ borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: 'hidden' }, gradZoneStyle]}>
+            <LinearGradient
+              colors={cfg.grad}
+              style={mc.gradZone}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              {/* Geometric pattern decoration */}
+              <CardPattern type={cfg.patternType} accentLight={cfg.accentLight} />
+
+              {/* Bottom depth shadow — softens gradient into text zone */}
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.28)']}
+                style={mc.gradZoneVignette}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                pointerEvents="none"
+              />
+
+              {/* Top-edge gloss line */}
+              <View style={mc.topGloss} />
+
+              {/* Shimmer sweep */}
+              <ShimmerSweep color={cfg.shimmerColor} width={MENU_CARD_W} delay={shimmerDelay} />
+
+              {/* Badge (top-right) — only when pending */}
+              {badge && (
+                <View style={mc.badgePosition}>
+                  <LiveBadge count={badge} />
+                </View>
+              )}
+
+              {/* ── Icon — centered, clean, no rings ── */}
+              <View style={mc.iconWrapper}>
+                {/* Diffuse background glow */}
+                <View style={[mc.iconGlowBlob, { backgroundColor: 'rgba(255,255,255,0.14)' }]} />
+                {/* Icon container: frosted glass disc */}
+                <View style={mc.iconDisc}>
+                  {/* Inner highlight ring */}
+                  <View style={mc.iconDiscHighlight} />
+                  {cfg.icon}
+                </View>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          {/* ══════════════════════════════════════
+              ACCENT DIVIDER — gradient line
+          ══════════════════════════════════════ */}
+          <LinearGradient
+            colors={[cfg.accentBar[0], cfg.accentBar[1], 'transparent']}
+            style={mc.accentDivider}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          />
+
+          {/* ══════════════════════════════════════
+              ZONE 2 — TEXT INFO PANEL
+          ══════════════════════════════════════ */}
+          <View style={[mc.textZone, {
+            backgroundColor: t.menuTextBg,
+            borderBottomLeftRadius: 22,
+            borderBottomRightRadius: 22,
+          }]}>
+
+            {/* Category tag */}
+            <View style={[mc.categoryTag, { backgroundColor: `${cfg.accentBar[0]}1A`, borderColor: `${cfg.accentBar[0]}2E` }]}>
+              <View style={[mc.categoryDot, { backgroundColor: cfg.accentLight }]} />
+              <Text style={[mc.categoryText, { color: cfg.accentLight }]}>{cfg.category}</Text>
+            </View>
+
+            {/* Title + arrow row */}
+            <View style={mc.titleRow}>
+              <Text style={[mc.titleText, { color: t.text1 }]} numberOfLines={1}>{title}</Text>
+              {!badge && (
+                <View style={[mc.arrowChip, { backgroundColor: `${cfg.accentBar[0]}18` }]}>
+                  <Ionicons name="arrow-forward" size={11} color={cfg.accentLight} />
+                </View>
+              )}
+            </View>
+
+            {/* Subtitle */}
+            <Text style={[mc.subtitleText, { color: t.text2 }]} numberOfLines={1}>{subtitle}</Text>
+
+            {/* Bottom accent micro-bar */}
+            <LinearGradient
+              colors={[cfg.accentBar[0], `${cfg.accentBar[1]}00`]}
+              style={mc.microBar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            />
+          </View>
+
+          {/* Outer border overlay (full card) */}
+          <View style={[mc.outerBorder, {
+            borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)',
+          }]} pointerEvents="none" />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
 }
 
-// ── Main Dashboard ──────────────────────────
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function StaffDashboard() {
   const router = useRouter();
-  const {
-    t
-  } = useTranslation();
-  const {
-    user
-  } = useAuth();
+  const { user } = useAuth();
+  const { isDark } = useTheme();
+  const t = isDark ? D.dark : D.light;
+
   const [data, setData] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(), []);
-  useEffect(() => {
-    const loadData = async () => {
-      if (!user) return;
-      try {
-        const pendingLeaves = await LeaveService.getAll({
-          status: 'pending'
-        });
-        let studentCount = 0,
-          presentCount = 0,
-          absentCount = 0;
-        let detectedClassId: string | undefined;
 
-        // Dynamically detect teacher's class via /attendance/my-class
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const pendingLeaves = await LeaveService.getAll({ status: 'pending' });
+        let studentCount = 0, presentCount = 0, absentCount = 0;
+        let detectedClassId: string | undefined;
         const myClass = await AttendanceService.getMyClass();
         if (myClass) {
           detectedClassId = myClass.class_section_id;
           studentCount = myClass.total_students;
-          presentCount = myClass.students.filter((s) => s.status === 'present').length;
-          absentCount = myClass.students.filter((s) => s.status === 'absent').length;
+          presentCount = myClass.students.filter((s: any) => s.status === 'present').length;
+          absentCount = myClass.students.filter((s: any) => s.status === 'absent').length;
         }
-
-        setData({
-          totalStudents: studentCount,
-          presentToday: presentCount,
-          absentToday: absentCount,
-          pendingLeaves: pendingLeaves.length,
-          classId: detectedClassId
-        });
-      } catch (e) {
-
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+        setData({ totalStudents: studentCount, presentToday: presentCount, absentToday: absentCount, pendingLeaves: pendingLeaves.length, classId: detectedClassId });
+      } catch { }
+      finally { setLoading(false); }
+    })();
   }, [user]);
+
   useFocusEffect(useCallback(() => {
-    const onBackPress = () => {
-      BackHandler.exitApp();
-      return true;
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { BackHandler.exitApp(); return true; });
     return () => sub.remove();
   }, []));
-  const menuItems = [{
-    title: "Diary",
-    subtitle: "Daily logs",
-    icon: <FontAwesome5 name="book" size={18} color="#FFFFFF" />,
-    route: '/staff/diary',
-    gradient: CardGradients.blue
-  }, {
-    title: t('staff_dashboard.timetable'),
-    subtitle: "Schedule",
-    icon: <FontAwesome5 name="clock" size={18} color="#FFFFFF" />,
-    route: '/staff/timetable',
-    gradient: CardGradients.emerald
-  }, {
-    title: t('staff_dashboard.leaves'),
-    subtitle: "Approvals",
-    icon: <FontAwesome5 name="calendar-check" size={18} color="#FFFFFF" />,
-    route: '/staff/leaves',
-    gradient: CardGradients.rose,
-    badge: data?.pendingLeaves ? `${data.pendingLeaves}` : undefined
-  }, {
-    title: t('staff_dashboard.results'),
-    subtitle: "Marks",
-    icon: <MaterialIcons name="assessment" size={20} color="#FFFFFF" />,
-    route: '/staff/results',
-    gradient: CardGradients.amber
-  }, {
-    title: "Complaints",
-    subtitle: "Issues",
-    icon: <Ionicons name="chatbubble-ellipses" size={20} color="#FFFFFF" />,
-    route: '/staff/complaints',
-    gradient: CardGradients.purple
-  }, {
-    title: "LMS",
-    subtitle: "Uploads",
-    icon: <MaterialIcons name="cloud-upload" size={20} color="#FFFFFF" />,
-    route: '/staff/lms-upload',
-    gradient: CardGradients.pink
-  }, {
-    title: "Payslips",
-    subtitle: "Salary & Docs",
-    icon: <FontAwesome5 name="file-invoice-dollar" size={18} color="#FFFFFF" />,
-    route: '/staff/payslip',
-    gradient: CardGradients.indigo
-  }];
+
+  const menuItems = [
+    { title: 'Diary', subtitle: 'Daily logs & notes', configKey: 'diary', route: '/staff/diary' },
+    { title: 'Timetable', subtitle: 'Class schedule', configKey: 'timetable', route: '/staff/timetable' },
+    { title: 'Attendance', subtitle: 'History & reports', configKey: 'attendance', route: '/staff/attendance' },
+    { title: 'Leaves', subtitle: 'Review approvals', configKey: 'leaves', route: '/staff/leaves', badge: data?.pendingLeaves ? `${data.pendingLeaves}` : undefined },
+    { title: 'Results', subtitle: 'Enter & view marks', configKey: 'results', route: '/staff/results' },
+    { title: 'Complaints', subtitle: 'Student issues', configKey: 'complaints', route: '/staff/complaints' },
+    { title: 'LMS', subtitle: 'Upload resources', configKey: 'lms', route: '/staff/lms-upload' },
+    { title: 'Payslips', subtitle: 'Salary & docs', configKey: 'payslips', route: '/staff/payslip' },
+  ];
+
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
-    onScroll: (event: any) => {
-      scrollY.value = event.contentOffset.y;
-    }
+    onScroll: (e: any) => { scrollY.value = e.contentOffset.y; },
   });
-  return <View style={[styles.container, {
-    backgroundColor: theme.colors.background
-  }]}>
-    <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
-    <StaffHeader title="Staff Portal" subtitle={user?.display_name || 'Teacher'} scrollY={scrollY} />
 
-    <Animated.ScrollView contentContainerStyle={[styles.scrollContent, {
-      paddingTop: 100
-    }]} showsVerticalScrollIndicator={false} onScroll={onScroll} scrollEventThrottle={16}>
-      {/* Header Greeting */}
-      <View style={styles.headerSection}>
-        <Text style={[styles.dateText, {
-          color: theme.colors.textTertiary
-        }]}>
-          {getTodayDate()}
-        </Text>
-        <Text style={[styles.greetingText, {
-          color: theme.colors.textStrong
-        }]}>
-          {getGreeting()}, {user?.display_name?.split(' ')[0] || 'Teacher'}
-        </Text>
-      </View>
+  const firstName = user?.display_name?.split(' ')[0] || 'Teacher';
 
-      {/* Alerts Area */}
-      {data?.pendingLeaves ? <Animated.View entering={FadeInDown.delay(100)} style={{
-        marginBottom: Spacing.md
-      }}>
-        <AlertRow icon="time" color={theme.colors.alertIconInfo} title={`${data.pendingLeaves} Leave Requests`} subtitle="Review and approve pending leaves" onPress={() => router.push('/staff/leaves' as any)} theme={theme} />
-      </Animated.View> : null}
-
-      {/* Attendance Widget */}
-      <AttendanceWidget data={data} onPress={() => router.push('/staff/manage-students' as any)} theme={theme} isDark={isDark} loading={loading} />
-
-      {/* Grid Menu */}
-      <Text style={[styles.sectionTitle, {
-        color: theme.colors.textSecondary
-      }]}>
-        Quick Actions
-      </Text>
-
-      <View style={styles.gridContainer}>
-        {menuItems.map((item, index) => <StaffDashboardCard key={index} title={item.title} subtitle={item.subtitle} icon={item.icon} gradientColors={item.gradient} onPress={() => router.push(item.route as any)} index={index} badge={item.badge} />)}
-      </View>
-
-      <View style={{
-        height: 100
-      }} />
-    </Animated.ScrollView>
-  </View>;
+  return (
+    <View style={[styles.root, { backgroundColor: t.bg }]}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <BgOrbs isDark={isDark} />
+      <StaffHeader title="Staff Portal" subtitle={user?.display_name || 'Teacher'} scrollY={scrollY} />
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <HeroBanner name={firstName} isDark={isDark} />
+        {!!data?.pendingLeaves && (
+          <LeaveAlert count={data.pendingLeaves} onPress={() => router.push('/staff/leaves' as any)} isDark={isDark} />
+        )}
+        <SectionLabel label="TODAY'S CLASS" isDark={isDark} />
+        <AttendanceHero data={data} onPress={() => router.push('/staff/manage-students' as any)} isDark={isDark} />
+        <SectionLabel label="QUICK ACTIONS" isDark={isDark} />
+        <View style={styles.menuGrid}>
+          {menuItems.map((item, index) => (
+            <MenuCard
+              key={item.configKey}
+              title={item.title}
+              subtitle={item.subtitle}
+              configKey={item.configKey}
+              badge={(item as any).badge}
+              onPress={() => router.push(item.route as any)}
+              index={index}
+              isDark={isDark}
+            />
+          ))}
+        </View>
+        <View style={{ height: 90 }} />
+      </Animated.ScrollView>
+    </View>
+  );
 }
-const getStyles = () => StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  scrollContent: {
-    padding: Spacing.lg
-  },
-  headerSection: {
-    marginBottom: Spacing.lg
-  },
-  dateText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4
-  },
-  greetingText: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: Spacing.md,
-    marginTop: Spacing.xs
-  },
-  // Attendance Widget Styles
-  attendanceCard: {
-    borderRadius: Radii.lg,
+
+// ─── Menu Card Styles (mc) ────────────────────────────────────────────────────
+const mc = StyleSheet.create({
+  // Outer shell
+  card: {
+    borderRadius: 22,
+    overflow: 'hidden',
     borderWidth: 1,
-    overflow: 'hidden'
   },
-  attHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  outerBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
+
+  // ── Gradient Zone ──────────────────────────────────────────────────
+  gradZone: {
+    height: 112,
     alignItems: 'center',
-    padding: Spacing.md
-  },
-  attIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: Radii.sm,
     justifyContent: 'center',
-    alignItems: 'center'
+    overflow: 'hidden',
   },
-  attTitle: {
+  gradZoneVignette: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+  },
+  topGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: 1,
+  },
+
+  // Badge (notification)
+  badgePosition: {
+    position: 'absolute',
+    top: 11,
+    right: 11,
+    zIndex: 20,
+  },
+  badgeOuter: {
+    position: 'relative',
+  },
+  badgePulseDot: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#FF3D5C',
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.3)',
+  },
+  badgeInner: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,80,80,0.40)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  badgeCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.2,
+  },
+
+  // Icon container
+  iconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  iconGlowBlob: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  iconDisc: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Subtle inner shadow effect via overlay
+    shadowColor: 'rgba(0,0,0,0.3)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+  },
+  iconDiscHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.60)',
+    borderRadius: 1,
+  },
+
+  // ── Accent Divider ─────────────────────────────────────────────────
+  accentDivider: {
+    height: 2.5,
+  },
+
+  // ── Text Zone ──────────────────────────────────────────────────────
+  textZone: {
+    paddingTop: 12,
+    paddingHorizontal: 13,
+    paddingBottom: 13,
+    minHeight: 86,
+    justifyContent: 'space-between',
+  },
+
+  // Category tag: capsule with colored dot
+  categoryTag: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 7,
+  },
+  categoryDot: {
+    width: 4.5,
+    height: 4.5,
+    borderRadius: 2.25,
+    opacity: 0.90,
+  },
+  categoryText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+  },
+
+  // Title + arrow
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  titleText: {
     fontSize: 16,
-    fontWeight: '600'
-  },
-  attMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.sm
-  },
-  metricItem: {
-    alignItems: 'center',
-    flex: 1
-  },
-  metricValue: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: -0.5,
-    marginBottom: 2
+    flex: 1,
+    marginRight: 6,
   },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '500'
-  },
-  verticalDivider: {
-    width: 1,
-    height: 30
-  },
-  attFooter: {
-    flexDirection: 'row',
+  arrowChip: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     alignItems: 'center',
-    padding: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderTopWidth: 1,
-    gap: 6
+    justifyContent: 'center',
   },
-  attStatusText: {
-    fontSize: 13,
-    fontWeight: '600'
+
+  // Subtitle
+  subtitleText: {
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+    marginBottom: 8,
   },
-  // Alert Row
-  alertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: Radii.md,
-    borderWidth: 1
+
+  // Micro accent bar at bottom of text zone
+  microBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2.5,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+    opacity: 0.75,
   },
-  alertTitle: {
-    fontSize: 14,
-    fontWeight: '700'
-  },
-  alertSubtitle: {
-    fontSize: 12,
-    marginTop: 2
-  },
-  // Grid
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between'
-  }
+});
+
+// ─── Shared Styles ────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  scroll: { paddingTop: 108, paddingHorizontal: 20, paddingBottom: 40 },
+  orb: { position: 'absolute' },
+
+  // ── Hero Banner ──────────────────────────────────────────────────────────
+  heroBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, marginTop: 4 },
+  heroBannerLeft: { flex: 1, paddingRight: 16 },
+  dateBadge: { alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20, marginBottom: 10 },
+  dateBadgeText: { fontSize: 11.5, fontWeight: '700', letterSpacing: 0.3 },
+  greetLine: { fontSize: 14, fontWeight: '500', letterSpacing: 0.1, marginBottom: 3 },
+  nameLine: { fontSize: 26, fontWeight: '800', letterSpacing: -0.8, lineHeight: 30 },
+  avatarBubble: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', shadowColor: ACCENT.violet, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.40, shadowRadius: 14, elevation: 10 },
+  avatarInitial: { fontSize: 22, fontWeight: '800', color: '#FFFFFF' },
+
+  // ── Leave Alert ──────────────────────────────────────────────────────────
+  leaveAlert: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1, paddingVertical: 13, paddingHorizontal: 14 },
+  leaveAlertLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  leaveAlertDot: { position: 'absolute', left: -2, top: -2, width: 8, height: 8, borderRadius: 4, backgroundColor: ACCENT.amber },
+  leaveAlertIconBox: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  leaveAlertTitle: { fontSize: 13.5, fontWeight: '700', color: ACCENT.amber },
+  leaveAlertSub: { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  leaveCountBubble: { width: 28, height: 28, borderRadius: 14, backgroundColor: ACCENT.amber, alignItems: 'center', justifyContent: 'center' },
+  leaveCountText: { fontSize: 12, fontWeight: '800', color: '#000' },
+
+  // ── Section Label ────────────────────────────────────────────────────────
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 4 },
+  sectionAccent: { width: 3, height: 14, borderRadius: 2, marginRight: 9 },
+  sectionLabelText: { fontSize: 10, fontWeight: '700', letterSpacing: 2.4 },
+
+  // ── Attendance Hero Card ─────────────────────────────────────────────────
+  heroCard: { borderRadius: 24, borderWidth: 1, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 20, elevation: 6 },
+  cardTopGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 80 },
+  cardShimmerLine: { position: 'absolute', top: 0, left: 30, right: 30, height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
+  heroCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 4 },
+  heroCardTitle: { fontSize: 16, fontWeight: '700', letterSpacing: -0.3 },
+  heroCardSub: { fontSize: 11.5, fontWeight: '500', marginTop: 2 },
+  heroCardChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
+  heroCardChipText: { fontSize: 11, fontWeight: '700' },
+  heroCardBody: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16, gap: 16 },
+  heroCardFooter: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, borderTopWidth: 1, gap: 7 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  heroCardFooterText: { fontSize: 12, fontWeight: '600' },
+  heroCardFooterLink: { fontSize: 12, fontWeight: '700', letterSpacing: -0.2 },
+
+  // ── Arc ──────────────────────────────────────────────────────────────────
+  arcContainer: { width: 164, height: 164, alignItems: 'center', justifyContent: 'center' },
+  arcCenter: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  arcPct: { fontSize: 38, fontWeight: '900', letterSpacing: -2 },
+  arcPctSymbol: { fontSize: 18, fontWeight: '700' },
+  arcLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 1, marginTop: 2 },
+
+  // ── Stat Pill ────────────────────────────────────────────────────────────
+  heroStatCol: { flex: 1, gap: 10 },
+  statPill: { borderRadius: 14, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 14 },
+  statPillVal: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+  statPillLbl: { fontSize: 10, fontWeight: '600', letterSpacing: 0.4, marginTop: 2 },
+
+  // ── Menu Grid ────────────────────────────────────────────────────────────
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: MENU_GAP, marginBottom: 4 },
 });

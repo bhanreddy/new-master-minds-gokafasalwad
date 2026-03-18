@@ -85,7 +85,8 @@ const TimeTableScreen = () => {
   }, []);
 
   const loadTimetable = async () => {
-    if (!user || user.role !== 'student') return;
+    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+    if (!user || roleCode !== 'student') return;
     try {
       const profile = await api.get<any>('/students/profile/me');
       if (profile?.current_enrollment?.class_section_id) {
@@ -100,7 +101,7 @@ const TimeTableScreen = () => {
     }
   };
 
-  useEffect(() => {loadTimetable();}, [user]);
+  useEffect(() => {loadTimetable();}, [user?.userId]);
 
   const onRefresh = () => {setRefreshing(true);loadTimetable();};
 

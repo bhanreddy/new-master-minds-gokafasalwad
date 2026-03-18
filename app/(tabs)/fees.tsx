@@ -38,9 +38,10 @@ export default function FeesScreen() {
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   useEffect(() => {
     loadData();
-  }, [user?.id]);
+  }, [user?.userId]);
   const loadData = async () => {
-    if (!user?.id || user.role !== 'student') return;
+    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+    if (!user?.userId || roleCode !== 'student') return;
     try {
       // Get Student Profile first to get the correct Student ID
       const student = await StudentService.getProfile();

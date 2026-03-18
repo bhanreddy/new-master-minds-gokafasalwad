@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MenuOverlay from './MenuOverlay';
 import { Shadows, Radii, Spacing } from '../theme/themes';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SCHOOL_NAME } from '../constants/school';
 
 interface StudentHeaderProps {
     onMenuPress?: () => void;
@@ -150,9 +151,11 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 </TouchableOpacity>
             )}
 
-            {/* Title - takes remaining space on sub-pages */}
-            {title && (
+            {/* Title - takes remaining space on sub-pages or shows School Name on home */}
+            {title ? (
                 <Animated.Text style={[styles.headerTitle, { flex: 1 }, fontColorStyle]}>{title}</Animated.Text>
+            ) : !showBackButton && (
+                <Animated.Text style={[styles.headerTitle, { flex: 1 }, fontColorStyle]}>{SCHOOL_NAME}</Animated.Text>
             )}
 
             {/* Diary & LMS Tabs - Always show on main screens (no back button, no title) */}

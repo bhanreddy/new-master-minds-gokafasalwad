@@ -124,18 +124,18 @@ export default function AcademicManagement() {
   };
   const renderHeader = () => {
     return <View style={styles.tabContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {(['classes', 'sections', 'years', 'subjects', 'mappings'] as TabType[]).map((tab) => {
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {(['classes', 'sections', 'years', 'subjects', 'mappings'] as TabType[]).map((tab) => {
           return <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[styles.tab, activeTab === tab && styles.activeTab, {
             minWidth: 100
           }]}>
-                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                        </Text>
-                    </TouchableOpacity>;
+            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>;
         })}
-            </ScrollView>
-        </View>;
+      </ScrollView>
+    </View>;
   };
   const handleDelete = async (id: string, name: string) => {
     Alert.alert('Confirm Delete', `Are you sure you want to delete ${activeTab.slice(0, -1)} "${name}"? This action cannot be undone and will fail if there are linked dependencies.`, [{
@@ -146,11 +146,16 @@ export default function AcademicManagement() {
       style: 'destructive',
       onPress: async () => {
         try {
-          if (activeTab === 'classes') await ClassService.deleteClass(id);else if (activeTab === 'sections') await ClassService.deleteSection(id);else if (activeTab === 'years') await ClassService.deleteAcademicYear(id);else if (activeTab === 'subjects') await ResultService.deleteSubject(id);
+          if (activeTab === 'classes') await ClassService.deleteClass(id);
+          else if (activeTab === 'sections') await ClassService.deleteSection(id);
+          else if (activeTab === 'years') await ClassService.deleteAcademicYear(id);
+          else if (activeTab === 'subjects') await ResultService.deleteSubject(id);
+          else if (activeTab === 'mappings') await ClassService.deleteClassSection(id);
+
           Alert.alert('Deleted', `${activeTab.slice(0, -1)} deleted successfully`);
           fetchData();
         } catch (error: any) {
-
+          Alert.alert('Error', error.message || 'Failed to delete item');
         }
       }
     }]);
@@ -159,18 +164,19 @@ export default function AcademicManagement() {
     item,
     index
 
-  }: {item: any;index: number;}) => {
+  }: { item: any; index: number; }) => {
+    const itemName = item.class_name ? `${item.class_name} - ${item.section_name}` : item.name || item.code;
     return <Animated.View entering={FadeInDown.delay(index * 50)} layout={Layout.springify()} style={styles.itemCard}>
-            <View style={styles.itemInfo}>
-                <Text style={styles.itemTitle}>{item.class_name ? `${item.class_name} - ${item.section_name}` : item.name || item.code}</Text>
-                {item.code && item.name && <Text style={styles.itemSub}>{item.code}</Text>}
-                {activeTab === 'mappings' && <Text style={styles.itemSub}>{item.academic_year}</Text>}
-                {activeTab === 'years' && <Text style={styles.itemSub}>{item.start_date} to {item.end_date}</Text>}
-            </View>
-            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id, item.name || item.code)}>
-                <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-        </Animated.View>;
+      <View style={styles.itemInfo}>
+        <Text style={styles.itemTitle}>{itemName}</Text>
+        {item.code && item.name && <Text style={styles.itemSub}>{item.code}</Text>}
+        {activeTab === 'mappings' && <Text style={styles.itemSub}>{item.academic_year}</Text>}
+        {activeTab === 'years' && <Text style={styles.itemSub}>{item.start_date} to {item.end_date}</Text>}
+      </View>
+      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id, itemName)}>
+        <Ionicons name="trash-outline" size={20} color="#EF4444" />
+      </TouchableOpacity>
+    </Animated.View>;
   };
   const handleOpenModal = () => {
     if (activeTab === 'years' && years.length > 0) {
@@ -202,102 +208,102 @@ export default function AcademicManagement() {
     setModalVisible(true);
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={ADMIN_THEME.colors.primary} />
-            <AdminHeader title="Academic Structure" showBackButton />
-            {renderHeader()}
-            <View style={styles.content}>
-                {loading ? <LogoLoader size={60} color={ADMIN_THEME.colors.primary} style={{
+    <StatusBar barStyle="light-content" backgroundColor={ADMIN_THEME.colors.primary} />
+    <AdminHeader title="Academic Structure" showBackButton />
+    {renderHeader()}
+    <View style={styles.content}>
+      {loading ? <LogoLoader size={60} color={ADMIN_THEME.colors.primary} style={{
         marginTop: 50
       }} /> : <FlatList data={activeTab === 'classes' ? classes : activeTab === 'sections' ? sections : activeTab === 'years' ? years : activeTab === 'subjects' ? subjects : mappings} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={{
         paddingBottom: 100
       }} ListEmptyComponent={<Text style={styles.emptyText}>No {activeTab} found</Text>} />}
-            </View>
-            <TouchableOpacity style={styles.fab} onPress={handleOpenModal}>
-                <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.fabGradient}>
-                    <Ionicons name="add" size={30} color="#fff" />
-                </LinearGradient>
-            </TouchableOpacity>
-            <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Add New {activeTab.slice(0, -1)}</Text>
-                        {activeTab !== 'years' && activeTab !== 'mappings' && <TextInput style={styles.input} placeholder="Name (e.g. Class 10)" value={newItemName} onChangeText={setNewItemName} />}
-                        {activeTab !== 'mappings' && <TextInput style={styles.input} placeholder={activeTab === 'years' ? "Code (e.g. 2023-24)" : "Code (optional)"} value={newItemCode} onChangeText={setNewItemCode} />}
-                        {activeTab === 'years' && <>
-                                <TextInput style={styles.input} placeholder="Start Date (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
-                                <TextInput style={styles.input} placeholder="End Date (YYYY-MM-DD)" value={endDate} onChangeText={setEndDate} />
-                            </>}
-                        {activeTab === 'mappings' && <>
-                                <Text style={{
+    </View>
+    <TouchableOpacity style={styles.fab} onPress={handleOpenModal}>
+      <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.fabGradient}>
+        <Ionicons name="add" size={30} color="#fff" />
+      </LinearGradient>
+    </TouchableOpacity>
+    <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Add New {activeTab.slice(0, -1)}</Text>
+          {activeTab !== 'years' && activeTab !== 'mappings' && <TextInput style={styles.input} placeholder="Name (e.g. Class 10)" value={newItemName} onChangeText={setNewItemName} />}
+          {activeTab !== 'mappings' && <TextInput style={styles.input} placeholder={activeTab === 'years' ? "Code (e.g. 2023-24)" : "Code (optional)"} value={newItemCode} onChangeText={setNewItemCode} />}
+          {activeTab === 'years' && <>
+            <TextInput style={styles.input} placeholder="Start Date (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
+            <TextInput style={styles.input} placeholder="End Date (YYYY-MM-DD)" value={endDate} onChangeText={setEndDate} />
+          </>}
+          {activeTab === 'mappings' && <>
+            <Text style={{
               fontWeight: 'bold',
               marginBottom: 5
             }}>Class</Text>
-                                <ScrollView horizontal style={{
+            <ScrollView horizontal style={{
               marginBottom: 10
             }}>
-                                    {classes.map((c) => {
+              {classes.map((c) => {
                 return <TouchableOpacity key={c.id} onPress={() => setSelClassId(c.id)} style={[styles.tab, {
                   backgroundColor: selClassId === c.id ? '#6366F1' : '#ddd',
                   paddingHorizontal: 10,
                   marginRight: 5
                 }]}>
-                                            <Text style={{
+                  <Text style={{
                     color: selClassId === c.id ? '#fff' : '#000'
                   }}>{c.name}</Text>
-                                        </TouchableOpacity>;
+                </TouchableOpacity>;
               })}
-                                </ScrollView>
-                                <Text style={{
+            </ScrollView>
+            <Text style={{
               fontWeight: 'bold',
               marginBottom: 5
             }}>Section</Text>
-                                <ScrollView horizontal style={{
+            <ScrollView horizontal style={{
               marginBottom: 10
             }}>
-                                    {sections.map((s) => {
+              {sections.map((s) => {
                 return <TouchableOpacity key={s.id} onPress={() => setSelSectionId(s.id)} style={[styles.tab, {
                   backgroundColor: selSectionId === s.id ? '#6366F1' : '#ddd',
                   paddingHorizontal: 10,
                   marginRight: 5
                 }]}>
-                                            <Text style={{
+                  <Text style={{
                     color: selSectionId === s.id ? '#fff' : '#000'
                   }}>{s.name}</Text>
-                                        </TouchableOpacity>;
+                </TouchableOpacity>;
               })}
-                                </ScrollView>
-                                <Text style={{
+            </ScrollView>
+            <Text style={{
               fontWeight: 'bold',
               marginBottom: 5
             }}>Academic Year</Text>
-                                <ScrollView horizontal style={{
+            <ScrollView horizontal style={{
               marginBottom: 10
             }}>
-                                    {years.map((y) => {
+              {years.map((y) => {
                 return <TouchableOpacity key={y.id} onPress={() => setSelYearId(y.id)} style={[styles.tab, {
                   backgroundColor: selYearId === y.id ? '#6366F1' : '#ddd',
                   paddingHorizontal: 10,
                   marginRight: 5
                 }]}>
-                                            <Text style={{
+                  <Text style={{
                     color: selYearId === y.id ? '#fff' : '#000'
                   }}>{y.code}</Text>
-                                        </TouchableOpacity>;
+                </TouchableOpacity>;
               })}
-                                </ScrollView>
-                            </>}
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)}>
-                                <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleAdd}>
-                                <Text style={styles.saveButtonText}>Save</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-        </View>;
+            </ScrollView>
+          </>}
+          <View style={styles.modalButtons}>
+            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleAdd}>
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {

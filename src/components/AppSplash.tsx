@@ -22,12 +22,20 @@ export default function AppSplash({ onFinish }: AppSplashProps) {
                 toValue: 0,
                 duration: 400,
                 useNativeDriver: true,
-            }).start(({ finished }) => {
-                if (finished) onFinish();
+            }).start(() => {
+                // Ignore the `finished` boolean because on Android emulators 
+                // with animations disabled, this can unexpectedly block completion.
+                onFinish();
             });
-        }, 2000);
+        }, 1500);
 
-        return () => clearTimeout(timer);
+        // Fallback: forcefully finish if animations hang
+        const safetyTimer = setTimeout(() => onFinish(), 2500);
+
+        return () => {
+             clearTimeout(timer);
+             clearTimeout(safetyTimer);
+        };
     }, []);
 
     return (

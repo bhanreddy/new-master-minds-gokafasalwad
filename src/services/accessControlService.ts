@@ -67,16 +67,21 @@ export const AccessControlService = {
 
         if (!requests || requests.length === 0) return [];
 
-        // 2. Fetch user details to join manually (to avoid foreign key setup issues)
+        // 2. Fetch user details — display_name is on persons, not users
         const userIds = requests.map(r => r.requested_by);
         const { data: usersData, error: usersError } = await supabase
             .from('users')
-            .select('id, display_name, email')
+            .select('id, person_id, persons!inner(display_name)')
             .in('id', userIds);
 
         const userMap: Record<string, any> = {};
         if (!usersError && usersData) {
-            usersData.forEach(u => { userMap[u.id] = u; });
+            usersData.forEach((u: any) => {
+                userMap[u.id] = {
+                    id: u.id,
+                    display_name: u.persons?.display_name || 'Unknown User',
+                };
+            });
         }
 
         // 3. Map the data
@@ -107,6 +112,7 @@ export const AccessControlService = {
         const { error: grantError } = await supabase
             .from('temp_access_grants')
             .insert({
+                school_id: request.school_id,
                 department: request.department,
                 granted_by: adminId,
                 requested_by: request.requested_by,

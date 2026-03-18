@@ -53,7 +53,8 @@ export function useBiometric() {
     if (!user) return;
 
     // Role guard
-    if (!BiometricService.isEligibleRole(user.role)) {
+    const roleCode = typeof user.role === 'object' && user.role !== null ? (user.role as any).code : user.role;
+    if (!BiometricService.isEligibleRole(roleCode)) {
       Alert.alert('Not Available', 'Biometric login is only available for staff and admin accounts.');
       return;
     }
@@ -99,7 +100,7 @@ export function useBiometric() {
         // 3. Store session securely
         await BiometricService.storeBiometricSession(
           session.refresh_token,
-          user.id
+          user.userId
         );
 
         setIsBiometricEnabled(true);

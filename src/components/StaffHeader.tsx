@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import MenuOverlay from './MenuOverlay';
 import { SCHOOL_CONFIG } from '../constants/schoolConfig';
+import { SCHOOL_NAME } from '../constants/school';
 import { useTheme } from '../hooks/useTheme';
 import { Spacing, Radii } from '../theme/themes';
 
@@ -20,16 +21,18 @@ interface StaffHeaderProps {
     showProfileButton?: boolean;
     showBackButton?: boolean;
     onMenuPress?: () => void;
+    onBack?: () => void;
     scrollY?: SharedValue<number>;
 }
 
 const StaffHeader: React.FC<StaffHeaderProps> = ({
-    title = SCHOOL_CONFIG.name,
+    title = SCHOOL_NAME,
     subtitle,
     showMenuButton = true,
     showProfileButton = true,
     showBackButton = false,
     onMenuPress,
+    onBack,
     scrollY
 }) => {
     const router = useRouter();
@@ -95,7 +98,7 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
                 <View style={styles.leftSection}>
                     {showBackButton ? (
                         <TouchableOpacity
-                            onPress={() => router.canGoBack() ? router.back() : router.push('/staff/dashboard' as any)}
+                            onPress={() => onBack ? onBack() : (router.canGoBack() ? router.back() : router.push('/staff/dashboard' as any))}
                             style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }]}
                         >
                             <Ionicons name="arrow-back" size={20} color={theme.colors.textStrong} />

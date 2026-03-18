@@ -10,8 +10,9 @@ import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
 import { Alert } from 'react-native';
-import AuthService from '@/src/services/authService';
+import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
+import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
 
@@ -27,13 +28,13 @@ const DriverLoginScreen: React.FC = () => {
   const [error, setError] = useState(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
 
   if (authLoading || user) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-                <LogoLoader size={60} color={DRIVER_ACCENT} />
-            </SafeAreaView>);
+        <LogoLoader size={60} color={DRIVER_ACCENT} />
+      </SafeAreaView>);
 
   }
 
@@ -45,16 +46,22 @@ const DriverLoginScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await AuthService.login(email, password);
-      const role = response.user.role;
+      const response = await signIn(email, password);
+
+      if (response.error || !response.session) {
+        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        return;
+      }
+
+      const role = response.session.validatedUser.role.code;
       if (role === 'driver') {
-        if (__DEV__) {}
+        if (__DEV__) { }
       } else {
         Alert.alert('Access Denied', 'You do not have driver privileges.');
-        await AuthService.logout();
+        await AuthService.signOut();
       }
     } catch (error: any) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       Alert.alert('Login Failed', error.message || 'Invalid credentials');
     } finally {
       setLoading(false);
@@ -63,69 +70,69 @@ const DriverLoginScreen: React.FC = () => {
 
   return (
     <View style={styles.root}>
-            <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
-                    {/* Unified Premium Header */}
-                    <AuthHeader
-            title={t('driverPortal') || "Driver Portal"}
-            subtitle={t('liveTrackingTripManagement') || "Live tracking & trip management"}
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
+          {/* Unified Premium Header */}
+          <AuthHeader
+            title={SCHOOL_NAME}
+            subtitle={`${t('driverPortal') || "Driver Portal"} • ${t('liveTrackingTripManagement') || "Live tracking & trip management"}`}
             glowColor="rgba(236,72,153,0.15)" // #EC4899 Pink Glow
           />
-                    {/* Overlapping Form Body */}
-                    <View style={styles.bodyContainer}>
-                        <View style={styles.overlapSection}>
-                            <Animated.View entering={FadeInDown.delay(200).duration(600).springify()} style={styles.formCard}>
-                                <Text style={styles.welcomeBackText}>{t('welcomeBack')}</Text>
-                                <Text style={styles.subtitleText}>{t('signInToContinue')}</Text>
-                                <View style={styles.inputWrapper}>
-                                    <AnimatedInput
+          {/* Overlapping Form Body */}
+          <View style={styles.bodyContainer}>
+            <View style={styles.overlapSection}>
+              <Animated.View entering={FadeInDown.delay(200).duration(600).springify()} style={styles.formCard}>
+                <Text style={styles.welcomeBackText}>{t('welcomeBack')}</Text>
+                <Text style={styles.subtitleText}>{t('signInToContinue')}</Text>
+                <View style={styles.inputWrapper}>
+                  <AnimatedInput
                     icon={({ color }) => <MaterialIcons name="directions-bus" size={18} color={color} style={styles.inputIcon} />}
                     placeholder={t('emailAddress') || "Driver Email"}
                     value={email}
-                    onChangeText={(text) => {setEmail(text);setError(false);}}
+                    onChangeText={(text) => { setEmail(text); setError(false); }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     error={error && !email}
                     accentColor={DRIVER_ACCENT} />
 
-                                </View>
-                                <View style={styles.inputWrapper}>
-                                    <AnimatedInput
+                </View>
+                <View style={styles.inputWrapper}>
+                  <AnimatedInput
                     icon={({ color }) => <Ionicons name="lock-closed-outline" size={20} color={color} style={styles.inputIcon} />}
                     placeholder={t('login.enter_pass')}
                     value={password}
-                    onChangeText={(text) => {setPassword(text);setError(false);}}
+                    onChangeText={(text) => { setPassword(text); setError(false); }}
                     secureTextEntry={!showPassword}
                     error={error && !password}
                     accentColor={DRIVER_ACCENT}
                     rightAccessory={
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                                                <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#94A3B8" />
-                                            </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                        <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#94A3B8" />
+                      </TouchableOpacity>
                     } />
 
-                                </View>
-                                <Animated.View entering={FadeInDown.delay(300).duration(600)}>
-                                    <TouchableOpacity style={styles.forgotPasswordContainer} onPress={() => router.push('/forgot-password')}>
-                                        <Text style={styles.forgotPasswordText}>{t('login.forgot_pass')}</Text>
-                                    </TouchableOpacity>
-                                </Animated.View>
-                                <Animated.View entering={FadeInUp.delay(400).springify()}>
-                                    <PremiumButton
+                </View>
+                <Animated.View entering={FadeInDown.delay(300).duration(600)}>
+                  <TouchableOpacity style={styles.forgotPasswordContainer} onPress={() => router.push('/forgot-password')}>
+                    <Text style={styles.forgotPasswordText}>{t('login.forgot_pass')}</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+                <Animated.View entering={FadeInUp.delay(400).springify()}>
+                  <PremiumButton
                     title={t('login.login_btn')}
                     onPress={handleLogin}
                     loading={loading}
                     colors={['#F472B6', '#DB2777']} // Pink gradients
                     icon={<Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />} />
 
-                                </Animated.View>
-                            </Animated.View>
-                        </View>
-                    </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </View>);
+                </Animated.View>
+              </Animated.View>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>);
 
 };
 

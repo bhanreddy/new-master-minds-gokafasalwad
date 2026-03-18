@@ -1,10 +1,10 @@
 import React from 'react';
 import { Stack } from 'expo-router';
-import { useRoleGuard } from '../../src/hooks/useRoleGuard';
+import { useRequireRole } from '../../src/hooks/useRequireRole';
 import { ErrorBoundary } from '../../src/components/ErrorBoundary';
 
 export default function AdminLayout() {
-    useRoleGuard(['admin']);
+    useRequireRole('admin', 'principal');
 
     return (
         <ErrorBoundary>

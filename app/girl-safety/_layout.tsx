@@ -1,8 +1,11 @@
 import { Stack } from 'expo-router';
 import React from 'react';
 import { ErrorBoundary } from '../../src/components/ErrorBoundary';
+import { useRequireRole } from '../../src/hooks/useRequireRole';
 
 export default function GirlSafetyLayout() {
+    useRequireRole('admin', 'staff', 'student', 'principal');
+
     return (
         <ErrorBoundary>
             <Stack screenOptions={{ headerShown: true }}>

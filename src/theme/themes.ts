@@ -150,6 +150,7 @@ export const CardGradients = {
     blue: ['#2563EB', '#3B82F6'] as [string, string],
     emerald: ['#059669', '#10B981'] as [string, string],
     amber: ['#D97706', '#F59E0B'] as [string, string],
+    orange: ['#EA580C', '#F97316'] as [string, string],
     rose: ['#DC2626', '#EF4444'] as [string, string],
     purple: ['#7C3AED', '#8B5CF6'] as [string, string],
     pink: ['#DB2777', '#EC4899'] as [string, string],

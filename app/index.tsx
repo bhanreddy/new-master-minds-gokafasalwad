@@ -1,4 +1,4 @@
-import React, { useEffect, useContext, useRef } from 'react';
+import React, { useEffect, useContext, useRef, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import LogoLoader from '../src/components/LogoLoader';
@@ -21,42 +21,71 @@ export default function AnimatedSplash() {
   const { theme, isDark } = useContext(ThemeContext);
   const { user, loading } = useAuth();
 
-  // We want the splash to wait exactly 4.2 seconds from mount.
+  // --- Refs to hold the latest values so timer callbacks never see stale data ---
+  const loadingRef = useRef(loading);
+  const userRef = useRef(user);
+  loadingRef.current = loading;
+  userRef.current = user;
+
   const isTimeUp = useRef(false);
   const hasNavigated = useRef(false);
 
-  // Re-check conditions whenever auth changes or time is up
-  const attemptNavigation = () => {
-    if (isTimeUp.current && !loading && !hasNavigated.current) {
-      hasNavigated.current = true;
-      if (user) {
-        // Also observe profiles as AuthGuard does
-        if (user.role === 'student' && user.has_student_profile === false) {
-          router.replace('/no-profile');
-        } else if ((user.role === 'staff' || user.role === 'teacher') && user.has_staff_profile === false) {
-          router.replace('/no-profile');
-        } else {
-          router.replace(getHomeRoute(user.role));
-        }
-      } else {
-        router.replace('/welcome');
-      }
-    }
-  };
+  // Navigate based on latest auth state (reads refs, never stale)
+  const doNavigate = useCallback(() => {
+    if (hasNavigated.current) return;
+    hasNavigated.current = true;
 
+    const currentUser = userRef.current;
+    if (currentUser) {
+      const roleCode =
+        typeof currentUser?.role === 'object' && currentUser?.role !== null
+          ? (currentUser.role as any).code
+          : currentUser?.role;
+
+      if (roleCode === 'student' && currentUser.has_student_profile === false) {
+        router.replace('/no-profile');
+      } else if ((roleCode === 'staff' || roleCode === 'teacher') && currentUser.has_staff_profile === false) {
+        router.replace('/no-profile');
+      } else {
+        router.replace(getHomeRoute(roleCode));
+      }
+    } else {
+      router.replace('/welcome');
+    }
+  }, [router]);
+
+  // Attempt navigation only when both conditions are met
+  const attemptNavigation = useCallback(() => {
+    if (isTimeUp.current && !loadingRef.current && !hasNavigated.current) {
+      doNavigate();
+    }
+  }, [doNavigate]);
+
+  // Timer: after 2.5s of animation, mark time as up
   useEffect(() => {
-    // Play the animation 2-3 loops (around 4.2 seconds matches previous overlay)
     const timer = setTimeout(() => {
       isTimeUp.current = true;
       attemptNavigation();
-    }, 4200);
+    }, 2500);
 
-    return () => clearTimeout(timer);
-  }, []);
+    // Hard safety timeout: force-navigate if nothing else worked after 8s
+    const safetyTimer = setTimeout(() => {
+      if (!hasNavigated.current) {
+        if (__DEV__) console.warn('[AnimatedSplash] Safety timeout — forcing navigation');
+        doNavigate();
+      }
+    }, 8000);
 
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(safetyTimer);
+    };
+  }, [attemptNavigation, doNavigate]);
+
+  // Re-check whenever auth state changes
   useEffect(() => {
     attemptNavigation();
-  }, [loading, user]);
+  }, [loading, user?.userId, attemptNavigation]);
 
   return (
     <View

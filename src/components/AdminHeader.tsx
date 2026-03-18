@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { ADMIN_THEME } from '../constants/adminTheme';
 import { SCHOOL_CONFIG } from '../constants/schoolConfig';
+import { SCHOOL_NAME } from '../constants/school';
 
 import Animated, { SharedValue, useAnimatedStyle, interpolateColor, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,18 +21,20 @@ interface AdminHeaderProps {
         onPress: () => void;
     };
     scrollY?: SharedValue<number>;
+    onMenuPress?: () => void;
 }
 
 import { useAuth } from '../hooks/useAuth';
 
 const AdminHeader: React.FC<AdminHeaderProps> = ({
-    title = SCHOOL_CONFIG.name,
+    title = SCHOOL_NAME,
     showMenuButton = true,
     showProfileButton = true,
     showBackButton = false,
     showNotification = false,
     rightAction,
-    scrollY
+    scrollY,
+    onMenuPress
 }) => {
     const router = useRouter();
     const { user } = useAuth();
@@ -41,17 +44,19 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
         if (router.canGoBack()) {
             router.back();
         } else {
+            const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
             // Fallback based on role
-            if (user?.role === 'accountant') router.push('/accounts/dashboard');
+            if (roleCode === 'accountant') router.push('/accounts/dashboard');
             else router.push('/admin/dashboard');
         }
     };
 
     const handleSettings = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (user?.role === 'accountant') {
+        const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+        if (roleCode === 'accountant') {
             router.push('/accounts/settings');
-        } else if (user?.role === 'staff' || user?.role === 'teacher') {
+        } else if (roleCode === 'staff' || roleCode === 'teacher') {
             router.push('/staff/dashboard');
         } else {
             router.push('/admin/settings');
@@ -113,6 +118,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                             <TouchableOpacity
                                 onPress={() => {
                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    if (onMenuPress) onMenuPress();
                                 }}
                                 style={styles.iconButton}
                                 activeOpacity={0.7}

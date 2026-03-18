@@ -1,5 +1,8 @@
 import { api } from './apiClient';
 import { Notice, NoticeAudience, Complaint } from '../types/models';
+import { StorageService } from './storageService';
+import { supabase } from './supabaseConfig';
+
 export { Notice, NoticeAudience, Complaint };
 
 // ============================================================================
@@ -59,7 +62,28 @@ export interface CreateNoticeRequest {
 
 export const NoticeService = {
     getAll: async (params?: { audience?: NoticeAudience }): Promise<Notice[]> => {
-        return api.get<Notice[]>('/notices', params);
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        const cacheKey = `notices_${params?.audience || 'all'}`;
+
+        // 1. Return cached data immediately if available (Offline-First)
+        if (userId) {
+            const cached = await StorageService.get<Notice>(userId, cacheKey);
+            if (cached && cached.data) {
+                // Kick off background fetch to sync data silently
+                api.get<Notice[]>('/notices', params).then(freshData => {
+                    StorageService.set<Notice>(userId, cacheKey, freshData);
+                }).catch(() => { });
+                return cached.data;
+            }
+        }
+
+        // 2. Fetch fresh if no cache
+        const freshData = await api.get<Notice[]>('/notices', params);
+        if (userId) {
+            await StorageService.set<Notice>(userId, cacheKey, freshData);
+        }
+        return freshData;
     },
 
     getById: async (id: string): Promise<Notice> => {

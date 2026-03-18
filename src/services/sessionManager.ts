@@ -1,6 +1,7 @@
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { supabase } from './supabaseConfig';
 import { AppState, AppStateStatus } from 'react-native';
+import { SessionPolicy } from './sessionPolicyService';
 
 /**
  * SessionManager — Network-aware session refresh engine.
@@ -22,30 +23,30 @@ const PROACTIVE_REFRESH_MS = 5 * 60 * 1000; // 5 minutes before expiry
 // ─── Error Classification ────────────────────────────────────────────
 // These errors indicate the refresh token is permanently invalid
 const FATAL_AUTH_ERRORS = [
-'invalid_grant',
-'Invalid Refresh Token',
-'invalid refresh token',
-'Refresh Token Not Found',
-'refresh_token_not_found',
-'User not found',
-'user_not_found',
-'session_not_found'];
+  'invalid_grant',
+  'Invalid Refresh Token',
+  'invalid refresh token',
+  'Refresh Token Not Found',
+  'refresh_token_not_found',
+  'User not found',
+  'user_not_found',
+  'session_not_found'];
 
 // These errors indicate a network/server issue that should be retried
 const TRANSIENT_ERROR_PATTERNS = [
-'network',
-'Network',
-'NETWORK',
-'fetch',
-'timeout',
-'Timeout',
-'ECONNREFUSED',
-'ENOTFOUND',
-'socket',
-'abort',
-'Failed to fetch',
-'Network request failed',
-'ERR_NETWORK'];
+  'network',
+  'Network',
+  'NETWORK',
+  'fetch',
+  'timeout',
+  'Timeout',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'socket',
+  'abort',
+  'Failed to fetch',
+  'Network request failed',
+  'ERR_NETWORK'];
 
 /**
  * Classify an error as fatal (logout) or transient (retry).
@@ -113,18 +114,18 @@ class SessionManagerClass {
     this.isMonitoring = true;
     this.retryCount = 0;
 
-    if (__DEV__) {}
+    if (__DEV__) { }
 
     // 1. Monitor network state
     this.netInfoUnsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       const wasOffline = !this.isOnline;
       this.isOnline = state.isConnected === true && state.isInternetReachable !== false;
 
-      if (__DEV__) {}
+      if (__DEV__) { }
 
       // When coming back online, attempt a refresh immediately
       if (wasOffline && this.isOnline) {
-        if (__DEV__) {}
+        if (__DEV__) { }
         this.retryCount = 0; // Reset retry counter on network restore
         this.failedRefreshCount = 0; // Reset fatal error counter
         this.attemptRefresh();
@@ -134,7 +135,7 @@ class SessionManagerClass {
     // 2. Monitor app state for foreground/background transitions
     this.appStateSubscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        if (__DEV__) {}
+        if (__DEV__) { }
         this.attemptRefresh();
       }
     });
@@ -147,7 +148,7 @@ class SessionManagerClass {
    * Stop all monitoring. Call on logout.
    */
   stopMonitoring(): void {
-    if (__DEV__) {}
+    if (__DEV__) { }
 
     this.isMonitoring = false;
     this.retryCount = 0;
@@ -186,28 +187,28 @@ class SessionManagerClass {
     // Debounce: don't refresh more than once per 5 seconds
     const now = Date.now();
     if (now - this.lastRefreshAttempt < 5000) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       return false;
     }
     this.lastRefreshAttempt = now;
 
     // If offline, don't even try — just stay quiet
     if (!this.isOnline) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       return false;
     }
 
     try {
-      if (__DEV__) {}
+      if (__DEV__) { }
 
       const { data, error } = await supabase.auth.refreshSession();
 
       if (error) {
-        return this.handleRefreshError(error);
+        return await this.handleRefreshError(error);
       }
 
       if (data?.session) {
-        if (__DEV__) {}
+        if (__DEV__) { }
         this.retryCount = 0; // Reset on success
         this.failedRefreshCount = 0;
         this.scheduleProactiveRefresh();
@@ -215,48 +216,72 @@ class SessionManagerClass {
       }
 
       // No error but no session — shouldn't happen, treat as transient
-      if (__DEV__) {}
+      if (__DEV__) { }
       this.scheduleRetry();
       return false;
 
     } catch (error: any) {
-      return this.handleRefreshError(error);
+      return await this.handleRefreshError(error);
     }
   }
 
   /**
    * Handle a refresh error: classify and either retry or logout.
    */
-  private handleRefreshError(error: any): boolean {
-    if (__DEV__) {}
+  private async handleRefreshError(error: any): Promise<boolean> {
+    if (__DEV__) { }
 
-    // FATAL: Token is permanently invalid → must logout
+    // Store role to handle specific fallbacks
+    const role = await SessionPolicy.getStoredRole();
+    const isStudent = role === 'student';
+
+    // FATAL: Token is permanently invalid
     if (isFatalAuthError(error)) {
-      // Fault Tolerance: Allow 1 retry for "fatal" errors in case it was a network glitch misclassified by Supabase
-      if (this.failedRefreshCount < 1) {
-        this.failedRefreshCount++;
+      if (isStudent) {
+        if (this.failedRefreshCount < 5) {
+          this.failedRefreshCount++;
+          const backoff = 2000 * Math.pow(2, this.failedRefreshCount - 1);
+          if (__DEV__) console.log(`[SessionManager] Student refresh failed. Retrying in ${backoff}ms...`);
 
-        this.scheduleRetry();
+          if (this.retryTimer) clearTimeout(this.retryTimer);
+          this.retryTimer = setTimeout(() => this.attemptRefresh(), backoff);
+          return false;
+        } else if (this.failedRefreshCount === 5) {
+          // One final 5-minute grace retry
+          this.failedRefreshCount++;
+          if (__DEV__) console.log(`[SessionManager] Student refresh failed 5 times. 5 MINUTE GRACE retry initiated.`);
+
+          if (this.retryTimer) clearTimeout(this.retryTimer);
+          this.retryTimer = setTimeout(() => this.attemptRefresh(), 5 * 60 * 1000); // 5 mins
+          return false;
+        } else {
+          // Retries exhausted
+          if (this.logoutCallback) {
+            this.logoutCallback("We couldn't reconnect your session. Please login again.");
+          }
+          this.stopMonitoring();
+          return false;
+        }
+      } else {
+        // Non-students get immediate eviction on fatal token errors to respect Sunday/Access rules
+        if (this.logoutCallback) {
+          this.logoutCallback(error?.message || 'Session expired. Please log in again.');
+        }
+        this.stopMonitoring();
         return false;
       }
-
-      if (this.logoutCallback) {
-        this.logoutCallback(error?.message || 'Session expired');
-      }
-      this.stopMonitoring();
-      return false;
     }
 
     // TRANSIENT: Network or server issue → retry with backoff
     if (isTransientError(error) || !this.isOnline) {
       this.failedRefreshCount = 0; // Reset fatal count on clear transient error
-      if (__DEV__) {}
+      if (__DEV__) { }
       this.scheduleRetry();
       return false;
     }
 
     // UNKNOWN: Default to retry (never logout on ambiguous errors)
-    if (__DEV__) {}
+    if (__DEV__) { }
     this.scheduleRetry();
     return false;
   }
@@ -268,7 +293,7 @@ class SessionManagerClass {
     if (!this.isMonitoring) return;
 
     if (this.retryCount >= MAX_RETRY_ATTEMPTS) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       // Don't logout! Just wait for network to come back (netinfo listener will trigger refresh)
       this.retryCount = 0;
       return;
@@ -280,7 +305,7 @@ class SessionManagerClass {
     );
     this.retryCount++;
 
-    if (__DEV__) {}
+    if (__DEV__) { }
 
     if (this.retryTimer) clearTimeout(this.retryTimer);
 
@@ -309,19 +334,19 @@ class SessionManagerClass {
       const delay = refreshAt - Date.now();
 
       if (delay > 0) {
-        if (__DEV__) {}
+        if (__DEV__) { }
 
         this.proactiveRefreshTimer = setTimeout(() => {
-          if (__DEV__) {}
+          if (__DEV__) { }
           this.attemptRefresh();
         }, delay);
       } else {
         // Token already about to expire or expired — refresh now
-        if (__DEV__) {}
+        if (__DEV__) { }
         this.attemptRefresh();
       }
     } catch (error) {
-      if (__DEV__) {}
+      if (__DEV__) { }
     }
   }
 
@@ -338,7 +363,7 @@ class SessionManagerClass {
    * Used by useAuth.tsx for foreground recovery.
    */
   async forceRecoverSession(): Promise<boolean> {
-    if (__DEV__) {}
+    if (__DEV__) { }
     this.retryCount = 0;
     this.failedRefreshCount = 0;
     return this.attemptRefresh();

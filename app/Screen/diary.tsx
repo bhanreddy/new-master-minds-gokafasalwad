@@ -125,7 +125,7 @@ export default function DiaryScreen() {
   const [syncing, setSyncing] = useState(false);
   useEffect(() => {
     triggerSync();
-  }, [user]);
+  }, [user?.userId]);
   const triggerSync = async () => {
     if (!user) {
       try {
@@ -142,7 +142,7 @@ export default function DiaryScreen() {
     try {
       await api.post('/log', {
         msg: 'Diary: triggerSync',
-        userId: user.id,
+        userId: user.userId,
         classId: (user as any).classId
       }, {
         silent: true

@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useAuth } from '../../src/hooks/useAuth';
-import { StudentService } from '../../src/services/studentService';
+import { SyncService } from '../../src/services/syncService';
 import { AttendanceRecord, AttendanceSummary } from '../../src/types/models';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
@@ -69,14 +69,16 @@ export default function AttendanceScreen() {
     total: 0
   });
   useEffect(() => {
-    loadAttendance();
-  }, [user]);
-  const loadAttendance = async () => {
+    loadAttendance(false);
+  }, [user?.userId]);
+  const loadAttendance = async (forceRefetch = false) => {
     if (!user) return;
     try {
-      const data = await StudentService.getAttendance(user.id || '');
-      setRecords(data.records);
-      setStats(data.summary);
+      const data = await SyncService.syncAttendance(user.userId || '', undefined, forceRefetch);
+      if (data) {
+        setRecords(data.records);
+        setStats(data.summary);
+      }
     } catch (error) {
 
     } finally {
@@ -87,13 +89,13 @@ export default function AttendanceScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    loadAttendance();
+    loadAttendance(true);
   };
   const renderItem = React.useCallback(({
     item,
     index
 
-  }: {item: AttendanceRecord;index: number;}) => {
+  }: { item: AttendanceRecord; index: number; }) => {
     const color = getStatusColor(item.status);
     const dateObj = new Date(item.attendance_date);
     const day = dateObj.toLocaleDateString('en-US', {
@@ -101,84 +103,84 @@ export default function AttendanceScreen() {
     });
     const dayNum = dateObj.getDate();
     return <Animated.View entering={FadeInDown.delay(index * 50).duration(500)} // Faster delay
-    style={styles.card}>
-                {/* Date Side - Left */}
-                <View style={[styles.dateBox, {
+      style={styles.card}>
+      {/* Date Side - Left */}
+      <View style={[styles.dateBox, {
         backgroundColor: color + '15'
       }]}>
-                    <Text style={[styles.dayText, {
+        <Text style={[styles.dayText, {
           color: color
         }]}>{day}</Text>
-                    <Text style={[styles.dateText, {
+        <Text style={[styles.dateText, {
           color: color
         }]}>{dayNum}</Text>
-                </View>
-                {/* Status Content - Right */}
-                <View style={styles.cardContent}>
-                    <View>
-                        <Text style={styles.fullDate}>{dateObj.toDateString()}</Text>
-                        <Text style={[styles.statusMain, {
+      </View>
+      {/* Status Content - Right */}
+      <View style={styles.cardContent}>
+        <View>
+          <Text style={styles.fullDate}>{dateObj.toDateString()}</Text>
+          <Text style={[styles.statusMain, {
             color
           }]}>{item.status.toUpperCase()}</Text>
-                    </View>
-                    <Ionicons name={getStatusIcon(item.status)} size={28} color={color} />
-                </View>
-            </Animated.View>;
+        </View>
+        <Ionicons name={getStatusIcon(item.status)} size={28} color={color} />
+      </View>
+    </Animated.View>;
   }, []);
 
   // Calculate percentage safely
   const percentage = stats.total > 0 ? Math.round(stats.present / stats.total * 100) : 0;
   return <ScreenLayout>
-            <StudentHeader showBackButton={true} title={t('attendance_screen.title', 'Attendance')} />
-            <View style={styles.container}>
-                {/* HEADER STATS */}
-                <View style={styles.summaryContainer}>
-                    <LinearGradient colors={['#10b981', '#059669']} start={{
+    <StudentHeader showBackButton={true} title={t('attendance_screen.title', 'Attendance')} />
+    <View style={styles.container}>
+      {/* HEADER STATS */}
+      <View style={styles.summaryContainer}>
+        <LinearGradient colors={['#10b981', '#059669']} start={{
           x: 0,
           y: 0
         }} end={{
           x: 1,
           y: 1
         }} style={styles.summaryCard}>
-                        <View style={{
+          <View style={{
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
             marginBottom: 15
           }}>
-                            <Text style={styles.summaryTitle}>{t('attendance_screen.stats', 'Statistics')}</Text>
-                            <View style={styles.percentBadge}>
-                                <Text style={styles.percentText}>{percentage}%</Text>
-                            </View>
-                        </View>
-                        <View style={styles.statRow}>
-                            <View style={styles.statItem}>
-                                <Text style={styles.statVal}>{stats.present}</Text>
-                                <Text style={styles.statLabel}>{t('attendance_screen.present', 'Present')}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={styles.statItem}>
-                                <Text style={styles.statVal}>{stats.absent}</Text>
-                                <Text style={styles.statLabel}>{t('attendance_screen.absent', 'Absent')}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <View style={styles.statItem}>
-                                <Text style={styles.statVal}>{stats.late}</Text>
-                                <Text style={styles.statLabel}>{t('attendance_screen.late', 'Late')}</Text>
-                            </View>
-                        </View>
-                    </LinearGradient>
-                </View>
-                {/* LIST */}
-                {loading ? <LogoLoader size={60} color="#10B981" style={{
+            <Text style={styles.summaryTitle}>{t('attendance_screen.stats', 'Statistics')}</Text>
+            <View style={styles.percentBadge}>
+              <Text style={styles.percentText}>{percentage}%</Text>
+            </View>
+          </View>
+          <View style={styles.statRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statVal}>{stats.present}</Text>
+              <Text style={styles.statLabel}>{t('attendance_screen.present', 'Present')}</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statVal}>{stats.absent}</Text>
+              <Text style={styles.statLabel}>{t('attendance_screen.absent', 'Absent')}</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statVal}>{stats.late}</Text>
+              <Text style={styles.statLabel}>{t('attendance_screen.late', 'Late')}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+      {/* LIST */}
+      {loading ? <LogoLoader size={60} color="#10B981" style={{
         marginTop: 40
       }} /> : <FlatList data={records} keyExtractor={(item) => item.attendance_date} renderItem={renderItem} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />} ListEmptyComponent={<Text style={{
         textAlign: 'center',
         marginTop: 20,
         color: '#999'
       }}>No attendance records found.</Text>} />}
-            </View>
-        </ScreenLayout>;
+    </View>
+  </ScreenLayout>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {

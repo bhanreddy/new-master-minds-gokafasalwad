@@ -10,9 +10,10 @@ import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
 import { Alert } from 'react-native';
-import AuthService from '@/src/services/authService';
+import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
 import { AccessControlService } from '@/src/services/accessControlService';
+import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
 
@@ -30,7 +31,7 @@ const AccountsLoginScreen: React.FC = () => {
   const [requestingAccess, setRequestingAccess] = useState(false);
   const [restrictedUserId, setRestrictedUserId] = useState<string | null>(null);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
 
   if (authLoading || user) {
     return (
@@ -48,12 +49,16 @@ const AccountsLoginScreen: React.FC = () => {
     }
     setLoading(true);
     try {
-      const { user } = await AuthService.login(email, password);
-      if (user.role === 'accountant') {
+      const response = await signIn(email, password);
+      if (response.error || !response.session) {
+        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        return;
+      }
+      if (response.session.validatedUser.role.code === 'accountant') {
         if (__DEV__) { }
       } else {
         Alert.alert('Unauthorized Access', 'This portal is restricted to Accounts Department personnel only. Your attempt has been logged.', [
-          { text: 'OK', onPress: () => AuthService.logout() }]
+          { text: 'OK', onPress: () => AuthService.signOut() }]
         );
       }
     } catch (error: any) {
@@ -92,8 +97,8 @@ const AccountsLoginScreen: React.FC = () => {
 
           {/* Unified Premium Header */}
           <AuthHeader
-            title={t('login.accounts') || "Accounts Portal"}
-            subtitle="Manage finances, fees, and payroll."
+            title={SCHOOL_NAME}
+            subtitle={`${t('login.accounts') || "Accounts Portal"} • Manage finances, fees, and payroll.`}
             glowColor="rgba(217,119,6,0.15)" // #D97706 Orange/Amber
           />
 

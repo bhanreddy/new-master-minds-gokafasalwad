@@ -27,7 +27,7 @@ export default function DriverPayslip() {
 
   useEffect(() => {
     if (user) {
-      const targetId = user.staff_id || user.id;
+      const targetId = (user as any).staff_id || user.userId;
       StaffService.getPayslips(targetId).
         then((data) => setPayslips(data)).
         catch(() => {
@@ -35,7 +35,7 @@ export default function DriverPayslip() {
         }).
         finally(() => setLoading(false));
     }
-  }, [user]);
+  }, [user?.userId]);
 
   const totalEarnings = React.useMemo(() => {
     if (!payslips.length) return '₹0';

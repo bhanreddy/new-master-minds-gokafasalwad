@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "testapp",
-    "slug": "testapp",
+    "name": "1",
+    "slug": "development school-ims",
     "version": "2.0.0",
     "platforms": [
       "android",
@@ -10,13 +10,13 @@
     ],
     "orientation": "portrait",
     "icon": "./assets/images/icon-v2.png",
-    "scheme": "testapp",
+    "scheme": "schoolims",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "bundleIdentifier": "com.testapp.native",
+      "bundleIdentifier": "com.nexsyrus.development school",
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
@@ -31,7 +31,7 @@
       }
     },
     "android": {
-      "package": "com.testapp.app",
+      "package": "com.nexsyrus.development school",
       "jsEngine": "hermes",
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",

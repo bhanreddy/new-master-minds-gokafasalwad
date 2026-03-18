@@ -30,7 +30,7 @@ export default function ManageUsersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   useEffect(() => {
     loadUsers();
-  }, [activeTab, user]);
+  }, [activeTab, user?.userId]);
   useEffect(() => {
     if (searchQuery) {
       const lowerInfo = searchQuery.toLowerCase();
@@ -43,7 +43,7 @@ export default function ManageUsersScreen() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      if (user) {
+      if (user?.userId) {
         let data = [];
         if (activeTab === 'student') {
           const response = await StudentService.getAll();

@@ -105,7 +105,7 @@ export default function AccountsSettings() {
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { i18n } = useTranslation();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [updating, setUpdating] = useState(false);
   const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
@@ -138,12 +138,12 @@ export default function AccountsSettings() {
 
                         <View style={styles.profileMeta}>
                             <Text style={styles.profileName}>
-                                {user?.display_name || user?.first_name || 'Accountant'}
+                                {user?.displayName || 'Accountant'}
                             </Text>
                             <View style={styles.idBadge}>
                                 <FontAwesome5 name="id-badge" size={9} color="#F59E0B" />
                                 <Text style={styles.idText}>
-                                    {user?.id?.substring(0, 8).toUpperCase() || 'N/A'}
+                                    {user?.userId?.substring(0, 8).toUpperCase() || 'N/A'}
                                 </Text>
                             </View>
                         </View>
@@ -278,7 +278,7 @@ export default function AccountsSettings() {
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Logout', style: 'destructive', onPress: async () => {
-                await logout();
+                await signOut();
                 router.replace('/welcome');
               }
             }]

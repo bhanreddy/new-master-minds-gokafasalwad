@@ -49,7 +49,7 @@ async function storeValue(key: string, value: string): Promise<void> {
       await SecureStore.setItemAsync(key, value);
     }
   } catch (error) {
-    if (__DEV__) {}
+    if (__DEV__) { }
   }
 }
 
@@ -74,7 +74,8 @@ async function removeValue(key: string): Promise<void> {
   } catch {
 
     // Silent fail
-  }}
+  }
+}
 
 // ─── Session Policy Manager ──────────────────────────────────────────
 
@@ -120,14 +121,23 @@ class SessionPolicyServiceClass {
     // No policy data stored → session is valid (first-time or migrating user)
     // Let the authService correct this on next boot by calling startSession
     if (!role || !startedAt) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       return true;
     }
 
     // Students: NEVER force logout by TTL. They live or die by the Supabase refresh token.
     if (role === 'student' || role === 'parent') {
-      if (__DEV__) {}
+      if (__DEV__) { }
       return true;
+    }
+
+    // NON-STUDENTS: Auto-logout on Sunday
+    const isSunday = new Date().getDay() === 0;
+    if (isSunday) {
+      if (__DEV__) {
+        console.log(`[SessionPolicy] Today is Sunday. Auto-logging out non-student role: ${role}`);
+      }
+      return false;
     }
 
     const maxAge = SESSION_MAX_AGE[role] || SESSION_MAX_AGE.staff;
@@ -158,7 +168,7 @@ class SessionPolicyServiceClass {
       const isValid = await this.checkSessionExpiry();
 
       if (!isValid) {
-        if (__DEV__) {}
+        if (__DEV__) { }
         if (this.logoutCallback) {
           this.logoutCallback('Session has expired based on your role policy. Please log in again.');
         }
@@ -166,7 +176,44 @@ class SessionPolicyServiceClass {
       }
     }, POLICY_CHECK_INTERVAL_MS);
 
-    if (__DEV__) {}
+    if (__DEV__) { }
+  }
+
+  private midnightTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Enforce Sunday check up front. Otherwise, allow.
+   * Logs out if today is Sunday and role is not student.
+   */
+  async enforceDayPolicy(): Promise<void> {
+    const role = await getValue(SESSION_ROLE_KEY);
+    if (!role || role === 'student' || role === 'parent') return;
+
+    if (new Date().getDay() === 0) {
+      if (__DEV__) {
+        console.log(`[SessionPolicy] Enforcing Day Policy: Today is Sunday. Auto-logging out non-student role: ${role}`);
+      }
+      if (this.logoutCallback) {
+        this.logoutCallback('Access is not available on Sundays. See you Monday.');
+      }
+    }
+  }
+
+  /**
+   * Schedule a check exactly at midnight to kick active foreground sessions drifting into Sunday.
+   */
+  scheduleMidnightCheck(): void {
+    if (this.midnightTimer) clearTimeout(this.midnightTimer);
+
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const msUntilMidnight = midnight.getTime() - now.getTime();
+
+    this.midnightTimer = setTimeout(async () => {
+      await this.enforceDayPolicy();
+      this.scheduleMidnightCheck();
+    }, msUntilMidnight);
   }
 
   /**
@@ -177,6 +224,10 @@ class SessionPolicyServiceClass {
       clearInterval(this.checkTimer);
       this.checkTimer = null;
     }
+    if (this.midnightTimer) {
+      clearTimeout(this.midnightTimer);
+      this.midnightTimer = null;
+    }
   }
 
   /**
@@ -186,7 +237,7 @@ class SessionPolicyServiceClass {
     this.stopPeriodicCheck();
     await removeValue(SESSION_ROLE_KEY);
     await removeValue(SESSION_STARTED_KEY);
-    if (__DEV__) {}
+    if (__DEV__) { }
   }
 
   /**

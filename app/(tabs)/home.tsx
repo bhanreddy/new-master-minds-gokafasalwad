@@ -79,12 +79,13 @@ const HomeScreen = () => {
   };
 
   const loadData = async () => {
-    if (!user || user.role !== 'student') return;
+    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
+    if (!user || roleCode !== 'student') return;
     try {
       const profileData = await StudentService.getProfile();
       setStudent(profileData);
 
-      const studentId = profileData?.id || user.id;
+      const studentId = profileData?.id || user.userId;
 
       const [noticesData, attendanceData] = await Promise.all([
       NoticeService.getAll({ audience: 'students' }).catch(() => []),
@@ -181,7 +182,7 @@ const HomeScreen = () => {
                 {/* 1. TOP GREETING & HEADER CARD */}
                 <View style={[styles.headerSection, { backgroundColor: '#05050A', paddingTop: Math.max(insets.top, 36) + 60 }]}>
                     <HeaderCard
-            studentName={student?.display_name || user?.display_name || "Student"}
+            studentName={student?.display_name || user?.displayName || "Student"}
             classSec={student?.current_enrollment ? `${student.current_enrollment.class_code} - Sec ${student.current_enrollment.section_name?.replace(/Section\s*/i, '')}` : "Class N/A"}
             rollNo={student?.current_enrollment?.roll_number || "N/A"} />
 

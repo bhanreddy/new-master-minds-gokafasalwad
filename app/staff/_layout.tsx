@@ -2,11 +2,11 @@
 import React from 'react';
 import { MaterialTopTabs } from '../../src/layouts/MaterialTopTabs';
 import StaffFooter from '../../src/components/StaffFooter';
-import { useRoleGuard } from '../../src/hooks/useRoleGuard';
+import { useRequireRole } from '../../src/hooks/useRequireRole';
 import { ErrorBoundary } from '../../src/components/ErrorBoundary';
 
 export default function StaffLayout() {
-    useRoleGuard(['staff', 'teacher']);
+    useRequireRole('staff', 'teacher', 'admin');
 
     return (
         <ErrorBoundary>

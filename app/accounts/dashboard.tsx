@@ -12,11 +12,14 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import AdminHeader from '../../src/components/AdminHeader';
+import DashboardMenuOverlay from '../../src/components/DashboardMenuOverlay';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
 import { FeeService as FeesService } from '../../src/services/feeService';
+import { AnalyticsService, AnalyticsData } from '../../src/services/analyticsService';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
+import { LineChart } from "react-native-gifted-charts";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const AVATAR_PALETTE = ['#818CF8', '#22D3A0', '#F5C842', '#63B3ED', '#F2546A', '#A78BFA', '#34D399'];
@@ -24,7 +27,7 @@ const CARD_H_PAD = 20;
 const GRID_GAP = 14;
 const GRID_COLS = 3;
 const GRID_ITEM_WIDTH =
-  (SCREEN_WIDTH - CARD_H_PAD * 2 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
+  Math.floor((SCREEN_WIDTH - CARD_H_PAD * 2 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS) - 0.5;
 
 // ─── Dot Grid Texture (pure View-based, no SVG needed) ────────────────────────
 const DotGrid = () => {
@@ -50,6 +53,138 @@ const DotGrid = () => {
     }
   }
   return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>{dots}</View>;
+};
+
+// ─── AnalyticsSection ────────────────────────────────────────────────────────
+const AnalyticsSection = ({ data, loading, styles, isDark, t }: any) => {
+  const { theme } = useTheme();
+  
+  if (loading) {
+    return (
+      <View style={styles.analyticsPlaceholder}>
+        <LogoLoader size={24} color="#6366F1" />
+      </View>
+    );
+  }
+
+  if (!data) return null;
+
+  const lineData = data.financials.trend.map((pt: any) => ({
+    value: pt.value,
+    label: pt.label,
+    dataPointText: `₹${(pt.value / 1000).toFixed(0)}k`,
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.analyticsContainer}>
+      <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
+        <View style={styles.sectionTitleRow}>
+          <View style={[styles.sectionAccentBar, { backgroundColor: '#8B5CF6' }]} />
+          <Text style={styles.sectionTitle}>Financial Performance</Text>
+        </View>
+      </View>
+
+      <View style={styles.chartCard}>
+        <View style={styles.chartHeader}>
+          <Text style={styles.chartTitle}>Revenue Trend</Text>
+          <View style={styles.chartBadge}>
+            <Text style={styles.chartBadgeText}>6 Months</Text>
+          </View>
+        </View>
+        
+        <View style={{ marginLeft: -20, marginTop: 10 }}>
+          <LineChart
+            data={lineData}
+            height={140}
+            width={SCREEN_WIDTH - 60}
+            initialSpacing={40}
+            spacing={60}
+            color="#6366F1"
+            thickness={3}
+            hideRules
+            hideYAxisText
+            yAxisColor="transparent"
+            xAxisColor="transparent"
+            dataPointsColor="#6366F1"
+            focusedDataPointColor="#4F46E5"
+            areaChart
+            startFillColor="rgba(99, 102, 241, 0.25)"
+            endFillColor="rgba(99, 102, 241, 0.01)"
+            curved
+            animateOnDataChange
+            animationDuration={1000}
+            onDataChangeAnimationDuration={300}
+          />
+        </View>
+      </View>
+
+      <View style={styles.analyticsStatsRow}>
+        <View style={styles.miniStatCard}>
+          <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+            <Ionicons name="trending-up" size={16} color="#3B82F6" />
+          </View>
+          <View>
+            <Text style={styles.miniStatLabel}>Efficiency</Text>
+            <Text style={styles.miniStatValue}>{data.financials.collection_efficiency}%</Text>
+          </View>
+        </View>
+
+        <View style={styles.miniStatCard}>
+          <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+            <Ionicons name="people" size={16} color="#10B981" />
+          </View>
+          <View>
+            <Text style={styles.miniStatLabel}>Attendance</Text>
+            <Text style={styles.miniStatValue}>{data.attendance.avg_attendance}%</Text>
+          </View>
+        </View>
+
+        <View style={styles.miniStatCard}>
+          <View style={[styles.miniStatIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+            <Ionicons name="school" size={16} color="#F59E0B" />
+          </View>
+          <View>
+            <Text style={styles.miniStatLabel}>Academic</Text>
+            <Text style={styles.miniStatValue}>{data.academics.avg_score}%</Text>
+          </View>
+        </View>
+      </View>
+
+      {data.insights && data.insights.length > 0 && (
+        <View style={styles.insightsWrap}>
+          <View style={[styles.sectionHeader, { marginBottom: 10, marginTop: 10 }]}>
+            <View style={styles.sectionTitleRow}>
+              <View style={[styles.sectionAccentBar, { backgroundColor: '#F59E0B' }]} />
+              <Text style={styles.sectionTitle}>System Insights</Text>
+            </View>
+          </View>
+          {data.insights.slice(0, 2).map((insight: any, idx: number) => (
+            <Animated.View 
+              key={insight.id}
+              entering={FadeInDown.delay(400 + idx * 100)}
+              style={[
+                styles.insightCard, 
+                insight.severity === 'high' && styles.insightCardHigh
+              ]}
+            >
+              <View style={[
+                styles.insightIconWrap,
+                insight.severity === 'high' ? { backgroundColor: 'rgba(239, 68, 68, 0.1)' } : { backgroundColor: 'rgba(99, 102, 241, 0.1)' }
+              ]}>
+                <Ionicons 
+                  name={insight.severity === 'high' ? "flash" : "bulb-outline"} 
+                  size={16} 
+                  color={insight.severity === 'high' ? "#EF4444" : "#6366F1"} 
+                />
+              </View>
+              <Text style={styles.insightText} numberOfLines={2}>{insight.message}</Text>
+              <Ionicons name="chevron-forward" size={14} color={theme.colors.textSecondary} style={{ opacity: 0.5 }} />
+            </Animated.View>
+          ))}
+        </View>
+      )}
+    </Animated.View>
+  );
 };
 
 // ─── GridItem ─────────────────────────────────────────────────────────────────
@@ -151,26 +286,38 @@ export default function AccountsDashboard() {
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
 
   const [loading, setLoading] = useState(true);
-  const [statsData, setStatsData] = useState<any>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const carouselRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { loadData(); }, [user]);
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user]);
 
-  const loadData = async () => {
+  const fetchDashboardData = async () => {
     if (!user) return;
     setLoading(true);
+    setAnalyticsLoading(true);
     try {
-      const data = await FeesService.getDashboardStats();
-      setStatsData({
-        totalCollection: `₹${data.monthly_collection.toLocaleString()}`,
-        todaysCollection: `₹${data.today_collection.toLocaleString()}`,
-        pendingDues: `₹${data.pending_dues.toLocaleString()}`
+      const [statsData, txData] = await Promise.all([
+        FeesService.getDashboardStats(),
+        FeesService.getRecentTransactions(5),
+      ]);
+
+      setStats({
+        totalCollection: `₹${statsData.monthly_collection.toLocaleString()}`,
+        todaysCollection: `₹${statsData.today_collection.toLocaleString()}`,
+        pendingDues: `₹${statsData.pending_dues.toLocaleString()}`
       });
-      const mapped = data.recent_transactions.map((tx: any) => ({
+      const mapped = txData.map((tx: any) => ({
         id: tx.id,
         name: tx.student_name,
         class: tx.class_name || 'N/A',
@@ -180,16 +327,28 @@ export default function AccountsDashboard() {
       }));
       setTransactions(mapped);
     } catch (e) {
+      console.error('Dashboard stats error:', e);
     } finally {
       setLoading(false);
     }
+
+    // Fetch analytics separately so a failure doesn't block the dashboard
+    try {
+      const analyticsData = await AnalyticsService.getAnalytics('month');
+      setAnalytics(analyticsData);
+    } catch (e) {
+      console.error('Analytics error:', e);
+    } finally {
+      setAnalyticsLoading(false);
+    }
   };
+
 
   const carouselCards = useMemo(() => [
     {
       id: 'monthly',
       label: t('accounts_dashboard.total_collection_month'),
-      value: loading ? '—' : statsData?.totalCollection || '₹0',
+      value: loading ? '—' : stats?.totalCollection || '₹0',
       icon: 'wallet',
       grad: ['#1D4ED8', '#3B82F6'] as [string, string],
       showLive: true,
@@ -198,7 +357,7 @@ export default function AccountsDashboard() {
     {
       id: 'today',
       label: t('accounts_dashboard.todays_collection'),
-      value: loading ? '—' : statsData?.todaysCollection || '₹0',
+      value: loading ? '—' : stats?.todaysCollection || '₹0',
       icon: 'wallet',
       grad: ['#059669', '#10B981'] as [string, string],
       showLive: false,
@@ -207,13 +366,13 @@ export default function AccountsDashboard() {
     {
       id: 'pending',
       label: t('accounts_dashboard.pending_dues'),
-      value: loading ? '—' : statsData?.pendingDues || '₹0',
+      value: loading ? '—' : stats?.pendingDues || '₹0',
       icon: 'file-invoice-dollar',
       grad: ['#B91C1C', '#EF4444'] as [string, string],
       showLive: false,
       watermark: 'exclamation-circle',
     },
-  ], [loading, statsData, t]);
+  ], [loading, stats, t]);
 
   const startTimer = () => {
     stopTimer();
@@ -238,21 +397,49 @@ export default function AccountsDashboard() {
   };
 
   const quickActions = [
-    { id: 'collect', title: t('accounts_dashboard.collect_fees', 'Collect Fees'), icon: 'cash', color: ['#10B981', '#059669'] as [string, string], route: '/accounts/fees', library: Ionicons },
-    { id: 'expenses', title: t('accounts_dashboard.expenses', 'Expenses'), icon: 'receipt', color: ['#EF4444', '#B91C1C'] as [string, string], route: '/accounts/expenses', library: Ionicons },
-    { id: 'payroll', title: t('accounts_dashboard.payroll', 'Payroll'), icon: 'people', color: ['#6366F1', '#4338CA'] as [string, string], route: '/accounts/payroll', library: Ionicons },
-    { id: 'defaulters', title: t('accounts_dashboard.defaulters', 'Defaulters'), icon: 'alert-circle', color: ['#F59E0B', '#D97706'] as [string, string], route: '/accounts/defaulters', library: Ionicons },
-    { id: 'invoices', title: t('accounts_dashboard.invoices', 'Invoices'), icon: 'document-text', color: ['#3B82F6', '#2563EB'] as [string, string], route: '/accounts/invoices', library: Ionicons },
-    { id: 'receipts', title: t('accounts_dashboard.receipts', 'Receipts'), icon: 'documents', color: ['#0EA5E9', '#0284C7'] as [string, string], route: '/accounts/receipts', library: Ionicons },
-    { id: 'staff', title: t('accounts_dashboard.addStaff', 'Add Staff'), icon: 'person-add', color: ['#8B5CF6', '#7C3AED'] as [string, string], route: '/accounts/addStaff', library: Ionicons },
-    { id: 'student', title: t('accounts_dashboard.addStudent', 'Add Student'), icon: 'school', color: ['#F43F5E', '#E11D48'] as [string, string], route: '/accounts/addStudent', library: Ionicons },
-    { id: 'pending_enrollments', title: t('accounts_dashboard.pending_enrollments', 'Pending Enrollments'), icon: 'person-add-outline', color: ['#8B5CF6', '#7C3AED'] as [string, string], route: '/accounts/pending-enrollments', library: Ionicons },
+    { id: 'collect', title: t('accounts_dashboard.collect_fees', 'Collect Fees'), description: t('accounts_dashboard.collect_fees_desc', 'Process student payments'), icon: 'cash', color: ['#10B981', '#059669'] as [string, string], route: '/accounts/fees', library: Ionicons },
+    { id: 'expenses', title: t('accounts_dashboard.expenses', 'Expenses'), description: t('accounts_dashboard.expenses_desc', 'Manage school expenditures'), icon: 'receipt', color: ['#EF4444', '#B91C1C'] as [string, string], route: '/accounts/expenses', library: Ionicons },
+    { id: 'payroll', title: t('accounts_dashboard.payroll', 'Payroll'), description: t('accounts_dashboard.payroll_desc', 'Staff salary & attendance'), icon: 'people', color: ['#6366F1', '#4338CA'] as [string, string], route: '/accounts/payroll', library: Ionicons },
+    { id: 'invoices', title: t('accounts_dashboard.invoices', 'Invoices'), description: t('accounts_dashboard.invoices_desc', 'Generate & track invoices'), icon: 'document-text', color: ['#3B82F6', '#2563EB'] as [string, string], route: '/accounts/invoices', library: Ionicons },
+    { id: 'receipts', title: t('accounts_dashboard.receipts', 'Receipts'), description: t('accounts_dashboard.receipts_desc', 'View payment history'), icon: 'documents', color: ['#0EA5E9', '#0284C7'] as [string, string], route: '/accounts/receipts', library: Ionicons },
+    { id: 'staff', title: t('accounts_dashboard.addStaff', 'Add Staff'), description: t('accounts_dashboard.addStaff_desc', 'Register new employees'), icon: 'person-add', color: ['#8B5CF6', '#7C3AED'] as [string, string], route: '/accounts/addStaff', library: Ionicons },
+    { id: 'student', title: t('accounts_dashboard.addStudent', 'Add Student'), description: t('accounts_dashboard.addStudent_desc', 'Enroll new students'), icon: 'school', color: ['#F43F5E', '#E11D48'] as [string, string], route: '/accounts/addStudent', library: Ionicons },
+    { id: 'pending_enrollments', title: t('accounts_dashboard.pending_enrollments', 'Pending Enrollments'), description: t('accounts_dashboard.pending_enrollments_desc', 'Review new applications'), icon: 'person-add-outline', color: ['#8B5CF6', '#7C3AED'] as [string, string], route: '/accounts/pending-enrollments', library: Ionicons },
   ];
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
-      <AdminHeader title="Accounts" />
+      <AdminHeader 
+        title={t('accounts_dashboard.dashboard_title', 'Dashboard')} 
+        onMenuPress={() => setIsMenuOpen(true)}
+      />
+      
+      <DashboardMenuOverlay
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        items={[
+          {
+            title: t('accounts_dashboard.dashboard_title', 'Dashboard'),
+            description: t('accounts_dashboard.dashboard_desc', 'Financial Overview'),
+            icon: 'grid-outline',
+            route: '/accounts/dashboard',
+            gradient: ['#3B82F6', '#1D4ED8']
+          },
+          ...quickActions.map(action => ({
+            title: action.title,
+            description: action.description,
+            icon: action.icon,
+            route: action.route,
+            gradient: action.color
+          }))
+        ]}
+        onItemPress={(route) => {
+          setIsMenuOpen(false);
+          router.push(route as any);
+        }}
+        activeRoute="/accounts/dashboard"
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -265,7 +452,7 @@ export default function AccountsDashboard() {
           <Text style={styles.greetingEyebrow}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
           </Text>
-          <Text style={styles.greetingText}>Hello, {user?.first_name || 'Admin'} 👋</Text>
+          <Text style={styles.greetingText}>Hello, {user?.displayName || 'Admin'} 👋</Text>
           <Text style={styles.greetingSubText}>
             {t('accounts_dashboard.welcome_back', 'Here is your financial overview')}
           </Text>
@@ -331,6 +518,15 @@ export default function AccountsDashboard() {
             ))}
           </View>
         </Animated.View>
+
+        {/* ── ANALYTICS SECTION ── */}
+        <AnalyticsSection
+          data={analytics}
+          loading={analyticsLoading}
+          styles={styles}
+          isDark={isDark}
+          t={t}
+        />
 
         {/* ── QUICK ACTIONS ── */}
         <View style={styles.sectionHeader}>
@@ -416,6 +612,117 @@ const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
 
   container: { flex: 1, backgroundColor: theme.colors.background },
   scroll: { paddingTop: 8, paddingBottom: 52 },
+
+  analyticsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  analyticsPlaceholder: {
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chartCard: {
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  chartTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text,
+    opacity: 0.8,
+  },
+  chartBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  chartBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#6366F1',
+    textTransform: 'uppercase',
+  },
+  analyticsStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  miniStatCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.8)',
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+  },
+  miniStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  miniStatLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  miniStatValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+
+  insightsWrap: {
+    marginTop: 8,
+  },
+  insightCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+  },
+  insightCardHigh: {
+    backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)',
+    borderColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  insightIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  insightText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.text,
+    lineHeight: 18,
+    marginRight: 8,
+  },
 
   greetingContainer: { paddingHorizontal: 20, marginBottom: 20, marginTop: 14 },
   greetingEyebrow: { fontSize: 10, fontWeight: '700', letterSpacing: 2.2, color: theme.colors.textSecondary, marginBottom: 7 },

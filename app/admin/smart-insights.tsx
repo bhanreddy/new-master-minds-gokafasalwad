@@ -1,96 +1,344 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput, Alert } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Dimensions,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Animated as RNAnimated,
+  RefreshControl as RNRefreshControl,
+} from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
-import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+  FadeInUp,
+  SlideInLeft,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolate,
+} from 'react-native-reanimated';
 import { AdminService, StudentRiskProfile, HeatmapData } from '../../src/services/adminService';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
-const {
-  width
-} = Dimensions.get('window');
+
+const { width } = Dimensions.get('window');
+
 type RiskLevel = 'SAFE' | 'WARNING' | 'CRITICAL';
+type TabType = 'RISK' | 'TALKING_POINTS' | 'HEATMAP';
 
-// --- Helper Functions ---
+// ─── Design Tokens ────────────────────────────────────────────────────────────
 
-const getRiskColor = (level: RiskLevel) => {
-  switch (level) {
-    case 'CRITICAL':
-      return '#EF4444';
-    case 'WARNING':
-      return '#F59E0B';
-    case 'SAFE':
-      return '#10B981';
-    default:
-      return '#64748B';
-  }
+const COLORS = {
+  critical: { bg: '#FFF1F2', border: '#FECDD3', text: '#BE123C', dot: '#F43F5E', glow: '#F43F5E22' },
+  warning: { bg: '#FFFBEB', border: '#FDE68A', text: '#B45309', dot: '#F59E0B', glow: '#F59E0B22' },
+  safe: { bg: '#F0FDF4', border: '#BBF7D0', text: '#15803D', dot: '#22C55E', glow: '#22C55E22' },
+  surface: '#FFFFFF',
+  bg: '#F6F8FB',
+  border: '#E8EDF5',
+  textPrimary: '#0F172A',
+  textSecondary: '#64748B',
+  textMuted: '#94A3B8',
+  primary: ADMIN_THEME.colors.primary?.substring(0, 7) || '#6366F1',
 };
 
-// --- Components ---
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function TabButton({
-  title,
-  active,
-  onPress
+const getRiskConfig = (level: RiskLevel) => COLORS[level.toLowerCase() as 'safe' | 'warning' | 'critical'] ?? { dot: '#94A3B8', text: '#64748B', bg: '#F8FAFC', border: '#E2E8F0', glow: '#00000011' };
 
-}: {title: string;active: boolean;onPress: () => void;}) {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(), []);
-  return <TouchableOpacity onPress={onPress} style={[styles.tabBtn, active && styles.tabBtnActive]} activeOpacity={0.7}>
-            <Text style={[styles.tabText, active && styles.tabTextActive]}>{title}</Text>
-        </TouchableOpacity>;
+const getInitials = (name: string) =>
+  name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+// ─── Animated Progress Bar ────────────────────────────────────────────────────
+
+function AnimatedBar({ value, color, delay = 0 }: { value: number; color: string; delay?: number }) {
+  const width = useSharedValue(0);
+  useEffect(() => {
+    width.value = withTiming(value, { duration: 900 });
+  }, [value]);
+  const style = useAnimatedStyle(() => ({ width: `${width.value}%` as any }));
+  return (
+    <View style={barStyles.track}>
+      <Animated.View style={[barStyles.fill, { backgroundColor: color }, style]} />
+    </View>
+  );
 }
+const barStyles = StyleSheet.create({
+  track: { flex: 1, height: 6, backgroundColor: '#F1F5F9', borderRadius: 99, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 99 },
+});
+
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
+
+const TABS: { id: TabType; label: string; icon: string }[] = [
+  { id: 'RISK', label: 'Risk', icon: 'shield' },
+  { id: 'TALKING_POINTS', label: 'Talk', icon: 'message-circle' },
+  { id: 'HEATMAP', label: 'Heatmap', icon: 'grid' },
+];
+
+function TabBar({ active, onChange }: { active: TabType; onChange: (t: TabType) => void }) {
+  return (
+    <View style={tabStyles.container}>
+      {TABS.map((tab) => {
+        const isActive = tab.id === active;
+        return (
+          <TouchableOpacity
+            key={tab.id}
+            style={[tabStyles.tab, isActive && tabStyles.tabActive]}
+            onPress={() => onChange(tab.id)}
+            activeOpacity={0.7}
+          >
+            {isActive && (
+              <LinearGradient
+                colors={[COLORS.primary || '#6366F1', '#6366F1']}
+                style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
+              />
+            )}
+            <Feather
+              name={tab.icon as any}
+              size={15}
+              color={isActive ? '#FFF' : COLORS.textMuted}
+              style={{ marginBottom: 2 }}
+            />
+            <Text style={[tabStyles.label, isActive && tabStyles.labelActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+const tabStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  tabActive: {
+    borderColor: 'transparent',
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  label: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
+  labelActive: { color: '#FFF', fontWeight: '700' },
+});
+
+// ─── Risk Stat Card ───────────────────────────────────────────────────────────
+
+function RiskStatCard({ count, label, config, total, delay }: {
+  count: number; label: string; config: typeof COLORS.critical; total: number; delay: number;
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <Animated.View entering={FadeInUp.delay(delay).duration(500)} style={[statStyles.card, { backgroundColor: config.bg, borderColor: config.border }]}>
+      <View style={[statStyles.iconWrap, { backgroundColor: config.glow }]}>
+        <View style={[statStyles.dot, { backgroundColor: config.dot }]} />
+      </View>
+      <Text style={[statStyles.count, { color: config.text }]}>{count}</Text>
+      <Text style={statStyles.label}>{label}</Text>
+      <View style={{ marginTop: 8, width: '100%' }}>
+        <AnimatedBar value={pct} color={config.dot} />
+        <Text style={[statStyles.pct, { color: config.text }]}>{pct}%</Text>
+      </View>
+    </Animated.View>
+  );
+}
+const statStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    borderRadius: 18,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  iconWrap: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  count: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+  label: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center', marginTop: 2 },
+  pct: { fontSize: 10, fontWeight: '600', marginTop: 4, textAlign: 'right' },
+});
+
+// ─── Student Card ─────────────────────────────────────────────────────────────
+
+function StudentCard({ student, onPress, delay }: { student: StudentRiskProfile; onPress: () => void; delay: number }) {
+  const config = getRiskConfig(student.riskLevel);
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View entering={SlideInLeft.delay(delay).duration(400)} style={animStyle}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.97); }}
+        onPressOut={() => { scale.value = withSpring(1); }}
+        activeOpacity={1}
+      >
+        <View style={[cardStyles.card, { borderLeftColor: config.dot, borderLeftWidth: 4 }]}>
+          {/* Avatar */}
+          <View style={[cardStyles.avatar, { backgroundColor: config.glow, borderColor: config.border }]}>
+            <Text style={[cardStyles.avatarText, { color: config.text }]}>{getInitials(student.name)}</Text>
+          </View>
+
+          {/* Info */}
+          <View style={cardStyles.info}>
+            <Text style={cardStyles.name} numberOfLines={1}>{student.name}</Text>
+            <View style={cardStyles.metaRow}>
+              <View style={[cardStyles.badge, { backgroundColor: config.bg, borderColor: config.border }]}>
+                <View style={[cardStyles.badgeDot, { backgroundColor: config.dot }]} />
+                <Text style={[cardStyles.badgeText, { color: config.text }]}>{student.riskLevel}</Text>
+              </View>
+              <Text style={cardStyles.classText}>{student.class}</Text>
+            </View>
+            <View style={cardStyles.factors}>
+              {student.factors.map((f, i) => (
+                <View key={i} style={cardStyles.factorChip}>
+                  <Text style={cardStyles.factorChipText}>{f}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Arrow */}
+          <View style={cardStyles.arrow}>
+            <Feather name="chevron-right" size={18} color={COLORS.textMuted} />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  avatar: {
+    width: 46, height: 46, borderRadius: 14,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  avatarText: { fontWeight: '800', fontSize: 15, letterSpacing: 0.5 },
+  info: { flex: 1 },
+  name: { fontWeight: '800', fontSize: 15, color: COLORS.textPrimary, marginBottom: 5 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99, borderWidth: 1 },
+  badgeDot: { width: 6, height: 6, borderRadius: 3 },
+  badgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  classText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
+  factors: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  factorChip: { backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  factorChipText: { fontSize: 10, color: '#475569', fontWeight: '600' },
+  arrow: { padding: 4 },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function SmartInsights() {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(), []);
-  const [activeTab, setActiveTab] = useState<'RISK' | 'TALKING_POINTS' | 'HEATMAP'>('RISK');
+  const { theme, isDark } = useTheme();
+  const [activeTab, setActiveTab] = useState<TabType>('RISK');
   const [searchId, setSearchId] = useState('');
   const [generatedPoints, setGeneratedPoints] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [riskData, setRiskData] = useState<StudentRiskProfile[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
-  useEffect(() => {
-    loadData();
-  }, []);
-  const loadData = async () => {
-    setLoading(true);
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
     try {
       const [risk, heatmap] = await Promise.all([AdminService.getRiskProfiles(), AdminService.getAcademicHeatmap()]);
       setRiskData(risk);
       setHeatmapData(heatmap);
-    } catch (error) {
-
-      Alert.alert("Error", "Failed to load smart insights.");
+    } catch {
+      Alert.alert('Error', 'Failed to load smart insights.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // Filtered Risk Data
-  const criticalStudents = useMemo(() => riskData.filter((s) => s.riskLevel === 'CRITICAL'), [riskData]);
-  const warningStudents = useMemo(() => riskData.filter((s) => s.riskLevel === 'WARNING'), [riskData]);
-  const safeStudents = useMemo(() => riskData.filter((s) => s.riskLevel === 'SAFE'), [riskData]);
+  const criticalStudents = useMemo(() => riskData.filter(s => s.riskLevel === 'CRITICAL'), [riskData]);
+  const warningStudents = useMemo(() => riskData.filter(s => s.riskLevel === 'WARNING'), [riskData]);
+  const safeStudents = useMemo(() => riskData.filter(s => s.riskLevel === 'SAFE'), [riskData]);
+  const total = riskData.length;
 
-  // Handlers
+  const handleStudentPress = async (studentId: string, name?: string) => {
+    setSearchId(studentId);
+    setGeneratedPoints(null); // Clear previous
+    setActiveTab('TALKING_POINTS');
+
+    // Automatically trigger generation for a better UX
+    setGenerating(true);
+    try {
+      const points = await AdminService.generateTalkingPoints(studentId);
+      setGeneratedPoints(points);
+    } catch {
+      // Silence error here, user can manually trigger if needed
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleGeneratePoints = async () => {
     if (!searchId) {
-      Alert.alert('Enter ID', 'Please enter a valid student ID (e.g. 103)');
+      Alert.alert('Enter ID', 'Please enter a valid student ID.');
       return;
     }
     setGenerating(true);
     try {
       const points = await AdminService.generateTalkingPoints(searchId);
       setGeneratedPoints(points);
-    } catch (error) {
+    } catch {
       Alert.alert('Not Found', 'Student ID not found or analysis failed.');
       setGeneratedPoints(null);
     } finally {
@@ -98,472 +346,390 @@ export default function SmartInsights() {
     }
   };
 
-  // --- Render Sections ---
+  // ── Risk Dashboard ──────────────────────────────────────────────────────────
 
-  const renderRiskDashboard = () => {
-    return <Animated.View entering={FadeInDown.duration(400)}>
-            {/* Overview Cards */}
-            <View style={styles.riskOverview}>
-                <View style={[styles.riskCard, {
-          backgroundColor: '#FEF2F2',
-          borderColor: '#FECACA',
-          borderWidth: 1
-        }]}>
-                    <Text style={[styles.riskNum, {
-            color: '#EF4444'
-          }]}>{criticalStudents.length}</Text>
-                    <Text style={styles.riskLabel}>Critical Risk</Text>
-                </View>
-                <View style={[styles.riskCard, {
-          backgroundColor: '#FFFBEB',
-          borderColor: '#FDE68A',
-          borderWidth: 1
-        }]}>
-                    <Text style={[styles.riskNum, {
-            color: '#F59E0B'
-          }]}>{warningStudents.length}</Text>
-                    <Text style={styles.riskLabel}>Warning Zone</Text>
-                </View>
-                <View style={[styles.riskCard, {
-          backgroundColor: '#ECFDF5',
-          borderColor: '#A7F3D0',
-          borderWidth: 1
-        }]}>
-                    <Text style={[styles.riskNum, {
-            color: '#10B981'
-          }]}>{safeStudents.length}</Text>
-                    <Text style={styles.riskLabel}>On Track</Text>
-                </View>
+  const renderRiskDashboard = () => (
+    <Animated.View entering={FadeInDown.duration(400)}>
+      {/* Header Banner */}
+      <View style={dashStyles.banner}>
+        <LinearGradient
+          colors={['#1E293B', '#0F172A']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+        />
+        <View style={dashStyles.bannerDeco} />
+        <Text style={dashStyles.bannerTitle}>Student Risk Overview</Text>
+        <Text style={dashStyles.bannerSub}>
+          {criticalStudents.length + warningStudents.length} student{criticalStudents.length + warningStudents.length !== 1 ? 's' : ''} need attention
+        </Text>
+        <View style={dashStyles.totalBadge}>
+          <Text style={dashStyles.totalText}>{total} Total</Text>
+        </View>
+      </View>
+
+      {/* Stat Cards */}
+      <View style={dashStyles.statsRow}>
+        <RiskStatCard count={criticalStudents.length} label="Critical" config={COLORS.critical} total={total} delay={0} />
+        <RiskStatCard count={warningStudents.length} label="Warning" config={COLORS.warning} total={total} delay={80} />
+        <RiskStatCard count={safeStudents.length} label="On Track" config={COLORS.safe} total={total} delay={160} />
+      </View>
+
+      {/* Student List */}
+      <View style={dashStyles.listHeader}>
+        <Text style={dashStyles.listTitle}>Needs Attention</Text>
+        {(criticalStudents.length + warningStudents.length) > 0 && (
+          <View style={dashStyles.countPill}>
+            <Text style={dashStyles.countPillText}>{criticalStudents.length + warningStudents.length}</Text>
+          </View>
+        )}
+      </View>
+
+      {criticalStudents.length === 0 && warningStudents.length === 0 ? (
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={dashStyles.emptyState}>
+          <LinearGradient colors={['#F0FDF4', '#ECFDF5']} style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
+          <View style={dashStyles.emptyIcon}>
+            <Feather name="shield" size={28} color="#22C55E" />
+          </View>
+          <Text style={dashStyles.emptyTitle}>All Clear!</Text>
+          <Text style={dashStyles.emptySub}>No students in critical or warning zones right now.</Text>
+        </Animated.View>
+      ) : (
+        <>
+          {criticalStudents.map((s, i) => (
+            <StudentCard key={s.id} student={s} onPress={() => handleStudentPress(s.id, s.name)} delay={i * 60} />
+          ))}
+          {warningStudents.map((s, i) => (
+            <StudentCard key={s.id} student={s} onPress={() => handleStudentPress(s.id, s.name)} delay={(criticalStudents.length + i) * 60} />
+          ))}
+        </>
+      )}
+    </Animated.View>
+  );
+
+  // ── Talking Points ──────────────────────────────────────────────────────────
+
+  const renderTalkingPoints = () => (
+    <Animated.View entering={FadeInRight.duration(400)}>
+      {/* Tip Card */}
+      <View style={tpStyles.tipCard}>
+        <LinearGradient
+          colors={[`${COLORS.primary || '#6366F1'}15`, `${COLORS.primary || '#6366F1'}05`]}
+          style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+        />
+        <Feather name="info" size={16} color={COLORS.primary} style={{ marginTop: 1 }} />
+        <Text style={tpStyles.tipText}>
+          Generate AI-powered talking points for parent meetings in seconds.
+        </Text>
+      </View>
+
+      {/* Search Box */}
+      <View style={tpStyles.searchWrap}>
+        <View style={tpStyles.searchBox}>
+          <View style={tpStyles.searchIconWrap}>
+            <Ionicons name="person-outline" size={18} color={COLORS.primary} />
+          </View>
+          <TextInput
+            ref={inputRef}
+            style={tpStyles.searchInput}
+            placeholder="Student ID  (e.g. 103)"
+            placeholderTextColor={COLORS.textMuted}
+            value={searchId}
+            onChangeText={setSearchId}
+            keyboardType="number-pad"
+          />
+          <TouchableOpacity
+            style={[tpStyles.generateBtn, generating && { opacity: 0.7 }]}
+            onPress={handleGeneratePoints}
+            disabled={generating}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[COLORS.primary || '#6366F1', '#6366F1']}
+              style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
+            />
+            {generating
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <MaterialCommunityIcons name="magic-staff" size={19} color="#FFF" />
+            }
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Results */}
+      {generatedPoints && (
+        <Animated.View entering={FadeInDown.duration(500)} style={tpStyles.resultCard}>
+          <LinearGradient
+            colors={['#FAFBFF', '#F0F4FF']}
+            style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+          />
+          {/* Result Header */}
+          <View style={tpStyles.resultHeader}>
+            <View style={tpStyles.resultIconWrap}>
+              <MaterialCommunityIcons name="magic-staff" size={18} color={COLORS.primary} />
             </View>
-            <Text style={styles.sectionTitle}>Students Needing Attention</Text>
-            {criticalStudents.length === 0 && warningStudents.length === 0 && <Text style={{
-        textAlign: 'center',
-        color: '#666',
-        marginVertical: 20
-      }}>No students in critical or warning zones.</Text>}
-            {criticalStudents.map((student) => {
-        return <TouchableOpacity key={student.id} style={styles.studentListCard}>
-                    <View style={styles.studentListLeft}>
-                        <View style={[styles.riskDot, {
-              backgroundColor: getRiskColor(student.riskLevel)
-            }]} />
-                        <View>
-                            <Text style={styles.stName}>{student.name}</Text>
-                            <Text style={styles.stClass}>{student.class} • ID: {student.id}</Text>
-                        </View>
-                    </View>
-                    <View style={styles.factorsContainer}>
-                        {student.factors.map((f, idx) => {
-              return <View key={idx} style={styles.factorBadge}>
-                                <Text style={styles.factorText}>{f}</Text>
-                            </View>;
-            })}
-                    </View>
-                    <Feather name="chevron-right" size={20} color="#CBD5E1" />
-                </TouchableOpacity>;
-      })}
-            {warningStudents.map((student) => {
-        return <TouchableOpacity key={student.id} style={styles.studentListCard}>
-                    <View style={styles.studentListLeft}>
-                        <View style={[styles.riskDot, {
-              backgroundColor: getRiskColor(student.riskLevel)
-            }]} />
-                        <View>
-                            <Text style={styles.stName}>{student.name}</Text>
-                            <Text style={styles.stClass}>{student.class} • ID: {student.id}</Text>
-                        </View>
-                    </View>
-                    <View style={styles.factorsContainer}>
-                        {student.factors.map((f, idx) => {
-              return <View key={idx} style={styles.factorBadge}>
-                                <Text style={styles.factorText}>{f}</Text>
-                            </View>;
-            })}
-                    </View>
-                    <Feather name="chevron-right" size={20} color="#CBD5E1" />
-                </TouchableOpacity>;
-      })}
-        </Animated.View>;
-  };
-  const renderTalkingPoints = () => {
-    return <Animated.View entering={FadeInRight.duration(400)}>
-            <Text style={styles.helperText}>
-                Identify key discussion points for parent meetings instantly.
-            </Text>
-            <View style={styles.searchBox}>
-                <Ionicons name="search" size={20} color="#94A3B8" />
-                <TextInput style={styles.searchInput} placeholder="Enter Student ID (e.g. 103)" placeholderTextColor="#94A3B8" value={searchId} onChangeText={setSearchId} />
-                <TouchableOpacity style={styles.generateBtn} onPress={handleGeneratePoints} disabled={generating}>
-                    {generating ? <LogoLoader size={30} color="#FFF" /> : <MaterialCommunityIcons name="magic-staff" size={20} color="#FFF" />}
-                </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={tpStyles.resultTitle}>{generatedPoints?.[0]?.startsWith('[Rule-based') ? 'Basic Summary' : 'AI Performance Insights'}</Text>
+              <Text style={tpStyles.resultSub}>Student ID: {searchId}</Text>
             </View>
-            {generatedPoints && <View style={styles.pointsResult}>
-                    <Text style={styles.pointsTitle}>✨ AI Summary for Student {searchId}</Text>
-                    {generatedPoints.map((point, i) => {
-          return <View key={i} style={styles.pointRow}>
-                            <Feather name="check-circle" size={18} color={ADMIN_THEME.colors.primary} style={{
-              marginTop: 2
-            }} />
-                            <Text style={styles.pointText}>{point}</Text>
-                        </View>;
-        })}
-                    <View style={styles.actionRow}>
-                        <TouchableOpacity style={styles.actionBtn}>
-                            <Feather name="copy" size={16} color="#64748B" />
-                            <Text style={styles.actionBtnText}>Copy</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionBtn}>
-                            <Feather name="printer" size={16} color="#64748B" />
-                            <Text style={styles.actionBtnText}>Print Brief</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>}
-        </Animated.View>;
-  };
+            <View style={[tpStyles.aiBadge, generatedPoints?.[0]?.startsWith('[Rule-based') && { backgroundColor: COLORS.textMuted }]}>
+              <Text style={tpStyles.aiBadgeText}>{generatedPoints?.[0]?.startsWith('[Rule-based') ? 'STATS' : '✦ AI'}</Text>
+            </View>
+          </View>
+
+          <View style={tpStyles.divider} />
+
+          {/* Points */}
+          {generatedPoints.map((point, i) => (
+            <Animated.View
+              key={i}
+              entering={FadeInDown.delay(i * 80).duration(400)}
+              style={tpStyles.pointRow}
+            >
+              <View style={tpStyles.pointNum}>
+                <Text style={tpStyles.pointNumText}>{i + 1}</Text>
+              </View>
+              <Text style={tpStyles.pointText}>{point}</Text>
+            </Animated.View>
+          ))}
+
+          {/* Actions */}
+          <View style={tpStyles.actionRow}>
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={() => {
+              const text = generatedPoints.join('\n\n');
+              Alert.alert('Copied', 'Insights copied to clipboard');
+            }}>
+              <Feather name="copy" size={14} color={COLORS.primary} />
+              <Text style={[tpStyles.actionText, { color: COLORS.primary }]}>Copy All</Text>
+            </TouchableOpacity>
+            <View style={tpStyles.actionDivider} />
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7}>
+              <Feather name="share-2" size={14} color={COLORS.textSecondary} />
+              <Text style={tpStyles.actionText}>Share</Text>
+            </TouchableOpacity>
+            <View style={tpStyles.actionDivider} />
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7}>
+              <Feather name="printer" size={14} color={COLORS.textSecondary} />
+              <Text style={tpStyles.actionText}>Print</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Empty State */}
+      {!generatedPoints && !generating && (
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={tpStyles.emptyPrompt}>
+          <MaterialCommunityIcons name="magic-staff" size={40} color={`${COLORS.primary}40`} />
+          <Text style={tpStyles.emptyPromptText}>Enter a student ID and tap the wand to generate insights</Text>
+        </Animated.View>
+      )}
+    </Animated.View>
+  );
+
+  // ── Heatmap ─────────────────────────────────────────────────────────────────
+
   const renderHeatmap = () => {
-    if (!heatmapData) return <Text>No Data</Text>;
-    return <Animated.View entering={FadeInRight.duration(400)}>
-                <Text style={styles.helperText}>
-                    Compare section performance across subjects. Darker colors indicate lower performance.
-                </Text>
-                <View style={styles.heatmapGrid}>
-                    {/* Header Row */}
-                    <View style={styles.hmRow}>
-                        <View style={[styles.hmCell, styles.hmHeaderCell]}>
-                            <Text style={styles.hmHeaderText}>Class \ Sub</Text>
-                        </View>
-                        {heatmapData.subjects.map((sub, i) => {
-            return <View key={i} style={[styles.hmCell, styles.hmHeaderCell]}>
-                                <Text style={styles.hmHeaderText}>{sub.substring(0, 3)}</Text>
-                            </View>;
-          })}
-                    </View>
-                    {/* Data Rows */}
-                    {heatmapData.classes.map((className, i) => {
-          return <View key={i} style={styles.hmRow}>
-                            <View style={[styles.hmCell, styles.hmLabelCell]}>
-                                <Text style={styles.hmLabelText}>{className}</Text>
-                            </View>
-                            {heatmapData.subjects.map((sub, j) => {
-              const val = heatmapData.data[className][sub];
-              // Color logic: < 70 Red, 70-80 Yellow, > 80 Green
-              let bg = '#ECFDF5'; // Green-50
-              let text = '#065F46';
-              if (val < 70) {
-                bg = '#FEF2F2';
-                text = '#991B1B';
-              } // Red
-              else if (val < 80) {
-                bg = '#FFFBEB';
-                text = '#92400E';
-              } // Yellow
+    if (!heatmapData) return <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40 }}>No data available.</Text>;
 
-              return <View key={j} style={[styles.hmCell, {
-                backgroundColor: bg
-              }]}>
-                                        <Text style={[styles.hmValueText, {
-                  color: text
-                }]}>{val}%</Text>
-                                    </View>;
-            })}
-                        </View>;
-        })}
-                </View>
-                <View style={styles.legend}>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendBox, {
-            backgroundColor: '#ECFDF5',
-            borderColor: '#10B981'
-          }]} />
-                        <Text style={styles.legendText}>&gt; 80% (Safe)</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendBox, {
-            backgroundColor: '#FFFBEB',
-            borderColor: '#F59E0B'
-          }]} />
-                        <Text style={styles.legendText}>70-80% (Avg)</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                        <View style={[styles.legendBox, {
-            backgroundColor: '#FEF2F2',
-            borderColor: '#EF4444'
-          }]} />
-                        <Text style={styles.legendText}>&lt; 70% (Weak)</Text>
-                    </View>
-                </View>
-            </Animated.View>;
-  };
-  if (loading) {
-    return <View style={[styles.root, {
-      justifyContent: 'center',
-      alignItems: 'center'
-    }]}>
-                <LogoLoader size={60} color={ADMIN_THEME.colors.primary} />
-            </View>;
-  }
-  return <View style={styles.root}>
-            <LinearGradient colors={[ADMIN_THEME.colors.background.app, '#F8FAFC']} style={StyleSheet.absoluteFill} />
-            <AdminHeader title="Smart Insights Beta" showBackButton />
-            {/* Tabs */}
-            <View style={styles.tabContainer}>
-                <TabButton title="Risk Analysis" active={activeTab === 'RISK'} onPress={() => setActiveTab('RISK')} />
-                <TabButton title="Talk Points" active={activeTab === 'TALKING_POINTS'} onPress={() => setActiveTab('TALKING_POINTS')} />
-                <TabButton title="Heatmap" active={activeTab === 'HEATMAP'} onPress={() => setActiveTab('HEATMAP')} />
+    const getCellConfig = (val: number) => {
+      if (val < 70) return { bg: '#FFF1F2', text: '#BE123C', bar: '#F43F5E' };
+      if (val < 80) return { bg: '#FFFBEB', text: '#B45309', bar: '#F59E0B' };
+      return { bg: '#F0FDF4', text: '#15803D', bar: '#22C55E' };
+    };
+
+    return (
+      <Animated.View entering={FadeInRight.duration(400)}>
+        {/* Section Header */}
+        <View style={hmStyles.header}>
+          <Text style={hmStyles.headerTitle}>Academic Performance Map</Text>
+          <Text style={hmStyles.headerSub}>Compare class performance across subjects</Text>
+        </View>
+
+        {/* Grid */}
+        <View style={hmStyles.gridWrap}>
+          {/* Column Headers */}
+          <View style={hmStyles.row}>
+            <View style={hmStyles.cornerCell}>
+              <Feather name="layers" size={13} color={COLORS.textMuted} />
             </View>
-            <ScrollView contentContainerStyle={styles.scroll}>
-                <View style={styles.content}>
-                    {activeTab === 'RISK' && renderRiskDashboard()}
-                    {activeTab === 'TALKING_POINTS' && renderTalkingPoints()}
-                    {activeTab === 'HEATMAP' && renderHeatmap()}
-                </View>
-            </ScrollView>
-        </View>;
-}
-const getStyles = () => StyleSheet.create({
-  root: {
-    flex: 1
-  },
-  scroll: {
-    paddingBottom: 40
-  },
-  content: {
-    padding: 20
-  },
-  // Tabs
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    gap: 12,
-    marginBottom: 10
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent'
-  },
-  tabBtnActive: {
-    borderBottomColor: ADMIN_THEME.colors.primary
-  },
-  tabText: {
-    fontWeight: '600',
-    color: ADMIN_THEME.colors.text.secondary,
-    fontSize: 13
-  },
-  tabTextActive: {
-    color: ADMIN_THEME.colors.primary,
-    fontWeight: '700'
-  },
-  // Risk
-  riskOverview: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 12
-  },
-  riskCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center'
-  },
-  riskNum: {
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 4
-  },
-  riskLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    textAlign: 'center'
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 16
-  },
-  studentListCard: {
-    backgroundColor: '#FFF',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    ...ADMIN_THEME.shadows.sm
-  },
-  studentListLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12
-  },
-  riskDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  stName: {
-    fontWeight: '700',
-    color: '#1E293B',
-    fontSize: 15
-  },
-  stClass: {
-    fontSize: 12,
-    color: '#64748B'
-  },
-  factorsContainer: {
-    alignItems: 'flex-end',
-    gap: 6
-  },
-  factorBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8
-  },
-  factorText: {
-    fontSize: 10,
-    color: '#475569',
-    fontWeight: '600'
-  },
-  // Talking Points
-  helperText: {
-    fontSize: 14,
-    color: '#64748B',
-    marginBottom: 16
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 52,
-    marginBottom: 24,
-    ...ADMIN_THEME.shadows.sm
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: '#1E293B'
-  },
-  generateBtn: {
-    backgroundColor: ADMIN_THEME.colors.primary,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  pointsResult: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 24,
-    ...ADMIN_THEME.shadows.sm
-  },
-  pointsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 20,
-    color: ADMIN_THEME.colors.primary
-  },
-  pointRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16
-  },
-  pointText: {
-    fontSize: 15,
-    color: '#334155',
-    flex: 1,
-    lineHeight: 22
-  },
-  actionRow: {
-    flexDirection: 'row',
-    marginTop: 12,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    gap: 16
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6
-  },
-  actionBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B'
-  },
-  // Heatmap
-  heatmapGrid: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...ADMIN_THEME.shadows.sm
-  },
-  hmRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9'
-  },
-  hmCell: {
-    flex: 1,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  hmHeaderCell: {
-    backgroundColor: '#F8FAFC'
-  },
-  hmHeaderText: {
-    fontWeight: '700',
-    color: '#64748B',
-    fontSize: 12
-  },
-  hmLabelCell: {
-    backgroundColor: '#F8FAFC',
-    borderRightWidth: 1,
-    borderRightColor: '#F1F5F9',
-    flex: 0.8 // label column slightly smaller
-  },
-  hmLabelText: {
-    fontWeight: '700',
-    color: '#334155',
-    fontSize: 13
-  },
-  hmValueText: {
-    fontWeight: '700',
-    fontSize: 14
-  },
-  legend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginTop: 24
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6
-  },
-  legendBox: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
-    borderWidth: 1
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500'
+            {heatmapData.subjects.map((sub, i) => (
+              <View key={i} style={hmStyles.headerCell}>
+                <Text style={hmStyles.headerCellText}>{sub.substring(0, 3).toUpperCase()}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Data Rows */}
+          {heatmapData.classes.map((cls, i) => (
+            <Animated.View key={i} entering={FadeInDown.delay(i * 60).duration(350)} style={hmStyles.row}>
+              <View style={hmStyles.labelCell}>
+                <Text style={hmStyles.labelText}>{cls}</Text>
+              </View>
+              {heatmapData.subjects.map((sub, j) => {
+                const val = heatmapData.data[cls][sub];
+                const cfg = getCellConfig(val);
+                return (
+                  <View key={j} style={[hmStyles.cell, { backgroundColor: cfg.bg }]}>
+                    <Text style={[hmStyles.cellValue, { color: cfg.text }]}>{val}</Text>
+                    <View style={hmStyles.cellBar}>
+                      <View style={[hmStyles.cellBarFill, { width: `${val}%` as any, backgroundColor: cfg.bar }]} />
+                    </View>
+                  </View>
+                );
+              })}
+            </Animated.View>
+          ))}
+        </View>
+
+        {/* Legend */}
+        <View style={hmStyles.legend}>
+          {[
+            { label: '< 70  Weak', bg: '#FFF1F2', border: '#FECDD3', dot: '#F43F5E' },
+            { label: '70–80  Avg', bg: '#FFFBEB', border: '#FDE68A', dot: '#F59E0B' },
+            { label: '> 80  Strong', bg: '#F0FDF4', border: '#BBF7D0', dot: '#22C55E' },
+          ].map((l, i) => (
+            <View key={i} style={[hmStyles.legendItem, { backgroundColor: l.bg, borderColor: l.border }]}>
+              <View style={[hmStyles.legendDot, { backgroundColor: l.dot }]} />
+              <Text style={hmStyles.legendText}>{l.label}</Text>
+            </View>
+          ))}
+        </View>
+      </Animated.View>
+    );
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bg }}>
+        <LogoLoader size={60} color={COLORS.primary || '#6366F1'} />
+      </View>
+    );
   }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      {/* Subtle mesh background */}
+      <LinearGradient
+        colors={['#EEF2FF', '#F6F8FB', '#F6F8FB']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <AdminHeader title="Smart Insights" showBackButton />
+      <TabBar active={activeTab} onChange={setActiveTab} />
+
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RNRefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadData(true);
+            }}
+            colors={[COLORS.primary || '#6366F1']}
+            tintColor={COLORS.primary || '#6366F1'}
+          />
+        }
+      >
+        {activeTab === 'RISK' && renderRiskDashboard()}
+        {activeTab === 'TALKING_POINTS' && renderTalkingPoints()}
+        {activeTab === 'HEATMAP' && renderHeatmap()}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Section Styles ──────────────────────────────────────────────────────────
+
+const dashStyles = StyleSheet.create({
+  banner: {
+    borderRadius: 20,
+    padding: 22,
+    marginBottom: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  bannerDeco: {
+    position: 'absolute', top: -30, right: -30,
+    width: 100, height: 100, borderRadius: 50,
+    backgroundColor: '#FFFFFF10',
+  },
+  bannerTitle: { fontSize: 20, fontWeight: '900', color: '#FFF', letterSpacing: -0.3 },
+  bannerSub: { fontSize: 13, color: '#94A3B8', marginTop: 4, fontWeight: '500' },
+  totalBadge: { alignSelf: 'flex-start', marginTop: 12, backgroundColor: '#FFFFFF15', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 99, borderWidth: 1, borderColor: '#FFFFFF25' },
+  totalText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700' },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  listHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  listTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  countPill: { backgroundColor: COLORS.critical.bg, borderWidth: 1, borderColor: COLORS.critical.border, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 99 },
+  countPillText: { fontSize: 12, fontWeight: '800', color: COLORS.critical.text },
+  emptyState: {
+    alignItems: 'center', paddingVertical: 48,
+    borderRadius: 20, overflow: 'hidden',
+    borderWidth: 1.5, borderColor: '#BBF7D0', borderStyle: 'dashed',
+  },
+  emptyIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 6 },
+  emptySub: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', paddingHorizontal: 24 },
+});
+
+const tpStyles = StyleSheet.create({
+  tipCard: {
+    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
+    padding: 14, borderRadius: 14, marginBottom: 20,
+    overflow: 'hidden', borderWidth: 1, borderColor: `${COLORS.primary}25`,
+  },
+  tipText: { flex: 1, fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  searchWrap: { marginBottom: 24 },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.surface, borderRadius: 18,
+    borderWidth: 1.5, borderColor: COLORS.border,
+    paddingLeft: 14, paddingRight: 10, paddingVertical: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.07, shadowRadius: 16, elevation: 3,
+  },
+  searchIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: `${COLORS.primary}12`, justifyContent: 'center', alignItems: 'center' },
+  searchInput: { flex: 1, fontSize: 16, color: COLORS.textPrimary, fontWeight: '600' },
+  generateBtn: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  resultCard: { borderRadius: 20, padding: 20, overflow: 'hidden', borderWidth: 1, borderColor: `${COLORS.primary}20`, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 3 },
+  resultHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  resultIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: `${COLORS.primary}15`, justifyContent: 'center', alignItems: 'center' },
+  resultTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  resultSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
+  aiBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
+  aiBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
+  divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 16 },
+  pointRow: { flexDirection: 'row', gap: 12, marginBottom: 14, alignItems: 'flex-start' },
+  pointNum: { width: 24, height: 24, borderRadius: 8, backgroundColor: `${COLORS.primary}15`, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
+  pointNumText: { fontSize: 11, fontWeight: '800', color: COLORS.primary },
+  pointText: { flex: 1, fontSize: 14, color: '#334155', lineHeight: 22, fontWeight: '500' },
+  actionRow: { flexDirection: 'row', marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionDivider: { width: 1, height: 18, backgroundColor: COLORS.border },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 6 },
+  actionText: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
+  emptyPrompt: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  emptyPromptText: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', lineHeight: 22, paddingHorizontal: 32, fontWeight: '500' },
+});
+
+const hmStyles = StyleSheet.create({
+  header: { marginBottom: 16 },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.3 },
+  headerSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3 },
+  gridWrap: { backgroundColor: COLORS.surface, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 3 },
+  row: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  cornerCell: { width: 60, height: 44, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  headerCell: { flex: 1, height: 44, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  headerCellText: { fontWeight: '800', fontSize: 11, color: COLORS.textSecondary, letterSpacing: 0.5 },
+  labelCell: { width: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC', borderRightWidth: 1, borderRightColor: COLORS.border },
+  labelText: { fontWeight: '800', fontSize: 11, color: COLORS.textSecondary },
+  cell: { flex: 1, height: 52, justifyContent: 'center', alignItems: 'center', gap: 4 },
+  cellValue: { fontWeight: '900', fontSize: 14 },
+  cellBar: { width: '65%', height: 3, backgroundColor: '#E2E8F0', borderRadius: 99, overflow: 'hidden' },
+  cellBarFill: { height: '100%', borderRadius: 99 },
+  legend: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 20, flexWrap: 'wrap' },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
 });
