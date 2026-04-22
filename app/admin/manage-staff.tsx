@@ -6,12 +6,14 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
-  TextInput,
   StatusBar,
-  Alert,
   Linking,
   Dimensions,
+  Platform,
 } from 'react-native';
+import AppTextInput from '../../src/components/AppTextInput';
+import { styles as ds } from '../../src/theme/styles';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -300,7 +302,7 @@ export default function ManageStaff() {
       }));
       setStaffList(mapped);
     } catch {
-      Alert.alert('Error', 'Failed to load staff list');
+      alertCompat('Error', 'Failed to load staff list');
     } finally {
       setLoading(false);
     }
@@ -315,23 +317,23 @@ export default function ManageStaff() {
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleCall = async (phone: string, name: string) => {
     if (!phone || phone.trim() === '') {
-      Alert.alert('No Number', `${name} has no phone number on record.`);
+      alertCompat('No Number', `${name} has no phone number on record.`);
       return;
     }
     const clean = phone.replace(/[\s\-\(\)]/g, '');
     const url = `tel:${clean}`;
     const can = await Linking.canOpenURL(url).catch(() => false);
     if (!can) {
-      Alert.alert('Cannot Call', 'Your device does not support phone calls.');
+      alertCompat('Cannot Call', 'Your device does not support phone calls.');
       return;
     }
     Linking.openURL(url).catch(() =>
-      Alert.alert('Error', `Unable to place a call to ${name}.`)
+      alertCompat('Error', `Unable to place a call to ${name}.`)
     );
   };
 
   const handleDelete = async (id: string, name: string) => {
-    Alert.alert(
+    alertCompat(
       'Remove Staff Member',
       `Permanently remove "${name}" from the system?`,
       [
@@ -343,10 +345,10 @@ export default function ManageStaff() {
             try {
               setLoading(true);
               await StaffService.delete(id);
-              Alert.alert('Done', 'Staff member removed successfully.');
+              alertCompat('Done', 'Staff member removed successfully.');
               fetchStaff();
             } catch (err: any) {
-              Alert.alert('Error', err.message || 'Failed to delete staff');
+              alertCompat('Error', err.message || 'Failed to delete staff');
             } finally {
               setLoading(false);
             }
@@ -416,8 +418,8 @@ export default function ManageStaff() {
           end={{ x: 0, y: 1 }}
         >
           <Ionicons name="search" size={18} color={iconColor} style={{ marginRight: 10 }} />
-          <TextInput
-            style={[styles.searchInput, { color: searchTextColor }]}
+          <AppTextInput
+            style={[ds.inputInChrome, styles.searchInput, { color: searchTextColor }]}
             placeholder="Search by name or role…"
             placeholderTextColor={placeholderClr}
             value={searchQuery}
@@ -527,7 +529,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 }, shadowRadius: 12, elevation: 6,
   },
   searchGrad: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, height: 50 },
-  searchInput: { flex: 1, fontSize: 15, fontWeight: '500' },
+  searchInput: {
+    flex: 1, fontSize: 15, fontWeight: '500',
+    ...Platform.select({
+      web: { outlineWidth: 0, outlineStyle: 'none' } as any,
+      default: {},
+    }),
+  },
 
   countRow: { flexDirection: 'row', paddingHorizontal: 22, marginBottom: 12 },
   countText: { fontSize: 12, fontWeight: '600' },

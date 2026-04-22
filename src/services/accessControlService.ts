@@ -91,6 +91,45 @@ export const AccessControlService = {
         }));
     },
 
+    getRequestHistory: async (): Promise<AccessRequest[]> => {
+        // 1. Get the history requests (approved or denied)
+        const { data: requests, error } = await supabase
+            .from('access_requests')
+            .select('*')
+            .in('status', ['approved', 'denied'])
+            .order('reviewed_at', { ascending: false, nullsFirst: false });
+
+        if (error) {
+            console.error('Error fetching access requests history:', error);
+            throw error;
+        }
+
+        if (!requests || requests.length === 0) return [];
+
+        // 2. Fetch user details
+        const userIds = requests.map(r => r.requested_by);
+        const { data: usersData, error: usersError } = await supabase
+            .from('users')
+            .select('id, person_id, persons!inner(display_name)')
+            .in('id', userIds);
+
+        const userMap: Record<string, any> = {};
+        if (!usersError && usersData) {
+            usersData.forEach((u: any) => {
+                userMap[u.id] = {
+                    id: u.id,
+                    display_name: u.persons?.display_name || 'Unknown User',
+                };
+            });
+        }
+
+        // 3. Map the data
+        return requests.map(r => ({
+            ...r,
+            user: userMap[r.requested_by] || { display_name: 'Unknown User' }
+        }));
+    },
+
     grantAccess: async (adminId: string, requestId: string): Promise<AccessRequest | null> => {
         // 1. Get the request
         const { data: request, error: reqError } = await supabase

@@ -1,14 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, useWindowDimensions } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ADMIN_THEME } from '../constants/adminTheme';
-import { SCHOOL_CONFIG } from '../constants/schoolConfig';
 import { SCHOOL_NAME } from '../constants/school';
 
 import Animated, { SharedValue, useAnimatedStyle, interpolateColor, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../hooks/useTheme';
+import { useAuth } from '../hooks/useAuth';
 
 interface AdminHeaderProps {
     title: string;
@@ -24,7 +26,7 @@ interface AdminHeaderProps {
     onMenuPress?: () => void;
 }
 
-import { useAuth } from '../hooks/useAuth';
+const isWeb = Platform.OS === 'web';
 
 const AdminHeader: React.FC<AdminHeaderProps> = ({
     title = SCHOOL_NAME,
@@ -39,13 +41,19 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     const router = useRouter();
     const { user } = useAuth();
     const insets = useSafeAreaInsets();
+    const { isDark } = useTheme();
+    const { width: windowWidth } = useWindowDimensions();
+    const isWideWeb = isWeb && windowWidth >= 768;
+
+    const textPrimary = isDark ? '#F8FAFC' : ADMIN_THEME.colors.text.primary;
+    const textSecondary = isDark ? 'rgba(248,250,252,0.55)' : ADMIN_THEME.colors.text.secondary;
+    const iconBtnBg = isDark ? 'rgba(255,255,255,0.08)' : ADMIN_THEME.colors.background.subtle;
 
     const handleBack = () => {
         if (router.canGoBack()) {
             router.back();
         } else {
             const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
-            // Fallback based on role
             if (roleCode === 'accountant') router.push('/accounts/dashboard');
             else router.push('/admin/dashboard');
         }
@@ -64,22 +72,42 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     };
 
     const animatedStyle = useAnimatedStyle(() => {
-        if (!scrollY) return { backgroundColor: ADMIN_THEME.colors.background.surface, borderBottomColor: ADMIN_THEME.colors.border, shadowOpacity: 0.1 };
+        if (!scrollY) {
+            if (isWideWeb) {
+                return {
+                    backgroundColor: isDark ? 'rgba(11,15,23,0.85)' : 'rgba(255,255,255,0.85)',
+                    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)',
+                    shadowOpacity: 0,
+                };
+            }
+            return {
+                backgroundColor: ADMIN_THEME.colors.background.surface,
+                borderBottomColor: ADMIN_THEME.colors.border,
+                shadowOpacity: 0.1,
+            };
+        }
+
+        const lightBg0 = 'rgba(255,255,255,0)';
+        const lightBg1 = 'rgba(255,255,255,0.95)';
+        const darkBg0 = 'rgba(11,15,23,0)';
+        const darkBg1 = 'rgba(11,15,23,0.92)';
 
         const bgColor = interpolateColor(
             scrollY.value,
             [0, 50],
-            ['rgba(255,255,255,0)', 'rgba(255,255,255,0.95)']
+            isDark ? [darkBg0, darkBg1] : [lightBg0, lightBg1]
         );
         const borderColor = interpolateColor(
             scrollY.value,
             [0, 50],
-            ['rgba(226,232,240,0)', ADMIN_THEME.colors.border]
+            isDark
+                ? ['rgba(255,255,255,0)', 'rgba(255,255,255,0.08)']
+                : ['rgba(226,232,240,0)', ADMIN_THEME.colors.border]
         );
         const shadowOpacity = interpolate(
             scrollY.value,
             [0, 50],
-            [0, 0.1],
+            [0, isWideWeb ? 0.06 : 0.1],
             Extrapolation.CLAMP
         );
 
@@ -91,84 +119,111 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     });
 
     const isAbsolute = !!scrollY;
+    const headerContentHeight = isWideWeb ? 56 : 50;
+    const horizontalPad = isWideWeb ? 20 : ADMIN_THEME.spacing.m;
+
+    const showBack = showBackButton || isWeb;
+    const showMenu =
+        showMenuButton && (!showBackButton || (isWeb && !!onMenuPress));
+    const dualLeftNav = isWeb && showBack && showMenu;
 
     return (
         <Animated.View style={[
             styles.container,
             { paddingTop: insets.top },
             isAbsolute && styles.absoluteHeader,
+            isWideWeb && styles.containerWide,
+            isWideWeb && styles.containerWideZ,
             animatedStyle
         ]}>
-            <View style={styles.content}>
-                {/* Left: Back or Menu */}
-                <View style={styles.leftContainer}>
-                    {showBackButton ? (
-                        <TouchableOpacity
+            <View style={[styles.content, { paddingHorizontal: horizontalPad, height: headerContentHeight }]}>
+                <View
+                    style={[
+                        styles.leftContainer,
+                        dualLeftNav && styles.leftContainerWide,
+                    ]}
+                >
+                    {showBack ? (
+                        <Pressable
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 handleBack();
                             }}
-                            style={styles.iconButton}
-                            activeOpacity={0.7}
+                            style={[styles.iconButton, { backgroundColor: iconBtnBg }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Ionicons name="arrow-back" size={22} color={ADMIN_THEME.colors.text.primary} />
-                        </TouchableOpacity>
-                    ) : (
-                        showMenuButton && (
-                            <TouchableOpacity
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    if (onMenuPress) onMenuPress();
-                                }}
-                                style={styles.iconButton}
-                                activeOpacity={0.7}
-                            >
-                                <Feather name="menu" size={22} color={ADMIN_THEME.colors.text.primary} />
-                            </TouchableOpacity>
-                        )
-                    )}
+                            <Ionicons name="arrow-back" size={22} color={textPrimary} />
+                        </Pressable>
+                    ) : null}
+                    {showMenu ? (
+                        <Pressable
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                if (onMenuPress) onMenuPress();
+                            }}
+                            style={[styles.iconButton, { backgroundColor: iconBtnBg }, Platform.OS === 'web' && { cursor: 'pointer' }]}
+                        >
+                            <Feather name="menu" size={22} color={textPrimary} />
+                        </Pressable>
+                    ) : null}
                 </View>
 
-                {/* Center: Title */}
-                <Text style={styles.title}>{title}</Text>
+                <Text style={[
+                    styles.title,
+                    isWideWeb && styles.titleWide,
+                    { color: textPrimary },
+                ]} numberOfLines={1}>{title}</Text>
 
-                {/* Right: Settings/Profile */}
                 <View style={styles.rightContainer}>
                     {rightAction && (
-                        <TouchableOpacity
+                        <Pressable
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 rightAction.onPress();
                             }}
-                            style={[styles.iconButton, { marginRight: 8 }]}
-                            activeOpacity={0.7}
+                            style={[styles.iconButton, { marginRight: 8, backgroundColor: iconBtnBg }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Ionicons name={rightAction.icon} size={22} color={ADMIN_THEME.colors.text.primary} />
-                        </TouchableOpacity>
+                            <Ionicons name={rightAction.icon} size={22} color={textPrimary} />
+                        </Pressable>
                     )}
                     {showNotification && (
-                        <TouchableOpacity
+                        <Pressable
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 router.push('/admin/notifications' as any);
                             }}
-                            style={[styles.iconButton, { marginRight: 8 }]}
-                            activeOpacity={0.7}
+                            style={[styles.iconButton, { marginRight: 8, backgroundColor: iconBtnBg }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Ionicons name="notifications-outline" size={22} color={ADMIN_THEME.colors.text.secondary} />
-                        </TouchableOpacity>
+                            <Ionicons name="notifications-outline" size={22} color={textSecondary} />
+                        </Pressable>
                     )}
                     {showProfileButton && (
-                        <TouchableOpacity
+                        <Pressable
                             onPress={handleSettings}
-                            style={styles.iconButton}
-                            activeOpacity={0.7}
+                            style={[styles.iconButton, { backgroundColor: iconBtnBg }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Ionicons name="settings-outline" size={22} color={ADMIN_THEME.colors.text.secondary} />
-                        </TouchableOpacity>
+                            <Ionicons name="settings-outline" size={22} color={textSecondary} />
+                        </Pressable>
                     )}
                 </View>
             </View>
+            {isWideWeb ? (
+                <>
+                    <View
+                        style={{
+                            height: StyleSheet.hairlineWidth,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)',
+                        }}
+                    />
+                    <View style={{ height: 2, overflow: 'hidden' }}>
+                        <LinearGradient
+                            colors={['#3B82F6', '#8B5CF6', 'transparent']}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={{ flex: 1 }}
+                        />
+                    </View>
+                </>
+            ) : null}
         </Animated.View>
     );
 };
@@ -180,16 +235,16 @@ const styles = StyleSheet.create({
         borderBottomColor: ADMIN_THEME.colors.border,
         ...ADMIN_THEME.shadows.sm,
         paddingBottom: ADMIN_THEME.spacing.s,
+        overflow: 'hidden',
     },
-    safeArea: {
-        backgroundColor: ADMIN_THEME.colors.background.surface,
+    containerWide: {
+        paddingBottom: 0,
+        borderBottomWidth: 0,
     },
     content: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: ADMIN_THEME.spacing.m,
-        height: 50, // Fixed height for consistent navbar feel
     },
     iconButton: {
         width: 40,
@@ -200,10 +255,18 @@ const styles = StyleSheet.create({
         backgroundColor: ADMIN_THEME.colors.background.subtle,
     },
     title: {
+        flex: 1,
+        marginHorizontal: 12,
         fontSize: ADMIN_THEME.typography.size.m,
         fontWeight: '600',
         color: ADMIN_THEME.colors.text.primary,
         letterSpacing: 0.3,
+        textAlign: 'center',
+    },
+    titleWide: {
+        fontWeight: '800',
+        letterSpacing: 0.35,
+        fontSize: 17,
     },
     rightContainer: {
         flexDirection: 'row',
@@ -211,8 +274,18 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     leftContainer: {
-        width: 40,
+        minWidth: 40,
         alignItems: 'flex-start',
+        justifyContent: 'flex-start',
+    },
+    leftContainerWide: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minWidth: 96,
+    },
+    containerWideZ: {
+        zIndex: 100,
     },
     absoluteHeader: {
         position: 'absolute',

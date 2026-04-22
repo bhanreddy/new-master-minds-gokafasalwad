@@ -8,7 +8,7 @@ import {
     withSpring,
     withTiming
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from './haptics';
 import { Platform } from 'react-native';
 
 // Standardized Spring Configs

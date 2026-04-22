@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -74,7 +75,7 @@ export default function AdminFinanceScreen() {
 
   const handleFilterStatus = () => {
     const options = ['All', 'Success', 'Pending'];
-    Alert.alert('Filter by Status', 'Select transaction status', [
+    alertCompat('Filter by Status', 'Select transaction status', [
     ...options.map((opt) => ({ text: opt, onPress: () => setStatusFilter(opt) })),
     { text: 'Cancel', style: 'cancel' }]
     );
@@ -82,14 +83,14 @@ export default function AdminFinanceScreen() {
 
   const handleFilterMode = () => {
     const options = ['All', 'CASH', 'ONLINE', 'UPI', 'BANK_TRANSFER'];
-    Alert.alert('Filter by Mode', 'Select payment mode', [
+    alertCompat('Filter by Mode', 'Select payment mode', [
     ...options.map((opt) => ({ text: opt, onPress: () => setModeFilter(opt) })),
     { text: 'Cancel', style: 'cancel' }]
     );
   };
 
   const handleDefaulters = () => {
-    Alert.alert('Fee Defaulters', 'This will navigate to the detailed fee defaulters list.');
+    alertCompat('Fee Defaulters', 'This will navigate to the detailed fee defaulters list.');
   };
 
   const filteredTransactions = transactions.filter((tx) => {
@@ -179,7 +180,7 @@ export default function AdminFinanceScreen() {
                     {/* Recent Transactions */}
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Recent Transactions</Text>
-                        <TouchableOpacity onPress={() => Alert.alert('Transactions', 'Navigating to full transaction history...')}>
+                        <TouchableOpacity onPress={() => alertCompat('Transactions', 'Navigating to full transaction history...')}>
                             <Text style={styles.seeAllText}>See All</Text>
                         </TouchableOpacity>
                     </View>
@@ -219,7 +220,7 @@ export default function AdminFinanceScreen() {
             {/* Floating Action Button */}
             <TouchableOpacity
         style={styles.fab}
-        onPress={() => Alert.alert('Export', 'Generating collection report for download...')}>
+        onPress={() => alertCompat('Export', 'Generating collection report for download...')}>
 
                 <Ionicons name="download-outline" size={24} color="#fff" />
             </TouchableOpacity>

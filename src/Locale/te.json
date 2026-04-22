@@ -82,11 +82,62 @@
     "good_morning": "శుభోదయం",
     "good_afternoon": "శుభ మధ్యాహ్నం",
     "good_evening": "శుభ సాయంత్రం",
+    "home": "హోమ్",
     "quick_actions": "క్విక్ యాక్షన్స్",
     "recent_transactions": "రీసెంట్ ట్రాన్సాక్షన్స్",
     "view_all": "అన్నీ చూడండి",
     "school_overview": "స్కూల్ ఓవర్వ్యూ",
-    "attendance_trends": "అటెండెన్స్ ట్రెండ్స్"
+    "attendance_trends": "అటెండెన్స్ ట్రెండ్స్",
+    "featureSubtitles": {
+      "school_updates": "స్కూల్ అప్డేట్స్",
+      "raise_concern": "మీ సమస్యను తెలియజేయండి",
+      "character_growth": "అక్షరాలు & పెరుగుదల",
+      "stay_services": "వసతి సేవలు",
+      "live_bus": "లైవ్ బస్ ట్రాకింగ్",
+      "lab_innovation": "ల్యాబ్ & ఆవిష్కరణ",
+      "assessments": "మూల్యాంకనాలు",
+      "personal_details": "వ్యక్తిగత వివరాలు"
+    }
+  },
+  "diary": "డైరీ",
+  "studentHome": {
+    "todaysSnapshot": "ఈరోజు సారాంశం",
+    "attendanceLink": "హాజరు",
+    "overall": "మొత్తం",
+    "todaysStatus": "ఈరోజు స్థితి",
+    "chipPresent": "హాజరు",
+    "chipAbsent": "గైర్హాజరు",
+    "chipTotal": "మొత్తం",
+    "latestAnnouncement": "తాజా ప్రకటన",
+    "badgeNew": "కొత్తది",
+    "academicAdvisor": "విద్యా సలహాదారు",
+    "previousUpdate": "మునుపటి అప్డేట్",
+    "recentUpdate": "ఇటీవలి అప్డేట్",
+    "tagNewAnnouncement": "కొత్త ప్రకటన",
+    "tagAnnouncement": "ప్రకటన",
+    "readFullAnnouncement": "పూర్తి ప్రకటన చదవండి",
+    "noticeFallback": "నోటీసు",
+    "teacherContact": "సంప్రదించండి",
+    "open": "తెరవండి",
+    "notAssigned": "కేటాయించబడలేదు",
+    "classNA": "తరగతి లేదు",
+    "studentFallback": "విద్యార్థి",
+    "classWord": "తరగతి",
+    "sectionPrefix": "సెక్",
+    "attendanceStatus": {
+      "present": "హాజరు",
+      "absent": "గైర్హాజరు",
+      "late": "ఆలస్యం",
+      "half_day": "సగం రోజు",
+      "not_marked": "గుర్తించలేదు"
+    }
+  },
+  "schoolRibbon": {
+    "tel": "ఫోన్:",
+    "email": "ఇమెయిల్:",
+    "tagline": "ఆవిర్భావం నుంచి విద్యలో ఉత్తమత",
+    "motto": "నిజాయితీ · గౌరవం · ఉత్తమత · బాధ్యత",
+    "address": "123 స్కూల్ స్ట్రీట్, నగరం, రాష్ట్రం - 509407"
   },
   "admin_dashboard": {
     "title": "ప్రిన్సిపాల్ డాష్బోర్డ్",
@@ -132,6 +183,9 @@
   },
   "common": {
     "school_name": "మీ స్కూల్ పేరు",
+    "class_teacher": "తరగతి ఉపాధ్యాయుడు",
+    "contact": "సంప్రదించండి",
+    "open": "తెరవండి",
     "days": {
       "Mon": "సోమ",
       "Tue": "మంగళ",

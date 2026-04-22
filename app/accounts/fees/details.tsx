@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, Animated, Platform, Pressable
+  Animated, Platform, Pressable
 } from 'react-native';
+import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AdminHeader from '../../../src/components/AdminHeader';
+import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService } from '../../../src/services/feeService';
 import { StudentFee, FeeResponse } from '../../../src/types/models';
 import { Ionicons } from '@expo/vector-icons';
@@ -263,6 +265,7 @@ const fcStyles = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function StudentFeeLedger() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -290,7 +293,7 @@ export default function StudentFeeLedger() {
         Animated.spring(summaryAnim, { toValue: 1, tension: 65, friction: 10, useNativeDriver: true }),
       ]).start();
     } catch {
-      Alert.alert('Error', 'Failed to load financial ledger');
+      alertCompat('Error', 'Failed to load financial ledger');
     } finally {
       setLoading(false);
     }
@@ -333,7 +336,7 @@ export default function StudentFeeLedger() {
 
   return (
     <View style={styles.container}>
-      <AdminHeader title="Fee Ledger" showBackButton />
+      {!shellActive && <AdminHeader title="Fee Ledger" showBackButton />}
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

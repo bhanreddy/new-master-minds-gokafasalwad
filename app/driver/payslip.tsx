@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,15 +27,15 @@ export default function DriverPayslip() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      const targetId = (user as any).staff_id || user.userId;
-      StaffService.getPayslips(targetId).
-        then((data) => setPayslips(data)).
-        catch(() => {
-
-        }).
-        finally(() => setLoading(false));
+    if (!user) {
+      setLoading(false);
+      return;
     }
+    setLoading(true);
+    StaffService.getMyPayslips()
+      .then((data) => setPayslips(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [user?.userId]);
 
   const totalEarnings = React.useMemo(() => {
@@ -56,7 +57,7 @@ export default function DriverPayslip() {
   }, [payslips]);
 
   const handleDownload = () => {
-    Alert.alert('Coming Soon', 'PDF download will be available soon.');
+    alertCompat('Coming Soon', 'PDF download will be available soon.');
   };
 
   return (

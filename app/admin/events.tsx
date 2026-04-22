@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -7,7 +8,10 @@ import { EventService, EventItem } from '../../src/services/commonServices';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { useTranslation } from 'react-i18next';
+import { t_field } from '../../src/utils/lang';
 export default function AdminEvents() {
+  useTranslation(); // Subscribe so list rows re-render when language changes (t_field).
   const {
     theme,
     isDark
@@ -29,7 +33,7 @@ export default function AdminEvents() {
       setEvents(data);
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to load events');
+      alertCompat('Error', 'Failed to load events');
     } finally {
       setLoading(false);
     }
@@ -98,7 +102,7 @@ export default function AdminEvents() {
                     </View>
                     <View style={styles.contentBox}>
                         <View style={styles.titleRow}>
-                            <Text style={styles.title}>{item.title}</Text>
+                            <Text style={styles.title}>{t_field(item.title, item.title_te)}</Text>
                             <View style={[styles.typeBadge, {
               backgroundColor: typeStyle.bg
             }]}>
@@ -132,7 +136,7 @@ export default function AdminEvents() {
             {loading ? <View style={styles.centerContainer}>
                     <LogoLoader size={60} color="#6366F1" />
                 </View> : <FlatList data={events} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} ListEmptyComponent={<Text style={styles.emptyText}>No events found</Text>} refreshing={loading} onRefresh={fetchEvents} />}
-            <TouchableOpacity style={styles.fab} onPress={() => Alert.alert('Create Event', 'Feature coming soon')}>
+            <TouchableOpacity style={styles.fab} onPress={() => alertCompat('Create Event', 'Feature coming soon')}>
                 <Ionicons name="add" size={30} color="#fff" />
             </TouchableOpacity>
         </View>;

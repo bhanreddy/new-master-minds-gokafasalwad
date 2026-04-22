@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -16,7 +17,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -302,7 +303,7 @@ export default function NotificationsTriggerPage() {
 
   const handleFireTrigger = useCallback((item: TriggerCard) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
+    alertCompat(
       "Confirm Live Broadcast",
       `Are you sure you want to dispatch ${item.title} to all applicable students and parents? This will immediately send a push notification to their devices.`,
       [
@@ -321,9 +322,9 @@ export default function NotificationsTriggerPage() {
     setLoadingType(type);
     try {
       const res = await api.post<any>('/admin/notifications/test-trigger', { type });
-      Alert.alert("Broadcast Status", res.data?.message || `Trigger successful for ${type}.`);
+      alertCompat("Broadcast Status", res.data?.message || `Trigger successful for ${type}.`);
     } catch (error: any) {
-      Alert.alert("Failed", error.message || error.response?.data?.error || "Failed to trigger notifications");
+      alertCompat("Failed", error.message || error.response?.data?.error || "Failed to trigger notifications");
     } finally {
       setLoadingType(null);
     }

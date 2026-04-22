@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons'; // Assuming Expo
 import ScreenLayout from '../../src/components/ScreenLayout';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -73,7 +74,7 @@ const FeeRemindersAdmin = () => {
     } catch (error: any) {
 
       if (error.statusCode === 429) {
-        Alert.alert('Limit Reached', 'Daily limit reached for this batch type.');
+        alertCompat('Limit Reached', 'Daily limit reached for this batch type.');
       }
     } finally {
       setLoading(false);
@@ -95,10 +96,10 @@ const FeeRemindersAdmin = () => {
         batch_id: string;
       };
       setBatchId(data.batch_id);
-      Alert.alert('Success', `Batch processing started. Batch ID: ${data.batch_id}`);
+      alertCompat('Success', `Batch processing started. Batch ID: ${data.batch_id}`);
       // Optionally redirect to a "Batch Status" page or just reset
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send notifications');
+      alertCompat('Error', error.message || 'Failed to send notifications');
     } finally {
       setLoading(false);
     }

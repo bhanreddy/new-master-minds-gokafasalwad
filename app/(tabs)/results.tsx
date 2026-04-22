@@ -6,11 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import StudentHeader from '../../src/components/StudentHeader';
 import ScreenLayout from '@/src/components/ScreenLayout';
-import { StudentService } from '../../src/services/studentService';
+import { useStudentQuery } from '../../src/hooks/useStudentQuery';
+import type { Student } from '../../src/types/models';
 import { ResultService, ExamSummary } from '../../src/services/resultService';
 import { useAuth } from '../../src/hooks/useAuth';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
+import { useTheme, type SchoolTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
 
 // Config for visual styling based on exam type
@@ -58,10 +58,7 @@ const EXAM_TYPE_CONFIG: Record<string, {
   }
 };
 const ResultsScreen = () => {
-  const {
-    theme,
-    isDark
-  } = useTheme();
+  const { theme } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const {
     t
@@ -70,33 +67,49 @@ const ResultsScreen = () => {
   const {
     user
   } = useAuth();
+  const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as { code: string }).code : user?.role;
+  const isStudent = roleCode === 'student';
+  const { data: profile, refetch: refetchProfile } = useStudentQuery<Student>(
+    '/students/profile/me',
+    'profile',
+    3 * 60 * 1000,
+    user?.userId,
+    { enabled: !!user?.userId && isStudent }
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<ExamSummary[]>([]);
   useEffect(() => {
-    loadData();
-  }, [user?.userId]);
-  const loadData = async () => {
-    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
-    if (!user?.userId || roleCode !== 'student') return;
-    try {
-      const student = await StudentService.getProfile();
-      if (!student?.id) {
+    const run = async () => {
+      if (!user?.userId || !isStudent || !profile?.id) {
         setLoading(false);
         return;
       }
-      const data = await ResultService.getSummary(student.id);
-      setSummary(data || []);
-    } catch (error) {
+      try {
+        const data = await ResultService.getSummary(profile.id);
+        setSummary(data || []);
+      } catch {
 
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-  const onRefresh = () => {
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+    void run();
+  }, [user?.userId, isStudent, profile?.id]);
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData();
+    const fresh = await refetchProfile();
+    const sid = fresh?.id ?? profile?.id;
+    if (sid) {
+      try {
+        const data = await ResultService.getSummary(sid);
+        setSummary(data || []);
+      } catch {
+
+      }
+    }
+    setRefreshing(false);
   };
   const handlePress = (type: string, title: string) => {
     router.push({
@@ -118,7 +131,7 @@ const ResultsScreen = () => {
   };
   if (loading) {
     return <ScreenLayout>
-      <StudentHeader title={'Results'} />
+      <StudentHeader title={t('results.title', 'Results')} />
       <View style={styles.centerContainer}>
         <LogoLoader size={60} color="#4F46E5" />
       </View>
@@ -126,7 +139,7 @@ const ResultsScreen = () => {
   }
   return <ScreenLayout>
 
-    <StudentHeader title={'Results'} />
+    <StudentHeader title={t('results.title', 'Results')} />
 
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
                 {refreshing &&
@@ -135,8 +148,8 @@ const ResultsScreen = () => {
                     </View>
       }
       <Animated.View entering={FadeInUp.delay(100).duration(600)} style={styles.headerSection}>
-        <Text style={styles.pageTitle}>Exam Results</Text>
-        <Text style={styles.pageSubtitle}>Check your performance and progress reports</Text>
+        <Text style={styles.pageTitle}>{t('results.exam_results', 'Exam Results')}</Text>
+        <Text style={styles.pageSubtitle}>{t('results.subtitle', 'Check your performance and progress reports')}</Text>
       </Animated.View>
 
       {summary.length === 0 ? <View style={styles.emptyContainer}>
@@ -175,10 +188,12 @@ const ResultsScreen = () => {
   </ScreenLayout>;
 };
 export default ResultsScreen;
-const getStyles = (theme: Theme) => StyleSheet.create({
+const getStyles = (theme: SchoolTheme) => {
+  const c = theme.colors;
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card,
+    backgroundColor: c.card,
     paddingTop: Platform.OS === 'android' ? 30 : 0
   },
   scrollContent: {
@@ -190,11 +205,11 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   pageTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827'
+    color: c.textStrong
   },
   pageSubtitle: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
+    color: c.textSecondary,
     marginTop: 5
   },
   gridContainer: {
@@ -206,12 +221,12 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.background,
     padding: 16,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(229, 231, 235, 0.5)',
-    shadowColor: theme.colors.text,
+    borderColor: c.border,
+    shadowColor: c.textPrimary,
     shadowOffset: {
       width: 0,
       height: 4
@@ -234,19 +249,19 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1F2937',
+    color: c.textStrong,
     marginBottom: 4
   },
   cardSubtitle: {
     fontSize: 12,
-    color: theme.colors.textSecondary,
+    color: c.textSecondary,
     fontWeight: '500'
   },
   arrowBox: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: theme.colors.card,
+    backgroundColor: c.card,
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -263,11 +278,12 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   emptyText: {
     marginTop: 10,
     fontSize: 16,
-    color: theme.colors.textTertiary
+    color: c.textMuted
   },
   dateText: {
     fontSize: 11,
-    color: theme.colors.textTertiary,
+    color: c.textMuted,
     marginTop: 2
   }
 });
+};

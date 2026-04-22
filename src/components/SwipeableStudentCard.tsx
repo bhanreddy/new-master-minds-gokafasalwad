@@ -1,12 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     Dimensions,
-    TouchableOpacity,
+    Platform,
 } from 'react-native';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { GestureDetector, Gesture, Pressable } from 'react-native-gesture-handler';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -35,6 +35,12 @@ interface Props {
 const SwipeableStudentCard: React.FC<Props> = ({ student, onStatusChange }) => {
     const translateX = useSharedValue(0);
     const status = student.status;
+
+    const cycleStatus = useCallback(() => {
+        const next =
+            status === 'unmarked' ? 'present' : status === 'present' ? 'absent' : 'unmarked';
+        onStatusChange(student.id, next);
+    }, [status, student.id, onStatusChange]);
 
     // Reset position when status changes externally (e.g. checkbox)
     useEffect(() => {
@@ -117,7 +123,14 @@ const SwipeableStudentCard: React.FC<Props> = ({ student, onStatusChange }) => {
 
             <GestureDetector gesture={panGesture}>
                 <Animated.View style={[styles.card, animatedStyle]}>
-                    <View style={styles.cardContent}>
+                    <Pressable
+                        onPress={cycleStatus}
+                        style={({ pressed }) => [
+                            styles.cardContent,
+                            pressed && styles.cardContentPressed,
+                            Platform.OS === 'web' && ({ cursor: 'pointer' } as object),
+                        ]}
+                    >
                         <View style={styles.avatar}>
                             <Text style={styles.avatarText}>{student.name.charAt(0)}</Text>
                         </View>
@@ -128,23 +141,18 @@ const SwipeableStudentCard: React.FC<Props> = ({ student, onStatusChange }) => {
                         </View>
 
                         <View style={styles.statusContainer}>
-                            <TouchableOpacity
-                                onPress={() => {
-                                    // Cycle status: unmarked -> present -> absent -> unmarked
-                                    const next = status === 'unmarked' ? 'present' : status === 'present' ? 'absent' : 'unmarked';
-                                    onStatusChange(student.id, next);
-                                }}
+                            <View
                                 style={[
                                     styles.checkbox,
                                     status === 'present' && styles.checkboxPresent,
-                                    status === 'absent' && styles.checkboxAbsent
+                                    status === 'absent' && styles.checkboxAbsent,
                                 ]}
                             >
                                 {status === 'present' && <Ionicons name="checkmark" size={16} color="#fff" />}
                                 {status === 'absent' && <Ionicons name="close" size={16} color="#fff" />}
-                            </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
+                    </Pressable>
 
                     {/* Swipe Feedback Icons floating or overlay */}
                 </Animated.View>
@@ -171,6 +179,9 @@ const styles = StyleSheet.create({
     cardContent: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    cardContentPressed: {
+        opacity: 0.94,
     },
     avatar: {
         width: 48,

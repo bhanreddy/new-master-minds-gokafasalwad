@@ -7,6 +7,7 @@ export interface TimetableSlot {
     end_time: string;
     subject_id: string;
     subject_name?: string;
+    subject_name_te?: string;
     teacher_id?: string;
     teacher_name?: string;
     room_no?: string;

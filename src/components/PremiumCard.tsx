@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,8 +8,8 @@ import Animated, {
     withSpring,
     FadeInUp,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import { Shadows, Radii, Spacing, Typography } from '../theme/themes';
+import * as Haptics from '../utils/haptics';
+import { useTheme } from '../hooks/useTheme';
 
 interface PremiumCardProps {
     title: string;
@@ -22,6 +22,7 @@ interface PremiumCardProps {
 const SPRING_CONFIG = { damping: 18, stiffness: 180, mass: 0.7 };
 
 const PremiumCard = ({ title, icon, colors, onPress, index = 0 }: PremiumCardProps) => {
+    const { theme } = useTheme();
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -41,6 +42,46 @@ const PremiumCard = ({ title, icon, colors, onPress, index = 0 }: PremiumCardPro
         onPress();
     };
 
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            width: '50%',
+            padding: theme.spacing.xs + 2,
+        },
+        cardWrapper: {
+            flex: 1,
+            borderRadius: theme.shape.borderRadiusXL,
+            backgroundColor: theme.colors.surface,
+            ...theme.shadows.md,
+        },
+        gradient: {
+            flex: 1,
+            borderRadius: theme.shape.borderRadiusXL,
+            paddingHorizontal: theme.spacing.md,
+            paddingTop: theme.spacing.md,
+            paddingBottom: theme.spacing.sm + 2,
+            height: 112,
+            justifyContent: 'space-between',
+            overflow: 'hidden',
+        },
+        iconContainer: {
+            width: 44,
+            height: 44,
+            borderRadius: theme.shape.borderRadiusMD,
+            backgroundColor: theme.colors.surface,
+            justifyContent: 'center',
+            alignItems: 'center',
+            ...theme.shadows.sm,
+        },
+        title: {
+            fontSize: theme.typography.fontSizeXS,
+            fontWeight: '600',
+            letterSpacing: 0.5,
+            textTransform: 'uppercase',
+            color: theme.colors.textStrong,
+            lineHeight: 19,
+        },
+    }), [theme]);
+
     return (
         <Animated.View
             entering={FadeInUp.delay(60 + index * 50).duration(450).springify()}
@@ -59,9 +100,8 @@ const PremiumCard = ({ title, icon, colors, onPress, index = 0 }: PremiumCardPro
                         end={{ x: 0.7, y: 1 }}
                         style={styles.gradient}
                     >
-                        {/* Solid Icon Container */}
                         <View style={styles.iconContainer}>
-                            <Ionicons name={icon} size={26} color="#1F2937" />
+                            <Ionicons name={icon} size={26} color={theme.colors.textStrong} />
                         </View>
 
                         <Text style={styles.title} numberOfLines={2}>
@@ -73,44 +113,5 @@ const PremiumCard = ({ title, icon, colors, onPress, index = 0 }: PremiumCardPro
         </Animated.View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        width: '50%',
-        padding: 6,
-    },
-    cardWrapper: {
-        flex: 1,
-        borderRadius: Radii.xl,
-        backgroundColor: '#fff',
-        // Structured layered shadow
-        ...Shadows.md,
-    },
-    gradient: {
-        flex: 1,
-        borderRadius: Radii.xl,
-        paddingHorizontal: Spacing.md,
-        paddingTop: Spacing.md,
-        paddingBottom: Spacing.sm + 2,
-        height: 112,
-        justifyContent: 'space-between',
-        overflow: 'hidden',
-    },
-    iconContainer: {
-        width: 44,
-        height: 44,
-        borderRadius: Radii.md,
-        backgroundColor: '#FFFFFF',
-        justifyContent: 'center',
-        alignItems: 'center',
-        // Crisp icon shadow
-        ...Shadows.sm,
-    },
-    title: {
-        ...Typography.label,
-        color: '#0F172A',
-        lineHeight: 19,
-    },
-});
 
 export default PremiumCard;

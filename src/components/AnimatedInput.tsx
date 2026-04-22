@@ -1,20 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { TextInput, TextInputProps, StyleSheet, View } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { TextInput, TextInputProps, StyleSheet, View, Platform } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence, withSpring } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
+import { useTheme } from '../hooks/useTheme';
 
 interface AnimatedInputProps extends TextInputProps {
     icon?: (props: { color: string }) => React.ReactNode;
     rightAccessory?: React.ReactNode;
     error?: boolean;
-    accentColor?: string; // New prop for role-based accent
+    accentColor?: string;
 }
 
-const AnimatedInput: React.FC<AnimatedInputProps> = ({ icon, rightAccessory, error, accentColor = '#4F46E5', onFocus, onBlur, ...rest }) => {
+const AnimatedInput: React.FC<AnimatedInputProps> = ({ icon, rightAccessory, error, accentColor, onFocus, onBlur, style, ...rest }) => {
+    const { theme } = useTheme();
     const [isFocused, setIsFocused] = useState(false);
     const shakeOffset = useSharedValue(0);
 
-    // Shake animation on error
+    const effectiveAccentColor = accentColor || theme.colors.primary;
+
     useEffect(() => {
         if (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -28,10 +31,10 @@ const AnimatedInput: React.FC<AnimatedInputProps> = ({ icon, rightAccessory, err
     const animatedStyle = useAnimatedStyle(() => {
         return {
             transform: [{ translateX: shakeOffset.value }],
-            borderColor: error ? '#EF4444' : (isFocused ? accentColor : 'rgba(0,0,0,0.08)'),
-            borderWidth: isFocused ? 2 : 1, // Remove error border width jump
-            backgroundColor: isFocused ? '#FFFFFF' : '#F8FAFC',
-            shadowColor: isFocused ? accentColor : 'transparent',
+            borderColor: error ? theme.colors.danger : (isFocused ? effectiveAccentColor : theme.colors.border),
+            borderWidth: isFocused ? 2 : 1,
+            backgroundColor: theme.colors.surface,
+            shadowColor: isFocused ? effectiveAccentColor : 'transparent',
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: isFocused ? 0.15 : 0,
             shadowRadius: 12,
@@ -49,40 +52,62 @@ const AnimatedInput: React.FC<AnimatedInputProps> = ({ icon, rightAccessory, err
         if (onBlur) onBlur(e);
     };
 
-    const iconColor = error ? '#EF4444' : (isFocused ? accentColor : '#94A3B8');
+    const iconColor = error ? theme.colors.danger : (isFocused ? effectiveAccentColor : theme.colors.textMuted);
+
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderRadius: theme.shape.borderRadiusLG,
+            height: 60,
+            paddingHorizontal: theme.spacing.xl,
+            ...Platform.select({
+                web: {
+                    outlineWidth: 0,
+                    outlineStyle: 'none',
+                    width: '100%',
+                    maxWidth: 480,
+                    boxSizing: 'border-box',
+                } as any,
+                default: {},
+            }),
+        },
+        input: {
+            flex: 1,
+            fontSize: theme.typography.fontSizeLG - 1,
+            fontWeight: '600',
+            color: theme.colors.textStrong,
+            height: 52,
+            paddingVertical: Platform.select({ web: 14, default: undefined }),
+            ...Platform.select({
+                web: {
+                    outlineWidth: 0,
+                    outlineStyle: 'none',
+                } as any,
+                default: {},
+            }),
+        },
+        rightAccessory: {
+            marginLeft: theme.spacing.sm + 2,
+        }
+    }), [theme]);
 
     return (
         <Animated.View style={[styles.container, animatedStyle]}>
             {icon && icon({ color: iconColor })}
             <TextInput
-                style={styles.input}
+                style={[styles.input, style]}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={theme.colors.textMuted}
+                autoComplete="off"
+                // @ts-ignore — importantForAutofill is Android-only but safe to pass
+                importantForAutofill="no"
                 {...rest}
             />
             {rightAccessory && <View style={styles.rightAccessory}>{rightAccessory}</View>}
         </Animated.View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: 16,
-        height: 60,
-        paddingHorizontal: 20,
-    },
-    input: {
-        flex: 1,
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#1F2937',
-    },
-    rightAccessory: {
-        marginLeft: 10,
-    }
-});
 
 export default AnimatedInput;

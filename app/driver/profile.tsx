@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Linking } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '@/src/utils/haptics';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { AuthService } from '../../src/services/authService';
@@ -96,15 +97,15 @@ export default function DriverProfile() {
   const email = (user as any)?.email || 'N/A';
 
   useEffect(() => {
-    if (user) {
-      const targetId = (user as any).staff_id || user.userId;
-      StaffService.getPayslips(targetId).
-      then((data) => setPayslips(data)).
-      catch(() => {
-
-      }).
-      finally(() => setLoadingPayslips(false));
+    if (!user) {
+      setLoadingPayslips(false);
+      return;
     }
+    setLoadingPayslips(true);
+    StaffService.getMyPayslips()
+      .then((data) => setPayslips(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoadingPayslips(false));
   }, [user?.userId]);
 
   const totalEarnings = React.useMemo(() => {
@@ -117,7 +118,7 @@ export default function DriverProfile() {
   }, [payslips]);
 
   const handleEmail = (addr: string) => {Haptics.selectionAsync();Linking.openURL(`mailto:${addr}`);};
-  const handleDownload = () => {Alert.alert('Coming Soon', 'PDF download will be available soon.');};
+  const handleDownload = () => {alertCompat('Coming Soon', 'PDF download will be available soon.');};
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await AuthService.signOut();

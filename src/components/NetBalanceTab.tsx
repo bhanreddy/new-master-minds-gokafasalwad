@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNetBalance } from '../hooks/useNetBalance';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -100,21 +100,24 @@ export default function NetBalanceTab() {
                         { id: 'academic_year', label: 'Academic Year' },
                         { id: 'all', label: 'All Time' },
                     ].map((f) => (
-                        <TouchableOpacity
+                        <Pressable
                             key={f.id}
                             style={[
                                 styles.filterChip,
-                                activeFilter === f.id && styles.activeFilterChip
+                                activeFilter === f.id && styles.activeFilterChip,
+                                Platform.OS === 'web' && { cursor: 'pointer' }
                             ]}
                             onPress={() => setActiveFilter(f.id as FilterType)}
                         >
-                            <Text style={[
-                                styles.filterText,
-                                activeFilter === f.id && styles.activeFilterText
-                            ]}>
+                            <Text
+                                style={[
+                                    styles.filterText,
+                                    activeFilter === f.id && styles.activeFilterText
+                                ]}
+                            >
                                 {f.label}
                             </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     ))}
                 </ScrollView>
             </View>
@@ -126,12 +129,12 @@ export default function NetBalanceTab() {
             ) : error ? (
                 <View style={styles.centered}>
                     <Text style={styles.errorText}>{error}</Text>
-                    <TouchableOpacity
-                        style={styles.retryBtn}
+                    <Pressable
+                        style={[styles.retryBtn, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         onPress={() => fetchNetBalance(startDate, endDate)}
                     >
                         <Text style={styles.retryText}>Retry</Text>
-                    </TouchableOpacity>
+                    </Pressable>
                 </View>
             ) : data ? (
                 <ScrollView contentContainerStyle={styles.content}>

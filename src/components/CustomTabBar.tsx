@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { View, Pressable, StyleSheet, Dimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import Animated, {
@@ -7,9 +7,11 @@ import Animated, {
     useAnimatedStyle,
     withSpring,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
+import { useTheme } from '../hooks/useTheme';
 
 const { width } = Dimensions.get('window');
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface TabItem {
     id: string;
@@ -31,6 +33,7 @@ interface CustomTabBarProps {
 }
 
 const TabBarItem = ({ tab, isActive, onPress }: { tab: TabItem, isActive: boolean, onPress: () => void }) => {
+    const { theme } = useTheme();
     const scale = useSharedValue(isActive ? 1.15 : 1);
     const dotScale = useSharedValue(isActive ? 1 : 0);
 
@@ -41,7 +44,6 @@ const TabBarItem = ({ tab, isActive, onPress }: { tab: TabItem, isActive: boolea
 
     const handlePress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        // Small pop on press regardless of active state
         scale.value = withSpring(0.9, { damping: 15 }, () => {
             scale.value = withSpring(isActive ? 1.15 : 1, { damping: 12, stiffness: 200 });
         });
@@ -60,20 +62,20 @@ const TabBarItem = ({ tab, isActive, onPress }: { tab: TabItem, isActive: boolea
     const IconComponent = tab.icon;
 
     return (
-        <TouchableOpacity
-            style={styles.tabItem}
+        <Pressable
+            style={[{ width: 60, height: 60, alignItems: 'center', justifyContent: 'center', position: 'relative' }, Platform.OS === 'web' && { cursor: 'pointer' }]}
             onPress={handlePress}
-            activeOpacity={1}
         >
             <Animated.View style={animIconStyle}>
-                <IconComponent color={isActive ? '#10B981' : '#9CA3AF'} />
+                <IconComponent color={isActive ? theme.colors.secondary : theme.colors.navIconInactive} />
             </Animated.View>
-            <Animated.View style={[styles.activeDot, animDotStyle]} />
-        </TouchableOpacity>
+            <Animated.View style={[{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: theme.colors.secondary, position: 'absolute', bottom: 8 }, animDotStyle]} />
+        </Pressable>
     );
 };
 
 export const CustomTabBar: React.FC<CustomTabBarProps> = ({ tabs = DEFAULT_TABS }) => {
+    const { theme } = useTheme();
     const router = useRouter();
     const pathname = usePathname();
 
@@ -82,6 +84,28 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({ tabs = DEFAULT_TABS 
             router.push(route as any);
         }
     };
+
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            position: 'absolute',
+            bottom: theme.spacing.xl,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            zIndex: 100,
+        },
+        bar: {
+            flexDirection: 'row',
+            backgroundColor: theme.colors.surface,
+            width: width * 0.9,
+            height: 60,
+            borderRadius: theme.shape.borderRadiusFull,
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            ...theme.shadows.md,
+            paddingHorizontal: theme.spacing.lg,
+        },
+    }), [theme]);
 
     return (
         <View style={styles.container}>
@@ -101,47 +125,3 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({ tabs = DEFAULT_TABS 
         </View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        position: 'absolute',
-        bottom: 20,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        zIndex: 100,
-    },
-    bar: {
-        flexDirection: 'row',
-        backgroundColor: '#FFFFFF',
-        width: width * 0.9,
-        height: 60,
-        borderRadius: 30, // Pill shape
-        justifyContent: 'space-around', // Spread them out
-        alignItems: 'center',
-        shadowColor: "#000",
-        shadowOffset: {
-            width: 0,
-            height: 10,
-        },
-        shadowOpacity: 0.12,
-        shadowRadius: 20,
-        elevation: 8,
-        paddingHorizontal: 16,
-    },
-    tabItem: {
-        width: 60,
-        height: 60,
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-    },
-    activeDot: {
-        width: 5,
-        height: 5,
-        borderRadius: 2.5,
-        backgroundColor: '#10B981',
-        position: 'absolute',
-        bottom: 8,
-    }
-});

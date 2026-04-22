@@ -1,6 +1,5 @@
-
-import React from 'react';
-import { TouchableWithoutFeedback, View, Text, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { Pressable, View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { User } from 'phosphor-react-native/src/icons/User';
@@ -13,11 +12,14 @@ import { Flask } from 'phosphor-react-native/src/icons/Flask';
 import { FileText } from 'phosphor-react-native/src/icons/FileText';
 import { IconProps } from 'phosphor-react-native';
 import { HapticFeedback } from '../utils/animations';
+import { useTheme } from '../hooks/useTheme';
 
 const { width } = Dimensions.get('window');
-const padding = 20; // Must match gridContainer paddingHorizontal
-const gap = 16; // Fixed 16px gap between cards
+const padding = 20;
+const gap = 16;
 const CARD_WIDTH = (width - (padding * 2) - gap) / 2;
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const IconMap = {
     User,
@@ -43,9 +45,10 @@ interface FeatureCardProps {
 }
 
 export default function FeatureCard({ title, icon, colors, badgeCount, priority = 'medium', isPrimary, onPress }: FeatureCardProps) {
+    const { theme } = useTheme();
     const scale = useSharedValue(1);
-    const shadowOp = useSharedValue(0.05); // Base soft shadow opacity
-    const shadowY = useSharedValue(6); // Base shadow offset Y
+    const shadowOp = useSharedValue(0.05);
+    const shadowY = useSharedValue(6);
 
     const animatedStyle = useAnimatedStyle(() => {
         return {
@@ -57,171 +60,159 @@ export default function FeatureCard({ title, icon, colors, badgeCount, priority 
 
     const handlePressIn = () => {
         scale.value = withSpring(0.97, { damping: 15, stiffness: 300 });
-        shadowOp.value = withSpring(0.02, { damping: 15, stiffness: 300 }); // Compress shadow opacity
-        shadowY.value = withSpring(2, { damping: 15, stiffness: 300 }); // Compress shadow depth
+        shadowOp.value = withSpring(0.02, { damping: 15, stiffness: 300 });
+        shadowY.value = withSpring(2, { damping: 15, stiffness: 300 });
         HapticFeedback.light();
     };
 
     const handlePressOut = () => {
-        scale.value = withSpring(1, { damping: 15, stiffness: 200 }); // Friendly, softer bounce
-        shadowOp.value = withSpring(0.08, { damping: 15, stiffness: 200 }); // Restore shadow
-        shadowY.value = withSpring(6, { damping: 15, stiffness: 200 }); // Restore depth
+        scale.value = withSpring(1, { damping: 15, stiffness: 200 });
+        shadowOp.value = withSpring(0.08, { damping: 15, stiffness: 200 });
+        shadowY.value = withSpring(6, { damping: 15, stiffness: 200 });
     };
 
     const IconComponent = IconMap[icon] as React.ElementType<IconProps>;
 
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            width: CARD_WIDTH,
+            height: 72,
+            borderRadius: theme.shape.borderRadiusXL,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.8)',
+            ...theme.shadows.md,
+            overflow: 'hidden',
+        },
+        cardInner: {
+            flex: 1,
+            flexDirection: 'row',
+            padding: theme.spacing.sm + 2,
+            justifyContent: 'flex-start',
+            alignItems: 'center',
+            gap: theme.spacing.sm + 2,
+            zIndex: 1,
+            backgroundColor: 'transparent',
+        },
+        iconBoxShadowWrap: {
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15,
+            shadowRadius: 10,
+            elevation: 3,
+            borderRadius: theme.shape.borderRadiusLG,
+        },
+        iconBox: {
+            width: 48,
+            height: 48,
+            borderRadius: theme.shape.borderRadiusLG,
+            justifyContent: 'center',
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.3)',
+            overflow: 'hidden',
+        },
+        glassHighlight: {
+            position: 'absolute',
+            top: 0, left: 0, right: 0, height: 32,
+            backgroundColor: 'rgba(255,255,255,0.15)',
+        },
+        badge: {
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            backgroundColor: theme.colors.danger,
+            borderRadius: 10,
+            minWidth: 20,
+            height: 20,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: theme.spacing.xs,
+            borderWidth: 2,
+            borderColor: theme.colors.surface,
+        },
+        badgeText: {
+            color: theme.colors.surface,
+            fontSize: 10,
+            fontWeight: '800',
+        },
+        textContainer: {
+            flex: 1,
+            justifyContent: 'center',
+            paddingRight: theme.spacing.sm,
+            overflow: 'hidden',
+        },
+        title: {
+            fontSize: theme.typography.fontSizeXS + 1,
+            lineHeight: 16,
+            fontWeight: '600',
+            color: theme.colors.textPrimary,
+            letterSpacing: -0.2,
+            flexShrink: 1,
+        },
+        titlePrimary: {
+            fontSize: theme.typography.fontSizeSM,
+            lineHeight: 16,
+            fontWeight: '800',
+            color: theme.colors.textStrong,
+            letterSpacing: -0.2,
+        },
+    }), [theme]);
+
     return (
-        <TouchableWithoutFeedback
+        <AnimatedPressable
             onPress={onPress}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
+            style={[styles.container, animatedStyle, Platform.OS === 'web' && { cursor: 'pointer' }]}
         >
-            <Animated.View style={[
-                styles.container,
-                animatedStyle,
-            ]}>
-                {/* 1. Volumetric Tinted Card Background */}
-                <LinearGradient
-                    colors={[colors[0] + '33', colors[1] + '1A']} // Brighter 20% fading to 10% gradient
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                />
+            <LinearGradient
+                colors={[colors[0] + '33', colors[1] + '1A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
+            />
 
-                {/* 2. Soft Ambient Card Glow (using primary accent color) */}
-                <View style={[
-                    StyleSheet.absoluteFillObject,
-                    { backgroundColor: colors[0], opacity: 0.05 }
-                ]} />
+            <View style={[
+                StyleSheet.absoluteFillObject,
+                { backgroundColor: colors[0], opacity: 0.05 }
+            ]} />
 
-                <View style={styles.cardInner}>
-                    {/* 3. Drop shadow specifically for the icon box to create lift */}
-                    <View style={[styles.iconBoxShadowWrap, { shadowColor: colors[0] }]}>
-                        {/* 4. Glassmorphic Gradient Icon Block */}
-                        <LinearGradient
-                            colors={colors as [string, string, ...string[]]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={[
-                                styles.iconBox,
-                                priority === 'high' && { borderColor: 'rgba(255, 255, 255, 0.6)', borderWidth: 1.5 },
-                                priority === 'low' && { opacity: 0.85 }
-                            ]}
-                        >
-                            <View style={[
-                                styles.glassHighlight,
-                                priority === 'high' && { backgroundColor: 'rgba(255,255,255,0.25)' }
-                            ]} />
-                            {IconComponent && <IconComponent size={24} color="#FFFFFF" weight="fill" />}
-                            {!!badgeCount && badgeCount > 0 && (
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
-                                </View>
-                            )}
-                        </LinearGradient>
-                    </View>
-                    <View style={styles.textContainer}>
-                        <Text
-                            style={[
-                                styles.title,
-                                isPrimary && styles.titlePrimary,
-                                priority === 'low' && { color: '#64748B' }
-                            ]}
-                        >
-                            {title}
-                        </Text>
-                    </View>
+            <View style={styles.cardInner}>
+                <View style={[styles.iconBoxShadowWrap, { shadowColor: colors[0] }]}>
+                    <LinearGradient
+                        colors={colors as [string, string, ...string[]]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[
+                            styles.iconBox,
+                            priority === 'high' && { borderColor: 'rgba(255, 255, 255, 0.6)', borderWidth: 1.5 },
+                            priority === 'low' && { opacity: 0.85 }
+                        ]}
+                    >
+                        <View style={[
+                            styles.glassHighlight,
+                            priority === 'high' && { backgroundColor: 'rgba(255,255,255,0.25)' }
+                        ]} />
+                        {IconComponent && <IconComponent size={24} color={theme.colors.surface} weight="fill" />}
+                        {!!badgeCount && badgeCount > 0 && (
+                            <View style={styles.badge}>
+                                <Text style={styles.badgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
+                            </View>
+                        )}
+                    </LinearGradient>
                 </View>
-            </Animated.View>
-        </TouchableWithoutFeedback>
+                <View style={styles.textContainer}>
+                    <Text
+                        style={[
+                            styles.title,
+                            isPrimary && styles.titlePrimary,
+                            priority === 'low' && { color: theme.colors.textSecondary }
+                        ]}
+                    >
+                        {title}
+                    </Text>
+                </View>
+            </View>
+        </AnimatedPressable>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        width: CARD_WIDTH,
-        height: 72, // Significantly reduced height for horizontal pill-like row item
-        borderRadius: 20,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.06,
-        shadowRadius: 24,
-        elevation: 6,
-        overflow: 'hidden',
-    },
-    cardInner: {
-        flex: 1,
-        flexDirection: 'row',
-        padding: 10, // Reduced from 12 to maximize horizontal space for text
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        gap: 10, // Reduced gap between icon and text 
-        zIndex: 1,
-        backgroundColor: 'transparent',
-    },
-    iconBoxShadowWrap: {
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-        elevation: 3,
-        borderRadius: 16,
-    },
-    iconBox: {
-        width: 48, // Shrunk to match the shorter card height
-        height: 48,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-        overflow: 'hidden',
-    },
-    glassHighlight: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0, height: 32,
-        backgroundColor: 'rgba(255,255,255,0.15)',
-    },
-    badge: {
-        position: 'absolute',
-        top: -6,
-        right: -6,
-        backgroundColor: '#EF4444',
-        borderRadius: 10,
-        minWidth: 20,
-        height: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 4,
-        borderWidth: 2,
-        borderColor: '#FFFFFF',
-    },
-    badgeText: {
-        color: '#FFFFFF',
-        fontSize: 10,
-        fontWeight: '800',
-    },
-    textContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        paddingRight: 8,
-        overflow: 'hidden',
-    },
-    title: {
-        fontSize: 12,
-        lineHeight: 16,
-        fontWeight: '600',
-        color: '#334155',
-        letterSpacing: -0.2,
-        flexShrink: 1,
-    },
-    titlePrimary: {
-        fontSize: 13,
-        lineHeight: 16,
-        fontWeight: '800',
-        color: '#0F172A',
-        letterSpacing: -0.2,
-    },
-});

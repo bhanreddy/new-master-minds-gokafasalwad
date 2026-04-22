@@ -3,15 +3,15 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, Platform, RefreshContro
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { api } from '../../src/services/apiClient';
 import { TimetableService, TimetableSlot } from '../../src/services/timetableService';
 import { useAuth } from '../../src/hooks/useAuth';
-;
+import { useStudentQuery } from '../../src/hooks/useStudentQuery';
+import type { Student } from '../../src/types/models';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
+import { useTheme, type SchoolTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
+import { t_field } from '../../src/utils/lang';
 
 const { width } = Dimensions.get('window');
 
@@ -71,8 +71,18 @@ interface ProcessedItem {
 const TimeTableScreen = () => {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as { code: string }).code : user?.role;
+  const isStudent = roleCode === 'student';
+
+  const { data: profile, refetch: refetchProfile } = useStudentQuery<Student>(
+    '/students/profile/me',
+    'profile',
+    3 * 60 * 1000,
+    user?.userId,
+    { enabled: !!user?.userId && isStudent }
+  );
 
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,15 +95,15 @@ const TimeTableScreen = () => {
   }, []);
 
   const loadTimetable = async () => {
-    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
-    if (!user || roleCode !== 'student') return;
+    if (!user || !isStudent) return;
     try {
-      const profile = await api.get<any>('/students/profile/me');
       if (profile?.current_enrollment?.class_section_id) {
         const data = await TimetableService.getClassSlots(profile.current_enrollment.class_section_id);
         setSlots(data);
+      } else {
+        setSlots([]);
       }
-    } catch (err) {
+    } catch {
 
     } finally {
       setLoading(false);
@@ -101,9 +111,15 @@ const TimeTableScreen = () => {
     }
   };
 
-  useEffect(() => {loadTimetable();}, [user?.userId]);
+  useEffect(() => {
+    void loadTimetable();
+  }, [user?.userId, isStudent, profile?.current_enrollment?.class_section_id]);
 
-  const onRefresh = () => {setRefreshing(true);loadTimetable();};
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetchProfile();
+    await loadTimetable();
+  };
 
   // Process slots: sort + insert gap breaks
   const processedItems: ProcessedItem[] = useMemo(() => {
@@ -135,7 +151,7 @@ const TimeTableScreen = () => {
         endTime: slot.end_time.slice(0, 5),
         startRaw: slot.start_time,
         endRaw: slot.end_time,
-        subject: slot.subject_name || 'N/A',
+        subject: t_field(slot.subject_name, slot.subject_name_te) || 'N/A',
         teacher: slot.teacher_name || 'N/A',
         room: slot.room_no || 'N/A',
         periodNumber: slot.period_number
@@ -143,7 +159,7 @@ const TimeTableScreen = () => {
     });
 
     return items;
-  }, [slots]);
+  }, [slots, i18n.language]);
 
   // Check if a time range is currently active
   const isActive = (startRaw: string, endRaw: string): boolean => {
@@ -333,7 +349,7 @@ const TimeTableScreen = () => {
 
 export default TimeTableScreen;
 
-const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
+const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background
@@ -487,7 +503,7 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   subjectName: {
     fontSize: 17,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.2
   },
   subjectNamePast: {
@@ -569,7 +585,7 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   },
   emptySubtitle: {
     fontSize: 14,
-    color: theme.colors.textTertiary,
+    color: theme.colors.textMuted,
     textAlign: 'center',
     paddingHorizontal: 40
   }

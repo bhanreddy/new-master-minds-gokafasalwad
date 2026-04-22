@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
   View,
   Text,
@@ -6,12 +9,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  TextInput,
-  Alert,
   ActivityIndicator,
   Animated as RNAnimated,
-  RefreshControl as RNRefreshControl,
-} from 'react-native';
+  RefreshControl as RNRefreshControl} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -289,7 +290,7 @@ export default function SmartInsights() {
   const [generating, setGenerating] = useState(false);
   const [riskData, setRiskData] = useState<StudentRiskProfile[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<AppTextInput>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -300,7 +301,7 @@ export default function SmartInsights() {
       setRiskData(risk);
       setHeatmapData(heatmap);
     } catch {
-      Alert.alert('Error', 'Failed to load smart insights.');
+      alertCompat('Error', 'Failed to load smart insights.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -331,7 +332,7 @@ export default function SmartInsights() {
 
   const handleGeneratePoints = async () => {
     if (!searchId) {
-      Alert.alert('Enter ID', 'Please enter a valid student ID.');
+      alertCompat('Enter ID', 'Please enter a valid student ID.');
       return;
     }
     setGenerating(true);
@@ -339,7 +340,7 @@ export default function SmartInsights() {
       const points = await AdminService.generateTalkingPoints(searchId);
       setGeneratedPoints(points);
     } catch {
-      Alert.alert('Not Found', 'Student ID not found or analysis failed.');
+      alertCompat('Not Found', 'Student ID not found or analysis failed.');
       setGeneratedPoints(null);
     } finally {
       setGenerating(false);
@@ -424,13 +425,13 @@ export default function SmartInsights() {
 
       {/* Search Box */}
       <View style={tpStyles.searchWrap}>
-        <View style={tpStyles.searchBox}>
+        <View style={[tpStyles.searchBox, ds.searchBarWrapper]}>
           <View style={tpStyles.searchIconWrap}>
             <Ionicons name="person-outline" size={18} color={COLORS.primary} />
           </View>
-          <TextInput
+          <AppTextInput
             ref={inputRef}
-            style={tpStyles.searchInput}
+            style={[ds.inputInChrome, tpStyles.searchInput]}
             placeholder="Student ID  (e.g. 103)"
             placeholderTextColor={COLORS.textMuted}
             value={searchId}
@@ -496,7 +497,7 @@ export default function SmartInsights() {
           <View style={tpStyles.actionRow}>
             <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={() => {
               const text = generatedPoints.join('\n\n');
-              Alert.alert('Copied', 'Insights copied to clipboard');
+              alertCompat('Copied', 'Insights copied to clipboard');
             }}>
               <Feather name="copy" size={14} color={COLORS.primary} />
               <Text style={[tpStyles.actionText, { color: COLORS.primary }]}>Copy All</Text>

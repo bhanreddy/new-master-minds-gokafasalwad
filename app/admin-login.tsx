@@ -9,9 +9,10 @@ import { useAuth } from '@/src/hooks/useAuth';
 import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
-import { Alert } from 'react-native';
+import { showAlert } from '@/src/components/CustomAlert';
 import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
+import ChangePasswordModal from '@/src/components/admin/ChangePasswordModal';
 import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
@@ -38,7 +39,7 @@ const AdminLoginScreen: React.FC = () => {
   const handleLogin = async () => {
     if (!email || !password) {
       setError(true);
-      Alert.alert('Error', t('login.enter_id') + ' & ' + t('login.enter_pass'));
+      showAlert({ type: 'error', title: 'Error', message: t('login.enter_id') + ' & ' + t('login.enter_pass') });
       return;
     }
     setLoading(true);
@@ -46,7 +47,7 @@ const AdminLoginScreen: React.FC = () => {
       const response = await signIn(email, password);
 
       if (response.error || !response.session) {
-        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        showAlert({ type: 'error', title: 'Login Failed', message: response.error || 'Invalid credentials' });
         return;
       }
 
@@ -54,12 +55,12 @@ const AdminLoginScreen: React.FC = () => {
       if (role === 'admin') {
         if (__DEV__) { }
       } else {
-        Alert.alert('Access Denied', 'You do not have administrative privileges.');
+        showAlert({ type: 'warning', title: 'Access Denied', message: 'You do not have administrative privileges.' });
         await AuthService.signOut();
       }
     } catch (error: any) {
       if (__DEV__) { }
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      showAlert({ type: 'error', title: 'Login Failed', message: error.message || 'Invalid credentials' });
     } finally {
       setLoading(false);
     }
@@ -137,6 +138,9 @@ const AdminLoginScreen: React.FC = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Blocking modal for forced password change */}
+      <ChangePasswordModal />
     </View>);
 
 };
@@ -149,7 +153,11 @@ const styles = StyleSheet.create({
 
   bodyContainer: {
     flex: 1,
-    paddingHorizontal: 24
+    paddingHorizontal: 24,
+    ...Platform.select({
+      web: { alignItems: 'center' } as any,
+      default: {},
+    }),
   },
   overlapSection: {
     marginTop: -60, // 100x SaaS Layout Technique
@@ -162,8 +170,9 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     ...Platform.select({
+      web: { maxWidth: 480, alignSelf: 'center' } as any,
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 24 },
-      android: { elevation: 4 }
+      android: { elevation: 4 },
     }),
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.03)'

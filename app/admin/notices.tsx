@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  StatusBar, TextInput, Alert, Switch, ScrollView,
-  Animated as RNAnimated,
-} from 'react-native';
+  StatusBar, Switch, ScrollView,
+  Animated as RNAnimated} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
@@ -13,6 +16,8 @@ import { Modal } from 'react-native';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { useTranslation } from 'react-i18next';
+import { t_field } from '../../src/utils/lang';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -73,6 +78,7 @@ const AudienceIcon = ({ type, size = 12, color }: { type: string; size?: number;
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AdminNotices() {
+  useTranslation(); // Subscribe so list rows re-render when language changes (t_field).
   const { theme, isDark } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
 
@@ -108,7 +114,7 @@ export default function AdminNotices() {
       setLoading(true);
       setNotices(await NoticeService.getAll());
     } catch {
-      Alert.alert('Error', 'Failed to load notices');
+      alertCompat('Error', 'Failed to load notices');
     } finally {
       setLoading(false);
     }
@@ -136,8 +142,8 @@ export default function AdminNotices() {
   );
 
   const handleCreate = async () => {
-    if (!title.trim() || !content.trim()) { Alert.alert('Error', 'Title and Content are required'); return; }
-    if (audience === 'class' && !targetClassId) { Alert.alert('Error', 'Please select a target class'); return; }
+    if (!title.trim() || !content.trim()) { alertCompat('Error', 'Title and Content are required'); return; }
+    if (audience === 'class' && !targetClassId) { alertCompat('Error', 'Please select a target class'); return; }
     try {
       setCreating(true);
       const payload: CreateNoticeRequest = {
@@ -146,12 +152,12 @@ export default function AdminNotices() {
         target_class_id: audience === 'class' ? targetClassId : undefined,
       };
       await NoticeService.create(payload);
-      Alert.alert('Success', 'Notice published successfully');
+      alertCompat('Success', 'Notice published successfully');
       setModalVisible(false);
       resetForm();
       fetchNotices();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to create notice');
+      alertCompat('Error', error.response?.data?.error || 'Failed to create notice');
     } finally {
       setCreating(false);
     }
@@ -191,7 +197,7 @@ export default function AdminNotices() {
                   </View>
                 )}
                 <Text style={[styles.cardTitle, pinned && styles.cardTitlePinned]} numberOfLines={2}>
-                  {item.title}
+                  {t_field(item.title, item.title_te)}
                 </Text>
               </View>
               <View style={[styles.priorityBadge, { backgroundColor: pm.bg, borderColor: pm.border }]}>
@@ -201,7 +207,7 @@ export default function AdminNotices() {
             </View>
 
             {/* Content preview */}
-            <Text style={styles.cardContent} numberOfLines={2}>{item.content}</Text>
+            <Text style={styles.cardContent} numberOfLines={2}>{t_field(item.content, item.content_te)}</Text>
 
             {/* Footer: audience + time */}
             <View style={styles.cardFooter}>
@@ -229,14 +235,14 @@ export default function AdminNotices() {
       <AdminHeader title="Notice Board" showBackButton={true} />
 
       {/* ── SEARCH ── */}
-      <View style={[styles.searchContainer, searchFocused && styles.searchFocused]}>
+      <View style={[styles.searchContainer, ds.searchBarWrapper, searchFocused && styles.searchFocused]}>
         <Ionicons
           name="search-outline" size={17}
           color={searchFocused ? PINK : '#9CA3AF'}
           style={styles.searchIcon}
         />
-        <TextInput
-          style={styles.searchInput}
+        <AppTextInput
+          style={[ds.inputInChrome, styles.searchInput]}
           placeholder="Search notices..."
           placeholderTextColor="#9CA3AF"
           value={searchQuery}
@@ -357,7 +363,7 @@ export default function AdminNotices() {
               </View>
 
               <Text style={styles.label}>TITLE</Text>
-              <TextInput
+              <AppTextInput
                 style={styles.input}
                 placeholder="Notice headline..."
                 placeholderTextColor="#9CA3AF"
@@ -366,7 +372,7 @@ export default function AdminNotices() {
               />
 
               <Text style={styles.label}>BODY</Text>
-              <TextInput
+              <AppTextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Write the full notice details..."
                 placeholderTextColor="#9CA3AF"
@@ -506,7 +512,7 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     backgroundColor: theme.colors.background,
     marginHorizontal: 20, marginTop: 16,
     paddingHorizontal: 14, borderRadius: 14, height: 50,
-    elevation: 2, borderWidth: 1.5, borderColor: 'transparent',
+    elevation: 2, borderWidth: 1.5, borderColor: '#CBD5E1',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 5,

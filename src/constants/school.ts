@@ -7,6 +7,7 @@
 export const SCHOOL_ID: number = Number(process.env.EXPO_PUBLIC_SCHOOL_ID);
 export const SCHOOL_CODE: string = process.env.EXPO_PUBLIC_SCHOOL_CODE ?? '';
 export const SCHOOL_NAME: string = process.env.EXPO_PUBLIC_SCHOOL_NAME ?? 'School';
+export const SCHOOL_LOGO: string = process.env.EXPO_PUBLIC_SCHOOL_LOGO ?? '';
 export const API_URL: string = process.env.EXPO_PUBLIC_API_URL ?? '';
 export const SUPABASE_URL: string = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 export const SUPABASE_ANON_KEY: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';

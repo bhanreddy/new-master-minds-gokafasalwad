@@ -1,10 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, Animated, Pressable, Platform
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Animated, Pressable, Platform
 } from 'react-native';
+import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AdminHeader from '../../../src/components/AdminHeader';
+import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService } from '../../../src/services/feeService';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { Theme } from '../../../src/theme/themes';
@@ -37,6 +42,7 @@ function CharCounter({ current, min }: { current: number; min: number }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdjustFeeScreen() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -69,15 +75,15 @@ export default function AdjustFeeScreen() {
 
   const handleAdjust = async () => {
     if (!amount || isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid waiver amount.');
+      alertCompat('Invalid Amount', 'Please enter a valid waiver amount.');
       return;
     }
     if (!reason || reason.trim().length < 5) {
-      Alert.alert('Reason Required', 'Provide a justification (min 5 characters).');
+      alertCompat('Reason Required', 'Provide a justification (min 5 characters).');
       return;
     }
 
-    Alert.alert(
+    alertCompat(
       '⚠ Revenue Impact Warning',
       `You are about to waive ₹${amountNum.toLocaleString('en-IN')} from ${studentName}'s ${feeType}.\n\nThis action is logged under your User ID and cannot be easily reversed.`,
       [
@@ -93,13 +99,13 @@ export default function AdjustFeeScreen() {
                 amount: amountNum,
                 reason: reason.trim(),
               });
-              Alert.alert(
+              alertCompat(
                 '✓ Waiver Applied',
                 'Adjustment has been recorded and logged.',
                 [{ text: 'Done', onPress: () => router.back() }]
               );
             } catch (error: any) {
-              Alert.alert('Waiver Failed', error.message || 'Failed to record adjustment.');
+              alertCompat('Waiver Failed', error.message || 'Failed to record adjustment.');
             } finally {
               setLoading(false);
             }
@@ -111,7 +117,7 @@ export default function AdjustFeeScreen() {
 
   return (
     <View style={styles.container}>
-      <AdminHeader title="Issue Waiver" showBackButton />
+      {!shellActive && <AdminHeader title="Issue Waiver" showBackButton />}
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -181,13 +187,13 @@ export default function AdjustFeeScreen() {
             amountFocused && styles.amountBoxFocused,
           ]}>
             <Text style={styles.rupee}>₹</Text>
-            <TextInput
-              style={styles.amountInput}
+            <AppTextInput
+              style={[ds.inputInChrome, styles.amountInput]}
               keyboardType="numeric"
               value={amount}
               onChangeText={setAmount}
               placeholder="0"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.15)' : '#D1D5DB'}
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.15)' : '#94A3B8'}
               onFocus={() => setAmountFocused(true)}
               onBlur={() => setAmountFocused(false)}
             />
@@ -202,7 +208,7 @@ export default function AdjustFeeScreen() {
 
           {/* Justification */}
           <Text style={[styles.inputLabel, { marginTop: 4 }]}>JUSTIFICATION</Text>
-          <TextInput
+          <AppTextInput
             style={[
               styles.textArea,
               reasonFocused && styles.textAreaFocused,
@@ -212,7 +218,7 @@ export default function AdjustFeeScreen() {
             value={reason}
             onChangeText={setReason}
             placeholder="Enter official reason for this adjustment…"
-            placeholderTextColor={isDark ? 'rgba(255,255,255,0.15)' : '#D1D5DB'}
+            placeholderTextColor={isDark ? 'rgba(255,255,255,0.15)' : '#94A3B8'}
             onFocus={() => setReasonFocused(true)}
             onBlur={() => setReasonFocused(false)}
           />
@@ -460,8 +466,8 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
 
   // Textarea
   textArea: {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
-    borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#CBD5E1',
     borderRadius: 14, padding: 14,
     fontSize: 14, color: isDark ? '#F9FAFB' : '#111827',
     height: 100, textAlignVertical: 'top', marginBottom: 6,

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions, Text, Platform } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { View, Pressable, StyleSheet, Dimensions, Text, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
     useAnimatedStyle,
@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Shadows } from '../theme/themes';
+import { useTheme } from '../hooks/useTheme';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +25,7 @@ const TAB_CONFIG: Record<string, { icon: string; iconFilled: string; label: stri
 const ORDERED_TABS = ['dashboard', 'manage-students', 'timetable', 'results'];
 
 export default function StaffFooter({ state, descriptors, navigation }: any) {
-    const isDark = false; // We can context this later if needed
+    const { theme, isDark } = useTheme();
 
     // Filter and sort routes to only show the main 4 tabs
     const visibleRoutes = state.routes
@@ -64,9 +64,73 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
         };
     });
 
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            position: 'absolute',
+            bottom: theme.spacing.xl,
+            left: theme.spacing.xl,
+            right: theme.spacing.xl,
+            alignItems: 'center',
+        },
+        barWrapper: {
+            flexDirection: 'row',
+            width: '100%',
+            height: 64,
+            borderRadius: theme.shape.borderRadiusFull,
+            overflow: 'hidden',
+            ...theme.shadows.md,
+        },
+        barContent: {
+            flexDirection: 'row',
+            width: '100%',
+            height: '100%',
+            alignItems: 'center',
+            paddingHorizontal: 0,
+            borderWidth: 1,
+            borderRadius: theme.shape.borderRadiusFull,
+        },
+        activeIndicatorContainer: {
+            position: 'absolute',
+            height: '100%',
+            justifyContent: 'flex-start',
+            alignItems: 'center',
+            zIndex: 0,
+            paddingTop: 6,
+        },
+        activeIndicator: {
+            width: 32,
+            height: 3,
+            borderRadius: 2,
+            shadowColor: theme.colors.primary,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.4,
+            shadowRadius: 6,
+            elevation: 4,
+        },
+        tabItem: {
+            flex: 1,
+            height: '100%',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1,
+            flexDirection: 'column',
+            gap: theme.spacing.xs,
+        },
+        iconContainer: {
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        label: {
+            fontSize: theme.typography.fontSizeXS - 1,
+            fontWeight: '500',
+            letterSpacing: 0.3,
+            marginTop: 2,
+        },
+    }), [theme]);
+
     return (
         <View style={styles.container}>
-            <View style={[styles.barWrapper, Shadows.md]}>
+            <View style={styles.barWrapper}>
                 <BlurView
                     intensity={Platform.OS === 'ios' ? 80 : 30}
                     tint={isDark ? 'dark' : 'light'}
@@ -80,10 +144,9 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
                     end={{ x: 1, y: 1 }}
                     style={[styles.barContent, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.6)' }]}
                 >
-                    {/* Animated Sliding Underline */}
                     <Animated.View style={[styles.activeIndicatorContainer, indicatorStyle]}>
                         <LinearGradient
-                            colors={['#4F46E5', '#818CF8']}
+                            colors={[theme.colors.primary, theme.colors.primaryLight]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.activeIndicator}
@@ -92,10 +155,7 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
 
                     {visibleRoutes.map((route: any) => {
                         const { options } = descriptors[route.key];
-                        // If the route is in TAB_CONFIG, use it, otherwise fallback (though we filtered so should be fine)
                         const config = TAB_CONFIG[route.name] || { icon: 'ellipse', label: 'Tab' };
-
-                        // Check if this specific tab is the active one
                         const isFocused = currentRouteName === route.name;
 
                         const onPress = () => {
@@ -111,29 +171,28 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
                         };
 
                         return (
-                            <TouchableOpacity
+                            <Pressable
                                 key={route.key}
                                 onPress={onPress}
-                                style={styles.tabItem}
-                                activeOpacity={0.7}
+                                style={[styles.tabItem, Platform.OS === 'web' && { cursor: 'pointer' }]}
                             >
                                 <Animated.View style={[styles.iconContainer]}>
                                     <Ionicons
                                         name={(isFocused ? config.iconFilled : config.icon) as any}
                                         size={22}
-                                        color={isFocused ? '#4F46E5' : (isDark ? '#94A3B8' : '#94A3B8')}
+                                        color={isFocused ? theme.colors.primary : theme.colors.textMuted}
                                     />
                                 </Animated.View>
                                 <Text
                                     style={[styles.label, {
-                                        color: isFocused ? '#4F46E5' : (isDark ? '#64748B' : '#94A3B8'),
+                                        color: isFocused ? theme.colors.primary : theme.colors.textMuted,
                                         fontWeight: isFocused ? '700' : '500',
                                     }]}
                                     numberOfLines={1}
                                 >
                                     {config.label}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         );
                     })}
                 </LinearGradient>
@@ -141,66 +200,3 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
         </View>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        position: 'absolute',
-        bottom: 20,
-        left: 20,
-        right: 20,
-        alignItems: 'center',
-    },
-    barWrapper: {
-        flexDirection: 'row',
-        width: '100%',
-        height: 64, // Slightly taller for better touch targets
-        borderRadius: 32,
-        overflow: 'hidden',
-    },
-    barContent: {
-        flexDirection: 'row',
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        paddingHorizontal: 0, // Icons are centered in their flexible width
-        borderWidth: 1,
-        borderRadius: 32,
-    },
-    activeIndicatorContainer: {
-        position: 'absolute',
-        height: '100%',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        zIndex: 0,
-        paddingTop: 6,
-    },
-    activeIndicator: {
-        width: 32,
-        height: 3,
-        borderRadius: 2,
-        shadowColor: '#4F46E5',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.4,
-        shadowRadius: 6,
-        elevation: 4,
-    },
-    tabItem: {
-        flex: 1,
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1,
-        flexDirection: 'column', // Changed to column for better vertical flow
-        gap: 4,
-    },
-    iconContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    label: {
-        fontSize: 10,
-        fontWeight: '500',
-        letterSpacing: 0.3,
-        marginTop: 2,
-    },
-});

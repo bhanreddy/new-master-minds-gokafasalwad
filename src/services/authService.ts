@@ -1,8 +1,43 @@
+import NetInfo from '@react-native-community/netinfo';
 import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { AuthSession, ValidatedUser } from '../types/auth';
-import { api } from './apiClient';
+import { api, APIError } from './apiClient';
 import { SCHOOL_NAME, SCHOOL_ID } from '../constants/school';
+
+/** Single-flight refresh so TOKEN_REFRESHED storms don't stack validate calls */
+let refreshSessionInFlight: Promise<AuthSession | null> | null = null;
+
+function isTransientValidationError(err: unknown): boolean {
+  if (err instanceof APIError) {
+    const c = err.statusCode;
+    if (c === 0 || c === 503 || (c !== undefined && c >= 500 && c < 600)) return true;
+    if (c === 401) return true;
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('network') || msg.includes('timeout') || msg.includes('unavailable')) return true;
+  }
+  return false;
+}
+
+function shouldForceSignOutOnValidateError(err: unknown): boolean {
+  if (err instanceof APIError && err.statusCode === 403) return true;
+  return false;
+}
+
+async function persistSessionFromRefresh(
+  supabaseSession: NonNullable<AuthSession['supabaseSession']>,
+  validatedUser: ValidatedUser
+): Promise<AuthSession> {
+  const authSession: AuthSession = {
+    supabaseSession,
+    validatedUser,
+    tokenExpiresAt: supabaseSession.expires_at
+      ? supabaseSession.expires_at * 1000
+      : Date.now() + 3600000,
+  };
+  await setSecureItem(STORAGE_KEY, JSON.stringify(authSession));
+  return authSession;
+}
 
 const STORAGE_KEY = 'auth_session';
 
@@ -141,46 +176,80 @@ export const AuthService = {
   },
 
   refreshSession: async (): Promise<AuthSession | null> => {
-    // 1. supabase.auth.refreshSession()
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-
-    // 2. If fails → clearAuthState(), return null
-    if (refreshError || !refreshData.session) {
-      await clearAuthState();
-      return null;
+    if (refreshSessionInFlight) {
+      return refreshSessionInFlight;
     }
 
-    try {
-      // 3. Re-validate with backend (call validate-school-user again)
-      const validatedUser = await api.post<ValidatedUser>('/auth/validate-school-user', {}, {
-        headers: {
-          'Authorization': `Bearer ${refreshData.session.access_token}`
-        },
-        silent: true
-      });
+    refreshSessionInFlight = (async (): Promise<AuthSession | null> => {
+      const priorStr = await getSecureItem(STORAGE_KEY);
+      let prior: AuthSession | null = null;
+      if (priorStr) {
+        try {
+          prior = JSON.parse(priorStr) as AuthSession;
+        } catch {
+          prior = null;
+        }
+      }
 
-      // 3b. Multitenancy gate on refresh
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError || !refreshData.session) {
+        await clearAuthState();
+        return null;
+      }
+
+      let validatedUser: ValidatedUser | null = null;
+      try {
+        validatedUser = await api.post<ValidatedUser>(
+          '/auth/validate-school-user',
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${refreshData.session.access_token}`,
+            },
+            silent: true,
+          }
+        );
+      } catch (err) {
+        if (shouldForceSignOutOnValidateError(err)) {
+          await AuthService.signOut();
+          return null;
+        }
+        if (isTransientValidationError(err) && prior?.validatedUser) {
+          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
+        }
+        if (prior?.validatedUser?.role?.code === 'student' && prior.validatedUser) {
+          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
+        }
+        await AuthService.signOut();
+        return null;
+      }
+
+      // Silent API path returns null on 401 without throwing — was crashing on .schoolId and signing out
+      if (!validatedUser) {
+        const net = await NetInfo.fetch();
+        const online = net.isConnected === true && net.isInternetReachable !== false;
+        if (!online && prior?.validatedUser) {
+          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
+        }
+        if (prior?.validatedUser) {
+          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
+        }
+        await AuthService.signOut();
+        return null;
+      }
+
       if (validatedUser.schoolId !== SCHOOL_ID) {
         await AuthService.signOut();
         return null;
       }
 
-      // 4. Update SecureStore with new session
-      const authSession: AuthSession = {
-        supabaseSession: refreshData.session,
-        validatedUser,
-        tokenExpiresAt: refreshData.session.expires_at ? refreshData.session.expires_at * 1000 : Date.now() + 3600000,
-      };
+      return persistSessionFromRefresh(refreshData.session, validatedUser);
+    })().finally(() => {
+      refreshSessionInFlight = null;
+    });
 
-      await setSecureItem(STORAGE_KEY, JSON.stringify(authSession));
-
-      // 5. Return updated AuthSession
-      return authSession;
-    } catch {
-      // If backend validation fails during refresh (e.g., account locked midway)
-      await AuthService.signOut();
-      return null;
-    }
+    return refreshSessionInFlight;
   },
 
   // Role check helpers

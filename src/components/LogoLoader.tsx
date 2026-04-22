@@ -19,11 +19,23 @@ export interface LogoLoaderProps {
   size?: number | string;
   color?: string;
   style?: ViewStyle | ViewStyle[];
+  isReady?: boolean;
+  onLogoRevealed?: () => void;
   [key: string]: any; // Allow other ActivityIndicator props
 }
 
+// Animated injects `collapsable={false}` for native; strip it so web SVG DOM is valid.
+const PathNoCollapsable = React.forwardRef<any, React.ComponentProps<typeof Path>>(
+  (props, ref) => {
+    const { collapsable: _collapsable, ...rest } = props as React.ComponentProps<typeof Path> & {
+      collapsable?: boolean;
+    };
+    return <Path ref={ref} {...rest} />;
+  }
+);
+
 // ─── Wrap SVG Path so React Native Animated can drive its props ──────────────
-const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedPath = Animated.createAnimatedComponent(PathNoCollapsable);
 
 // ─── Estimated stroke-dash lengths for each path (SVG coordinate space) ──────
 //     Generous upper bounds ensure the path is fully hidden at offset = length.
@@ -213,70 +225,91 @@ const P2 = `M3545 7811 c-226 -4 -326 -10 -341 -18 -28 -16 -86 -122 -104 -188
 const PATHS = [P0, P1, P2];
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function LogoLoader({ size = 30, color = '#111111', style }: LogoLoaderProps) {
-  // One animated value per path (0 = fully drawn, 1 = fully hidden)
+export default function LogoLoader({ size = 30, color = '#111111', style, isReady, onLogoRevealed }: LogoLoaderProps) {
   const drawAnims = useRef(PATHS.map(() => new Animated.Value(1))).current;
-  // Master opacity for the fade-out between loops
   const masterOpacity = useRef(new Animated.Value(1)).current;
-  // Separate fill opacity (0 = outline only, 1 = filled)
   const fillAnim = useRef(new Animated.Value(0)).current;
 
-  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const isReadyRef = useRef(isReady);
+  isReadyRef.current = isReady;
 
-  const buildSequence = () => {
-    // 1. Reset all values instantly (no animation)
-    drawAnims.forEach(a => a.setValue(1));
-    fillAnim.setValue(0);
-    masterOpacity.setValue(1);
-
-    const drawSteps = drawAnims.map((anim, i) =>
-      Animated.timing(anim, {
-        toValue: 0,
-        duration: DRAW_DURATIONS[i],
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: false,
-      })
-    );
-
-    return Animated.sequence([
-      // Draw each path one after another
-      ...drawSteps,
-      // Short pause then flood-fill
-      Animated.delay(150),
-      Animated.timing(fillAnim, {
-        toValue: 1,
-        duration: FILL_DURATION,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      // Hold the filled logo
-      Animated.delay(HOLD_DURATION),
-      // Fade out the whole thing before restarting
-      Animated.timing(masterOpacity, {
-        toValue: 0,
-        duration: FADE_DURATION,
-        useNativeDriver: false,
-      }),
-    ]);
-  };
+  const onLogoRevealedRef = useRef(onLogoRevealed);
+  onLogoRevealedRef.current = onLogoRevealed;
 
   useEffect(() => {
     let cancelled = false;
-    const loop = () => {
+    let poller: ReturnType<typeof setInterval>;
+
+    const playAnimation = () => {
       if (cancelled) return;
-      loopRef.current = buildSequence();
-      loopRef.current.start(() => {
-        // Always restart the loop regardless of `finished`.
-        // On Android with animation scaling off, `finished` can be false
-        // which previously killed the loop silently.
-        if (!cancelled) loop();
+
+      drawAnims.forEach(a => a.setValue(1));
+      fillAnim.setValue(0);
+      masterOpacity.setValue(1);
+
+      const drawSteps = drawAnims.map((anim, i) =>
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: DRAW_DURATIONS[i],
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: false,
+        })
+      );
+
+      Animated.sequence(drawSteps).start(() => {
+        if (cancelled) return;
+
+        const proceedWithFill = () => {
+          Animated.sequence([
+            Animated.delay(150),
+            Animated.timing(fillAnim, {
+              toValue: 1,
+              duration: FILL_DURATION,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: false,
+            }),
+            Animated.delay(HOLD_DURATION),
+          ]).start(() => {
+            if (cancelled) return;
+
+            if (onLogoRevealedRef.current) {
+              onLogoRevealedRef.current();
+            }
+
+            if (isReadyRef.current === undefined) {
+              Animated.timing(masterOpacity, {
+                toValue: 0,
+                duration: FADE_DURATION,
+                useNativeDriver: false,
+              }).start(() => {
+                if (!cancelled) playAnimation();
+              });
+            }
+          });
+        };
+
+        if (isReadyRef.current === undefined || isReadyRef.current === true) {
+          proceedWithFill();
+        } else {
+          poller = setInterval(() => {
+            if (cancelled) {
+              clearInterval(poller);
+              return;
+            }
+            if (isReadyRef.current === true) {
+              clearInterval(poller);
+              proceedWithFill();
+            }
+          }, 100);
+        }
       });
     };
-    loop();
+
+    playAnimation();
 
     return () => {
       cancelled = true;
-      loopRef.current?.stop();
+      clearInterval(poller);
     };
   }, []);
 

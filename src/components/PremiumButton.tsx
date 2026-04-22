@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Pressable, Text, StyleSheet, ViewStyle, TextStyle, Platform } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import LogoLoader from './LogoLoader';
 
 interface PremiumButtonProps {
@@ -37,7 +37,9 @@ const PremiumButton: React.FC<PremiumButtonProps> = ({
     const handlePressIn = useCallback(() => {
         if (!disabled && !loading) {
             scale.value = withTiming(0.97, { duration: MOTION.duration.FAST, easing: MOTION.easing.SMOOTH });
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (Platform.OS !== 'web') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
         }
     }, [disabled, loading]);
 
@@ -53,13 +55,12 @@ const PremiumButton: React.FC<PremiumButtonProps> = ({
 
     return (
         <Animated.View style={[styles.container, style, animatedStyle]}>
-            <TouchableOpacity
-                activeOpacity={0.8}
+            <Pressable
                 onPress={onPress}
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}
-                style={styles.touchable}
+                style={[styles.touchable, Platform.OS === 'web' && { cursor: disabled || loading ? 'not-allowed' : 'pointer' }]}
             >
                 <LinearGradient
                     colors={disabled ? ['#E2E8F0', '#CBD5E1'] : colors}
@@ -78,7 +79,7 @@ const PremiumButton: React.FC<PremiumButtonProps> = ({
                         </>
                     )}
                 </LinearGradient>
-            </TouchableOpacity>
+            </Pressable>
         </Animated.View>
     );
 };

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, ScrollView, TextInput,
+  View, Text, StyleSheet, ScrollView,
   TouchableOpacity, StatusBar, KeyboardAvoidingView,
-  Platform, Alert, Modal, FlatList, Keyboard, Pressable,
-  Dimensions,
-} from 'react-native';
+  Platform, Modal, FlatList, Keyboard, Pressable,
+  Dimensions} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -16,6 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
 import { StudentService, CreateStudentRequest } from '../../src/services/studentService';
 import { ClassService, ClassInfo, Section, AcademicYear } from '../../src/services/classService';
@@ -23,6 +26,7 @@ import { GENDERS, BLOOD_GROUPS, RELIGIONS, STUDENT_CATEGORIES, STUDENT_STATUSES 
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -74,7 +78,7 @@ const InputField = ({
         <Animated.View style={[{ marginRight: 10 }, iconAnim]}>
           <Ionicons name={icon} size={18} color={focused.value === 1 ? accentColor : (isDark ? '#64748B' : '#94A3B8')} />
         </Animated.View>
-        <TextInput
+        <AppTextInput
           style={[styles.input, !editable && styles.inputDisabled]}
           placeholder={placeholder}
           placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
@@ -166,12 +170,12 @@ const SelectField = ({
 
             {/* Search bar — only show for lists > 5 */}
             {options.length > 5 && (
-              <View style={styles.modalSearchWrap}>
+              <View style={[styles.modalSearchWrap, ds.searchBarWrapper]}>
                 <Ionicons name="search-outline" size={16} color={isDark ? '#64748B' : '#94A3B8'} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.modalSearch}
+                <AppTextInput
+                  style={[ds.inputInChrome, styles.modalSearch]}
                   placeholder={`Search ${label}...`}
-                  placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
+                  placeholderTextColor={isDark ? '#374151' : '#94A3B8'}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   autoCorrect={false}
@@ -376,6 +380,7 @@ const SubSectionLabel = ({ label, accentColor }: { label: string; accentColor: s
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AddStudentScreen() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -429,7 +434,7 @@ export default function AddStudentScreen() {
         new Date(y.start_date) <= now && new Date(y.end_date) >= now
       );
       if (currentYear) setFormData(prev => ({ ...prev, academic_year_id: currentYear.id }));
-    } catch { Alert.alert('Error', 'Failed to load reference data'); }
+    } catch { alertCompat('Error', 'Failed to load reference data'); }
     finally { setInitialLoading(false); }
   };
 
@@ -451,27 +456,27 @@ export default function AddStudentScreen() {
           roll_number: data.current_enrollment?.roll_number,
         } as any);
       }
-    } catch { Alert.alert('Error', 'Failed to load student details'); }
+    } catch { alertCompat('Error', 'Failed to load student details'); }
   };
 
   const handleSave = async () => {
     if (!formData.first_name || !formData.last_name || !formData.admission_no || !formData.class_id || !formData.section_id) {
-      Alert.alert('Required Fields', 'Please fill all mandatory fields marked with *.'); return;
+      alertCompat('Required Fields', 'Please fill all mandatory fields marked with *.'); return;
     }
     if (!isEditMode && !formData.password) {
-      Alert.alert('Password Required', 'Set an initial password for the student account.'); return;
+      alertCompat('Password Required', 'Set an initial password for the student account.'); return;
     }
     if (formData.password && formData.password.length < 6) {
-      Alert.alert('Weak Password', 'Password must be at least 6 characters.'); return;
+      alertCompat('Weak Password', 'Password must be at least 6 characters.'); return;
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.'); return;
+      alertCompat('Invalid Email', 'Please enter a valid email address.'); return;
     }
     if (formData.phone && formData.phone.replace(/\D/g, '').length < 10) {
-      Alert.alert('Invalid Phone', 'Phone number must be at least 10 digits.'); return;
+      alertCompat('Invalid Phone', 'Phone number must be at least 10 digits.'); return;
     }
     if (formData.dob && new Date(formData.dob) > new Date()) {
-      Alert.alert('Invalid DOB', 'Date of birth cannot be in the future.'); return;
+      alertCompat('Invalid DOB', 'Date of birth cannot be in the future.'); return;
     }
 
     setLoading(true);
@@ -484,13 +489,13 @@ export default function AddStudentScreen() {
       const payload = { ...formData, parents };
       if (isEditMode) {
         await StudentService.update(id as string, payload as any);
-        Alert.alert('Updated!', 'Student record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        alertCompat('Updated!', 'Student record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
       } else {
         await StudentService.create(payload);
-        Alert.alert('Enrolled!', 'New student has been added to the system.', [{ text: 'OK', onPress: () => router.back() }]);
+        alertCompat('Enrolled!', 'New student has been added to the system.', [{ text: 'OK', onPress: () => router.back() }]);
       }
     } catch (error: any) {
-      Alert.alert('Save Failed', error.response?.data?.error || error.message || 'An unexpected error occurred.');
+      alertCompat('Save Failed', error.response?.data?.error || error.message || 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 
@@ -514,7 +519,7 @@ export default function AddStudentScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
-      <AdminHeader title={isEditMode ? 'Edit Student' : 'Add Student'} showBackButton />
+      {!shellActive && <AdminHeader title={isEditMode ? 'Edit Student' : 'Add Student'} showBackButton />}
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView
@@ -703,11 +708,16 @@ export default function AddStudentScreen() {
             <InputField label="Phone Number" placeholder="+91 9876543210" value={formData.phone}
               onChangeText={(t: string) => update('phone', t)} keyboardType="phone-pad"
               icon="call-outline" accentColor={SECTION_COLORS.credentials.accent} />
-            {!isEditMode && (
-              <InputField label="Initial Password" placeholder="Min 6 characters" value={formData.password}
-                onChangeText={(t: string) => update('password', t)} icon="lock-closed-outline"
-                required secureTextEntry accentColor={SECTION_COLORS.credentials.accent} />
-            )}
+            <InputField
+              label={isEditMode ? "New Password (optional)" : "Initial Password"}
+              placeholder={isEditMode ? "Leave empty to keep current" : "Min 6 characters"}
+              value={formData.password}
+              onChangeText={(t: string) => update('password', t)}
+              icon="lock-closed-outline"
+              required={!isEditMode}
+              secureTextEntry
+              accentColor={SECTION_COLORS.credentials.accent}
+            />
           </SectionCard>
 
           {/* ── SAVE BUTTON ── */}
@@ -857,10 +867,10 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   },
   modalSearchWrap: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
     borderRadius: 12, paddingHorizontal: 12, height: 42,
     marginBottom: 12,
-    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)',
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
   },
   modalSearch: { flex: 1, fontSize: 14, color: isDark ? '#E2E8F0' : '#0F172A', fontWeight: '500' },
   modalEmpty: { alignItems: 'center', paddingVertical: 36, gap: 10 },

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useTranslation } from 'react-i18next';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 const InputField = ({
   label,
@@ -25,7 +28,7 @@ const InputField = ({
         <Text style={styles.label}>{label}</Text>
         <View style={styles.inputContainer}>
             <Ionicons name={icon} size={20} color="#9CA3AF" style={styles.inputIcon} />
-            <TextInput style={styles.input} placeholder={placeholder} placeholderTextColor="#9CA3AF" value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
+            <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor="#9CA3AF" value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
         </View>
     </View>;
 };
@@ -35,6 +38,7 @@ export default function AddAdminScreen() {
     isDark
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
+  const { shellActive } = useAccountsWebChrome();
   const router = useRouter();
   const {
     t
@@ -53,7 +57,7 @@ export default function AddAdminScreen() {
   };
   return <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <AdminHeader title={t('accounts.add_admin', 'Add New Admin')} />
+            {!shellActive && <AdminHeader title={t('accounts.add_admin', 'Add New Admin')} />}
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
       flex: 1
     }}>

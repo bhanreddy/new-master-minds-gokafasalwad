@@ -27,7 +27,19 @@ export const ComplaintService = {
     },
 
     getStudentComplaints: async (studentId: string): Promise<Complaint[]> => {
-        return api.get<Complaint[]>('/complaints', { raised_for_student_id: studentId });
+        const complaints = await api.get<any[]>('/complaints', { raised_for_student_id: studentId });
+
+        return complaints.map((complaint) => ({
+            ...complaint,
+            description:
+                complaint.description ??
+                complaint.details ??
+                complaint.remark ??
+                complaint.complaint_text ??
+                complaint.body ??
+                complaint.note ??
+                '',
+        })) as Complaint[];
     },
 
     create: async (data: CreateComplaintRequest): Promise<Complaint> => {
@@ -61,9 +73,12 @@ export interface CreateNoticeRequest {
 }
 
 export const NoticeService = {
-    getAll: async (params?: { audience?: NoticeAudience }): Promise<Notice[]> => {
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
+    getAll: async (params?: { audience?: NoticeAudience; userId?: string | null }): Promise<Notice[]> => {
+        let userId = params?.userId ?? null;
+        if (!userId) {
+            const { data: { session } } = await supabase.auth.getSession();
+            userId = session?.user?.id ?? null;
+        }
         const cacheKey = `notices_${params?.audience || 'all'}`;
 
         // 1. Return cached data immediately if available (Offline-First)
@@ -114,13 +129,15 @@ export interface LeaveApplication {
     end_date: string;
     reason: string;
     status: 'pending' | 'approved' | 'rejected';
-    applied_by: string;
+    applied_by?: string;
     approved_by?: string;
-    total_days: number;
+    total_days?: number;
     created_at: string;
+    reviewed_at?: string | null;
+    review_remarks?: string | null;
     applicant_name?: string;
     applicant_role?: string;
-    reviewed_by_name?: string;
+    reviewed_by_name?: string | null;
 }
 
 export interface CreateLeaveRequest {
@@ -131,7 +148,7 @@ export interface CreateLeaveRequest {
 }
 
 export const LeaveService = {
-    getAll: async (params?: { status?: string }): Promise<LeaveApplication[]> => {
+    getAll: async (params?: { status?: string; page?: number; limit?: number; leave_type?: string; from_date?: string; to_date?: string }): Promise<LeaveApplication[]> => {
         return api.get<LeaveApplication[]>('/leaves', params);
     },
 
@@ -147,8 +164,8 @@ export const LeaveService = {
         return api.put<LeaveApplication>(`/leaves/${id}`, { status: 'approved' });
     },
 
-    reject: async (id: string, remarks?: string): Promise<LeaveApplication> => {
-        return api.put<LeaveApplication>(`/leaves/${id}`, { status: 'rejected', remarks });
+    reject: async (id: string, review_remarks?: string): Promise<LeaveApplication> => {
+        return api.put<LeaveApplication>(`/leaves/${id}`, { status: 'rejected', review_remarks });
     },
 
     cancel: async (id: string): Promise<void> => {
@@ -166,10 +183,13 @@ export interface DiaryEntry {
     entry_date: string;
     subject_id?: string;
     title?: string;
+    title_te?: string;
     content: string;
+    content_te?: string;
     homework_due_date?: string;
     attachments?: string[];
     subject_name?: string;
+    subject_name_te?: string;
     class_name?: string;
     section_name?: string;
     created_by: string;
@@ -178,7 +198,15 @@ export interface DiaryEntry {
 }
 
 export const DiaryService = {
-    getAll: async (params: { class_section_id?: string; entry_date?: string; subject_id?: string }): Promise<DiaryEntry[]> => {
+    getAll: async (params: {
+        class_section_id?: string;
+        entry_date?: string;
+        subject_id?: string;
+        from_date?: string;
+        to_date?: string;
+        page?: number;
+        limit?: number;
+    }): Promise<DiaryEntry[]> => {
         return api.get<DiaryEntry[]>('/diary', params);
     },
 
@@ -202,7 +230,9 @@ export const DiaryService = {
 export interface EventItem {
     id: string;
     title: string;
+    title_te?: string;
     description: string;
+    description_te?: string;
     event_type: string;
     start_date: string;
     end_date: string;
@@ -242,6 +272,7 @@ export const TransportService = {
 export interface Subject {
     id: string;
     name: string;
+    name_te?: string;
     code?: string;
     description?: string;
 }
@@ -249,6 +280,7 @@ export interface Subject {
 export interface Exam {
     id: string;
     name: string;
+    name_te?: string;
     academic_year_id: string;
     academic_year?: string;
     exam_type: string;
@@ -277,7 +309,7 @@ export const ResultService = {
     getSubjects: async (): Promise<Subject[]> => {
         return api.get<Subject[]>('/results/subjects');
     },
-    createSubject: async (data: { name: string; code?: string; description?: string }): Promise<Subject> => {
+    createSubject: async (data: { name: string; code?: string; description?: string; name_te?: string }): Promise<Subject> => {
         return api.post<Subject>('/results/subjects', data);
     },
     deleteSubject: async (id: string): Promise<void> => {

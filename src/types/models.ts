@@ -61,8 +61,11 @@ export interface StaffClassAssignment {
 // ================= STUDENT PROFILE =================
 export interface StudentEnrollment {
     readonly id: string;
+    /** Class section UUID (timetable + diary APIs). */
+    readonly class_section_id?: string;
     readonly roll_number: string;
     readonly class_code: string;
+    readonly class_name?: string;
     readonly class_id: string;
     readonly section_name: string;
     readonly section_id: string;
@@ -161,6 +164,7 @@ export interface FeeTransaction {
     readonly student_name?: string;
     readonly admission_no?: string;
     readonly fee_type?: string;
+    readonly academic_year?: string;
 }
 
 export interface FeeStructure {
@@ -190,6 +194,7 @@ export interface StudentFee {
     readonly status: 'pending' | 'partial' | 'paid' | 'overdue' | 'waived';
     readonly due_date: string;
     readonly fee_type: string;
+    readonly fee_type_te?: string;
     readonly fee_code?: string;
     readonly period_month?: number;
     readonly period_year?: number;
@@ -231,12 +236,15 @@ export interface FeeResponse {
 export interface LMSMaterial {
     readonly id: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description?: string;
+    readonly description_te?: string;
     readonly content_url: string;
     readonly duration?: string;
     readonly material_type: 'video' | 'document' | 'link' | 'quiz' | 'assignment';
     readonly created_at: string;
     readonly course_title: string;
+    readonly course_title_te?: string;
     readonly class_name?: string;
     readonly instructor_name?: string;
 }
@@ -247,7 +255,9 @@ export type NoticeAudience = 'all' | 'students' | 'staff' | 'parents' | 'class';
 export interface Notice {
     readonly id: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly content: string;
+    readonly content_te?: string;
     readonly audience: NoticeAudience;
     readonly target_class_id?: string;
     readonly priority?: 'low' | 'medium' | 'high' | 'urgent';
@@ -313,7 +323,9 @@ export interface DisciplineRecord {
     readonly student_id: string;
     readonly incident_date: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description?: string;
+    readonly description_te?: string;
     readonly severity: 'low' | 'medium' | 'high' | 'critical';
     readonly action_taken?: string;
     readonly reported_by?: string;
@@ -324,7 +336,9 @@ export interface DisciplineRecord {
 export interface MoneyScienceModule {
     readonly id: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description?: string;
+    readonly description_te?: string;
     readonly age_group?: string;
     readonly content_url?: string;
     readonly total_points: number;
@@ -344,7 +358,9 @@ export interface MoneyScienceProgress {
 export interface ScienceProject {
     readonly id: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description?: string;
+    readonly description_te?: string;
     readonly difficulty_level?: 'beginner' | 'intermediate' | 'advanced';
     readonly is_group_project: boolean;
     readonly min_participants: number;
@@ -365,8 +381,11 @@ export interface ProjectSubmission {
 export interface LifeValuesModule {
     readonly id: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description?: string;
+    readonly description_te?: string;
     readonly content_body?: string;
+    readonly content_body_te?: string;
     readonly banner_image_url?: string;
     readonly thumbnail_url?: string;
 }
@@ -410,7 +429,9 @@ export interface Complaint {
     readonly id: string;
     readonly ticket_no: string;
     readonly title: string;
+    readonly title_te?: string;
     readonly description: string;
+    readonly description_te?: string;
     readonly category?: 'academic' | 'fee' | 'transport' | 'hostel' | 'other';
     readonly priority?: 'low' | 'medium' | 'high' | 'urgent';
     readonly status: 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -419,6 +440,7 @@ export interface Complaint {
     readonly raised_for_student_id?: string;
     readonly assigned_to?: string;
     readonly resolution?: string;
+    readonly resolution_te?: string;
     readonly created_at: string;
     readonly resolved_at?: string;
 }

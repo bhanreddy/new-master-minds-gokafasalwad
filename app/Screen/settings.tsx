@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    StatusBar, Switch, Image, Alert, Linking
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Switch, Image, Linking } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StudentHeader from '../../src/components/StudentHeader';
@@ -27,16 +25,17 @@ interface SettingRowProps {
 
 function SettingRow({ icon, iconColor, iconBg, label, isLast, rightElement, onPress, labelColor }: SettingRowProps) {
     const Wrapper = onPress ? TouchableOpacity : View;
+    const { theme } = useTheme();
     return (
         <>
             <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
                 <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
                     <Ionicons name={icon as any} size={18} color={iconColor} />
                 </View>
-                <Text style={[RS.label, labelColor ? { color: labelColor } : {}]}>{label}</Text>
+                <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
                 <View style={RS.right}>{rightElement}</View>
             </Wrapper>
-            {!isLast && <View style={RS.divider} />}
+            {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
         </>
     );
 }
@@ -50,10 +49,10 @@ const RS = StyleSheet.create({
         width: 38, height: 38, borderRadius: 11,
         justifyContent: 'center', alignItems: 'center', marginRight: 13,
     },
-    label: { flex: 1, fontSize: 15, fontWeight: '500', color: '#111827' },
+    label: { flex: 1, fontSize: 15, fontWeight: '500' },
     right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     divider: {
-        height: StyleSheet.hairlineWidth, backgroundColor: '#F3F4F6', marginLeft: 67,
+        height: StyleSheet.hairlineWidth, marginLeft: 67,
     },
 });
 
@@ -108,7 +107,7 @@ export default function Settings() {
     const [updating, setUpdating] = useState(false);
 
     const handlePress = (item: string) =>
-        Alert.alert(item, 'This feature will be available in the next update.');
+        alertCompat(item, 'This feature will be available in the next update.');
 
     const handleLogout = async () => {
         await signOut();
@@ -256,7 +255,7 @@ export default function Settings() {
                         style={styles.logoutBtn}
                         activeOpacity={0.8}
                         onPress={() =>
-                            Alert.alert(
+                            alertCompat(
                                 'Logout',
                                 'Are you sure you want to logout?',
                                 [

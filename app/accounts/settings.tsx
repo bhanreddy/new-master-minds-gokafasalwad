@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Switch, Image, Alert, Linking } from
+  StatusBar, Switch, Image, Linking } from
 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { Theme } from '../../src/theme/themes';
 import { useTranslation } from 'react-i18next';
@@ -28,16 +30,17 @@ interface SettingRowProps {
 
 function SettingRow({ icon, iconColor, iconBg, label, isLast, rightElement, onPress, labelColor }: SettingRowProps) {
   const Wrapper = onPress ? TouchableOpacity : View;
+  const { theme } = useTheme();
   return (
     <>
             <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
                 <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
                     <Ionicons name={icon as any} size={18} color={iconColor} />
                 </View>
-                <Text style={[RS.label, labelColor ? { color: labelColor } : {}]}>{label}</Text>
+                <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
                 <View style={RS.right}>{rightElement}</View>
             </Wrapper>
-            {!isLast && <View style={RS.divider} />}
+            {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
         </>);
 
 }
@@ -51,10 +54,10 @@ const RS = StyleSheet.create({
     width: 38, height: 38, borderRadius: 11,
     justifyContent: 'center', alignItems: 'center', marginRight: 13
   },
-  label: { flex: 1, fontSize: 15, fontWeight: '500', color: '#111827' },
+  label: { flex: 1, fontSize: 15, fontWeight: '500' },
   right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   divider: {
-    height: StyleSheet.hairlineWidth, backgroundColor: '#F3F4F6', marginLeft: 67
+    height: StyleSheet.hairlineWidth, marginLeft: 67
   }
 });
 
@@ -102,6 +105,7 @@ const GS = StyleSheet.create({
 
 export default function AccountsSettings() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { i18n } = useTranslation();
   const router = useRouter();
@@ -110,7 +114,7 @@ export default function AccountsSettings() {
   const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
   const handlePress = (item: string) =>
-  Alert.alert(item, 'This feature will be available in the next update.');
+  alertCompat(item, 'This feature will be available in the next update.');
 
   const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
   const redChevron = <MaterialIcons name="chevron-right" size={18} color="#EF4444" />;
@@ -118,7 +122,7 @@ export default function AccountsSettings() {
   return (
     <View style={styles.container}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
-            <AdminHeader title="Settings" showBackButton={true} />
+            {!shellActive && <AdminHeader title="Settings" showBackButton={true} />}
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -255,7 +259,7 @@ export default function AccountsSettings() {
             labelColor="#EF4444"
             isLast
             onPress={() =>
-            Alert.alert(
+            alertCompat(
               'Delete Account',
               'This is permanent and cannot be undone. Continue?',
               [
@@ -274,7 +278,7 @@ export default function AccountsSettings() {
             style={styles.logoutBtn}
             activeOpacity={0.8}
             onPress={() =>
-            Alert.alert('Logout', 'Are you sure?', [
+            alertCompat('Logout', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Logout', style: 'destructive', onPress: async () => {

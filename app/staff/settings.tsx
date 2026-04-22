@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    StatusBar, Switch, Image, Alert, Linking
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Switch, Image, Linking } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';
@@ -43,6 +41,7 @@ function SettingRow({
     label, sublabel, isLast, rightElement, onPress, labelColor
 }: SettingRowProps) {
     const Wrapper = onPress ? TouchableOpacity : View;
+    const { theme } = useTheme();
 
     const IconComponent = () => {
         if (iconLib === 'fa5') return <FontAwesome5 name={icon as any} size={15} color={iconColor} />;
@@ -57,12 +56,12 @@ function SettingRow({
                     <IconComponent />
                 </View>
                 <View style={RS.labelWrap}>
-                    <Text style={[RS.label, labelColor ? { color: labelColor } : {}]}>{label}</Text>
-                    {sublabel && <Text style={RS.sublabel}>{sublabel}</Text>}
+                    <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
+                    {sublabel && <Text style={[RS.sublabel, { color: theme.colors.textMuted }]}>{sublabel}</Text>}
                 </View>
                 <View style={RS.right}>{rightElement}</View>
             </Wrapper>
-            {!isLast && <View style={RS.divider} />}
+            {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
         </>
     );
 }
@@ -77,11 +76,11 @@ const RS = StyleSheet.create({
         justifyContent: 'center', alignItems: 'center', marginRight: 13,
     },
     labelWrap: { flex: 1 },
-    label: { fontSize: 15, fontWeight: '500', color: '#111827' },
-    sublabel: { fontSize: 12, color: '#9CA3AF', marginTop: 1 },
+    label: { fontSize: 15, fontWeight: '500' },
+    sublabel: { fontSize: 12, marginTop: 1 },
     right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     divider: {
-        height: StyleSheet.hairlineWidth, backgroundColor: '#F3F4F6', marginLeft: 67,
+        height: StyleSheet.hairlineWidth, marginLeft: 67,
     },
 });
 
@@ -131,10 +130,10 @@ export default function StaffSettings() {
     const [updating, setUpdating] = useState(false);
     const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
-    const soon = (item: string) => Alert.alert(item, 'Coming in the next update.');
+    const soon = (item: string) => alertCompat(item, 'Coming in the next update.');
 
     const handleLogout = () =>
-        Alert.alert('Log Out', 'Are you sure you want to log out?', [
+        alertCompat('Log Out', 'Are you sure you want to log out?', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Log Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/welcome'); } },
         ]);
@@ -268,7 +267,7 @@ export default function StaffSettings() {
                         label="Delete Account" sublabel="Permanently remove your account"
                         labelColor="#EF4444" isLast
                         onPress={() =>
-                            Alert.alert('Delete Account', 'This is permanent and cannot be undone. Continue?', [
+                            alertCompat('Delete Account', 'This is permanent and cannot be undone. Continue?', [
                                 { text: 'Cancel', style: 'cancel' },
                                 { text: 'Delete', style: 'destructive', onPress: () => Linking.openURL('https://example.com/delete-account') },
                             ])

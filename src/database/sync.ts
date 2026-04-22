@@ -1,6 +1,16 @@
 import { synchronize } from '@nozbe/watermelondb/sync';
+import { Q } from '@nozbe/watermelondb';
 import database from './index';
 import { api } from '../services/apiClient';
+
+/** Match server DIARY_RETENTION_DAYS: keep today + prior (n-1) days in local DB. */
+const DIARY_LOCAL_RETENTION_DAYS = 15;
+
+function diaryLocalCutoffYmd(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - (DIARY_LOCAL_RETENTION_DAYS - 1));
+  return d.toISOString().split('T')[0];
+}
 
 export async function sync() {
   await synchronize({
@@ -52,7 +62,9 @@ export async function sync() {
               entry_date: new Date(d.entry_date).toISOString().split('T')[0],
               subject_id: d.subject_id,
               title: d.title,
+              title_te: d.title_te,
               content: d.content,
+              content_te: d.content_te,
               homework_due_date: d.homework_due_date,
               attachments: d.attachments,
               subject_name: d.subject_name,
@@ -106,5 +118,12 @@ export async function sync() {
     },
     // migrationsEnabledAtVersion: 1,
     sendCreatedAsUpdated: true
+  });
+
+  const minYmd = diaryLocalCutoffYmd();
+  await database.write(async () => {
+    const diary = database.collections.get('diary_entries');
+    const stale = await diary.query(Q.where('entry_date', Q.lt(minYmd))).fetch();
+    await Promise.all(stale.map((row) => row.destroyPermanently()));
   });
 }

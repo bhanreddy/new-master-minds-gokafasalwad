@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import { router } from 'expo-router';
 
 interface Props {
@@ -67,9 +67,9 @@ export class ErrorBoundary extends Component<Props, State> {
                                 <Text style={styles.stackText}>{this.state.errorInfo?.componentStack}</Text>
                             </ScrollView>
             }
-                        <TouchableOpacity style={styles.button} onPress={this.handleReset}>
+                        <Pressable style={[styles.button, Platform.OS === 'web' && { cursor: 'pointer' }]} onPress={this.handleReset}>
                             <Text style={styles.buttonText}>Go Home</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     </View>
                 </View>);
 

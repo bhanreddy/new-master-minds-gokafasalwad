@@ -1,9 +1,12 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, Alert, Dimensions, Image, Platform, Pressable,
-  Modal, KeyboardAvoidingView, ActivityIndicator,
-} from 'react-native';
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Dimensions, Image, Platform, Pressable,
+  Modal, KeyboardAvoidingView, ActivityIndicator} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -201,10 +204,10 @@ function EditField({
   return (
     <View style={efStyles.wrap}>
       <Text style={[efStyles.label, { color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }]}>{label}</Text>
-      <TextInput
+      <AppTextInput
         style={[efStyles.input, {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB',
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#CBD5E1',
           color: isDark ? '#F9FAFB' : '#111827',
           height: multiline ? 72 : 42,
           textAlignVertical: multiline ? 'top' : 'center',
@@ -212,7 +215,7 @@ function EditField({
         value={value}
         onChangeText={onChangeText}
         multiline={multiline}
-        placeholderTextColor={isDark ? 'rgba(255,255,255,0.18)' : '#D1D5DB'}
+        placeholderTextColor={isDark ? 'rgba(255,255,255,0.18)' : '#94A3B8'}
         placeholder="Enter value..."
       />
     </View>
@@ -269,7 +272,7 @@ function EditModal({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
       <View style={emStyles.overlay}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={[emStyles.sheet, { backgroundColor: bg }]}>
@@ -330,16 +333,16 @@ function EditModal({
                   {(['i', 'ii', 'iii', 'iv', 'v', 'vi'] as const).map((label, i) => (
                     <View key={i} style={emStyles.subjectCell}>
                       <Text style={[emStyles.subjectLabel, { color: isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF' }]}>({label})</Text>
-                      <TextInput
+                      <AppTextInput
                         style={[emStyles.subjectInput, {
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB',
-                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#CBD5E1',
                           color: isDark ? '#F9FAFB' : '#111827',
                         }]}
                         value={tc.subjects[i]}
                         onChangeText={v => setSubject(i, v)}
                         placeholder="Subject"
-                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.18)' : '#D1D5DB'}
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.18)' : '#94A3B8'}
                       />
                     </View>
                   ))}
@@ -758,7 +761,7 @@ export default function CertificateGenerator() {
   // ── Fetch student ──────────────────────────────────────────────────────────
   const handleSearch = async () => {
     if (!studentId.trim()) {
-      Alert.alert('Missing Input', 'Enter a Student ID or Admission No.');
+      alertCompat('Missing Input', 'Enter a Student ID or Admission No.');
       return;
     }
     setLoading(true);
@@ -777,7 +780,7 @@ export default function CertificateGenerator() {
         try { student = await StudentService.getById(studentId); } catch { /* noop */ }
       }
       if (!student) {
-        Alert.alert('Not Found', 'No student matched the given ID or Admission No.');
+        alertCompat('Not Found', 'No student matched the given ID or Admission No.');
         return;
       }
 
@@ -807,7 +810,7 @@ export default function CertificateGenerator() {
         admissionDate: student.admission_date ? new Date(student.admission_date).toLocaleDateString('en-IN') : 'N/A',
       });
     } catch {
-      Alert.alert('Error', 'Could not fetch student data. Please try again.');
+      alertCompat('Error', 'Could not fetch student data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -872,7 +875,7 @@ export default function CertificateGenerator() {
       } catch { /* non-blocking */ }
       setSaving(false);
     } catch (err: any) {
-      Alert.alert('Export Failed', err?.message || 'Could not generate PDF. Ensure expo-print is installed.');
+      alertCompat('Export Failed', err?.message || 'Could not generate PDF. Ensure expo-print is installed.');
     }
   };
 
@@ -900,12 +903,12 @@ export default function CertificateGenerator() {
             <Text style={styles.cardTitle}>Find Student</Text>
           </View>
           <Text style={styles.cardSub}>Enter student ID, admission number, or name</Text>
-          <View style={[styles.searchRow, focused && styles.searchRowFocused]}>
+          <View style={[styles.searchRow, ds.searchBarWrapper, focused && styles.searchRowFocused]}>
             <Ionicons name="search-outline" size={18} color={focused ? '#4F46E5' : (isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF')} />
-            <TextInput
-              style={styles.searchInput}
+            <AppTextInput
+              style={[ds.inputInChrome, styles.searchInput]}
               placeholder="e.g. 101, ADM2024..."
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#D1D5DB'}
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
               value={studentId}
               onChangeText={setStudentId}
               onFocus={() => setFocused(true)}

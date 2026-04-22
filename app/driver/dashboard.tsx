@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, StatusBar, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
 import * as Location from 'expo-location';
@@ -11,7 +12,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle,
   withRepeat, withTiming, Easing } from
 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '@/src/utils/haptics';
 import { api } from '../../src/services/apiClient';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -172,7 +173,7 @@ export default function DriverDashboard() {
 
   /* ─── START TRIP ─── */
   const handleStartTrip = async () => {
-    if (!bus || !selectedRoute) return Alert.alert('Error', 'No bus or route assigned.');
+    if (!bus || !selectedRoute) return alertCompat('Error', 'No bus or route assigned.');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setActionLoading(true);
     try {
@@ -184,13 +185,13 @@ export default function DriverDashboard() {
       await fetchTripStatus(data.trip.id);
       startLocationTracking();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to start trip');
+      alertCompat('Error', err?.message || 'Failed to start trip');
     } finally {setActionLoading(false);}
   };
 
   /* ─── END TRIP ─── */
   const handleEndTrip = async () => {
-    Alert.alert('End Trip', 'Are you sure you want to end this trip?', [
+    alertCompat('End Trip', 'Are you sure you want to end this trip?', [
     { text: 'Cancel', style: 'cancel' },
     {
       text: 'End Trip', style: 'destructive', onPress: async () => {
@@ -203,7 +204,7 @@ export default function DriverDashboard() {
           stopLocationTracking();
           await fetchDriverData();
         } catch (err: any) {
-          Alert.alert('Error', err?.message || 'Failed to end trip');
+          alertCompat('Error', err?.message || 'Failed to end trip');
         } finally {setActionLoading(false);}
       }
     }]
@@ -218,7 +219,7 @@ export default function DriverDashboard() {
       await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/arrive`);
       await fetchTripStatus(activeTripId!);
     } catch (err: any) {
-      Alert.alert('Cannot Arrive', err?.message || 'Failed');
+      alertCompat('Cannot Arrive', err?.message || 'Failed');
     } finally {setActionLoading(false);}
   };
 
@@ -230,13 +231,13 @@ export default function DriverDashboard() {
       await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/complete`);
       await fetchTripStatus(activeTripId!);
     } catch (err: any) {
-      Alert.alert('Cannot Complete', err?.message || 'Failed');
+      alertCompat('Cannot Complete', err?.message || 'Failed');
     } finally {setActionLoading(false);}
   };
 
   /* ─── SKIP STOP ─── */
   const handleSkipStop = async (stopId: string) => {
-    Alert.alert('Skip Stop', 'Are you sure you want to skip this stop?', [
+    alertCompat('Skip Stop', 'Are you sure you want to skip this stop?', [
     { text: 'Cancel', style: 'cancel' },
     {
       text: 'Skip', style: 'destructive', onPress: async () => {
@@ -245,7 +246,7 @@ export default function DriverDashboard() {
         try {
           await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/skip`);
           await fetchTripStatus(activeTripId!);
-        } catch (err: any) {Alert.alert('Cannot Skip', err?.message || 'Failed');} finally
+        } catch (err: any) {alertCompat('Cannot Skip', err?.message || 'Failed');} finally
         {setActionLoading(false);}
       }
     }]
@@ -255,7 +256,7 @@ export default function DriverDashboard() {
   /* ─── GPS Tracking ─── */
   const startLocationTracking = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return Alert.alert('Permission Denied', 'GPS permission required.');
+    if (status !== 'granted') return alertCompat('Permission Denied', 'GPS permission required.');
 
     locationSubRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 15 },

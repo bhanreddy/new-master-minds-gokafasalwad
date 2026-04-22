@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     Modal,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
+    Pressable,
+    Platform,
 } from 'react-native';
 import Animated, {
     useSharedValue,
@@ -16,7 +16,8 @@ import Animated, {
     Extrapolation,
     runOnJS,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
+import { useTheme } from '../hooks/useTheme';
 
 interface Props {
     visible: boolean;
@@ -29,10 +30,8 @@ const LogoutConfirmModal: React.FC<Props> = ({
     onCancel,
     onConfirm,
 }) => {
-    // Local state to keep Modal mounted while animation runs
+    const { theme } = useTheme();
     const [isMounted, setIsMounted] = useState(visible);
-
-    // 0 = closed, 1 = open
     const progress = useSharedValue(0);
 
     const closeAnimations = useCallback((callback?: () => void) => {
@@ -76,6 +75,68 @@ const LogoutConfirmModal: React.FC<Props> = ({
         opacity: interpolate(progress.value, [0, 0.5, 1], [0, 0.5, 1], Extrapolation.CLAMP),
     }));
 
+    const styles = useMemo(() => StyleSheet.create({
+        container: {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        overlay: {
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+        },
+        box: {
+            width: '85%',
+            backgroundColor: theme.colors.surface,
+            borderRadius: theme.shape.borderRadiusXL,
+            paddingVertical: theme.spacing.xxl - 4,
+            paddingHorizontal: theme.spacing.xl,
+            alignItems: 'center',
+            ...theme.shadows.lg,
+        },
+        title: {
+            fontSize: theme.typography.fontSizeXL - 2,
+            fontWeight: '700',
+            textAlign: 'center',
+            marginBottom: theme.spacing.xxl - 4,
+            color: theme.colors.textStrong,
+        },
+        buttonRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            width: '100%',
+            paddingHorizontal: theme.spacing.sm + 2,
+            gap: theme.spacing.lg,
+        },
+        button: {
+            flex: 1,
+            paddingVertical: theme.spacing.md,
+            borderRadius: theme.shape.borderRadiusMD,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        noButton: {
+            backgroundColor: theme.colors.borderLight,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+        },
+        yesButton: {
+            backgroundColor: '#FEE2E2',
+            borderWidth: 1,
+            borderColor: '#FECACA',
+        },
+        noText: {
+            fontSize: theme.typography.fontSizeMD,
+            fontWeight: '600',
+            color: theme.colors.textSecondary,
+        },
+        yesText: {
+            fontSize: theme.typography.fontSizeMD,
+            fontWeight: '600',
+            color: theme.colors.danger,
+        },
+    }), [theme]);
+
     if (!isMounted) return null;
 
     return (
@@ -86,9 +147,9 @@ const LogoutConfirmModal: React.FC<Props> = ({
             onRequestClose={handleCancel}
         >
             <View style={styles.container}>
-                <TouchableWithoutFeedback onPress={handleCancel}>
+                <Pressable onPress={handleCancel} style={StyleSheet.absoluteFill}>
                     <Animated.View style={[styles.overlay, backdropStyle]} />
-                </TouchableWithoutFeedback>
+                </Pressable>
 
                 <Animated.View style={[styles.box, modalStyle]}>
                     <Text style={styles.title}>
@@ -96,21 +157,19 @@ const LogoutConfirmModal: React.FC<Props> = ({
                     </Text>
 
                     <View style={styles.buttonRow}>
-                        <TouchableOpacity
-                            style={[styles.button, styles.noButton]}
+                        <Pressable
+                            style={[styles.button, styles.noButton, Platform.OS === 'web' && { cursor: 'pointer' }]}
                             onPress={handleCancel}
-                            activeOpacity={0.7}
                         >
                             <Text style={styles.noText}>NO</Text>
-                        </TouchableOpacity>
+                        </Pressable>
 
-                        <TouchableOpacity
-                            style={[styles.button, styles.yesButton]}
+                        <Pressable
+                            style={[styles.button, styles.yesButton, Platform.OS === 'web' && { cursor: 'pointer' }]}
                             onPress={handleConfirm}
-                            activeOpacity={0.7}
                         >
                             <Text style={styles.yesText}>Yes</Text>
-                        </TouchableOpacity>
+                        </Pressable>
                     </View>
                 </Animated.View>
             </View>
@@ -119,71 +178,3 @@ const LogoutConfirmModal: React.FC<Props> = ({
 };
 
 export default LogoutConfirmModal;
-
-/* ============================ STYLES ============================ */
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-    },
-    box: {
-        width: '85%',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 20,
-        paddingVertical: 28,
-        paddingHorizontal: 20,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-        elevation: 10,
-    },
-    title: {
-        fontSize: 18,
-        fontWeight: '700',
-        textAlign: 'center',
-        marginBottom: 28,
-        color: '#1F2937',
-    },
-    buttonRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        width: '100%',
-        paddingHorizontal: 10,
-        gap: 16,
-    },
-    button: {
-        flex: 1,
-        paddingVertical: 12,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    noButton: {
-        backgroundColor: '#F3F4F6',
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    yesButton: {
-        backgroundColor: '#FEE2E2',
-        borderWidth: 1,
-        borderColor: '#FECACA',
-    },
-    noText: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: '#4B5563',
-    },
-    yesText: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: '#DC2626',
-    },
-});

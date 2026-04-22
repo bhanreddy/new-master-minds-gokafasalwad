@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { alertCompat } from '../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -63,7 +64,7 @@ export default function ChangePasswordScreen() {
         setLoading(true);
         try {
             await AuthService.changePassword(currentPassword, newPassword);
-            Alert.alert("Success", "Password changed successfully. Please log in again.", [
+            alertCompat("Success", "Password changed successfully. Please log in again.", [
                 {
                     text: 'OK', onPress: async () => {
                         await signOut();

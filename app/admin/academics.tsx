@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, FlatList, Alert, TextInput, Modal } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, FlatList, Modal } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
@@ -28,6 +31,7 @@ export default function AcademicManagement() {
 
   // Form states
   const [newItemName, setNewItemName] = useState('');
+  const [newItemNameTe, setNewItemNameTe] = useState('');
   const [newItemCode, setNewItemCode] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -67,14 +71,20 @@ export default function AcademicManagement() {
       }
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to load academic data');
+      alertCompat('Error', 'Failed to load academic data');
     } finally {
       setLoading(false);
     }
   };
   const handleAdd = async () => {
-    if (!newItemName.trim() && activeTab !== 'years' && activeTab !== 'mappings') return;
-    if (activeTab === 'years' && !newItemCode.trim()) return;
+    if (!newItemName.trim() && activeTab !== 'years' && activeTab !== 'mappings') {
+      alertCompat('Validation', 'Please enter a name');
+      return;
+    }
+    if (activeTab === 'years' && !newItemCode.trim()) {
+      alertCompat('Validation', 'Please enter an academic year code');
+      return;
+    }
     try {
       if (activeTab === 'classes') {
         await ClassService.createClass({
@@ -93,13 +103,15 @@ export default function AcademicManagement() {
           end_date: endDate
         });
       } else if (activeTab === 'subjects') {
+        const trimmedCode = newItemCode.trim();
         await ResultService.createSubject({
-          name: newItemName,
-          code: newItemCode
+          name: newItemName.trim(),
+          name_te: newItemNameTe.trim() || undefined,
+          ...(trimmedCode ? { code: trimmedCode } : {})
         });
       } else if (activeTab === 'mappings') {
         if (!selClassId || !selSectionId || !selYearId) {
-          Alert.alert('Error', 'Please select Class, Section and Academic Year');
+          alertCompat('Error', 'Please select Class, Section and Academic Year');
           return;
         }
         await ClassService.createClassSection({
@@ -108,16 +120,17 @@ export default function AcademicManagement() {
           academic_year_id: selYearId
         });
       }
-      Alert.alert('Success', `${activeTab.slice(0, -1)} created successfully`);
+      alertCompat('Success', `${activeTab.slice(0, -1)} created successfully`);
       setModalVisible(false);
       resetForm();
       fetchData();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create item');
+      alertCompat('Error', error.message || 'Failed to create item');
     }
   };
   const resetForm = () => {
     setNewItemName('');
+    setNewItemNameTe('');
     setNewItemCode('');
     setStartDate('');
     setEndDate('');
@@ -138,7 +151,7 @@ export default function AcademicManagement() {
     </View>;
   };
   const handleDelete = async (id: string, name: string) => {
-    Alert.alert('Confirm Delete', `Are you sure you want to delete ${activeTab.slice(0, -1)} "${name}"? This action cannot be undone and will fail if there are linked dependencies.`, [{
+    alertCompat('Confirm Delete', `Are you sure you want to delete ${activeTab.slice(0, -1)} "${name}"? This action cannot be undone and will fail if there are linked dependencies.`, [{
       text: 'Cancel',
       style: 'cancel'
     }, {
@@ -152,10 +165,10 @@ export default function AcademicManagement() {
           else if (activeTab === 'subjects') await ResultService.deleteSubject(id);
           else if (activeTab === 'mappings') await ClassService.deleteClassSection(id);
 
-          Alert.alert('Deleted', `${activeTab.slice(0, -1)} deleted successfully`);
+          alertCompat('Deleted', `${activeTab.slice(0, -1)} deleted successfully`);
           fetchData();
         } catch (error: any) {
-          Alert.alert('Error', error.message || 'Failed to delete item');
+          alertCompat('Error', error.message || 'Failed to delete item');
         }
       }
     }]);
@@ -166,7 +179,7 @@ export default function AcademicManagement() {
 
   }: { item: any; index: number; }) => {
     const itemName = item.class_name ? `${item.class_name} - ${item.section_name}` : item.name || item.code;
-    return <Animated.View entering={FadeInDown.delay(index * 50)} layout={Layout.springify()} style={styles.itemCard}>
+    return <Animated.View entering={FadeInDown.delay(index * 50)} style={styles.itemCard}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemTitle}>{itemName}</Text>
         {item.code && item.name && <Text style={styles.itemSub}>{item.code}</Text>}
@@ -227,11 +240,12 @@ export default function AcademicManagement() {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Add New {activeTab.slice(0, -1)}</Text>
-          {activeTab !== 'years' && activeTab !== 'mappings' && <TextInput style={styles.input} placeholder="Name (e.g. Class 10)" value={newItemName} onChangeText={setNewItemName} />}
-          {activeTab !== 'mappings' && <TextInput style={styles.input} placeholder={activeTab === 'years' ? "Code (e.g. 2023-24)" : "Code (optional)"} value={newItemCode} onChangeText={setNewItemCode} />}
+          {activeTab !== 'years' && activeTab !== 'mappings' && <AppTextInput style={styles.input} placeholder="Name (e.g. Class 10)" value={newItemName} onChangeText={setNewItemName} />}
+          {activeTab === 'subjects' && <AppTextInput style={styles.input} placeholder="Telugu Name (optional)" value={newItemNameTe} onChangeText={setNewItemNameTe} />}
+          {activeTab !== 'mappings' && <AppTextInput style={styles.input} placeholder={activeTab === 'years' ? "Code (e.g. 2023-24)" : "Code (optional)"} value={newItemCode} onChangeText={setNewItemCode} />}
           {activeTab === 'years' && <>
-            <TextInput style={styles.input} placeholder="Start Date (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
-            <TextInput style={styles.input} placeholder="End Date (YYYY-MM-DD)" value={endDate} onChangeText={setEndDate} />
+            <AppTextInput style={styles.input} placeholder="Start Date (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
+            <AppTextInput style={styles.input} placeholder="End Date (YYYY-MM-DD)" value={endDate} onChangeText={setEndDate} />
           </>}
           {activeTab === 'mappings' && <>
             <Text style={{

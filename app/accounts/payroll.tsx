@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, StatusBar, Alert, Pressable, Dimensions,
+  Image, StatusBar, Pressable, Dimensions,
 } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, {
@@ -15,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { usePayroll } from '../../src/hooks/usePayroll';
 import { PayrollEntry } from '../../src/types/payroll';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -25,17 +27,33 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// ─── Designation color map ────────────────────────────────────────────────────
-const DESIG_CONFIG: Record<string, { color: string; grad: [string, string]; icon: string }> = {
-  Principal: { color: '#8B5CF6', grad: ['#5B21B6', '#8B5CF6'], icon: 'star-outline' },
-  Teacher: { color: '#3B82F6', grad: ['#1D4ED8', '#3B82F6'], icon: 'book-outline' },
-  Admin: { color: '#10B981', grad: ['#065F46', '#10B981'], icon: 'shield-outline' },
-  Accountant: { color: '#F59E0B', grad: ['#B45309', '#F59E0B'], icon: 'calculator-outline' },
-  Librarian: { color: '#EC4899', grad: ['#9D174D', '#EC4899'], icon: 'library-outline' },
-  Driver: { color: '#EF4444', grad: ['#991B1B', '#EF4444'], icon: 'car-outline' },
-  Staff: { color: '#6366F1', grad: ['#4338CA', '#6366F1'], icon: 'people-outline' },
+// ─── Designation color generator ──────────────────────────────────────────────────
+const getDesig = (name?: string) => {
+  const n = name || 'Staff';
+  const hash = n.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const colors = [
+    { color: '#8B5CF6', grad: ['#5B21B6', '#8B5CF6'] as [string, string], icon: 'star-outline' },
+    { color: '#3B82F6', grad: ['#1D4ED8', '#3B82F6'] as [string, string], icon: 'book-outline' },
+    { color: '#10B981', grad: ['#065F46', '#10B981'] as [string, string], icon: 'shield-outline' },
+    { color: '#F59E0B', grad: ['#B45309', '#F59E0B'] as [string, string], icon: 'calculator-outline' },
+    { color: '#EC4899', grad: ['#9D174D', '#EC4899'] as [string, string], icon: 'library-outline' },
+    { color: '#0EA5E9', grad: ['#0369A1', '#0EA5E9'] as [string, string], icon: 'briefcase-outline' },
+    { color: '#EF4444', grad: ['#991B1B', '#EF4444'] as [string, string], icon: 'car-outline' },
+  ];
+  const defaults: Record<string, any> = {
+    'Principal': colors[0],
+    'Vice Principal': colors[1],
+    'Teacher': colors[1],
+    'Senior Teacher': colors[5],
+    'Lab Assistant': colors[2],
+    'Librarian': colors[4],
+    'Clerk': colors[3],
+    'Accountant': colors[3],
+    'Admin': colors[2],
+    'Driver': colors[6]
+  };
+  return defaults[n] || colors[hash % colors.length];
 };
-const getDesig = (name?: string) => DESIG_CONFIG[name || ''] || DESIG_CONFIG.Staff;
 
 const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const fmtDate = (d?: string) => {
@@ -369,6 +387,7 @@ const CardSkeleton = ({ isDark }: { isDark: boolean }) => (
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AccountsPayroll() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const {
     payrollData, loading, summary, selectedMonth, selectedYear,
@@ -388,15 +407,17 @@ export default function AccountsPayroll() {
 
   const handleProcessPay = (item: PayrollEntry) => {
     const name = item.staff?.person?.first_name || 'this staff member';
-    Alert.alert(
+    alertCompat(
       'Confirm Payment',
       `Release ${fmtINR(item.net_salary)} to ${name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Release', onPress: async () => {
-            const ok = await markAsPaid(item.id);
-            if (!ok) Alert.alert('Error', 'Failed to update payment status.');
+            const res = await markAsPaid(item.id);
+            if (!res.ok) {
+              alertCompat('Error', res.message || 'Failed to update payment status.');
+            }
           }
         },
       ]
@@ -413,7 +434,7 @@ export default function AccountsPayroll() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0F1E' : '#F1F5F9'} />
-      <AdminHeader title="Payroll" showBackButton />
+      {!shellActive && <AdminHeader title="Payroll" showBackButton />}
 
       <MonthNav month={selectedMonth} year={selectedYear} onPrev={handlePrevMonth} onNext={handleNextMonth} isDark={isDark} />
 

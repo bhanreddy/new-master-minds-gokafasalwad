@@ -5,7 +5,20 @@ import type {
     AttendanceResponse,
     FeeResponse,
     Parent,
+    AttendanceSummary,
 } from '../types/models';
+
+/** Aggregated payload from GET /student/dashboard (one HTTP call for the student home tab). */
+export interface StudentDashboardResponse {
+    profile: Student;
+    notices: unknown[];
+    attendance: {
+        summary: AttendanceSummary | null;
+        latest_record: { attendance_date: string; status: string } | null;
+    };
+    upcoming_fee: unknown | null;
+    timetable_today: unknown[];
+}
 
 // API Request/Response types matching Backend logic
 export interface CreateStudentRequest {
@@ -35,6 +48,7 @@ export interface UpdateStudentRequest {
     last_name?: string;
     phone?: string;
     email?: string;
+    password?: string;
 }
 
 export const StudentService = {
@@ -85,6 +99,10 @@ export const StudentService = {
         return api.get<Student>('/students/profile/me');
     },
 
+    getDashboard: async (): Promise<StudentDashboardResponse> => {
+        return api.get<StudentDashboardResponse>('/student/dashboard');
+    },
+
     /**
      * Create new student
      */
@@ -119,8 +137,8 @@ export const StudentService = {
     /**
      * Get student fees
      */
-    getFees: async (id: string): Promise<FeeResponse> => {
-        return api.get<FeeResponse>(`/students/${id}/fees`);
+    getFees: async (id: string, params?: { page?: number; limit?: number; academic_year_id?: string }): Promise<FeeResponse & { meta?: { total: number; page: number; limit: number; total_pages: number } }> => {
+        return api.get(`/students/${id}/fees`, params);
     },
 
     /**

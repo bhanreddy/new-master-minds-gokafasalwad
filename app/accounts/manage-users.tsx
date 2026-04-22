@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert, StatusBar } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -8,14 +12,23 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { StudentService } from '../../src/services/studentService';
 import { StaffService } from '../../src/services/staffService';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import {
+  manageUsersSearchHaystack,
+  personListDisplayName,
+  staffRoleDepartmentLine,
+  studentEnrollmentSubtitle,
+} from '../../src/utils/displayHelpers';
+
 export default function ManageUsersScreen() {
   const {
     theme,
     isDark
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
+  const { shellActive } = useAccountsWebChrome();
   const router = useRouter();
   const {
     t
@@ -34,29 +47,41 @@ export default function ManageUsersScreen() {
   useEffect(() => {
     if (searchQuery) {
       const lowerInfo = searchQuery.toLowerCase();
-      const filtered = users.filter((u) => (u.firstName + ' ' + u.lastName).toLowerCase().includes(lowerInfo) || u.name && u.name.toLowerCase().includes(lowerInfo) || u.email?.toLowerCase().includes(lowerInfo) || u.admissionNo && u.admissionNo.toLowerCase().includes(lowerInfo));
+      const kind = activeTab === 'student' ? 'student' : 'staff';
+      const filtered = users.filter((u) =>
+        manageUsersSearchHaystack(u as Record<string, unknown>, kind).includes(lowerInfo)
+      );
       setFilteredUsers(filtered);
     } else {
       setFilteredUsers(users);
     }
-  }, [searchQuery, users]);
+  }, [searchQuery, users, activeTab]);
   const loadUsers = async () => {
     setLoading(true);
     try {
       if (user?.userId) {
-        let data = [];
+        let list: any[] = [];
         if (activeTab === 'student') {
           const response = await StudentService.getAll();
-          data = response.data || [];
+          list = Array.isArray(response) ? response : response?.data ?? [];
         } else {
-          data = await StaffService.getAll();
+          const raw = await StaffService.getAll();
+          list = Array.isArray(raw) ? raw : [];
         }
-        setUsers(data || []);
-        setFilteredUsers(data || []);
+        if (__DEV__) {
+          const data = {
+            students: activeTab === 'student' ? list : [],
+            staff: activeTab === 'staff' ? list : [],
+          };
+          console.log('RAW STUDENT RESPONSE:', JSON.stringify(data?.students?.[0], null, 2));
+          console.log('RAW STAFF RESPONSE:', JSON.stringify(data?.staff?.[0], null, 2));
+        }
+        setUsers(list);
+        setFilteredUsers(list);
       }
     } catch (e) {
 
-      Alert.alert("Error", "Failed to load users");
+      alertCompat("Error", "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -79,7 +104,8 @@ export default function ManageUsersScreen() {
     }
   };
   const handleDelete = (targetUser: any) => {
-    Alert.alert("Confirm Delete", `Are you sure you want to delete ${targetUser.firstName || targetUser.name}?`, [{
+    const nm = personListDisplayName(targetUser as Record<string, unknown>);
+    alertCompat("Confirm Delete", `Are you sure you want to delete ${nm}?`, [{
       text: "Cancel",
       style: "cancel"
     }, {
@@ -91,13 +117,13 @@ export default function ManageUsersScreen() {
             await StudentService.delete(targetUser.id);
           } else {
             // await Functions.deleteStaff(targetUser.id);
-            Alert.alert("Restricted", "Staff deletion restricted via app.");
+            alertCompat("Restricted", "Staff deletion restricted via app.");
             return;
           }
           loadUsers(); // Refresh
-          Alert.alert("Success", "User deleted.");
+          alertCompat("Success", "User deleted.");
         } catch (e) {
-          Alert.alert("Error", "Failed to delete user");
+          alertCompat("Error", "Failed to delete user");
         }
       }
     }]);
@@ -106,14 +132,19 @@ export default function ManageUsersScreen() {
     item
 
   }: {item: any;}) => {
+    const row = item as Record<string, unknown>;
+    const displayName = personListDisplayName(row);
+    const initial = (displayName.trim()[0] || 'U').toUpperCase();
     return <View style={styles.userCard}>
             <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(item.firstName || item.name || 'U')[0]}</Text>
+                <Text style={styles.avatarText}>{initial}</Text>
             </View>
             <View style={styles.userInfo}>
-                <Text style={styles.userName}>{item.name || `${item.firstName} ${item.lastName}`}</Text>
+                <Text style={styles.userName}>{displayName}</Text>
                 <Text style={styles.userSub}>
-                    {activeTab === 'student' ? `Class: ${item.current_enrollment?.class_code || 'N/A'} - ${item.current_enrollment?.section_name || ''} • Roll: ${item.current_enrollment?.roll_number || 'N/A'}` : `${item.designation || 'Staff'} • ${item.department || 'N/A'}`}
+                    {activeTab === 'student'
+                      ? studentEnrollmentSubtitle(row.current_enrollment)
+                      : staffRoleDepartmentLine(row)}
                 </Text>
             </View>
             <View style={styles.actions}>
@@ -128,7 +159,7 @@ export default function ManageUsersScreen() {
   };
   return <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <AdminHeader title="Manage Users" />
+            {!shellActive && <AdminHeader title="Manage Users" />}
             {/* TABS */}
             <View style={styles.tabs}>
                 <TouchableOpacity style={[styles.tab, activeTab === 'student' && styles.activeTab]} onPress={() => setActiveTab('student')}>
@@ -139,9 +170,9 @@ export default function ManageUsersScreen() {
                 </TouchableOpacity>
             </View>
             {/* SEARCH */}
-            <View style={styles.searchContainer}>
+            <View style={[styles.searchContainer, ds.searchBarWrapper]}>
                 <Ionicons name="search" size={20} color="#9CA3AF" />
-                <TextInput style={styles.searchInput} placeholder={`Search ${activeTab === 'student' ? 'Students' : 'Staff'}...`} value={searchQuery} onChangeText={setSearchQuery} />
+                <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder={`Search ${activeTab === 'student' ? 'Students' : 'Staff'}...`} value={searchQuery} onChangeText={setSearchQuery} />
             </View>
             {/* LIST */}
             {loading ? <LogoLoader size={60} color="#3B82F6" style={{

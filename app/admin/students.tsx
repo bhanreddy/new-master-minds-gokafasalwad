@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Platform, ScrollView, Modal } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, ScrollView, Modal } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -207,10 +210,10 @@ export default function AdminStudentsScreen() {
     <View style={styles.container}>
             <AdminHeader title="Students" showNotification scrollY={scrollY} />
             <View style={styles.headerArea}>
-                <View style={styles.searchBox}>
+                <View style={[styles.searchBox, ds.searchBarWrapper]}>
                     <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-                    <TextInput
-            style={styles.searchInput}
+                    <AppTextInput
+            style={[ds.inputInChrome, styles.searchInput]}
             placeholder="Search by name or admission no..."
             placeholderTextColor={theme.colors.textSecondary}
             value={searchQuery}

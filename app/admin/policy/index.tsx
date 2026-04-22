@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
+import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { PolicyService } from '../../../src/services/policyService';
@@ -33,7 +36,7 @@ export default function PolicyManagerScreen() {
         setLogs(data);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load data');
+      alertCompat('Error', 'Failed to load data');
 
     } finally {
       setLoading(false);
@@ -47,7 +50,7 @@ export default function PolicyManagerScreen() {
     let finalValue: any = editValue;
     if (rule.value_type === 'amount' || rule.value_type === 'percentage') {
       if (isNaN(Number(editValue))) {
-        Alert.alert('Invalid Input', 'Please enter a valid number');
+        alertCompat('Invalid Input', 'Please enter a valid number');
         return;
       }
       finalValue = { amount: Number(editValue) }; // Standardizing json structure for amount
@@ -70,11 +73,11 @@ export default function PolicyManagerScreen() {
     setUpdating(rule.id);
     try {
       await PolicyService.updateRule(rule.id, finalValue);
-      Alert.alert('Success', 'Policy updated successfully');
+      alertCompat('Success', 'Policy updated successfully');
       setEditingRuleId(null);
       loadData();
     } catch (error) {
-      Alert.alert('Error', 'Failed to update policy');
+      alertCompat('Error', 'Failed to update policy');
     } finally {
       setUpdating(null);
     }
@@ -106,11 +109,12 @@ export default function PolicyManagerScreen() {
                     <Text style={styles.label}>Current Limit/Value:</Text>
                     {isEditing ?
           <View style={styles.editContainer}>
-                            <TextInput
+                            <AppTextInput
               style={styles.input}
               value={editValue}
               onChangeText={setEditValue}
               placeholder={String(displayValue())}
+              placeholderTextColor="#94A3B8"
               keyboardType={rule.value_type === 'amount' ? 'numeric' : 'default'} />
 
                             <TouchableOpacity
@@ -242,7 +246,7 @@ const styles = StyleSheet.create({
   displayContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   valueText: { fontSize: 16, fontWeight: 'bold', color: '#007AFF' },
   editContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end' },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', borderRadius: 5, padding: 5, width: 80, textAlign: 'center' },
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 6, width: 80, textAlign: 'center' },
   saveBtn: { backgroundColor: '#007AFF', padding: 8, borderRadius: 5 },
   btnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   cancelBtn: { padding: 8 },

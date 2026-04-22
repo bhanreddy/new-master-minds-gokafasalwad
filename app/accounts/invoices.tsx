@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useInvoices } from '../../src/hooks/useInvoices';
 import { generateInvoicePDF } from '../../src/utils/pdfGenerator';
 import { Invoice } from '../../src/types/invoices';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 export default function AccountsInvoices() {
@@ -14,6 +16,7 @@ export default function AccountsInvoices() {
     isDark
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
+  const { shellActive } = useAccountsWebChrome();
   const {
     invoices,
     loading,
@@ -26,7 +29,7 @@ export default function AccountsInvoices() {
     try {
       await generateInvoicePDF(invoice);
     } catch (err) {
-      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
+      alertCompat('Error', 'Failed to generate PDF. Please try again.');
     }
   };
   const renderItem = ({
@@ -67,7 +70,7 @@ export default function AccountsInvoices() {
   };
   return <View style={styles.container}>
     <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-    <AdminHeader title="Invoices" showBackButton={true} />
+    {!shellActive && <AdminHeader title="Invoices" showBackButton={true} />}
 
     {error && <View style={styles.errorBox}>
       <Text style={styles.errorText}>Error loading invoices: {error}</Text>

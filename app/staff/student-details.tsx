@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, StatusBar } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,7 +53,7 @@ export default function StudentDetails() {
       });
     } catch (error) {
 
-      Alert.alert("Error", "Failed to fetch student details");
+      alertCompat("Error", "Failed to fetch student details");
     } finally {
       setLoading(false);
     }
@@ -65,13 +68,13 @@ export default function StudentDetails() {
         first_name: firstName,
         last_name: lastName
       });
-      Alert.alert("Success", "Student details updated successfully!", [{
+      alertCompat("Success", "Student details updated successfully!", [{
         text: "OK",
         onPress: () => router.back()
       }]);
     } catch (error) {
 
-      Alert.alert("Error", "Failed to update details");
+      alertCompat("Error", "Failed to update details");
     }
   };
   return <View style={styles.container}>
@@ -104,7 +107,7 @@ export default function StudentDetails() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Full Name</Text>
-        <TextInput style={styles.input} value={formData.name} onChangeText={(text) => setFormData({
+        <AppTextInput style={styles.input} value={formData.name} onChangeText={(text) => setFormData({
           ...formData,
           name: text
         })} />
@@ -116,7 +119,7 @@ export default function StudentDetails() {
           marginRight: 10
         }]}>
           <Text style={styles.label}>Class/Grade</Text>
-          <TextInput style={[styles.input, {
+          <AppTextInput style={[styles.input, {
             backgroundColor: '#F3F4F6'
           }]} value={formData.grade} editable={false} />
         </View>
@@ -124,7 +127,7 @@ export default function StudentDetails() {
           flex: 1
         }]}>
           <Text style={styles.label}>Roll No.</Text>
-          <TextInput style={[styles.input, {
+          <AppTextInput style={[styles.input, {
             backgroundColor: '#F3F4F6'
           }]} value={formData.rollNo} keyboardType="numeric" editable={false} />
         </View>
@@ -134,21 +137,21 @@ export default function StudentDetails() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Parent Name</Text>
-        <TextInput style={[styles.input, {
+        <AppTextInput style={[styles.input, {
           backgroundColor: '#F3F4F6'
         }]} value={formData.parentName} editable={false} />
       </View>
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Contact Number</Text>
-        <TextInput style={[styles.input, {
+        <AppTextInput style={[styles.input, {
           backgroundColor: '#F3F4F6'
         }]} value={formData.contact} keyboardType="phone-pad" maxLength={10} editable={false} />
       </View>
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Teacher Remarks</Text>
-        <TextInput style={[styles.input, styles.textArea]} value={formData.remarks} multiline numberOfLines={4} textAlignVertical="top" onChangeText={(text) => setFormData({
+        <AppTextInput style={[styles.input, styles.textArea]} value={formData.remarks} multiline numberOfLines={4} textAlignVertical="top" onChangeText={(text) => setFormData({
           ...formData,
           remarks: text
         })} />

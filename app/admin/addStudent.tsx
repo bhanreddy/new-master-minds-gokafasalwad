@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform, Alert, Modal, FlatList, Keyboard } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -38,7 +41,7 @@ const InputField = ({
         </Text>
         <View style={styles.inputWrapper}>
             <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-            <TextInput style={styles.input} placeholder={placeholder} placeholderTextColor={ADMIN_THEME.colors.text.muted} value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
+            <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor={ADMIN_THEME.colors.text.muted} value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
         </View>
     </View>;
 };
@@ -211,7 +214,7 @@ export default function AddStudentScreen() {
       }
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to load classes and academic years');
+      alertCompat('Error', 'Failed to load classes and academic years');
     } finally {
       setInitialLoading(false);
     }
@@ -245,23 +248,23 @@ export default function AddStudentScreen() {
       }
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to load student details');
+      alertCompat('Error', 'Failed to load student details');
     }
   };
   const handleSave = async () => {
     // Validation
     if (!formData.first_name || !formData.last_name || !formData.admission_no || !formData.admission_date || !formData.class_id || !formData.section_id) {
-      Alert.alert('Required Fields', 'Please fill all mandatory fields (Name, Admission No, Class, Section)');
+      alertCompat('Required Fields', 'Please fill all mandatory fields (Name, Admission No, Class, Section)');
       return;
     }
     if (!isEditMode && !formData.password) {
-      Alert.alert('Security', 'Password is required for new students');
+      alertCompat('Security', 'Password is required for new students');
       return;
     }
 
     // Password length check
     if (formData.password && formData.password.length < 6) {
-      Alert.alert('Weak Password', 'Password must be at least 6 characters long.');
+      alertCompat('Weak Password', 'Password must be at least 6 characters long.');
       return;
     }
 
@@ -269,7 +272,7 @@ export default function AddStudentScreen() {
     if (formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
-        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+        alertCompat('Invalid Email', 'Please enter a valid email address.');
         return;
       }
     }
@@ -278,7 +281,7 @@ export default function AddStudentScreen() {
     if (formData.phone) {
       const phoneClean = formData.phone.replace(/\D/g, '');
       if (phoneClean.length < 10) {
-        Alert.alert('Invalid Phone', 'Phone number must be at least 10 digits.');
+        alertCompat('Invalid Phone', 'Phone number must be at least 10 digits.');
         return;
       }
     }
@@ -287,7 +290,7 @@ export default function AddStudentScreen() {
     if (formData.dob) {
       const dobDate = new Date(formData.dob);
       if (dobDate > new Date()) {
-        Alert.alert('Invalid DOB', 'Date of birth cannot be in the future.');
+        alertCompat('Invalid DOB', 'Date of birth cannot be in the future.');
         return;
       }
     }
@@ -320,13 +323,13 @@ export default function AddStudentScreen() {
       };
       if (isEditMode) {
         await StudentService.update(id as string, payload as any);
-        Alert.alert('Success', 'Student updated successfully!', [{
+        alertCompat('Success', 'Student updated successfully!', [{
           text: 'OK',
           onPress: () => router.back()
         }]);
       } else {
         await StudentService.create(payload);
-        Alert.alert('Success', 'Student created successfully!', [{
+        alertCompat('Success', 'Student created successfully!', [{
           text: 'OK',
           onPress: () => router.back()
         }]);
@@ -334,7 +337,7 @@ export default function AddStudentScreen() {
     } catch (error: any) {
       if (__DEV__) {}
       const msg = error.response?.data?.error || error.message || 'Failed to save student';
-      Alert.alert('Save Failed', msg);
+      alertCompat('Save Failed', msg);
     } finally {
       setLoading(false);
     }

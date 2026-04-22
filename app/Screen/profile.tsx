@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '@/src/utils/haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { StudentService } from '../../src/services/studentService';
 import { Student } from '../../src/types/models';

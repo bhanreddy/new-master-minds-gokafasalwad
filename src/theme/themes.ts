@@ -268,3 +268,7 @@ export interface Theme {
     dark: boolean;
     colors: ThemeColors;
 }
+
+// Re-export SchoolTheme types for backward compatibility
+export type { SchoolTheme } from './types';
+export { defaultLightTheme, defaultDarkTheme } from './types';

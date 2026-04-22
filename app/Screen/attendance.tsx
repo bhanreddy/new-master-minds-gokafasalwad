@@ -1,301 +1,267 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import ScreenLayout from '../../src/components/ScreenLayout';
-import StudentHeader from '../../src/components/StudentHeader';
-import { useAuth } from '../../src/hooks/useAuth';
-import { SyncService } from '../../src/services/syncService';
-import { AttendanceRecord, AttendanceSummary } from '../../src/types/models';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
-import LogoLoader from '../../src/components/LogoLoader';
-const getStatusColor = (status: string) => {
-  switch (status.toLowerCase()) {
-    case 'present':
-      return '#16a34a';
-    case 'absent':
-      return '#dc2626';
-    case 'holiday':
-      return '#9333ea';
-    case 'half_day':
-    case 'leave':
-      return '#f59e0b';
-    case 'late':
-      return '#ca8a04';
-    default:
-      return '#6b7280';
-  }
-};
-const getStatusIcon = (status: string): keyof typeof Ionicons.glyphMap => {
-  switch (status.toLowerCase()) {
-    case 'present':
-      return 'checkmark-circle';
-    case 'absent':
-      return 'close-circle';
-    case 'holiday':
-      return 'calendar';
-    case 'half_day':
-    case 'leave':
-      return 'time';
-    case 'late':
-      return 'alert-circle';
-    default:
-      return 'help-circle';
-  }
-};
-export default function AttendanceScreen() {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(theme), [theme]);
-  const {
-    t
-  } = useTranslation();
-  const {
-    user
-  } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [stats, setStats] = useState<AttendanceSummary>({
-    present: 0,
-    absent: 0,
-    late: 0,
-    total: 0
-  });
-  useEffect(() => {
-    loadAttendance(false);
-  }, [user?.userId]);
-  const loadAttendance = async (forceRefetch = false) => {
-    if (!user) return;
-    try {
-      const data = await SyncService.syncAttendance(user.userId || '', undefined, forceRefetch);
-      if (data) {
-        setRecords(data.records);
-        setStats(data.summary);
-      }
-    } catch (error) {
+// OPT: Student attendance — profile + records via useStudentQuery (replaces useEffect + SyncService sync path for this screen).
+import React, { useState, useCallback, useMemo, memo } from 'react'; // OPT: No data-fetch useEffect; memo + useMemo for stable subtrees.
+import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native'; // OPT: Same layout primitives.
+import { LinearGradient } from 'expo-linear-gradient'; // OPT: Summary hero gradient.
+import { Ionicons } from '@expo/vector-icons'; // OPT: Status icons.
+import { useTranslation } from 'react-i18next'; // OPT: i18n for labels.
+import Animated, { FadeInDown } from 'react-native-reanimated'; // OPT: Row entrance.
+import * as Haptics from '@/src/utils/haptics'; // OPT: Pull feedback.
+import ScreenLayout from '../../src/components/ScreenLayout'; // OPT: Page chrome.
+import StudentHeader from '../../src/components/StudentHeader'; // OPT: Nav header.
+import { useAuth } from '../../src/hooks/useAuth'; // OPT: Student gate + cache user key.
+import type { AttendanceRecord, AttendanceSummary, AttendanceResponse } from '../../src/types/models'; // OPT: API typing.
+import { useTheme } from '../../src/hooks/useTheme'; // OPT: Theme hook.
+import { Theme } from '../../src/theme/themes'; // OPT: Style typing.
+import LogoLoader from '../../src/components/LogoLoader'; // OPT: Loading spinner.
+import { useStudentQuery } from '../../src/hooks/useStudentQuery'; // OPT: TTL cache + focus refetch.
+import type { Student } from '../../src/types/models'; // OPT: Profile typing.
+import { ErrorBoundary } from '../../src/components/ErrorBoundary'; // OPT: Isolate runtime errors (same component as Screen/_layout).
 
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-  const onRefresh = () => {
-    setRefreshing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    loadAttendance(true);
-  };
-  const renderItem = React.useCallback(({
-    item,
-    index
+const getStatusColor = (status: string) => { // OPT: Pure palette helper (unchanged behavior).
+  switch (status.toLowerCase()) { // OPT:
+    case 'present': // OPT:
+      return '#16a34a'; // OPT:
+    case 'absent': // OPT:
+      return '#dc2626'; // OPT:
+    case 'holiday': // OPT:
+      return '#9333ea'; // OPT:
+    case 'half_day': // OPT:
+    case 'leave': // OPT:
+      return '#f59e0b'; // OPT:
+    case 'late': // OPT:
+      return '#ca8a04'; // OPT:
+    default: // OPT:
+      return '#6b7280'; // OPT:
+  } // OPT:
+}; // OPT:
 
-  }: { item: AttendanceRecord; index: number; }) => {
-    const color = getStatusColor(item.status);
-    const dateObj = new Date(item.attendance_date);
-    const day = dateObj.toLocaleDateString('en-US', {
-      weekday: 'short'
-    });
-    const dayNum = dateObj.getDate();
-    return <Animated.View entering={FadeInDown.delay(index * 50).duration(500)} // Faster delay
-      style={styles.card}>
-      {/* Date Side - Left */}
-      <View style={[styles.dateBox, {
-        backgroundColor: color + '15'
-      }]}>
-        <Text style={[styles.dayText, {
-          color: color
-        }]}>{day}</Text>
-        <Text style={[styles.dateText, {
-          color: color
-        }]}>{dayNum}</Text>
+const getStatusIcon = (status: string): keyof typeof Ionicons.glyphMap => { // OPT: Icon map (unchanged).
+  switch (status.toLowerCase()) { // OPT:
+    case 'present': // OPT:
+      return 'checkmark-circle'; // OPT:
+    case 'absent': // OPT:
+      return 'close-circle'; // OPT:
+    case 'holiday': // OPT:
+      return 'calendar'; // OPT:
+    case 'half_day': // OPT:
+    case 'leave': // OPT:
+      return 'time'; // OPT:
+    case 'late': // OPT:
+      return 'alert-circle'; // OPT:
+    default: // OPT:
+      return 'help-circle'; // OPT:
+  } // OPT:
+}; // OPT:
+
+const AttendanceStatsBanner = memo(function AttendanceStatsBanner({ // OPT: Pure summary header — memoized.
+  percentage, // OPT: Computed attendance %.
+  stats, // OPT: Present/absent/late totals.
+  styles, // OPT: Themed styles.
+  t, // OPT: i18n function from parent useCallback/stable ref.
+}: {
+  percentage: number; // OPT:
+  stats: AttendanceSummary; // OPT:
+  styles: ReturnType<typeof getStyles>; // OPT:
+  t: (k: string, d?: string) => string; // OPT: Narrow i18n signature for this subtree.
+}) {
+  return (
+    <View style={styles.summaryContainer}>
+      <LinearGradient colors={['#10b981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.summaryCard}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text style={styles.summaryTitle}>{t('attendance_screen.stats', 'Statistics')}</Text>
+          <View style={styles.percentBadge}>
+            <Text style={styles.percentText}>{percentage}%</Text>
+          </View>
+        </View>
+        <View style={styles.statRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{stats.present}</Text>
+            <Text style={styles.statLabel}>{t('attendance_screen.present', 'Present')}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{stats.absent}</Text>
+            <Text style={styles.statLabel}>{t('attendance_screen.absent', 'Absent')}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{stats.late}</Text>
+            <Text style={styles.statLabel}>{t('attendance_screen.late', 'Late')}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+});
+
+const AttendanceRecordRow = memo(function AttendanceRecordRow({ // OPT: Pure row — memoized for FlatList perf.
+  item, // OPT: One attendance day.
+  index, // OPT: Stagger index.
+  styles, // OPT: Themed styles.
+}: {
+  item: AttendanceRecord; // OPT:
+  index: number; // OPT:
+  styles: ReturnType<typeof getStyles>; // OPT:
+}) {
+  const color = getStatusColor(item.status); // OPT: Row accent from status.
+  const dateObj = new Date(item.attendance_date); // OPT: Parse server date.
+  const day = dateObj.toLocaleDateString('en-US', { weekday: 'short' }); // OPT: Short weekday.
+  const dayNum = dateObj.getDate(); // OPT: Day of month.
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 50).duration(500)} style={styles.card}>
+      <View style={[styles.dateBox, { backgroundColor: color + '15' }]}>
+        <Text style={[styles.dayText, { color }]}>{day}</Text>
+        <Text style={[styles.dateText, { color }]}>{dayNum}</Text>
       </View>
-      {/* Status Content - Right */}
       <View style={styles.cardContent}>
         <View>
           <Text style={styles.fullDate}>{dateObj.toDateString()}</Text>
-          <Text style={[styles.statusMain, {
-            color
-          }]}>{item.status.toUpperCase()}</Text>
+          <Text style={[styles.statusMain, { color }]}>{item.status.toUpperCase()}</Text>
         </View>
         <Ionicons name={getStatusIcon(item.status)} size={28} color={color} />
       </View>
-    </Animated.View>;
-  }, []);
-
-  // Calculate percentage safely
-  const percentage = stats.total > 0 ? Math.round(stats.present / stats.total * 100) : 0;
-  return <ScreenLayout>
-    <StudentHeader showBackButton={true} title={t('attendance_screen.title', 'Attendance')} />
-    <View style={styles.container}>
-      {/* HEADER STATS */}
-      <View style={styles.summaryContainer}>
-        <LinearGradient colors={['#10b981', '#059669']} start={{
-          x: 0,
-          y: 0
-        }} end={{
-          x: 1,
-          y: 1
-        }} style={styles.summaryCard}>
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 15
-          }}>
-            <Text style={styles.summaryTitle}>{t('attendance_screen.stats', 'Statistics')}</Text>
-            <View style={styles.percentBadge}>
-              <Text style={styles.percentText}>{percentage}%</Text>
-            </View>
-          </View>
-          <View style={styles.statRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>{stats.present}</Text>
-              <Text style={styles.statLabel}>{t('attendance_screen.present', 'Present')}</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>{stats.absent}</Text>
-              <Text style={styles.statLabel}>{t('attendance_screen.absent', 'Absent')}</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statVal}>{stats.late}</Text>
-              <Text style={styles.statLabel}>{t('attendance_screen.late', 'Late')}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </View>
-      {/* LIST */}
-      {loading ? <LogoLoader size={60} color="#10B981" style={{
-        marginTop: 40
-      }} /> : <FlatList data={records} keyExtractor={(item) => item.attendance_date} renderItem={renderItem} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />} ListEmptyComponent={<Text style={{
-        textAlign: 'center',
-        marginTop: 20,
-        color: '#999'
-      }}>No attendance records found.</Text>} />}
-    </View>
-  </ScreenLayout>;
-}
-const getStyles = (theme: Theme) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb'
-  },
-  summaryContainer: {
-    padding: 20,
-    paddingBottom: 10
-  },
-  summaryCard: {
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#10b981',
-    shadowOffset: {
-      width: 0,
-      height: 4
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4
-  },
-  summaryTitle: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 14,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1
-  },
-  percentBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12
-  },
-  percentText: {
-    color: theme.colors.background,
-    fontWeight: 'bold',
-    fontSize: 16
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  statItem: {
-    alignItems: 'center',
-    flex: 1
-  },
-  statVal: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.background
-  },
-  statLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 4
-  },
-  divider: {
-    width: 1,
-    height: 30,
-    backgroundColor: 'rgba(255,255,255,0.3)'
-  },
-  list: {
-    padding: 20,
-    paddingBottom: 80
-  },
-  card: {
-    backgroundColor: theme.colors.background,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: theme.colors.text,
-    shadowOffset: {
-      width: 0,
-      height: 2
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2
-  },
-  dateBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16
-  },
-  dayText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase'
-  },
-  dateText: {
-    fontSize: 20,
-    fontWeight: 'bold'
-  },
-  cardContent: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingRight: 8
-  },
-  fullDate: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 4
-  },
-  statusMain: {
-    fontSize: 16,
-    fontWeight: 'bold'
-  }
+    </Animated.View>
+  );
 });
+
+function AttendanceScreenInner() { // OPT: Inner tree wrapped by ErrorBoundary below.
+  const { theme } = useTheme(); // OPT: Theme for styles.
+  const styles = React.useMemo(() => getStyles(theme), [theme]); // OPT: Memoized stylesheet.
+  const { t } = useTranslation(); // OPT: i18n.
+  const { user } = useAuth(); // OPT: Auth.
+  const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as { code: string }).code : user?.role; // OPT: Role code.
+  const isStudent = roleCode === 'student'; // OPT: Student-only.
+  const [refreshing, setRefreshing] = useState(false); // OPT: Pull-to-refresh flag.
+
+  const { data: profile, loading: profileLoading } = useStudentQuery<Student>( // OPT: Cached student profile for UUID.
+    '/students/profile/me', // OPT: Profile endpoint.
+    'profile', // OPT: Shared cache key with other student screens.
+    3 * 60 * 1000, // OPT: TTL.
+    user?.userId, // OPT: Partition.
+    { enabled: !!user?.userId && isStudent } // OPT: Gated fetch.
+  );
+
+  const pid = profile?.id; // OPT: Student id for attendance route.
+  const attendanceEndpoint = pid ? `/students/${pid}/attendance` : '/notices'; // OPT: Placeholder when disabled.
+  const { data: attendance, loading: attLoading, refetch } = useStudentQuery<AttendanceResponse>( // OPT: Summary + records in one GET.
+    attendanceEndpoint, // OPT: Dynamic path includes student id.
+    `attendance:${pid}`, // OPT: Per-student cache suffix.
+    90 * 1000, // OPT: TTL for history list.
+    user?.userId, // OPT: Partition.
+    { enabled: Boolean(pid) && isStudent, query: { limit: 120 } } // OPT: Bounded page size for mobile list.
+  );
+
+  const records = attendance?.records ?? []; // OPT: Default to empty list.
+  const stats: AttendanceSummary = attendance?.summary ?? { present: 0, absent: 0, late: 0, total: 0 }; // OPT: Default stats object.
+  const loading = profileLoading || attLoading; // OPT: Single loading gate.
+
+  const percentage = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0; // OPT: Same formula as before.
+
+  const tStable = useCallback((k: string, d?: string) => t(k, d), [t]); // OPT: Stable function ref for memo child props.
+
+  const onRefresh = useCallback(async () => { // OPT: Pull forces network via hook refetch(true).
+    setRefreshing(true); // OPT: Show refresh control.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); // OPT: Haptic.
+    try {
+      await refetch(); // OPT: Bypass TTL for fresh attendance payload.
+    } finally {
+      setRefreshing(false); // OPT: End refresh UI.
+    }
+  }, [refetch]); // OPT: refetch identity from useStudentQuery.
+
+  const renderItem = useCallback( // OPT: Stable FlatList renderItem reference.
+    ({ item, index }: { item: AttendanceRecord; index: number }) => <AttendanceRecordRow item={item} index={index} styles={styles} />, // OPT: Delegate to memo row.
+    [styles] // OPT: Recreate when theme styles change.
+  );
+
+  const keyExtractor = useCallback((item: AttendanceRecord) => item.attendance_date, []); // OPT: Stable keys by date string.
+
+  const listEmpty = useCallback( // OPT: Stable empty component factory for FlatList.
+    () => (
+      <Text style={{ textAlign: 'center', marginTop: 20, color: '#999' }}>No attendance records found.</Text> // OPT: Empty copy.
+    ),
+    [] // OPT: Static subtree.
+  );
+
+  const refreshCtl = useMemo( // OPT: Memo RefreshControl to avoid re-instantiating each render.
+    () => <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />, // OPT: Wired to onRefresh useCallback.
+    [refreshing, onRefresh] // OPT: Recreate when refresh state toggles.
+  );
+
+  return (
+    <ScreenLayout>
+      <StudentHeader showBackButton={true} title={t('attendance_screen.title', 'Attendance')} />
+      <View style={styles.container}>
+        <AttendanceStatsBanner percentage={percentage} stats={stats} styles={styles} t={tStable} />
+        {loading ? (
+          <LogoLoader size={60} color="#10B981" style={{ marginTop: 40 }} />
+        ) : (
+          <FlatList
+            data={records}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={refreshCtl}
+            ListEmptyComponent={listEmpty}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews
+          />
+        )}
+      </View>
+    </ScreenLayout>
+  );
+}
+
+export default function AttendanceScreen() { // OPT: Default export wraps with ErrorBoundary per request.
+  return (
+    <ErrorBoundary>
+      <AttendanceScreenInner />
+    </ErrorBoundary>
+  );
+}
+
+const getStyles = (theme: Theme) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#f9fafb' },
+    summaryContainer: { padding: 20, paddingBottom: 10 },
+    summaryCard: {
+      borderRadius: 20,
+      padding: 20,
+      shadowColor: '#10b981',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    summaryTitle: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+    percentBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+    percentText: { color: theme.colors.background, fontWeight: 'bold', fontSize: 16 },
+    statRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    statItem: { alignItems: 'center', flex: 1 },
+    statVal: { fontSize: 24, fontWeight: 'bold', color: theme.colors.background },
+    statLabel: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+    divider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.3)' },
+    list: { padding: 20, paddingBottom: 80 },
+    card: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 16,
+      padding: 12,
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      shadowColor: theme.colors.text,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    dateBox: { width: 60, height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+    dayText: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
+    dateText: { fontSize: 20, fontWeight: 'bold' },
+    cardContent: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 },
+    fullDate: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
+    statusMain: { fontSize: 16, fontWeight: 'bold' },
+  });

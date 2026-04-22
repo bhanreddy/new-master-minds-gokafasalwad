@@ -75,7 +75,7 @@ export const StaffService = {
         return api.post<Staff>('/staff', data);
     },
 
-    update: async (id: string, data: Partial<Staff>): Promise<Staff> => {
+    update: async (id: string, data: Partial<Staff & { password?: string }>): Promise<Staff> => {
         return api.put<Staff>(`/staff/${id}`, data);
     },
 
@@ -94,5 +94,10 @@ export const StaffService = {
 
     getPayslips: async (id: string): Promise<any[]> => {
         return api.get<any[]>(`/staff/${id}/payslips`);
+    },
+
+    /** Current user's payslips; uses JWT → staff row (same data as accounts payroll). */
+    getMyPayslips: async (): Promise<any[]> => {
+        return api.get<any[]>('/staff/me/payslips');
     },
 };

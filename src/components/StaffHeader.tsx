@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isTelugu } from '../utils/lang';
 
 import MenuOverlay from './MenuOverlay';
 import { SCHOOL_CONFIG } from '../constants/schoolConfig';
@@ -38,18 +40,20 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
     const router = useRouter();
     const { i18n } = useTranslation();
     const { theme, isDark } = useTheme();
-    const [isTelugu, setIsTelugu] = useState(i18n.language === 'te');
+    const [isTeluguLang, setIsTeluguLang] = useState(isTelugu(i18n.language));
     const [menuVisible, setMenuVisible] = useState(false);
     const insets = useSafeAreaInsets();
 
     React.useEffect(() => {
-        setIsTelugu(i18n.language === 'te');
+        setIsTeluguLang(isTelugu(i18n.language));
     }, [i18n.language]);
 
-    const toggleLanguage = () => {
-        const newLang = !isTelugu;
-        setIsTelugu(newLang);
-        i18n.changeLanguage(newLang ? 'te' : 'en');
+    const toggleLanguage = async () => {
+        const newLang = !isTeluguLang;
+        setIsTeluguLang(newLang);
+        const langCode = newLang ? 'te' : 'en';
+        i18n.changeLanguage(langCode);
+        await AsyncStorage.setItem('appLanguage', langCode);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
@@ -85,6 +89,15 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
     });
 
     const isAbsolute = !!scrollY;
+    const isWeb = Platform.OS === 'web';
+    const showNavBack = showBackButton || isWeb;
+    const showNavMenu = showMenuButton && (!showBackButton || isWeb);
+
+    const runBack = () => {
+        if (onBack) onBack();
+        else if (router.canGoBack()) router.back();
+        else router.push('/staff/dashboard' as any);
+    };
 
     return (
         <Animated.View style={[
@@ -94,23 +107,24 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
             animatedStyle
         ]}>
             <View style={styles.contentRow}>
-                {/* Left: Interactive */}
-                <View style={styles.leftSection}>
-                    {showBackButton ? (
-                        <TouchableOpacity
-                            onPress={() => onBack ? onBack() : (router.canGoBack() ? router.back() : router.push('/staff/dashboard' as any))}
-                            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }]}
+                {/* Left: native = menu on home, back on inner; web = both when menu enabled */}
+                <View style={[styles.leftSection, showNavBack && showNavMenu && styles.leftSectionDual]}>
+                    {showNavBack ? (
+                        <Pressable
+                            onPress={runBack}
+                            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
                             <Ionicons name="arrow-back" size={20} color={theme.colors.textStrong} />
-                        </TouchableOpacity>
-                    ) : showMenuButton && (
-                        <TouchableOpacity
+                        </Pressable>
+                    ) : null}
+                    {showNavMenu ? (
+                        <Pressable
                             onPress={handleMenuPress}
-                            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }]}
+                            style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
                             <Feather name="menu" size={20} color={theme.colors.textStrong} />
-                        </TouchableOpacity>
-                    )}
+                        </Pressable>
+                    ) : null}
                 </View>
 
                 {/* Center: Branding (Clean) */}
@@ -125,24 +139,24 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
                 <View style={styles.rightSection}>
                     {/* Lang Switch (Pill) */}
                     <View style={[styles.langPill, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.colors.borderLight }]}>
-                        <TouchableOpacity
-                            onPress={() => isTelugu && toggleLanguage()}
-                            style={[styles.langOption, !isTelugu && styles.langActive]}
+                        <Pressable
+                            onPress={() => isTeluguLang && toggleLanguage()}
+                            style={[styles.langOption, !isTeluguLang && styles.langActive, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Text style={[styles.langText, !isTelugu && { color: theme.colors.primary, fontWeight: '700' }]}>En</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={() => !isTelugu && toggleLanguage()}
-                            style={[styles.langOption, isTelugu && styles.langActive]}
+                            <Text style={[styles.langText, !isTeluguLang && { color: theme.colors.primary, fontWeight: '700' }]}>En</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={() => !isTeluguLang && toggleLanguage()}
+                            style={[styles.langOption, isTeluguLang && styles.langActive, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
-                            <Text style={[styles.langText, isTelugu && { color: theme.colors.primary, fontWeight: '700' }]}>Te</Text>
-                        </TouchableOpacity>
+                            <Text style={[styles.langText, isTeluguLang && { color: theme.colors.primary, fontWeight: '700' }]}>Te</Text>
+                        </Pressable>
                     </View>
 
                     {showProfileButton && (
-                        <TouchableOpacity
+                        <Pressable
                             onPress={() => router.push('/staff/settings' as any)}
-                            style={styles.profileButton}
+                            style={[styles.profileButton, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         >
                             <View style={{
                                 width: 32, height: 32, borderRadius: 16,
@@ -152,7 +166,7 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
                             }}>
                                 <Ionicons name="settings-outline" size={20} color={theme.colors.textSecondary} />
                             </View>
-                        </TouchableOpacity>
+                        </Pressable>
                     )}
                 </View>
             </View>
@@ -176,6 +190,12 @@ const styles = StyleSheet.create({
     leftSection: {
         width: 80,
         alignItems: 'flex-start',
+    },
+    leftSectionDual: {
+        width: 96,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     centerSection: {
         flex: 1,

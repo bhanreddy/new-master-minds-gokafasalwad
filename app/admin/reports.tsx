@@ -7,8 +7,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Dimensions, StatusBar, Platform, Alert, Linking,
+  RefreshControl, Dimensions, StatusBar, Platform, Linking,
 } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -426,12 +427,12 @@ export default function AdminReports() {
     const url = await exportReport();
     setExporting(false);
     if (url) {
-      Alert.alert('Report Ready', 'Your PDF is ready.', [
+      alertCompat('Report Ready', 'Your PDF is ready.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Open', onPress: () => Linking.openURL(url) },
       ]);
     } else {
-      Alert.alert('Export Failed', 'Please try again.');
+      alertCompat('Export Failed', 'Please try again.');
     }
   };
 

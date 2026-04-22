@@ -3,10 +3,11 @@ import {
     View,
     Text,
     StyleSheet,
-    TouchableOpacity,
+    Pressable,
     Dimensions,
     StatusBar,
     Modal,
+    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -23,12 +24,13 @@ import Animated, {
     Extrapolation,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { AuthService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /* ─── Color themes ─── */
 const THEMES = {
@@ -81,11 +83,11 @@ const MenuItemCard: React.FC<{ item: MenuItem; onPress: () => void }> = ({ item,
     }));
 
     return (
-        <TouchableOpacity
-            activeOpacity={1}
+        <Pressable
             onPressIn={() => { scale.value = withSpring(0.97, { damping: 15, stiffness: 300 }); }}
             onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 200 }); }}
             onPress={onPress}
+            style={Platform.OS === 'web' && { cursor: 'pointer' }}
         >
             <Animated.View style={[styles.menuCard, animStyle]}>
                 <View style={[styles.accentBar, { backgroundColor: item.accent || '#4F46E5' }]} />
@@ -95,7 +97,7 @@ const MenuItemCard: React.FC<{ item: MenuItem; onPress: () => void }> = ({ item,
                 <Text style={styles.menuLabel}>{item.label}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
             </Animated.View>
-        </TouchableOpacity>
+        </Pressable>
     );
 };
 
@@ -180,21 +182,41 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
     }));
 
     /* ── Handlers ── */
-    const handlePress = async (key: string, link: string) => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        closeDrawer();
-        setTimeout(() => {
-            router.push(link as Href);
-        }, 300);
+    const handlePress = (link: string) => {
+        console.debug('[MenuOverlay] handlePress start', { link });
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            closeDrawer();
+            setTimeout(() => {
+                try {
+                    router.push(link as Href);
+                    console.debug('[MenuOverlay] handlePress end', { link });
+                } catch (e) {
+                    console.error('Button action failed:', e);
+                }
+            }, 300);
+        } catch (e) {
+            console.error('Button action failed:', e);
+        }
     };
 
     const handleLogout = async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        closeDrawer();
-        setTimeout(async () => {
-            await AuthService.signOut();
-            router.replace(userType === 'staff' ? '/staff-login' as any : userType === 'driver' ? '/driver-login' as any : '/');
-        }, 300);
+        console.debug('[MenuOverlay] handleLogout start');
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            closeDrawer();
+            setTimeout(async () => {
+                try {
+                    await AuthService.signOut();
+                    router.replace(userType === 'staff' ? '/staff-login' as any : userType === 'driver' ? '/driver-login' as any : '/');
+                    console.debug('[MenuOverlay] handleLogout end');
+                } catch (e) {
+                    console.error('Button action failed:', e);
+                }
+            }, 300);
+        } catch (e) {
+            console.error('Button action failed:', e);
+        }
     };
 
     if (!visible) return null;
@@ -209,9 +231,8 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
 
                 {/* Dimmed backdrop */}
                 <Animated.View style={[styles.backdrop, backdropStyle]}>
-                    <TouchableOpacity
-                        style={StyleSheet.absoluteFill}
-                        activeOpacity={1}
+                    <Pressable
+                        style={[StyleSheet.absoluteFill, Platform.OS === 'web' && { cursor: 'pointer' }]}
                         onPress={closeDrawer}
                     />
                 </Animated.View>
@@ -255,7 +276,7 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
                                     <MenuItemCard
                                         key={item.key}
                                         item={item}
-                                        onPress={() => handlePress(item.key, item.link)}
+                                        onPress={() => handlePress(item.link)}
                                     />
                                 ))}
                             </View>
@@ -264,29 +285,27 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
                             <View style={{ flex: 1 }} />
 
                             {/* ── Logout Button ── */}
-                            <TouchableOpacity
-                                style={styles.logoutButton}
+                            <Pressable
+                                style={[styles.logoutButton, Platform.OS === 'web' && { cursor: 'pointer' }]}
                                 onPress={handleLogout}
-                                activeOpacity={0.7}
                             >
                                 <View style={styles.logoutIconBox}>
                                     <Ionicons name="log-out-outline" size={20} color="#DC2626" />
                                 </View>
                                 <Text style={styles.logoutText}>Logout</Text>
                                 <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-                            </TouchableOpacity>
+                            </Pressable>
 
                             {/* ── Close Button ── */}
-                            <TouchableOpacity
-                                style={styles.closeButton}
+                            <Pressable
+                                style={[styles.closeButton, Platform.OS === 'web' && { cursor: 'pointer' }]}
                                 onPress={() => {
                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                     closeDrawer();
                                 }}
-                                activeOpacity={0.7}
                             >
                                 <Ionicons name="close" size={22} color="#64748B" />
-                            </TouchableOpacity>
+                            </Pressable>
 
                         </SafeAreaView>
                     </Animated.View>

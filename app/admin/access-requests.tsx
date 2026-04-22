@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -18,11 +19,14 @@ export default function AccessRequestsScreen() {
     const [requests, setRequests] = useState<AccessRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
-    const loadRequests = async () => {
+    const loadRequests = async (tab: 'pending' | 'history') => {
         setLoading(true);
         try {
-            const data = await AccessControlService.getPendingRequests();
+            const data = tab === 'pending'
+                ? await AccessControlService.getPendingRequests()
+                : await AccessControlService.getRequestHistory();
             setRequests(data);
         } catch (error) {
             console.error('Failed to load requests:', error);
@@ -32,30 +36,32 @@ export default function AccessRequestsScreen() {
     };
 
     useEffect(() => {
-        loadRequests();
+        loadRequests(activeTab);
+    }, [activeTab]);
 
+    useEffect(() => {
         // Subscribe to real-time updates for new requests
         const channel = supabase
             .channel('access_requests_changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'access_requests' }, payload => {
-                loadRequests(); // Reload to get fresh joined data
+                loadRequests(activeTab); // Reload to get fresh joined data based on current tab
             })
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, []);
+    }, [activeTab]);
 
     const handleGrant = async (request: AccessRequest) => {
         if (!user) return;
         setProcessingId(request.id);
         try {
             await AccessControlService.grantAccess(user.userId, request.id);
-            Alert.alert('Success', 'Access granted until 11:59 PM tonight');
+            alertCompat('Success', 'Access granted until 11:59 PM tonight');
             setRequests(prev => prev.filter(r => r.id !== request.id));
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to grant access');
+            alertCompat('Error', error.message || 'Failed to grant access');
         } finally {
             setProcessingId(null);
         }
@@ -66,10 +72,10 @@ export default function AccessRequestsScreen() {
         setProcessingId(request.id);
         try {
             await AccessControlService.denyRequest(user.userId, request.id);
-            Alert.alert('Request Denied', 'The request has been dismissed.');
+            alertCompat('Request Denied', 'The request has been dismissed.');
             setRequests(prev => prev.filter(r => r.id !== request.id));
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to deny request');
+            alertCompat('Error', error.message || 'Failed to deny request');
         } finally {
             setProcessingId(null);
         }
@@ -105,21 +111,36 @@ export default function AccessRequestsScreen() {
                     )}
 
                     <View style={styles.actionRow}>
-                        <TouchableOpacity
-                            style={[styles.outlineBtn, processingId === item.id && { opacity: 0.5 }]}
-                            onPress={() => handleDeny(item)}
-                            disabled={processingId === item.id}
-                        >
-                            <Text style={styles.outlineBtnText}>Deny</Text>
-                        </TouchableOpacity>
-                        <PremiumButton
-                            title="Grant Access"
-                            onPress={() => handleGrant(item)}
-                            loading={processingId === item.id}
-                            colors={['#10B981', '#059669']}
-                            style={{ flex: 1, marginLeft: 12 }}
-                            icon={<Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={{ marginLeft: 8 }} />}
-                        />
+                        {item.status === 'pending' ? (
+                            <>
+                                <TouchableOpacity
+                                    style={[styles.outlineBtn, processingId === item.id && { opacity: 0.5 }]}
+                                    onPress={() => handleDeny(item)}
+                                    disabled={processingId === item.id}
+                                >
+                                    <Text style={styles.outlineBtnText}>Deny</Text>
+                                </TouchableOpacity>
+                                <PremiumButton
+                                    title="Grant Access"
+                                    onPress={() => handleGrant(item)}
+                                    loading={processingId === item.id}
+                                    colors={['#10B981', '#059669']}
+                                    style={{ flex: 1, marginLeft: 12 }}
+                                    icon={<Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={{ marginLeft: 8 }} />}
+                                />
+                            </>
+                        ) : (
+                            <View style={[styles.statusBadge, item.status === 'approved' ? styles.statusApproved : styles.statusDenied]}>
+                                <Ionicons 
+                                    name={item.status === 'approved' ? 'checkmark-circle' : 'close-circle'} 
+                                    size={18} 
+                                    color={item.status === 'approved' ? '#059669' : '#DC2626'} 
+                                />
+                                <Text style={[styles.statusBadgeText, item.status === 'approved' ? { color: '#059669' } : { color: '#DC2626' }]}>
+                                    {item.status.toUpperCase()}
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 </View>
             </Animated.View>
@@ -130,6 +151,32 @@ export default function AccessRequestsScreen() {
         <View style={styles.container}>
             <AdminHeader title="Access Requests" showBackButton />
 
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'pending' && styles.activeTabButton]}
+                    onPress={() => setActiveTab('pending')}
+                >
+                    <Ionicons
+                        name="time-outline"
+                        size={20}
+                        color={activeTab === 'pending' ? ADMIN_THEME.colors.primary : ADMIN_THEME.colors.text.secondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'pending' && styles.activeTabText]}>Pending</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'history' && styles.activeTabButton]}
+                    onPress={() => setActiveTab('history')}
+                >
+                    <Ionicons
+                        name="list-outline"
+                        size={20}
+                        color={activeTab === 'history' ? ADMIN_THEME.colors.primary : ADMIN_THEME.colors.text.secondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>History</Text>
+                </TouchableOpacity>
+            </View>
+
             <FlatList
                 data={requests}
                 keyExtractor={(item) => item.id}
@@ -138,9 +185,19 @@ export default function AccessRequestsScreen() {
                 ListEmptyComponent={
                     !loading ? (
                         <View style={styles.emptyState}>
-                            <Ionicons name="shield-checkmark-outline" size={64} color={ADMIN_THEME.colors.border} />
-                            <Text style={styles.emptyTitle}>No pending requests</Text>
-                            <Text style={styles.emptyDesc}>All out-of-hours access requests are currently resolved.</Text>
+                            <Ionicons 
+                                name={activeTab === 'pending' ? 'shield-checkmark-outline' : 'document-text-outline'} 
+                                size={64} 
+                                color={ADMIN_THEME.colors.border} 
+                            />
+                            <Text style={styles.emptyTitle}>
+                                {activeTab === 'pending' ? 'No pending requests' : 'No history found'}
+                            </Text>
+                            <Text style={styles.emptyDesc}>
+                                {activeTab === 'pending' 
+                                    ? 'All out-of-hours access requests are currently resolved.' 
+                                    : 'There are no past access requests.'}
+                            </Text>
                         </View>
                     ) : null
                 }
@@ -153,6 +210,36 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: ADMIN_THEME.colors.background.surface,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 8,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderColor: ADMIN_THEME.colors.border,
+    },
+    tabButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginHorizontal: 4,
+        gap: 8,
+    },
+    activeTabButton: {
+        backgroundColor: 'rgba(79, 70, 229, 0.1)', // Matches primary theme color subtle
+    },
+    tabText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: ADMIN_THEME.colors.text.secondary,
+    },
+    activeTabText: {
+        color: ADMIN_THEME.colors.primary,
     },
     listContent: {
         padding: 16,
@@ -268,5 +355,23 @@ const styles = StyleSheet.create({
         color: ADMIN_THEME.colors.text.secondary,
         textAlign: 'center',
         maxWidth: '80%',
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+        gap: 6,
+    },
+    statusApproved: {
+        backgroundColor: '#D1FAE5', // green-100
+    },
+    statusDenied: {
+        backgroundColor: '#FEE2E2', // red-100
+    },
+    statusBadgeText: {
+        fontSize: 14,
+        fontWeight: '600',
     },
 });

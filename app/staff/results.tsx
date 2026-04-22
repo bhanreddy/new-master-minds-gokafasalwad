@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar, Alert } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';
@@ -201,7 +204,7 @@ export default function UploadMarks() {
       setAssignments(data);
     } catch (error) {
 
-      Alert.alert('Error', 'Could not load your assigned classes.');
+      alertCompat('Error', 'Could not load your assigned classes.');
     }
   };
 
@@ -242,7 +245,7 @@ export default function UploadMarks() {
       setStudents(response.data);
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to fetch students');
+      alertCompat('Error', 'Failed to fetch students');
     } finally {
       setLoading(false);
     }
@@ -272,10 +275,10 @@ export default function UploadMarks() {
       marks: Number(marks[studentId])
     }));
     if (filledMarks.length === 0) {
-      Alert.alert('Warning', 'No marks entered.');
+      alertCompat('Warning', 'No marks entered.');
       return;
     }
-    Alert.alert(
+    alertCompat(
       'Confirm Upload',
       `Upload ${selectedCategory.title} – ${selectedSubExam} marks for ${selectedAssignment.class_name}-${selectedAssignment.section_name} (${selectedAssignment.subject_name})?`,
       [
@@ -293,12 +296,12 @@ export default function UploadMarks() {
               max_marks: Number(maxMarks),
               results: filledMarks
             });
-            Alert.alert('Success', 'Marks uploaded successfully!');
+            alertCompat('Success', 'Marks uploaded successfully!');
             setSelectedCategory(null);
             setMarks({});
           } catch (e) {
 
-            Alert.alert('Error', 'Failed to upload marks');
+            alertCompat('Error', 'Failed to upload marks');
           } finally {
             setLoading(false);
           }
@@ -474,7 +477,7 @@ export default function UploadMarks() {
           <Ionicons name="trophy-outline" size={14} color="#6B7280" style={{ marginRight: 6 }} />
           <Text style={styles.maxMarksLabel}>Total Marks</Text>
         </View>
-        <TextInput
+        <AppTextInput
         style={styles.maxMarksInput}
         value={maxMarks}
         onChangeText={handleMaxMarksChange}
@@ -532,7 +535,7 @@ export default function UploadMarks() {
                 <Text style={styles.studentRoll}>#{student.admission_no}</Text>
               </View>
               <View style={{ flex: 1, alignItems: 'center' }}>
-                <TextInput
+                <AppTextInput
             style={[
             styles.markInput,
             marks[student.id] ? styles.markInputFilled : null]

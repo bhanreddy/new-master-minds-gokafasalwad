@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Modal, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Modal } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+import { alertCompat } from '../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -9,7 +11,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
-import { Alert } from 'react-native';
+import { } from 'react-native';
 import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
 import { AccessControlService } from '@/src/services/accessControlService';
@@ -44,20 +46,20 @@ const AccountsLoginScreen: React.FC = () => {
   const handleLogin = async () => {
     if (!email || !password) {
       setError(true);
-      Alert.alert('Required Fields', 'Please enter your email and password.');
+      alertCompat('Required Fields', 'Please enter your email and password.');
       return;
     }
     setLoading(true);
     try {
       const response = await signIn(email, password);
       if (response.error || !response.session) {
-        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        alertCompat('Login Failed', response.error || 'Invalid credentials');
         return;
       }
       if (response.session.validatedUser.role.code === 'accountant') {
         if (__DEV__) { }
       } else {
-        Alert.alert('Unauthorized Access', 'This portal is restricted to Accounts Department personnel only. Your attempt has been logged.', [
+        alertCompat('Unauthorized Access', 'This portal is restricted to Accounts Department personnel only. Your attempt has been logged.', [
           { text: 'OK', onPress: () => AuthService.signOut() }]
         );
       }
@@ -67,7 +69,7 @@ const AccountsLoginScreen: React.FC = () => {
         setShowAccessModal(true);
       } else {
         if (__DEV__) { }
-        Alert.alert('Login Failed', error.message || 'Invalid credentials');
+        alertCompat('Login Failed', error.message || 'Invalid credentials');
       }
     } finally {
       setLoading(false);
@@ -79,11 +81,11 @@ const AccountsLoginScreen: React.FC = () => {
     setRequestingAccess(true);
     try {
       await AccessControlService.requestOutOfHoursAccess(restrictedUserId, 'accounts', accessReason);
-      Alert.alert('Request Sent', 'Your request has been sent to the Admin for approval.');
+      alertCompat('Request Sent', 'Your request has been sent to the Admin for approval.');
       setShowAccessModal(false);
       setAccessReason('');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to submit request');
+      alertCompat('Error', error.message || 'Failed to submit request');
     } finally {
       setRequestingAccess(false);
     }
@@ -183,7 +185,7 @@ const AccountsLoginScreen: React.FC = () => {
 
             <View style={styles.modalBody}>
               <Text style={styles.inputLabel}>Reason for access (optional)</Text>
-              <TextInput
+              <AppTextInput
                 style={styles.reasonInput}
                 placeholder="Why do you need access outside hours?"
                 placeholderTextColor="#94A3B8"
@@ -222,7 +224,11 @@ const styles = StyleSheet.create({
 
   bodyContainer: {
     flex: 1,
-    paddingHorizontal: 24
+    paddingHorizontal: 24,
+    ...Platform.select({
+      web: { alignItems: 'center' } as any,
+      default: {},
+    }),
   },
   overlapSection: {
     marginTop: -60, // 100x SaaS Layout Technique
@@ -235,8 +241,9 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     ...Platform.select({
+      web: { maxWidth: 480, alignSelf: 'center' } as any,
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 24 },
-      android: { elevation: 4 }
+      android: { elevation: 4 },
     }),
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.03)'

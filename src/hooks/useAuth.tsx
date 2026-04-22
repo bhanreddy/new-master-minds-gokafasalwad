@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseConfig';
 import { AuthService, clearAuthState } from '../services/authService';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { SCHOOL_ID } from '../constants/school';
+import { registerLogoutCallback } from '../services/apiClient';
 
 interface AuthContextType {
   session: AuthSession | null;
@@ -11,6 +12,8 @@ interface AuthContextType {
   role: string | null;
   isStudent: boolean;
   schoolId: number | null;
+  requiresPasswordChange: boolean;
+  setRequiresPasswordChange: (value: boolean) => void;
   signIn: typeof AuthService.signIn;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -23,6 +26,8 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   isStudent: false,
   schoolId: null,
+  requiresPasswordChange: false,
+  setRequiresPasswordChange: () => {},
   signIn: async () => ({ error: 'Not initialized' }),
   signOut: async () => {},
   refreshSession: async () => {},
@@ -31,13 +36,24 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const backoffDelay = useRef(1000); // Start at 1s
   const justSignedIn = useRef(false); // Guard against TOKEN_REFRESHED race after sign-in
+  const sessionRef = useRef<AuthSession | null>(null);
+  sessionRef.current = session;
 
   const user = session?.validatedUser || null;
   const role = user?.role?.code || null;
   const isStudent = role === 'student';
   const schoolId = user ? SCHOOL_ID : null;
+
+  const signOut = async () => {
+    setLoading(true);
+    await AuthService.signOut();
+    setSession(null);
+    setRequiresPasswordChange(false);
+    setLoading(false);
+  };
 
   // Core refresh logic invoked internally or explicitly
   const handleRefresh = async (currentRole: string | null) => {
@@ -73,6 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    // Register the API client's logout callback so 401 Unauthorized triggers logout
+    registerLogoutCallback(signOut);
+
     const initializeAuth = async () => {
       // Race against a timeout to prevent the app from being stuck
       // on the splash screen if backend/Supabase is unreachable.
@@ -112,12 +131,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (__DEV__) console.log('[useAuth] Skipping TOKEN_REFRESHED — just signed in');
             return;
           }
-          // Silently trigger a refresh loop to push new tokens to the backend & update SecureStore
-          // We must grab the 'role' dynamically here to handle backoff properly.
-          setSession((prev) => {
-            handleRefresh(prev?.validatedUser?.role?.code || null);
-            return prev;
-          });
+          // Do not run async work inside setState — use ref for latest role
+          const roleCode = sessionRef.current?.validatedUser?.role?.code || null;
+          void handleRefresh(roleCode);
         }
       });
 
@@ -138,6 +154,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await AuthService.signIn(email, pass);
       if (result.session) {
         setSession(result.session);
+        // Check if admin user needs to change temporary password
+        if (result.session.validatedUser?.requiresPasswordChange === true) {
+          setRequiresPasswordChange(true);
+        } else {
+          setRequiresPasswordChange(false);
+        }
       }
       return result;
     } finally {
@@ -145,19 +167,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = async () => {
-    setLoading(true);
-    await AuthService.signOut();
-    setSession(null);
-    setLoading(false);
-  };
-
   const refreshSession = async () => {
     await handleRefresh(role);
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, user, role, isStudent, schoolId, signIn, signOut, refreshSession }}>
+    <AuthContext.Provider value={{ session, loading, user, role, isStudent, schoolId, requiresPasswordChange, setRequiresPasswordChange, signIn, signOut, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

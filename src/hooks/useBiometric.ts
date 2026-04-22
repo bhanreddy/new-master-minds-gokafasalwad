@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Alert } from 'react-native';
+import { alertCompat } from '../utils/crossPlatformAlert';
 import BiometricService from '../services/biometricService';
 import { useAuth } from './useAuth';
 import { supabase } from '../services/supabaseConfig';
@@ -55,13 +55,13 @@ export function useBiometric() {
     // Role guard
     const roleCode = typeof user.role === 'object' && user.role !== null ? (user.role as any).code : user.role;
     if (!BiometricService.isEligibleRole(roleCode)) {
-      Alert.alert('Not Available', 'Biometric login is only available for staff and admin accounts.');
+      alertCompat('Not Available', 'Biometric login is only available for staff and admin accounts.');
       return;
     }
 
     // Device guard
     if (!isBiometricAvailable) {
-      Alert.alert(
+      alertCompat(
         'Biometric Not Available',
         'Your device does not have biometric authentication set up. Please enroll a fingerprint or face in your device settings.'
       );
@@ -85,7 +85,7 @@ export function useBiometric() {
 
         if (!success) {
           if (__DEV__) {}
-          Alert.alert('Verification Failed', 'Could not verify your identity. Please try again.');
+          alertCompat('Verification Failed', 'Could not verify your identity. Please try again.');
           return;
         }
 
@@ -93,7 +93,7 @@ export function useBiometric() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session?.refresh_token) {
-          Alert.alert('Session Error', 'Could not retrieve your current session. Please log in again.');
+          alertCompat('Session Error', 'Could not retrieve your current session. Please log in again.');
           return;
         }
 
@@ -108,7 +108,7 @@ export function useBiometric() {
       }
     } catch (error) {
 
-      Alert.alert('Error', 'An error occurred while updating biometric settings.');
+      alertCompat('Error', 'An error occurred while updating biometric settings.');
     } finally {
       setIsLoading(false);
     }

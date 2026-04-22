@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +18,7 @@ interface FormData {
   middle_name: string;
   last_name: string;
   email: string;
+  phone: string;
   password: string;
   dob: Date | null;
   gender_id: number;
@@ -36,6 +40,7 @@ export default function AddAccountsStaff() {
     middle_name: '',
     last_name: '',
     email: '',
+    phone: '',
     password: '',
     dob: null,
     gender_id: 1,
@@ -51,27 +56,35 @@ export default function AddAccountsStaff() {
   };
   const validateForm = (): boolean => {
     if (!formData.first_name.trim()) {
-      Alert.alert('Validation Error', 'First name is required');
+      alertCompat('Validation Error', 'First name is required');
       return false;
     }
     if (!formData.last_name.trim()) {
-      Alert.alert('Validation Error', 'Last name is required');
+      alertCompat('Validation Error', 'Last name is required');
+      return false;
+    }
+    if (!formData.phone.trim()) {
+      alertCompat('Validation Error', 'Mobile number is required');
+      return false;
+    }
+    if (formData.phone.trim().length < 10) {
+      alertCompat('Validation Error', 'Please enter a valid mobile number');
       return false;
     }
     if (!formData.staff_code.trim()) {
-      Alert.alert('Validation Error', 'Staff Code is required');
+      alertCompat('Validation Error', 'Staff Code is required');
       return false;
     }
     if (!formData.email.trim()) {
-      Alert.alert('Validation Error', 'Email is required');
+      alertCompat('Validation Error', 'Email is required');
       return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      Alert.alert('Validation Error', 'Please enter a valid email address');
+      alertCompat('Validation Error', 'Please enter a valid email address');
       return false;
     }
     if (!formData.password || formData.password.length < 6) {
-      Alert.alert('Validation Error', 'Password must be at least 6 characters');
+      alertCompat('Validation Error', 'Password must be at least 6 characters');
       return false;
     }
     return true;
@@ -86,6 +99,7 @@ export default function AddAccountsStaff() {
         middle_name: formData.middle_name.trim() || undefined,
         last_name: formData.last_name.trim(),
         email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
         password: formData.password,
         dob: formData.dob ? formData.dob.toISOString().split('T')[0] : undefined,
         gender_id: formData.gender_id,
@@ -97,13 +111,13 @@ export default function AddAccountsStaff() {
         role_code: 'accounts',
         salary: formData.salary ? parseFloat(formData.salary) : undefined
       });
-      Alert.alert('Success', `Accounts staff ${formData.first_name} ${formData.last_name} has been created successfully!`, [{
+      alertCompat('Success', `Accounts staff ${formData.first_name} ${formData.last_name} has been created successfully!`, [{
         text: 'OK',
         onPress: () => router.back()
       }]);
     } catch (error: any) {
 
-      Alert.alert('Error', error.message || 'Failed to create accounts staff user');
+      alertCompat('Error', error.message || 'Failed to create accounts staff user');
     } finally {
       setLoading(false);
     }
@@ -142,14 +156,14 @@ export default function AddAccountsStaff() {
                         </Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="Enter first name" value={formData.first_name} onChangeText={(text) => updateField('first_name', text)} autoCapitalize="words" />
+                            <AppTextInput style={styles.input} placeholder="Enter first name" value={formData.first_name} onChangeText={(text) => updateField('first_name', text)} autoCapitalize="words" />
                         </View>
                     </View>
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Middle Name</Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="Enter middle name (optional)" value={formData.middle_name} onChangeText={(text) => updateField('middle_name', text)} autoCapitalize="words" />
+                            <AppTextInput style={styles.input} placeholder="Enter middle name (optional)" value={formData.middle_name} onChangeText={(text) => updateField('middle_name', text)} autoCapitalize="words" />
                         </View>
                     </View>
                     <View style={styles.inputGroup}>
@@ -158,7 +172,7 @@ export default function AddAccountsStaff() {
                         </Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="Enter last name" value={formData.last_name} onChangeText={(text) => updateField('last_name', text)} autoCapitalize="words" />
+                            <AppTextInput style={styles.input} placeholder="Enter last name" value={formData.last_name} onChangeText={(text) => updateField('last_name', text)} autoCapitalize="words" />
                         </View>
                     </View>
                     <View style={styles.inputGroup}>
@@ -167,7 +181,16 @@ export default function AddAccountsStaff() {
                         </Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="card-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="e.g. ACC001" value={formData.staff_code} onChangeText={(text) => updateField('staff_code', text)} autoCapitalize="characters" />
+                            <AppTextInput style={styles.input} placeholder="e.g. ACC001" value={formData.staff_code} onChangeText={(text) => updateField('staff_code', text)} autoCapitalize="characters" />
+                        </View>
+                    </View>
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>
+                            Mobile Number <Text style={styles.required}>*</Text>
+                        </Text>
+                        <View style={styles.inputWrapper}>
+                            <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                            <AppTextInput style={styles.input} placeholder="Enter mobile number" value={formData.phone} onChangeText={(text) => updateField('phone', text)} keyboardType="phone-pad" maxLength={15} />
                         </View>
                     </View>
                     {/* Date of Birth */}
@@ -214,7 +237,7 @@ export default function AddAccountsStaff() {
                         <Text style={styles.label}>Salary</Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="cash-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="e.g. 50000" value={formData.salary} onChangeText={(text) => updateField('salary', text)} keyboardType="numeric" />
+                            <AppTextInput style={styles.input} placeholder="e.g. 50000" value={formData.salary} onChangeText={(text) => updateField('salary', text)} keyboardType="numeric" />
                         </View>
                     </View>
                     {/* Login Credentials */}
@@ -227,7 +250,7 @@ export default function AddAccountsStaff() {
                         </Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="accountant@school.com" value={formData.email} onChangeText={(text) => updateField('email', text)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+                            <AppTextInput style={styles.input} placeholder="accountant@school.com" value={formData.email} onChangeText={(text) => updateField('email', text)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
                         </View>
                     </View>
                     <View style={styles.inputGroup}>
@@ -236,7 +259,7 @@ export default function AddAccountsStaff() {
                         </Text>
                         <View style={styles.inputWrapper}>
                             <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <TextInput style={styles.input} placeholder="Minimum 6 characters" value={formData.password} onChangeText={(text) => updateField('password', text)} secureTextEntry autoCapitalize="none" />
+                            <AppTextInput style={styles.input} placeholder="Minimum 6 characters" value={formData.password} onChangeText={(text) => updateField('password', text)} secureTextEntry autoCapitalize="none" />
                         </View>
                         <Text style={styles.hint}>Password must be at least 6 characters long</Text>
                     </View>

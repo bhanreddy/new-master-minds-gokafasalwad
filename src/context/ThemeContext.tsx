@@ -1,24 +1,25 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { LayoutAnimation, Platform, UIManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../services/supabaseConfig'; // Assuming you have a supabase client export
-import { lightTheme, darkTheme, Theme } from '../theme/themes';
+import { supabase } from '../services/supabaseConfig';
+import { schoolTheme } from '../constants/schoolConfig';
+import type { SchoolTheme } from '../theme/types';
 
 interface ThemeContextProps {
-  theme: Theme;
+  theme: SchoolTheme;
   isDark: boolean;
   toggleTheme: () => void;
   setTheme: (mode: 'light' | 'dark') => void;
 }
 
 export const ThemeContext = createContext<ThemeContextProps>({
-  theme: lightTheme,
+  theme: schoolTheme.light,
   isDark: false,
   toggleTheme: () => {},
   setTheme: () => {}
 });
-// Enable LayoutAnimation on Android
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -28,7 +29,7 @@ export const ThemeProvider = ({ children }: {children: ReactNode;}) => {
   const [isDark, setIsDark] = useState<boolean>(false);
   const [loaded, setLoaded] = useState(false);
 
-  const theme = isDark ? darkTheme : lightTheme;
+  const theme = useMemo(() => isDark ? schoolTheme.dark : schoolTheme.light, [isDark]);
 
   // Load local preference on mount
   useEffect(() => {

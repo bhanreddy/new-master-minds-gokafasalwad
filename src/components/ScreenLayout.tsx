@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useTheme } from '../hooks/useTheme';
 
 const ScreenLayout = ({ children }: { children: React.ReactNode }) => {
+  const { theme } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+  }), [theme]);
+
   return (
     <SafeAreaProvider>
       <View style={styles.container}>
@@ -13,10 +23,3 @@ const ScreenLayout = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default ScreenLayout;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-});

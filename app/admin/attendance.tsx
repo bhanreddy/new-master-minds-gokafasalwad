@@ -6,9 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Alert,
   Dimensions,
 } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -306,9 +306,9 @@ export default function AdminAttendanceScreen() {
       const dateStr = new Date().toISOString().split('T')[0];
       const records = staffList.map((s) => ({ staff_id: s.staff_id, status: s.status || 'absent' }));
       await api.post('/attendance/staff', { date: dateStr, attendance: records });
-      Alert.alert('✓ Saved', 'Attendance marked successfully.');
+      alertCompat('✓ Saved', 'Attendance marked successfully.');
     } catch {
-      Alert.alert('Error', 'Failed to save attendance.');
+      alertCompat('Error', 'Failed to save attendance.');
     }
   };
 

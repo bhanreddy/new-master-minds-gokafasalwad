@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform, Keyboard, Alert } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import Animated, { FadeInUp, FadeOut, Layout } from "react-native-reanimated";
 
@@ -25,7 +29,6 @@ const MessageBubble = React.memo(({ item }: {item: Message;}) => {
   return (
     <Animated.View
       entering={FadeInUp.duration(300).springify()}
-      layout={Layout.springify()}
       style={[
       styles.messageBubbleWrapper,
       isUser ? styles.userBubbleWrapper : styles.aiBubbleWrapper]
@@ -86,7 +89,7 @@ export default function AIChatScreen() {
   }, [messages, loading]);
 
   const handleNewChat = () => {
-    Alert.alert(
+    alertCompat(
       "Start New Chat?",
       "This will clear your current conversation.",
       [
@@ -211,11 +214,10 @@ export default function AIChatScreen() {
           keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
 
                     <View style={styles.inputWrapper}>
-                        <View style={styles.inputContainer}>
-                            <TextInput
+                        <View style={[styles.inputContainer, ds.searchBarWrapper]}>
+                            <AppTextInput
                 placeholder="Ask a doubt..."
-                placeholderTextColor="#999"
-                style={styles.input}
+                style={[ds.inputInChrome, styles.input]}
                 value={input}
                 onChangeText={setInput}
                 multiline
@@ -435,11 +437,13 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     paddingHorizontal: 4,
     paddingVertical: 4,
-    minHeight: 48
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
   },
   input: {
     flex: 1,

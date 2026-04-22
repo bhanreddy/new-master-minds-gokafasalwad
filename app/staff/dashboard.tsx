@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Dimensions,
-  StatusBar, BackHandler, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, Dimensions, Platform,
+  StatusBar, BackHandler, TouchableOpacity, Pressable, ScrollView,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons, MaterialIcons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,8 +21,10 @@ import { useTheme } from '@/src/hooks/useTheme';
 import StaffHeader from '@/src/components/StaffHeader';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const MENU_GAP = 14;
-const MENU_CARD_W = (SW - 40 - MENU_GAP) / 2;
+const MENU_GAP = 16;
+const IS_WEB = Platform.OS === 'web';
+/** Cap card width on large web viewports so tiles stay scannable */
+const MENU_CARD_W = IS_WEB && SW > 640 ? Math.min((SW - 40 - MENU_GAP) / 2, 228) : (SW - 40 - MENU_GAP) / 2;
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -591,16 +593,36 @@ function MenuCard({
 
   const pressScale = useSharedValue(1);
   const pressDepth = useSharedValue(0);
+  const hoverLift = useSharedValue(0);
 
-  const wrapperStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pressScale.value }],
-  }));
+  const wrapperStyle = useAnimatedStyle(() => {
+    const y = IS_WEB ? interpolate(hoverLift.value, [0, 1], [0, -6]) : 0;
+    const hoverScale = IS_WEB ? interpolate(hoverLift.value, [0, 1], [1, 1.018]) : 1;
+    return {
+      transform: [{ translateY: y }, { scale: pressScale.value * hoverScale }],
+    };
+  });
 
   const gradZoneStyle = useAnimatedStyle(() => ({
     opacity: interpolate(pressDepth.value, [0, 1], [1, 0.82]),
   }));
 
   const shimmerDelay = 800 + index * 500;
+
+  const webShadow = IS_WEB
+    ? ({
+        boxShadow: `0 20px 48px -14px ${cfg.shadowColor}55, 0 10px 28px -12px rgba(15, 23, 42, 0.14), 0 2px 8px -2px rgba(15, 23, 42, 0.08)`,
+      } as const)
+    : null;
+  const nativeShadow = !IS_WEB
+    ? {
+        shadowColor: cfg.shadowColor,
+        shadowOffset: { width: 0, height: 14 } as const,
+        shadowOpacity: isDark ? 0.45 : 0.32,
+        shadowRadius: 24,
+        elevation: 20,
+      }
+    : null;
 
   return (
     <Animated.View
@@ -614,37 +636,44 @@ function MenuCard({
       }
       style={[
         wrapperStyle,
-        {
-          width: MENU_CARD_W,
-          shadowColor: cfg.shadowColor,
-          shadowOffset: { width: 0, height: 12 },
-          shadowOpacity: 0.38,
-          shadowRadius: 22,
-          elevation: 18,
-        },
+        { width: MENU_CARD_W },
+        webShadow,
+        nativeShadow,
       ]}
     >
-      <TouchableOpacity
-        activeOpacity={1}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${title}. ${subtitle}`}
+        onPress={onPress}
+        onHoverIn={() => {
+          if (IS_WEB) hoverLift.value = withTiming(1, { duration: 180 });
+        }}
+        onHoverOut={() => {
+          if (IS_WEB) hoverLift.value = withTiming(0, { duration: 220 });
+        }}
         onPressIn={() => {
-          pressScale.value = withSpring(0.93, { damping: 22, stiffness: 340 });
-          pressDepth.value = withTiming(1, { duration: 100 });
+          pressScale.value = withSpring(0.94, { damping: 22, stiffness: 360 });
+          pressDepth.value = withTiming(1, { duration: 90 });
         }}
         onPressOut={() => {
-          pressScale.value = withSpring(1, { damping: 12, stiffness: 170 });
-          pressDepth.value = withTiming(0, { duration: 220 });
+          pressScale.value = withSpring(1, { damping: 13, stiffness: 180 });
+          pressDepth.value = withTiming(0, { duration: 200 });
         }}
-        onPress={onPress}
+        style={({ pressed }) => [
+          IS_WEB && { cursor: 'pointer' as const },
+          IS_WEB && { userSelect: 'none' as const },
+          pressed && { opacity: 0.97 },
+        ]}
       >
         {/* ── Outer Card Shell ── */}
         <View style={[mc.card, {
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+          borderColor: isDark ? 'rgba(255,255,255,0.11)' : 'rgba(0,0,0,0.07)',
         }]}>
 
           {/* ══════════════════════════════════════
               ZONE 1 — GRADIENT ICON PANEL
           ══════════════════════════════════════ */}
-          <Animated.View style={[{ borderTopLeftRadius: 22, borderTopRightRadius: 22, overflow: 'hidden' }, gradZoneStyle]}>
+          <Animated.View style={[{ borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }, gradZoneStyle]}>
             <LinearGradient
               colors={cfg.grad}
               style={mc.gradZone}
@@ -705,12 +734,14 @@ function MenuCard({
           ══════════════════════════════════════ */}
           <View style={[mc.textZone, {
             backgroundColor: t.menuTextBg,
-            borderBottomLeftRadius: 22,
-            borderBottomRightRadius: 22,
+            borderBottomLeftRadius: 24,
+            borderBottomRightRadius: 24,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
           }]}>
 
             {/* Category tag */}
-            <View style={[mc.categoryTag, { backgroundColor: `${cfg.accentBar[0]}1A`, borderColor: `${cfg.accentBar[0]}2E` }]}>
+            <View style={[mc.categoryTag, { backgroundColor: `${cfg.accentBar[0]}1F`, borderColor: `${cfg.accentBar[0]}38` }]}>
               <View style={[mc.categoryDot, { backgroundColor: cfg.accentLight }]} />
               <Text style={[mc.categoryText, { color: cfg.accentLight }]}>{cfg.category}</Text>
             </View>
@@ -718,15 +749,17 @@ function MenuCard({
             {/* Title + arrow row */}
             <View style={mc.titleRow}>
               <Text style={[mc.titleText, { color: t.text1 }]} numberOfLines={1}>{title}</Text>
-              {!badge && (
-                <View style={[mc.arrowChip, { backgroundColor: `${cfg.accentBar[0]}18` }]}>
-                  <Ionicons name="arrow-forward" size={11} color={cfg.accentLight} />
-                </View>
-              )}
+              <View style={[mc.arrowChip, { backgroundColor: `${cfg.accentBar[0]}20`, borderColor: `${cfg.accentBar[0]}30` }]}>
+                <Ionicons name="chevron-forward" size={14} color={cfg.accentLight} />
+              </View>
             </View>
 
             {/* Subtitle */}
-            <Text style={[mc.subtitleText, { color: t.text2 }]} numberOfLines={1}>{subtitle}</Text>
+            <Text style={[mc.subtitleText, { color: t.text2 }]} numberOfLines={IS_WEB ? 2 : 1}>{subtitle}</Text>
+
+            {IS_WEB && (
+              <Text style={[mc.webHint, { color: t.text3 }]} numberOfLines={1}>Click to open</Text>
+            )}
 
             {/* Bottom accent micro-bar */}
             <LinearGradient
@@ -739,10 +772,10 @@ function MenuCard({
 
           {/* Outer border overlay (full card) */}
           <View style={[mc.outerBorder, {
-            borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)',
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
           }]} pointerEvents="none" />
         </View>
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -798,13 +831,13 @@ export default function StaffDashboard() {
     onScroll: (e: any) => { scrollY.value = e.contentOffset.y; },
   });
 
-  const firstName = user?.display_name?.split(' ')[0] || 'Teacher';
+  const firstName = user?.displayName?.split(' ')[0] || 'Teacher';
 
   return (
     <View style={[styles.root, { backgroundColor: t.bg }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
       <BgOrbs isDark={isDark} />
-      <StaffHeader title="Staff Portal" subtitle={user?.display_name || 'Teacher'} scrollY={scrollY} />
+      <StaffHeader title="Staff Portal" subtitle={user?.displayName || 'Teacher'} scrollY={scrollY} />
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -842,19 +875,20 @@ export default function StaffDashboard() {
 const mc = StyleSheet.create({
   // Outer shell
   card: {
-    borderRadius: 22,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
+    ...(IS_WEB ? { boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14)' } : {}),
   },
   outerBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
   },
 
   // ── Gradient Zone ──────────────────────────────────────────────────
   gradZone: {
-    height: 112,
+    height: IS_WEB ? 124 : 118,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -924,24 +958,30 @@ const mc = StyleSheet.create({
   },
   iconGlowBlob: {
     position: 'absolute',
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
   },
   iconDisc: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.26)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.38)',
+    borderColor: 'rgba(255,255,255,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
-    // Subtle inner shadow effect via overlay
-    shadowColor: 'rgba(0,0,0,0.3)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 14px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.45)',
+      },
+      default: {
+        shadowColor: 'rgba(0,0,0,0.35)',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+      },
+    }),
   },
   iconDiscHighlight: {
     position: 'absolute',
@@ -960,11 +1000,12 @@ const mc = StyleSheet.create({
 
   // ── Text Zone ──────────────────────────────────────────────────────
   textZone: {
-    paddingTop: 12,
-    paddingHorizontal: 13,
-    paddingBottom: 13,
-    minHeight: 86,
-    justifyContent: 'space-between',
+    paddingTop: 13,
+    paddingHorizontal: 14,
+    paddingBottom: 18,
+    minHeight: IS_WEB ? 108 : 92,
+    justifyContent: 'flex-start',
+    gap: 2,
   },
 
   // Category tag: capsule with colored dot
@@ -972,12 +1013,12 @@ const mc = StyleSheet.create({
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3.5,
-    borderRadius: 8,
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 7,
+    marginBottom: 8,
   },
   categoryDot: {
     width: 4.5,
@@ -986,9 +1027,9 @@ const mc = StyleSheet.create({
     opacity: 0.90,
   },
   categoryText: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 1.8,
+    letterSpacing: 1.6,
   },
 
   // Title + arrow
@@ -996,29 +1037,40 @@ const mc = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   titleText: {
     fontSize: 16,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -0.45,
     flex: 1,
-    marginRight: 6,
+    marginRight: 8,
   },
   arrowChip: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
   },
 
   // Subtitle
   subtitleText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
-    letterSpacing: 0.1,
-    marginBottom: 8,
+    letterSpacing: 0.05,
+    lineHeight: IS_WEB ? 16 : 15,
+    marginTop: 2,
+    flexShrink: 1,
+  },
+
+  webHint: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    marginTop: 6,
+    opacity: 0.85,
   },
 
   // Micro accent bar at bottom of text zone
@@ -1027,10 +1079,10 @@ const mc = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 2.5,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-    opacity: 0.75,
+    height: 3,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    opacity: 0.8,
   },
 });
 

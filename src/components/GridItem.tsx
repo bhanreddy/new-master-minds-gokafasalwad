@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Text, StyleSheet, Image, Pressable } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { HapticFeedback, SPRING_BOUNCE } from '../utils/animations';
+import { useTheme } from '../hooks/useTheme';
 
 interface GridItemProps {
     title: string;
@@ -12,6 +13,7 @@ interface GridItemProps {
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const GridItem: React.FC<GridItemProps> = ({ title, icon, onPress }) => {
+    const { theme } = useTheme();
     const scale = useSharedValue(1);
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -27,6 +29,30 @@ const GridItem: React.FC<GridItemProps> = ({ title, icon, onPress }) => {
         scale.value = withSpring(1, SPRING_BOUNCE);
     };
 
+    const styles = useMemo(() => StyleSheet.create({
+        item: {
+            width: '45%',
+            backgroundColor: theme.colors.surface,
+            padding: theme.spacing.lg,
+            borderRadius: theme.shape.borderRadiusMD,
+            marginVertical: theme.spacing.sm + 2,
+            alignItems: 'center',
+            elevation: 2,
+        },
+        icon: {
+            width: 40,
+            height: 40,
+            marginBottom: theme.spacing.sm + 2,
+            resizeMode: 'contain',
+        },
+        title: {
+            fontSize: theme.typography.fontSizeSM + 1,
+            fontWeight: 'bold',
+            textAlign: 'center',
+            color: theme.colors.textPrimary,
+        },
+    }), [theme]);
+
     return (
         <AnimatedPressable
             style={[styles.item, animatedStyle]}
@@ -39,28 +65,5 @@ const GridItem: React.FC<GridItemProps> = ({ title, icon, onPress }) => {
         </AnimatedPressable>
     );
 };
-
-const styles = StyleSheet.create({
-    item: {
-        width: '45%',
-        backgroundColor: '#fff',
-        padding: 15,
-        borderRadius: 10,
-        marginVertical: 10,
-        alignItems: 'center',
-        elevation: 2,
-    },
-    icon: {
-        width: 40,
-        height: 40,
-        marginBottom: 10,
-        resizeMode: 'contain',
-    },
-    title: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        textAlign: 'center',
-    },
-});
 
 export default GridItem;

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Modal, Pressable, Platform, Dimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable, FlatList, Modal, Platform, Dimensions, useWindowDimensions } from 'react-native';
 import Animated, {
   FadeInLeft, FadeOutLeft, SlideInLeft, SlideOutLeft, FadeIn, FadeOut,
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
@@ -10,7 +10,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../hooks/useTheme';
 import { SCHOOL_NAME } from '../constants/school';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { usePathname } from 'expo-router';
 
 export interface MenuActionItem {
@@ -29,7 +29,7 @@ interface DashboardMenuOverlayProps {
   onItemPress: (route: string) => void;
 }
 
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function DashboardMenuOverlay({
@@ -37,9 +37,11 @@ export default function DashboardMenuOverlay({
 }: DashboardMenuOverlayProps) {
   const { theme, isDark } = useTheme();
   const pathname = usePathname();
+  const { width: windowWidth } = useWindowDimensions();
   const activeRoute = propActiveRoute || pathname;
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
 
+  if (Platform.OS === 'web' && windowWidth >= 768) return null;
   if (!isOpen) return null;
 
   return (
@@ -52,19 +54,23 @@ export default function DashboardMenuOverlay({
     >
       <View style={StyleSheet.absoluteFill}>
         {/* Dark Backdrop */}
-        <AnimatedBlurView
+        <Animated.View
           entering={FadeIn.duration(300)}
           exiting={FadeOut.duration(300)}
-          tint="dark"
-          intensity={60}
           style={StyleSheet.absoluteFill}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        </AnimatedBlurView>
+          <BlurView
+            tint="dark"
+            intensity={60}
+            style={StyleSheet.absoluteFill}
+          >
+            <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+          </BlurView>
+        </Animated.View>
 
         {/* Side Drawer Wrapper to properly animate */}
         <Animated.View
-          entering={SlideInLeft.duration(350).withCallback(() => {})}
+          entering={SlideInLeft.duration(350)}
           exiting={SlideOutLeft.duration(250)}
           style={[styles.drawerContainer]}
         >
@@ -97,13 +103,12 @@ export default function DashboardMenuOverlay({
                   <Text style={styles.appSubtitle}>Admin Workspace</Text>
                 </View>
               </View>
-              <TouchableOpacity
+              <Pressable
                 onPress={onClose}
-                activeOpacity={0.7}
-                style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }]}
+                style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }, Platform.OS === 'web' && { cursor: 'pointer' }]}
               >
                 <Ionicons name="close" size={22} color={isDark ? '#FFFFFF' : '#0F172A'} />
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
             <FlatList

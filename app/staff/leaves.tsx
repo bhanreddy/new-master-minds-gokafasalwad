@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, StatusBar, Alert, Platform, Dimensions } from
-'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform, Dimensions } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInDown, FadeIn, useSharedValue, useAnimatedStyle,
   withSpring, 
-  Easing } from
-'react-native-reanimated';
+  Easing } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import StaffHeader from '../../src/components/StaffHeader';
@@ -28,10 +28,32 @@ const LEAVE_TYPES = [
 
 // ─── Status Config ─────────────────────────────────────────────────
 const STATUS_CFG: Record<string, {color: string;bg: string;icon: string;}> = {
-  Approved: { color: '#10B981', bg: 'rgba(16,185,129,0.12)', icon: 'check-circle' },
-  Rejected: { color: '#EF4444', bg: 'rgba(239,68,68,0.12)', icon: 'cancel' },
-  Pending: { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', icon: 'hourglass-empty' }
+  approved: { color: '#10B981', bg: 'rgba(16,185,129,0.12)', icon: 'check-circle' },
+  rejected: { color: '#EF4444', bg: 'rgba(239,68,68,0.12)', icon: 'cancel' },
+  pending: { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', icon: 'hourglass-empty' }
 };
+
+type StaffLeaveRow = {
+  id: string;
+  type: string;
+  range: string;
+  days: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reason: string;
+  appliedAt: string;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  reviewRemarks?: string | null;
+};
+
+function formatStaffDateTime(iso?: string | null) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return String(iso);
+  }
+}
 
 // ─── Leave Type Chip ───────────────────────────────────────────────
 const LeaveTypeChip = ({
@@ -111,12 +133,51 @@ const chipStyles = StyleSheet.create({
   }
 });
 
+function toYMD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseYMD(s: string): Date {
+  if (!s) return new Date();
+  const parts = s.split('-').map(Number);
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
+
 // ─── Styled Date Input ─────────────────────────────────────────────
 const DateField = ({
   label, value, onChange, isDark, placeholder
 }: {label: string;value: string;onChange: (v: string) => void;isDark: boolean;placeholder: string;}) => {
   const [focused, setFocused] = useState(false);
-  const borderAnim = useSharedValue(0);
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerValue = useMemo(() => parseYMD(value), [value]);
+
+  const onNativePickerChange = (_event: unknown, date?: Date) => {
+    setShowPicker(false);
+    if (date) onChange(toYMD(date));
+  };
+
+  const webInputStyle: React.CSSProperties = {
+    border: 'none',
+    background: 'transparent',
+    outline: 'none',
+    width: '100%',
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: -0.2,
+    color: isDark ? '#EEF2FF' : '#0F172A',
+    fontFamily: FONT,
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer',
+    boxSizing: 'border-box'
+  };
 
   return (
     <View style={dfStyles.wrap}>
@@ -133,14 +194,44 @@ const DateField = ({
         <Ionicons name="calendar-outline" size={15}
         color={focused ? isDark ? '#818CF8' : '#4F46E5' : isDark ? '#334155' : '#CBD5E1'} />
 
-        <TextInput
-          style={[dfStyles.input, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
-          placeholder={placeholder}
-          placeholderTextColor={isDark ? '#2A3444' : '#C4CDD9'}
-          value={value}
-          onChangeText={onChange}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)} />
+        {Platform.OS === 'web' ?
+        React.createElement('input', {
+          type: 'date',
+          value: value || '',
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value),
+          onFocus: () => setFocused(true),
+          onBlur: () => setFocused(false),
+          style: webInputStyle
+        }) :
+
+        <>
+            <TouchableOpacity
+            style={dfStyles.nativeTap}
+            onPress={() => setShowPicker(true)}
+            activeOpacity={0.75}>
+
+              <Text
+              style={[
+              dfStyles.input,
+              {
+                color: value ? isDark ? '#EEF2FF' : '#0F172A' : isDark ? '#2A3444' : '#C4CDD9',
+                fontFamily: FONT
+              }]
+              }>
+
+                {value || placeholder}
+              </Text>
+            </TouchableOpacity>
+            {showPicker &&
+          <DateTimePicker
+            value={pickerValue}
+            mode="date"
+            display="default"
+            onChange={onNativePickerChange} />
+
+          }
+          </>
+        }
 
       </View>
     </View>);
@@ -170,15 +261,23 @@ const dfStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: -0.2
+  },
+  nativeTap: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 20
   }
 });
 
 // ─── History Card ──────────────────────────────────────────────────
-const HistoryCard = ({ item, index, isDark }: {item: any;index: number;isDark: boolean;}) => {
+const HistoryCard = ({ item, index, isDark }: { item: StaffLeaveRow; index: number; isDark: boolean }) => {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const cfg = STATUS_CFG[item.status] || STATUS_CFG.Pending;
+  const cfg = STATUS_CFG[item.status] || STATUS_CFG.pending;
   const leaveTypeCfg = LEAVE_TYPES.find((t) => t.label === item.type) || LEAVE_TYPES[0];
+  const statusLabel = item.status.charAt(0).toUpperCase() + item.status.slice(1);
+  const showReview = (item.status === 'approved' || item.status === 'rejected') &&
+    (item.reviewedBy || item.reviewedAt || item.reviewRemarks);
 
   return (
     <Animated.View
@@ -200,16 +299,13 @@ const HistoryCard = ({ item, index, isDark }: {item: any;index: number;isDark: b
           <View style={[hcStyles.inner, {
             backgroundColor: isDark ? 'rgba(10,14,28,0.55)' : 'rgba(255,255,255,0.60)'
           }]}>
-            {/* Accent bar */}
             <View style={[hcStyles.accentBar, { backgroundColor: leaveTypeCfg.color }]} />
 
             <View style={hcStyles.row}>
-              {/* Icon */}
               <View style={[hcStyles.iconBox, { backgroundColor: leaveTypeCfg.bg }]}>
                 <MaterialIcons name={leaveTypeCfg.icon} size={20} color={leaveTypeCfg.color} />
               </View>
 
-              {/* Text */}
               <View style={hcStyles.textBlock}>
                 <Text style={[hcStyles.type, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>
                   {item.type}
@@ -227,11 +323,46 @@ const HistoryCard = ({ item, index, isDark }: {item: any;index: number;isDark: b
                 </View>
               </View>
 
-              {/* Status */}
               <View style={[hcStyles.statusBadge, { backgroundColor: cfg.bg, borderColor: cfg.color + '30' }]}>
                 <MaterialIcons name={cfg.icon as any} size={11} color={cfg.color} />
-                <Text style={[hcStyles.statusText, { color: cfg.color, fontFamily: FONT }]}>{item.status}</Text>
+                <Text style={[hcStyles.statusText, { color: cfg.color, fontFamily: FONT }]}>{statusLabel}</Text>
               </View>
+            </View>
+
+            <View style={[hcStyles.detailBlock, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' }]}>
+              <View style={hcStyles.detailRow}>
+                <Ionicons name="time-outline" size={13} color={isDark ? '#64748B' : '#94A3B8'} />
+                <Text style={[hcStyles.detailLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Applied</Text>
+                <Text style={[hcStyles.detailValue, { color: isDark ? '#CBD5E1' : '#475569', fontFamily: FONT }]} numberOfLines={2}>
+                  {item.appliedAt || '—'}
+                </Text>
+              </View>
+
+              <View style={hcStyles.reasonBlock}>
+                <Text style={[hcStyles.reasonLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Reason</Text>
+                <Text style={[hcStyles.reasonBody, { color: isDark ? '#E2E8F0' : '#334155', fontFamily: FONT }]}>
+                  {item.reason}
+                </Text>
+              </View>
+
+              {showReview ?
+              <View style={[hcStyles.reviewBlock, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(79,70,229,0.06)' }]}>
+                <Text style={[hcStyles.reviewTitle, { color: isDark ? '#A5B4FC' : '#4F46E5', fontFamily: FONT }]}>
+                  Review
+                </Text>
+                {item.reviewedAt ?
+                <Text style={[hcStyles.reviewLine, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]}>
+                  {formatStaffDateTime(item.reviewedAt)}
+                  {item.reviewedBy ? ` · ${item.reviewedBy}` : ''}
+                </Text> :
+                null}
+                {item.reviewRemarks ?
+                <Text style={[hcStyles.reviewRemarks, { color: isDark ? '#CBD5E1' : '#475569', fontFamily: FONT }]}>
+                  {item.reviewRemarks}
+                </Text> :
+                null}
+              </View> :
+              null}
             </View>
           </View>
         </BlurView>
@@ -310,6 +441,66 @@ const hcStyles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.5
+  },
+  detailBlock: {
+    marginLeft: 18,
+    marginRight: 14,
+    marginBottom: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 12
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  detailValue: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 120
+  },
+  reasonBlock: {
+    gap: 6
+  },
+  reasonLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6
+  },
+  reasonBody: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 20
+  },
+  reviewBlock: {
+    borderRadius: 12,
+    padding: 12,
+    gap: 6
+  },
+  reviewTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  reviewLine: {
+    fontSize: 12,
+    fontWeight: '500'
+  },
+  reviewRemarks: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 19
   }
 });
 
@@ -377,7 +568,7 @@ export default function ApplyLeave() {
   const [reason, setReason] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [leaves, setLeaves] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<StaffLeaveRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [reasonFocused, setReasonFocused] = useState(false);
 
@@ -386,13 +577,20 @@ export default function ApplyLeave() {
   const loadLeaves = async () => {
     try {
       if (user) {
-        const data = await LeaveService.getAll();
-        const formatted = data.map((l: LeaveApplication) => ({
+        const data = await LeaveService.getAll({ limit: 100 });
+        const typeLabel = (code: string) =>
+          code === 'sick' ? 'Sick Leave' : code === 'casual' ? 'Casual Leave' : code === 'other' ? 'Emergency' : code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const formatted: StaffLeaveRow[] = data.map((l: LeaveApplication) => ({
           id: l.id,
-          type: l.leave_type === 'sick' ? 'Sick Leave' : l.leave_type === 'casual' ? 'Casual Leave' : 'Emergency',
+          type: typeLabel(l.leave_type),
           range: `${new Date(l.start_date).toLocaleDateString()} – ${new Date(l.end_date).toLocaleDateString()}`,
           days: calculateDays(l.start_date, l.end_date),
-          status: l.status
+          status: l.status,
+          reason: l.reason || '',
+          appliedAt: formatStaffDateTime(l.created_at),
+          reviewedAt: l.reviewed_at,
+          reviewedBy: l.reviewed_by_name ?? null,
+          reviewRemarks: l.review_remarks ?? null
         }));
         setLeaves(formatted);
       }
@@ -407,7 +605,7 @@ export default function ApplyLeave() {
 
   const handleApply = async () => {
     if (!fromDate || !toDate || !reason) {
-      Alert.alert('Missing Fields', 'Please fill in all fields before submitting.');
+      alertCompat('Missing Fields', 'Please fill in all fields before submitting.');
       return;
     }
     try {
@@ -417,12 +615,12 @@ export default function ApplyLeave() {
           'Sick Leave': 'sick', 'Casual Leave': 'casual', 'Emergency': 'other'
         };
         await LeaveService.create({ leave_type: typeMap[leaveType] || 'other', start_date: fromDate, end_date: toDate, reason });
-        Alert.alert('Submitted', 'Your leave application has been submitted.');
+        alertCompat('Submitted', 'Your leave application has been submitted.');
         loadLeaves();
         setReason('');setFromDate('');setToDate('');
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to submit application.');
+      alertCompat('Error', 'Failed to submit application.');
     } finally {
       setLoading(false);
     }
@@ -518,7 +716,7 @@ export default function ApplyLeave() {
                   isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.09)'
                 }]
                 }>
-                  <TextInput
+                  <AppTextInput
                     style={[mainStyles.textArea, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
                     placeholder="Briefly describe your reason for leave…"
                     placeholderTextColor={isDark ? '#2A3444' : '#C4CDD9'}

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -47,7 +50,7 @@ export default function StaffLMSUpload() {
       }
     } catch (error) {
 
-      Alert.alert('Error', 'Could not load your assigned classes');
+      alertCompat('Error', 'Could not load your assigned classes');
     }
   };
 
@@ -59,7 +62,7 @@ export default function StaffLMSUpload() {
   }, [selectedAssignment]);
   const handleUpload = async () => {
     if (!selectedAssignment || !topic || !subTopic || !videoUrl) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      alertCompat('Error', 'Please fill in all required fields');
       return;
     }
     try {
@@ -89,14 +92,14 @@ export default function StaffLMSUpload() {
         sort_order: 1,
         is_published: true
       });
-      Alert.alert('Success', 'Content uploaded successfully!', [{
+      alertCompat('Success', 'Content uploaded successfully!', [{
         text: 'OK',
         onPress: () => router.back()
       }]);
     } catch (error) {
 
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', 'Failed to upload content. ' + msg);
+      alertCompat('Error', 'Failed to upload content. ' + msg);
     } finally {
       setLoading(false);
     }
@@ -128,19 +131,19 @@ export default function StaffLMSUpload() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Course Title (Subject) <Text style={styles.required}>*</Text></Text>
-            <TextInput style={styles.input} placeholder="e.g. Mathematics" value={topic} onChangeText={setTopic} placeholderTextColor="#9CA3AF" />
+            <AppTextInput style={styles.input} placeholder="e.g. Mathematics" value={topic} onChangeText={setTopic} placeholderTextColor="#9CA3AF" />
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Material Title (Topic) <Text style={styles.required}>*</Text></Text>
-            <TextInput style={styles.input} placeholder="e.g. Algebra - Quadratic Equations" value={subTopic} onChangeText={setSubTopic} placeholderTextColor="#9CA3AF" />
+            <AppTextInput style={styles.input} placeholder="e.g. Algebra - Quadratic Equations" value={subTopic} onChangeText={setSubTopic} placeholderTextColor="#9CA3AF" />
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>YouTube Video Link <Text style={styles.required}>*</Text></Text>
             <View style={styles.inputIconWrapper}>
               <Ionicons name="logo-youtube" size={20} color="#EF4444" style={styles.inputIcon} />
-              <TextInput style={[styles.input, {
+              <AppTextInput style={[styles.input, {
                 paddingLeft: 45
               }]} placeholder="https://youtube.com/..." value={videoUrl} onChangeText={setVideoUrl} autoCapitalize="none" placeholderTextColor="#9CA3AF" />
             </View>
@@ -148,7 +151,7 @@ export default function StaffLMSUpload() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Description</Text>
-            <TextInput style={[styles.input, {
+            <AppTextInput style={[styles.input, {
               height: 100,
               textAlignVertical: 'top'
             }]} placeholder="Enter a brief description of the content..." value={description} onChangeText={setDescription} multiline numberOfLines={4} placeholderTextColor="#9CA3AF" />

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/hooks/useAuth';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '@/src/utils/haptics';
 
 export default function UnauthorizedScreen() {
     const router = useRouter();

@@ -27,7 +27,6 @@ export default function AnimatedSplash() {
   loadingRef.current = loading;
   userRef.current = user;
 
-  const isTimeUp = useRef(false);
   const hasNavigated = useRef(false);
 
   // Navigate based on latest auth state (reads refs, never stale)
@@ -54,21 +53,8 @@ export default function AnimatedSplash() {
     }
   }, [router]);
 
-  // Attempt navigation only when both conditions are met
-  const attemptNavigation = useCallback(() => {
-    if (isTimeUp.current && !loadingRef.current && !hasNavigated.current) {
-      doNavigate();
-    }
-  }, [doNavigate]);
-
-  // Timer: after 2.5s of animation, mark time as up
+  // Hard safety timeout: force-navigate if nothing else worked after 8s
   useEffect(() => {
-    const timer = setTimeout(() => {
-      isTimeUp.current = true;
-      attemptNavigation();
-    }, 2500);
-
-    // Hard safety timeout: force-navigate if nothing else worked after 8s
     const safetyTimer = setTimeout(() => {
       if (!hasNavigated.current) {
         if (__DEV__) console.warn('[AnimatedSplash] Safety timeout — forcing navigation');
@@ -77,15 +63,9 @@ export default function AnimatedSplash() {
     }, 8000);
 
     return () => {
-      clearTimeout(timer);
       clearTimeout(safetyTimer);
     };
-  }, [attemptNavigation, doNavigate]);
-
-  // Re-check whenever auth state changes
-  useEffect(() => {
-    attemptNavigation();
-  }, [loading, user?.userId, attemptNavigation]);
+  }, [doNavigate]);
 
   return (
     <View
@@ -98,7 +78,12 @@ export default function AnimatedSplash() {
         }
       ]}
     >
-      <LogoLoader size={160} color={isDark ? '#FFFFFF' : '#000000'} />
+      <LogoLoader 
+        size={160} 
+        color={isDark ? '#FFFFFF' : '#000000'} 
+        isReady={!loading}
+        onLogoRevealed={doNavigate}
+      />
     </View>
   );
 }

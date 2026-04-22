@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 // User asked to use Supabase JS SDK. Let's use supabaseConfig.
+import { api } from '../services/apiClient';
 import { supabase } from '../services/supabaseConfig';
 import { Expense, CreateExpenseRequest, ExpenseStatus } from '../types/expenses';
-import { Alert } from 'react-native';
+import { alertCompat } from '../utils/crossPlatformAlert';
 
 export function useExpenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -33,7 +34,7 @@ export function useExpenses() {
     } catch (err: any) {
 
       setError(err.message || 'Failed to fetch expenses');
-      Alert.alert('Error', 'Failed to load expenses');
+      alertCompat('Error', 'Failed to load expenses');
     } finally {
       setLoading(false);
     }
@@ -41,43 +42,24 @@ export function useExpenses() {
 
   const createExpense = async (expenseData: CreateExpenseRequest) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase.
-        from('expenses').
-        insert({
-          ...expenseData,
-          created_by: user.id
-        });
-
-      if (error) throw error;
+      await api.post('/expenses', expenseData);
 
       // Refresh
       await fetchExpenses();
       return true;
     } catch (err: any) {
-
-      Alert.alert('Error', err.message || 'Failed to create expense');
       return false;
     }
   };
 
   const updateStatus = async (id: string, newStatus: ExpenseStatus) => {
     try {
-      const { error } = await supabase.
-        from('expenses').
-        update({ status: newStatus }).
-        eq('id', id);
-
-      if (error) throw error;
+      await api.put(`/expenses/${id}/status`, { status: newStatus });
 
       // Optimistic update
       setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, status: newStatus } : e));
       return true;
     } catch (err: any) {
-
-      Alert.alert('Error', 'Failed to update status. Are you an admin?');
       return false;
     }
   };

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -10,8 +11,19 @@ import { DiaryService, DiaryEntry, TeacherService, TeacherClassAssignment } from
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Shadows, Radii, Spacing, Typography, Theme } from '../../src/theme/themes';
+import { styles as fieldStyles } from '@/src/theme/styles';
 import { api } from '../../src/services/apiClient';
 import LogoLoader from '../../src/components/LogoLoader';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import {
+  DiaryHistoryTabSwitcher,
+  DiaryHistoryDatePickerSheet,
+  DiaryHistoryDateSelectorButton,
+  priorHistoryYmds,
+  toYmd,
+  type DiaryHistoryTabId,
+} from '../../src/components/diary/DiaryHistoryChrome';
+
 export default function StaffDiary() {
   const {
     user
@@ -33,6 +45,23 @@ export default function StaffDiary() {
   const [submitting, setSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const scrollRef = React.useRef<ScrollView>(null);
+
+  const todayAnchor = useMemo(() => new Date(), []);
+  const todayYmd = useMemo(() => toYmd(todayAnchor), [todayAnchor]);
+  const priorDates = useMemo(() => priorHistoryYmds(todayAnchor), [todayAnchor]);
+
+  const [activeTab, setActiveTab] = useState<DiaryHistoryTabId>('today');
+  const [historyDate, setHistoryDate] = useState(() => priorDates[0] ?? toYmd(new Date()));
+  const [pickerVisible, setPickerVisible] = useState(false);
+
+  const datesWithData = useMemo(
+    () => [...new Set(diaryEntries.map((e) => e.entry_date))],
+    [diaryEntries]
+  );
+  const calendarAvailableYmds = useMemo(
+    () => [...new Set([...datesWithData, ...priorDates])],
+    [datesWithData, priorDates]
+  );
 
   // Load teacher assignments on mount
   useEffect(() => {
@@ -58,26 +87,32 @@ export default function StaffDiary() {
       } catch (e) {
         if (__DEV__) {}
       }
-      Alert.alert('Error', 'Could not load your assigned classes.');
+      alertCompat('Error', 'Could not load your assigned classes.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Keep global history and current context updated
+  // Load all homework in the diary retention window (today + prior 14 days).
+  // Do not gate on assignments — teachers still need History even if class list fails.
   useEffect(() => {
-    if (assignments.length > 0) {
-      fetchDiaryHistory();
-    }
+    fetchDiaryHistory();
+  }, [user?.userId, todayYmd, priorDates]);
+
+  useEffect(() => {
     if (selectedAssignment) {
       checkExistingHomework();
     }
   }, [selectedAssignment, assignments]);
+
   const fetchDiaryHistory = async () => {
     try {
-      // New "Global History" backend behavior (no class_section_id passed)
-      const allEntries = await DiaryService.getAll({});
-      setDiaryEntries(allEntries);
+      const oldestYmd = priorDates[priorDates.length - 1];
+      const allEntries = await DiaryService.getAll({
+        from_date: oldestYmd,
+        to_date: todayYmd,
+      });
+      setDiaryEntries(Array.isArray(allEntries) ? allEntries : []);
     } catch (error: any) {
 
       try {
@@ -152,7 +187,7 @@ export default function StaffDiary() {
       });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
-      Alert.alert("Notice", "This assignment is no longer in your active list.");
+      alertCompat("Notice", "This assignment is no longer in your active list.");
     }
   };
   const handlePost = async () => {
@@ -169,47 +204,44 @@ export default function StaffDiary() {
       if (__DEV__) {}
     }
     if (!selectedAssignment) {
-      Alert.alert('Error', 'Please select a class and subject');
+      alertCompat('Error', 'Please select a class and subject');
       return;
     }
     if (!description) {
-      Alert.alert('Error', 'Please enter homework description');
+      alertCompat('Error', 'Please enter homework description');
       return;
     }
     const today = new Date().toISOString().split('T')[0];
     const dueStr = format(dueDate, 'yyyy-MM-dd');
 
-    // Optional Enhancement: Duplicate Check
-    if (!existingEntry) {
-      const duplicate = diaryEntries.find((e) => e.class_section_id === selectedAssignment.class_section_id && e.subject_id === selectedAssignment.subject_id && e.homework_due_date === dueStr);
-      if (duplicate) {
-        Alert.alert("Duplicate found", "Homework already exists for this class, subject, and due date. Update the existing one instead?", [{
-          text: "Cancel",
-          style: "cancel"
-        }, {
-          text: "Update Existing",
-          onPress: () => handleEdit(duplicate)
-        }]);
-        return;
-      }
-    }
+    // Same calendar day + class + subject matches DB unique key — update if we have the row in memory
+    const duplicateSameDay =
+      !existingEntry &&
+      diaryEntries.find(
+        (e) =>
+          e.class_section_id === selectedAssignment.class_section_id &&
+          e.subject_id === selectedAssignment.subject_id &&
+          e.entry_date === today
+      );
+    const entryToUpdate = existingEntry || duplicateSameDay || null;
+
     try {
       setSubmitting(true);
       const payload = {
         class_section_id: selectedAssignment.class_section_id,
-        entry_date: existingEntry?.entry_date || today,
+        entry_date: entryToUpdate?.entry_date || today,
         subject_id: selectedAssignment.subject_id,
         title: title || `${selectedAssignment.subject_name} Homework`,
         content: description,
         homework_due_date: dueStr,
-        created_by: user?.id || ''
+        created_by: user?.userId || ''
       };
-      if (existingEntry) {
-        await DiaryService.update(existingEntry.id, payload);
-        Alert.alert("Success", "Homework updated successfully!");
+      if (entryToUpdate) {
+        await DiaryService.update(entryToUpdate.id, payload);
+        alertCompat('Success', 'Homework updated successfully!');
       } else {
         await DiaryService.create(payload as any);
-        Alert.alert("Success", "Homework posted successfully!");
+        alertCompat('Success', 'Homework posted successfully!');
       }
       setIsEditing(false);
       fetchDiaryHistory();
@@ -227,7 +259,7 @@ export default function StaffDiary() {
       } catch (e) {
         if (__DEV__) {}
       }
-      Alert.alert('Error', 'Failed to save homework');
+      alertCompat('Error', 'Failed to save homework');
     } finally {
       setSubmitting(false);
     }
@@ -252,8 +284,18 @@ export default function StaffDiary() {
             <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.background} />
             <StaffHeader title="Diary & Homework" showBackButton={true} />
             <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Assignment Selection */}
-                <View style={[styles.selectionSection, isEditing && {
+                <Animated.View entering={FadeInDown.delay(80).duration(500)} style={styles.tabWrap}>
+                    <DiaryHistoryTabSwitcher
+                        active={activeTab}
+                        onChange={setActiveTab}
+                        todayLabel="Today"
+                        historyLabel="History"
+                    />
+                </Animated.View>
+
+                {/* Assignment Selection + form — only on Today tab */}
+                {activeTab === 'today' ? <>
+                    <View style={[styles.selectionSection, isEditing && {
         opacity: 0.6
       }]}>
                     <View style={{
@@ -298,7 +340,6 @@ export default function StaffDiary() {
           })}
                     </ScrollView>
                 </View>
-                {/* Form Card */}
                 <Animated.View entering={FadeInDown.delay(100).duration(600)} style={[styles.formCard, {
         backgroundColor: theme.colors.card,
         borderColor: theme.colors.border
@@ -317,17 +358,17 @@ export default function StaffDiary() {
                         <Text style={[styles.label, {
             color: theme.colors.textSecondary
           }]}>Title (Optional)</Text>
-                        <TextInput style={[styles.input, {
+                        <AppTextInput style={{
             backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
             borderColor: theme.colors.border,
             color: theme.colors.text
-          }]} placeholder="e.g. Chapter 5 Summary" placeholderTextColor="#94A3B8" value={title} onChangeText={setTitle} />
+          }} placeholder="e.g. Chapter 5 Summary" placeholderTextColor="#94A3B8" value={title} onChangeText={setTitle} />
                     </View>
                     <View style={styles.inputGroup}>
                         <Text style={[styles.label, {
             color: theme.colors.textSecondary
           }]}>Description</Text>
-                        <TextInput style={[styles.input, styles.textArea, {
+                        <AppTextInput style={[styles.textArea, {
             backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
             borderColor: theme.colors.border,
             color: theme.colors.text
@@ -340,17 +381,48 @@ export default function StaffDiary() {
                             <Text style={[styles.label, {
               color: theme.colors.textSecondary
             }]}>Due Date</Text>
-                            <TouchableOpacity style={[styles.input, styles.dateInput, {
+                            <View style={[fieldStyles.input, styles.dateInput, {
               backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
-              borderColor: theme.colors.border
-            }]} onPress={() => setShowDatePicker(true)}>
-                                <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
-                                <Text style={[styles.dateValue, {
-                color: theme.colors.text
-              }]}>{format(dueDate, 'PPP')}</Text>
-                            </TouchableOpacity>
+              borderColor: theme.colors.border,
+              padding: Platform.OS === 'web' ? 0 : undefined,
+              overflow: 'hidden'
+            }]}>
+                                {Platform.OS !== 'web' && <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />}
+                                {Platform.OS === 'web' ? (
+                                  React.createElement('input', {
+                                    type: 'date',
+                                    value: format(dueDate, 'yyyy-MM-dd'),
+                                    min: format(new Date(), 'yyyy-MM-dd'),
+                                    onChange: (e: any) => {
+                                      if (e.target.value) {
+                                        const [y, m, d] = e.target.value.split('-');
+                                        setDueDate(new Date(Number(y), Number(m) - 1, Number(d)));
+                                      }
+                                    },
+                                    style: {
+                                      border: 'none',
+                                      background: 'transparent',
+                                      width: '100%',
+                                      height: '100%',
+                                      outline: 'none',
+                                      color: theme.colors.text,
+                                      fontSize: '14px',
+                                      fontFamily: 'inherit',
+                                      cursor: 'pointer',
+                                      paddingLeft: '16px',
+                                      paddingRight: '16px'
+                                    }
+                                  })
+                                ) : (
+                                  <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => setShowDatePicker(true)}>
+                                      <Text style={[styles.dateValue, {
+                                        color: theme.colors.text
+                                      }]}>{format(dueDate, 'PPP')}</Text>
+                                  </TouchableOpacity>
+                                )}
+                            </View>
                         </View>
-                        {showDatePicker && <DateTimePicker value={dueDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} minimumDate={new Date()} />}
+                        {Platform.OS !== 'web' && showDatePicker && <DateTimePicker value={dueDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} minimumDate={new Date()} />}
                     </View>
                     <TouchableOpacity style={[styles.postButton, {
           backgroundColor: theme.colors.primary,
@@ -364,102 +436,139 @@ export default function StaffDiary() {
                             </>}
                     </TouchableOpacity>
                 </Animated.View>
-                {/* Recent History */}
+                </> : null}
+
+                {activeTab === 'history' ? (
+                    <DiaryHistoryDateSelectorButton
+                        selectedYmd={historyDate}
+                        onPress={() => setPickerVisible(true)}
+                    />
+                ) : null}
+
                 <View style={styles.sectionHeader}>
                     <Text style={[styles.sectionTitle, {
           color: theme.colors.textStrong
-        }]}>Recent Homework Tasks</Text>
+        }]}>
+                        {activeTab === 'today' ? "Today's homework" : 'Homework for selected day'}
+                    </Text>
                 </View>
-                <View style={styles.listContainer}>
-                    {diaryEntries.length === 0 ? <View style={styles.emptyState}>
-                            <Ionicons name="book-outline" size={48} color={theme.colors.border} />
-                            <Text style={[styles.emptyText, {
-            color: theme.colors.textSecondary
-          }]}>No recent homework found</Text>
-                        </View> : Object.keys(diaryEntries.reduce((groups, item) => {
-          const date = item.entry_date;
-          if (!groups[date]) groups[date] = [];
-          groups[date].push(item);
-          return groups;
-        }, {} as Record<string, DiaryEntry[]>)).sort((a, b) => new Date(b).getTime() - new Date(a).getTime()).map((date) => {
-          return <View key={date} style={styles.dateGroup}>
-                                    <View style={styles.dateHeader}>
-                                        <View style={[styles.dateLine, {
-                backgroundColor: theme.colors.border
-              }]} />
-                                        <Text style={[styles.dateLabel, {
-                color: theme.colors.textSecondary
-              }]}>
-                                            {format(parseISO(date), 'PPPP')}
-                                        </Text>
-                                        <View style={[styles.dateLine, {
-                backgroundColor: theme.colors.border
-              }]} />
-                                    </View>
-                                    {diaryEntries.filter((e) => e.entry_date === date).map((item, index) => {
-              return <Animated.View key={item.id} entering={FadeInDown.delay(100 + index * 50).duration(600)} style={[styles.postCard, {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border
-              }]}>
-                                            <View style={styles.postHeader}>
-                                                <View style={{
-                    flex: 1
-                  }}>
-                                                    <View style={{
-                      flexDirection: 'row',
-                      gap: 6,
-                      alignItems: 'center',
-                      marginBottom: 4
-                    }}>
-                                                        <View style={[styles.classBadge, {
-                        backgroundColor: theme.colors.primary + '20'
-                      }]}>
-                                                            <Text style={[styles.postClass, {
-                          color: theme.colors.primary,
-                          marginBottom: 0
-                        }]}>
-                                                                {item.class_name}-{item.section_name}
-                                                            </Text>
-                                                        </View>
-                                                        <Text style={[styles.postSubject, {
-                        color: theme.colors.textSecondary
-                      }]}>{item.subject_name}</Text>
-                                                    </View>
-                                                    <Text style={[styles.postTitle, {
-                      color: theme.colors.textStrong
-                    }]}>{item.title}</Text>
-                                                    <Text style={[styles.postContent, {
-                      color: theme.colors.textSecondary
-                    }]} numberOfLines={2}>{item.content}</Text>
-                                                </View>
-                                            </View>
-                                            <View style={[styles.divider, {
-                  backgroundColor: theme.colors.border
-                }]} />
-                                            <View style={styles.postFooter}>
-                                                <View style={styles.footerInfo}>
-                                                    <Text style={styles.dueText}>Due: {item.homework_due_date ? format(parseISO(item.homework_due_date), 'MMM d') : 'N/A'}</Text>
-                                                    <Text style={[styles.createdText, {
-                      color: theme.colors.textSecondary
-                    }]}>Posted: {format(parseISO(item.created_at), 'p')}</Text>
-                                                </View>
-                                                <TouchableOpacity onPress={() => handleEdit(item)}>
-                                                    <View style={styles.editButton}>
-                                                        <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
-                                                        <Text style={[styles.editText, {
-                        color: theme.colors.primary
-                      }]}>Edit</Text>
-                                                    </View>
-                                                </TouchableOpacity>
-                                            </View>
-                                        </Animated.View>;
-            })}
-                                </View>;
-        })}
-                </View>
+                <HomeworkDayList
+                    theme={theme}
+                    styles={styles}
+                    diaryEntries={diaryEntries}
+                    displayYmd={activeTab === 'today' ? todayYmd : historyDate}
+                    onEdit={handleEdit}
+                />
             </ScrollView>
+
+            <DiaryHistoryDatePickerSheet
+                visible={pickerVisible}
+                selectedYmd={historyDate}
+                availableYmds={calendarAvailableYmds}
+                onSelect={setHistoryDate}
+                onClose={() => setPickerVisible(false)}
+                subtitle="Dots mark days with posted homework"
+            />
         </View>;
 }
+
+function HomeworkDayList({
+  theme,
+  styles,
+  diaryEntries,
+  displayYmd,
+  onEdit,
+}: {
+  theme: Theme;
+  styles: Record<string, object>;
+  diaryEntries: DiaryEntry[];
+  displayYmd: string;
+  onEdit: (entry: DiaryEntry) => void;
+}) {
+  const items = diaryEntries.filter((e) => e.entry_date === displayYmd);
+  if (items.length === 0) {
+    return (
+      <View style={styles.listContainer}>
+        <View style={styles.emptyState}>
+          <Ionicons name="book-outline" size={48} color={theme.colors.border} />
+          <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+            No homework for this day
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.listContainer}>
+      <View style={styles.dateGroup}>
+        <View style={styles.dateHeader}>
+          <View style={[styles.dateLine, { backgroundColor: theme.colors.border }]} />
+          <Text style={[styles.dateLabel, { color: theme.colors.textSecondary }]}>
+            {format(parseISO(displayYmd), 'PPPP')}
+          </Text>
+          <View style={[styles.dateLine, { backgroundColor: theme.colors.border }]} />
+        </View>
+        {items.map((item, index) => (
+          <Animated.View
+            key={item.id}
+            entering={FadeInDown.delay(100 + index * 50).duration(600)}
+            style={[
+              styles.postCard,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <View style={styles.postHeader}>
+              <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    gap: 6,
+                    alignItems: 'center',
+                    marginBottom: 4,
+                  }}
+                >
+                  <View style={[styles.classBadge, { backgroundColor: theme.colors.primary + '20' }]}>
+                    <Text style={[styles.postClass, { color: theme.colors.primary, marginBottom: 0 }]}>
+                      {item.class_name}-{item.section_name}
+                    </Text>
+                  </View>
+                  <Text style={[styles.postSubject, { color: theme.colors.textSecondary }]}>
+                    {item.subject_name}
+                  </Text>
+                </View>
+                <Text style={[styles.postTitle, { color: theme.colors.textStrong }]}>{item.title}</Text>
+                <Text style={[styles.postContent, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                  {item.content}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.postFooter}>
+              <View style={styles.footerInfo}>
+                <Text style={styles.dueText}>
+                  Due: {item.homework_due_date ? format(parseISO(item.homework_due_date), 'MMM d') : 'N/A'}
+                </Text>
+                <Text style={[styles.createdText, { color: theme.colors.textSecondary }]}>
+                  Posted: {format(parseISO(item.created_at), 'p')}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => onEdit(item)}>
+                <View style={styles.editButton}>
+                  <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+                  <Text style={[styles.editText, { color: theme.colors.primary }]}>Edit</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1
@@ -467,6 +576,9 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   scrollContent: {
     padding: Spacing.lg,
     paddingBottom: 50
+  },
+  tabWrap: {
+    marginBottom: Spacing.md,
   },
   selectionSection: {
     marginBottom: Spacing.xl
@@ -525,12 +637,6 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: Radii.lg,
-    padding: Spacing.md,
-    fontSize: 14
   },
   textArea: {
     height: 100

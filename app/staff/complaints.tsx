@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Platform, Dimensions } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -104,8 +108,8 @@ const GlassInput = ({
             style={{ marginTop: multiline ? 2 : 0 }}
           />
         )}
-        <TextInput
-          style={[gi.input, multiline && gi.multiInput, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
+        <AppTextInput
+          style={[ds.inputInChrome, gi.input, multiline && gi.multiInput, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
           placeholder={placeholder}
           placeholderTextColor={isDark ? '#2A3444' : '#C4CDD9'}
           value={value}
@@ -511,7 +515,7 @@ export default function StaffComplaints() {
         color: CATEGORY_CFG[item.category?.toLowerCase() || 'default']?.color || '#6B7280',
         date: new Date(item.created_at).toLocaleDateString(),
       })));
-    } catch { Alert.alert('Error', 'Failed to load reports'); }
+    } catch { alertCompat('Error', 'Failed to load reports'); }
     finally { setLoading(false); }
   };
 
@@ -529,7 +533,7 @@ export default function StaffComplaints() {
 
   const handleSubmit = async () => {
     if (!title || !desc || !selectedStudent) {
-      Alert.alert('Missing Fields', 'Please fill all fields and select a student.');
+      alertCompat('Missing Fields', 'Please fill all fields and select a student.');
       return;
     }
     try {
@@ -539,11 +543,11 @@ export default function StaffComplaints() {
         priority: severity.toLowerCase(),
         raised_for_student_id: selectedStudent.id,
       });
-      Alert.alert('Submitted', 'Report submitted successfully.');
+      alertCompat('Submitted', 'Report submitted successfully.');
       setTitle(''); setDesc(''); setStudentSearch('');
       setSelectedStudent(null); setSeverity('Low');
       setActiveTab('MY_REPORTS');
-    } catch { Alert.alert('Error', 'Failed to submit report.'); }
+    } catch { alertCompat('Error', 'Failed to submit report.'); }
     finally { setLoading(false); }
   };
 
@@ -695,13 +699,13 @@ export default function StaffComplaints() {
                     </View>
                   ) : (
                     <View>
-                      <View style={[gi.wrap, {
+                      <View style={[gi.wrap, ds.searchBarWrapper, {
                         backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                         borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.09)',
                       }]}>
                         <Ionicons name="search-outline" size={15} color={isDark ? '#334155' : '#CBD5E1'} />
-                        <TextInput
-                          style={[gi.input, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
+                        <AppTextInput
+                          style={[ds.inputInChrome, gi.input, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
                           placeholder="Search student name or roll…"
                           placeholderTextColor={isDark ? '#2A3444' : '#C4CDD9'}
                           value={studentSearch}

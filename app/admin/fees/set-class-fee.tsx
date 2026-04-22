@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Platform } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
+import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../../src/components/AdminHeader';
@@ -34,6 +37,7 @@ export default function SetClassFeeScreen() {
   // Add Fee Type state
   const [showAddType, setShowAddType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
+  const [newTypeNameTe, setNewTypeNameTe] = useState('');
   const [addingType, setAddingType] = useState(false);
 
   useEffect(() => { loadInitialData(); }, []);
@@ -57,7 +61,7 @@ export default function SetClassFeeScreen() {
         setSelectedYearId(current?.id || yearsData[0].id);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load configuration data');
+      alertCompat('Error', 'Failed to load configuration data');
     } finally {
       setLoading(false);
     }
@@ -65,16 +69,19 @@ export default function SetClassFeeScreen() {
 
   const handleAddFeeType = async () => {
     const trimmed = newTypeName.trim();
-    if (!trimmed) { Alert.alert('Error', 'Please enter a fee type name'); return; }
+    if (!trimmed) { alertCompat('Error', 'Please enter a fee type name'); return; }
     try {
       setAddingType(true);
-      const created = await api.post<FeeType>('/fees/types', { name: trimmed });
+      const payload: any = { name: trimmed };
+      if (newTypeNameTe.trim()) payload.name_te = newTypeNameTe.trim();
+      const created = await api.post<FeeType>('/fees/types', payload);
       setFeeTypes(prev => [...prev, created]);
       setFeeTypeId(created.id);
       setNewTypeName('');
+      setNewTypeNameTe('');
       setShowAddType(false);
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || error.message || 'Failed to create fee type');
+      alertCompat('Error', error.response?.data?.error || error.message || 'Failed to create fee type');
     } finally {
       setAddingType(false);
     }
@@ -82,7 +89,7 @@ export default function SetClassFeeScreen() {
 
   const handleSubmit = async () => {
     if (!selectedClassId || !amount || !feeTypeId || !selectedYearId) {
-      Alert.alert('Error', 'Please fill all required fields');
+      alertCompat('Error', 'Please fill all required fields');
       return;
     }
     try {
@@ -94,11 +101,11 @@ export default function SetClassFeeScreen() {
         due_date: dueDate,
         academic_year_id: selectedYearId,
       });
-      Alert.alert('Success', 'Class fee structure saved successfully', [
+      alertCompat('Success', 'Class fee structure saved successfully', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (error: any) {
-      Alert.alert('Error', error.result?.error || error.message || 'Failed to save fee structure');
+      alertCompat('Error', error.result?.error || error.message || 'Failed to save fee structure');
     } finally {
       setSubmitting(false);
     }
@@ -153,12 +160,12 @@ export default function SetClassFeeScreen() {
               <View style={styles.modalCard}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>New Fee Type</Text>
-                  <TouchableOpacity onPress={() => { setShowAddType(false); setNewTypeName(''); }} style={styles.modalClose}>
+                  <TouchableOpacity onPress={() => { setShowAddType(false); setNewTypeName(''); setNewTypeNameTe(''); }} style={styles.modalClose}>
                     <Ionicons name="close" size={18} color="#64748B" />
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.modalHint}>e.g. Tuition Fee, Lab Fee, Transport, Exam Fee</Text>
-                <TextInput
+                <AppTextInput
                   style={styles.modalInput}
                   value={newTypeName}
                   onChangeText={setNewTypeName}
@@ -166,8 +173,15 @@ export default function SetClassFeeScreen() {
                   placeholderTextColor="#94A3B8"
                   autoFocus
                 />
+                <AppTextInput
+                  style={styles.modalInput}
+                  value={newTypeNameTe}
+                  onChangeText={setNewTypeNameTe}
+                  placeholder="Telugu Name (optional)"
+                  placeholderTextColor="#94A3B8"
+                />
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowAddType(false); setNewTypeName(''); }}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowAddType(false); setNewTypeName(''); setNewTypeNameTe(''); }}>
                     <Text style={styles.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -191,7 +205,7 @@ export default function SetClassFeeScreen() {
 
           {/* ── Amount Input ── */}
           <Text style={styles.label}>Amount (₹)</Text>
-          <TextInput
+          <AppTextInput
             style={styles.input}
             value={amount}
             onChangeText={setAmount}
@@ -202,7 +216,7 @@ export default function SetClassFeeScreen() {
 
           {/* ── Due Date ── */}
           <Text style={styles.label}>Due Date (YYYY-MM-DD)</Text>
-          <TextInput
+          <AppTextInput
             style={styles.input}
             value={dueDate}
             onChangeText={setDueDate}

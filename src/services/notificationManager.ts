@@ -22,6 +22,24 @@ Notifications.setNotificationHandler({
 const PROCESSED_IDS_KEY = 'fcm_processed_message_ids';
 const MAX_STORED_IDS = 200; // Keep last 200 to avoid unbounded growth
 
+export async function requestNotificationPermission() {
+  if (Platform.OS === 'android' && Platform.Version >= 33) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      console.warn('[NotificationManager] POST_NOTIFICATIONS permission blocked by user');
+      return false;
+    }
+  }
+  return true;
+}
+
 class NotificationManager {
 
   private unsubscribeOnMessage?: () => void;
@@ -52,7 +70,21 @@ class NotificationManager {
     if (this.channelsReady) return;   // skip if already created this session
     if (Platform.OS !== 'android') return;
 
+    const NOTIFICATION_CHANNEL_VERSION = '1';
+    const savedVersion = await AsyncStorage.getItem('notification_channel_version');
 
+    if (savedVersion === NOTIFICATION_CHANNEL_VERSION) {
+      this.channelsReady = true;
+      return;
+    }
+
+    if (__DEV__) console.log('[NotificationManager] Creating fresh notification channels (Version ' + NOTIFICATION_CHANNEL_VERSION + ')');
+
+    // Delete existing channels for a clean slate
+    const existingChannels = await Notifications.getNotificationChannelsAsync();
+    for (const channel of existingChannels ?? []) {
+      await Notifications.deleteNotificationChannelAsync(channel.id);
+    }
 
     // Base sets of channels for the 5 categories
     const categories = [
@@ -64,22 +96,20 @@ class NotificationManager {
     ];
 
     for (const cat of categories) {
-      const importance = Notifications.AndroidImportance.MAX;
-      // Strip sound file extension for Android channel
-      const soundBase = cat.sound.replace(/\.[^/.]+$/, "");
-
-      // Create Custom version only (with custom bundled sound - no extension)
       await Notifications.setNotificationChannelAsync(`${cat.id}_custom`, {
         name: `${cat.name}`,
-        importance: importance,
-        sound: soundBase,
+        importance: Notifications.AndroidImportance.MAX,
+        sound: cat.sound,
         vibrationPattern: cat.vibrate,
         enableVibrate: true,
+        enableLights: true,
         lightColor: '#FF231F7C',
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false
       });
     }
 
+    await AsyncStorage.setItem('notification_channel_version', NOTIFICATION_CHANNEL_VERSION);
     this.channelsReady = true;
   }
 
@@ -101,29 +131,19 @@ class NotificationManager {
 
     try {
       if (__DEV__) console.log('[NotificationManager] Starting registration...');
-      // 1. Create channels first
+
+      // 1. Request permission explicitly for Android 13+ (MUST be before channel creation)
+      const hasPermission = await requestNotificationPermission();
+      if (!hasPermission) return undefined;
+
+      // 2. Create channels first
       if (Platform.OS === 'android') {
         await this.createChannels();
         if (__DEV__) console.log('[NotificationManager] Channels created successfully');
       }
 
       if (Platform.OS === 'web') {
-
         return;
-      }
-
-      // 2. Request permission explicitly for Android 13+
-      if (Platform.OS === 'android' && Platform.Version >= 33) {
-        try {
-          const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-          console.log('[NotificationManager] POST_NOTIFICATIONS permission:', granted);
-          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-            console.warn('[NotificationManager] POST_NOTIFICATIONS permission DENIED');
-            return undefined;
-          }
-        } catch (err) {
-          console.error('[NotificationManager] Permission request error:', err);
-        }
       }
 
       // 3. Request permission via Firebase (handles iOS and older Androids)
@@ -276,6 +296,11 @@ class NotificationManager {
     const deepLink = remoteMessage.data?.deepLink || '';
     let channelId = remoteMessage.data?.channelId || 'voice_alert_custom';
 
+    // 6. Ensure language is loaded for headless/background execution
+    if (source === 'background') {
+      await this.loadLanguagePreference();
+    }
+
     // 6. Resolve channelId
     const knownCategories = [
       'emergency', 'fee_reminder',
@@ -304,15 +329,18 @@ class NotificationManager {
     }
 
     // 8. ONE display call — the only scheduleNotificationAsync in this method
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: title || 'Notification',
-        body: body || '',
-        data: { ...remoteMessage.data, deepLink, type },
-        sound: finalSound
-      },
-      trigger: { channelId } as Notifications.ChannelAwareTriggerInput,
-    });
+    // In background, if remoteMessage.notification exists, the OS automatically handles the display!
+    if (source === 'foreground' || !remoteMessage.notification) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: title || 'Notification',
+          body: body || '',
+          data: { ...remoteMessage.data, deepLink, type },
+          sound: finalSound
+        },
+        trigger: { channelId } as Notifications.ChannelAwareTriggerInput,
+      });
+    }
 
     // 9. Persist ID — fire and forget
     if (messageId) this.persistId(messageId).catch(() => { });

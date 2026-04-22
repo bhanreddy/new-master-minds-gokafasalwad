@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, Alert, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Modal } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { StudentService } from '../../src/services/studentService';
 import { ClassService } from '../../src/services/classService';
 import DropDownPicker from 'react-native-dropdown-picker';
@@ -12,6 +14,7 @@ import LogoLoader from '../../src/components/LogoLoader';
 export default function PendingEnrollmentsScreen() {
   const { t } = useTranslation();
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
   const [loading, setLoading] = useState(true);
   const [students, setStudents] = useState<any[]>([]);
@@ -43,7 +46,7 @@ export default function PendingEnrollmentsScreen() {
       setStudents(data);
     } catch (error) {
 
-      Alert.alert('Error', 'Failed to load students list.');
+      alertCompat('Error', 'Failed to load students list.');
     } finally {
       setLoading(false);
     }
@@ -92,7 +95,7 @@ export default function PendingEnrollmentsScreen() {
 
   const submitEnrollment = async () => {
     if (!classId || !sectionId) {
-      Alert.alert('Required', 'Please select both Class and Section.');
+      alertCompat('Required', 'Please select both Class and Section.');
       return;
     }
 
@@ -103,11 +106,11 @@ export default function PendingEnrollmentsScreen() {
         section_id: sectionId
       });
 
-      Alert.alert('Success', 'Student enrolled successfully!');
+      alertCompat('Success', 'Student enrolled successfully!');
       setEnrollmentModalVisible(false);
       loadUnenrolledStudents(); // Refresh list
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to enroll student.');
+      alertCompat('Error', error.response?.data?.error || 'Failed to enroll student.');
     } finally {
       setSubmitting(false);
     }
@@ -135,7 +138,7 @@ export default function PendingEnrollmentsScreen() {
 
   return (
     <View style={styles.container}>
-            <AdminHeader title="Pending Enrollments" showBackButton />
+            {!shellActive && <AdminHeader title="Pending Enrollments" showBackButton />}
             {loading ?
       <View style={styles.center}>
                     <LogoLoader size={60} color={theme.colors.primary} />

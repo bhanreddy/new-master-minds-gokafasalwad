@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
   View,
   Text,
@@ -6,12 +9,10 @@ import {
   TouchableOpacity,
   StatusBar,
   ScrollView,
-  Alert,
   Modal,
-  TextInput,
   Animated,
-  Platform,
-} from 'react-native';
+  Platform} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -211,7 +212,7 @@ export default function TimetableManagement() {
       setStaff(st); setPeriods(pds);
       if (year) setYearId(year.id);
     } catch {
-      Alert.alert('Error', 'Failed to load metadata');
+      alertCompat('Error', 'Failed to load metadata');
     } finally {
       setLoading(false);
       setPeriodsLoading(false);
@@ -235,13 +236,13 @@ export default function TimetableManagement() {
         setSlots(data);
       } else {
         setClassSectionId(null); setClassTeacherName(''); setSlots([]);
-        Alert.alert('Notice', 'No Class-Section mapping found. Please assign section to class in "Academic Structure" first.');
+        alertCompat('Notice', 'No Class-Section mapping found. Please assign section to class in "Academic Structure" first.');
       }
     } catch { } finally { setLoading(false); }
   };
 
   const handlePeriodPressForSlot = (periodNumber: number) => {
-    if (!classSectionId) { Alert.alert('Select Class', 'Please select a class and section first'); return; }
+    if (!classSectionId) { alertCompat('Select Class', 'Please select a class and section first'); return; }
     const existing = slots.find(s => s.period_number === periodNumber);
     const periodDef = periods.find(p => p.sort_order === periodNumber);
     setActiveSlotData({ period: periodNumber });
@@ -257,7 +258,7 @@ export default function TimetableManagement() {
 
   const handleSaveSlot = async () => {
     if (!classSectionId || !activeSlotData || !selectedSubjectId) {
-      Alert.alert('Error', 'Please select a subject'); return;
+      alertCompat('Error', 'Please select a subject'); return;
     }
     try {
       await TimetableService.createSlot({
@@ -273,7 +274,7 @@ export default function TimetableManagement() {
       const data = await TimetableService.getClassSlots(classSectionId, yearId);
       setSlots(data);
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.error || error.message || 'Failed to save slot');
+      alertCompat('Error', error.response?.data?.error || error.message || 'Failed to save slot');
     }
   };
 
@@ -287,7 +288,7 @@ export default function TimetableManagement() {
           const data = await TimetableService.getClassSlots(classSectionId, yearId);
           setSlots(data);
         }
-      } catch { Alert.alert('Error', 'Failed to delete'); }
+      } catch { alertCompat('Error', 'Failed to delete'); }
     }
   };
 
@@ -304,8 +305,8 @@ export default function TimetableManagement() {
       await TimetableService.updatePeriods(editedPeriods);
       setPeriods(editedPeriods);
       setManagePeriodsVisible(false);
-      Alert.alert('Success', 'Timings updated');
-    } catch { Alert.alert('Error', 'Failed to update periods'); }
+      alertCompat('Success', 'Timings updated');
+    } catch { alertCompat('Error', 'Failed to update periods'); }
     finally { setLoading(false); }
   };
 
@@ -414,14 +415,14 @@ export default function TimetableManagement() {
       await TimetableService.updatePeriods([editingPeriod]);
       setPeriods(periods.map(p => p.id === editingPeriod.id ? editingPeriod : p));
       setEditPeriodModalVisible(false);
-      Alert.alert('Success', 'Period updated');
-    } catch { Alert.alert('Error', 'Failed to update period'); }
+      alertCompat('Success', 'Period updated');
+    } catch { alertCompat('Error', 'Failed to update period'); }
     finally { setLoading(false); }
   };
 
   const handleDeletePeriod = () => {
     if (!editingPeriod) return;
-    Alert.alert(
+    alertCompat(
       'Delete Period',
       `Delete "${editingPeriod.name}"? This will remove all timetable slots for this period across all classes.`,
       [
@@ -437,8 +438,8 @@ export default function TimetableManagement() {
                 const data = await TimetableService.getClassSlots(classSectionId, yearId);
                 setSlots(data);
               }
-              Alert.alert('Success', 'Period deleted');
-            } catch { Alert.alert('Error', 'Failed to delete period'); }
+              alertCompat('Success', 'Period deleted');
+            } catch { alertCompat('Error', 'Failed to delete period'); }
             finally { setLoading(false); }
           },
         },
@@ -799,7 +800,7 @@ export default function TimetableManagement() {
             {editingPeriod && (
               <>
                 <Text style={styles.inputLabel}>Period Name</Text>
-                <TextInput
+                <AppTextInput
                   style={styles.inputField}
                   value={editingPeriod.name}
                   onChangeText={t => setEditingPeriod({ ...editingPeriod, name: t })}
@@ -811,8 +812,8 @@ export default function TimetableManagement() {
                 <View style={styles.timeRangeRow}>
                   <View style={[styles.timeInputWrap, { flex: 1 }]}>
                     <Ionicons name="play-outline" size={11} color={PALETTE.slate[400]} style={{ marginRight: 6 }} />
-                    <TextInput
-                      style={[styles.timeInput, { flex: 1 }]}
+                    <AppTextInput
+                      style={[ds.inputInChrome, styles.timeInput, { flex: 1 }]}
                       value={editingPeriod.start_time}
                       onChangeText={t => setEditingPeriod({ ...editingPeriod, start_time: t })}
                       placeholder="09:00:00"
@@ -822,8 +823,8 @@ export default function TimetableManagement() {
                   <Text style={styles.timeArrow}>→</Text>
                   <View style={[styles.timeInputWrap, { flex: 1 }]}>
                     <Ionicons name="stop-outline" size={11} color={PALETTE.slate[400]} style={{ marginRight: 6 }} />
-                    <TextInput
-                      style={[styles.timeInput, { flex: 1 }]}
+                    <AppTextInput
+                      style={[ds.inputInChrome, styles.timeInput, { flex: 1 }]}
                       value={editingPeriod.end_time}
                       onChangeText={t => setEditingPeriod({ ...editingPeriod, end_time: t })}
                       placeholder="10:00:00"
@@ -991,7 +992,7 @@ export default function TimetableManagement() {
             </View>
 
             <Text style={styles.inputLabel}>Period Name</Text>
-            <TextInput
+            <AppTextInput
               style={styles.inputField}
               value={newPeriodName}
               onChangeText={setNewPeriodName}
@@ -1010,8 +1011,8 @@ export default function TimetableManagement() {
             <View style={styles.timeRangeRow}>
               <View style={[styles.timeInputWrap, { flex: 1 }]}>
                 <Ionicons name="play-outline" size={11} color={PALETTE.slate[400]} style={{ marginRight: 6 }} />
-                <TextInput
-                  style={[styles.timeInput, { flex: 1 }]}
+                <AppTextInput
+                  style={[ds.inputInChrome, styles.timeInput, { flex: 1 }]}
                   value={newPeriodStart}
                   onChangeText={setNewPeriodStart}
                   placeholder="14:15:00"
@@ -1021,8 +1022,8 @@ export default function TimetableManagement() {
               <Text style={styles.timeArrow}>→</Text>
               <View style={[styles.timeInputWrap, { flex: 1 }]}>
                 <Ionicons name="stop-outline" size={11} color={PALETTE.slate[400]} style={{ marginRight: 6 }} />
-                <TextInput
-                  style={[styles.timeInput, { flex: 1 }]}
+                <AppTextInput
+                  style={[ds.inputInChrome, styles.timeInput, { flex: 1 }]}
                   value={newPeriodEnd}
                   onChangeText={setNewPeriodEnd}
                   placeholder="15:00:00"
@@ -1039,7 +1040,7 @@ export default function TimetableManagement() {
                 style={[styles.actionBtnPrimary, { flex: 2 }]}
                 onPress={async () => {
                   if (!newPeriodName || !newPeriodStart || !newPeriodEnd) {
-                    Alert.alert('Missing fields', 'Please fill in name and both times');
+                    alertCompat('Missing fields', 'Please fill in name and both times');
                     return;
                   }
                   try {
@@ -1051,9 +1052,9 @@ export default function TimetableManagement() {
                     });
                     setPeriods([...periods, created]);
                     setCreatePeriodVisible(false);
-                    Alert.alert('Created', `"${created.name}" added to schedule`);
+                    alertCompat('Created', `"${created.name}" added to schedule`);
                   } catch (error: any) {
-                    Alert.alert('Error', error.response?.data?.error || 'Failed to create period');
+                    alertCompat('Error', error.response?.data?.error || 'Failed to create period');
                   } finally { setLoading(false); }
                 }}
               >
@@ -1586,12 +1587,12 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     },
     inputField: {
       borderWidth: 1,
-      borderColor: isDark ? PALETTE.slate[600] : PALETTE.slate[200],
+      borderColor: isDark ? PALETTE.slate[600] : '#CBD5E1',
       borderRadius: 10,
       padding: 12,
       fontSize: 14,
       color: isDark ? PALETTE.slate[100] : PALETTE.slate[800],
-      backgroundColor: isDark ? PALETTE.slate[700] : PALETTE.slate[50],
+      backgroundColor: isDark ? PALETTE.slate[700] : '#FFFFFF',
     },
     timeRangeRow: {
       flexDirection: 'row',
@@ -1601,11 +1602,11 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       borderWidth: 1,
-      borderColor: isDark ? PALETTE.slate[600] : PALETTE.slate[200],
+      borderColor: isDark ? PALETTE.slate[600] : '#CBD5E1',
       borderRadius: 10,
       paddingHorizontal: 10,
       paddingVertical: 10,
-      backgroundColor: isDark ? PALETTE.slate[700] : PALETTE.slate[50],
+      backgroundColor: isDark ? PALETTE.slate[700] : '#FFFFFF',
     },
     timeInput: {
       fontSize: 13,

@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
 import { StudentService } from '../../src/services/studentService';
+import { useStudentQuery } from '../../src/hooks/useStudentQuery';
+import type { Student } from '../../src/types/models';
 import { FeeService } from '../../src/services/feeService';
 import { StudentFee, FeeReceipt } from '../../src/types/models';
 import { useAuth } from '../../src/hooks/useAuth';
-import * as Haptics from 'expo-haptics';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
+import * as Haptics from '@/src/utils/haptics';
+import { printHtmlOnWeb } from '../../src/utils/pdfGenerator';
+import { useTheme, type SchoolTheme } from '../../src/hooks/useTheme';
 import { SchoolSettingsService, SchoolSettings } from '../../src/services/schoolSettingsService';
 import LogoLoader from '../../src/components/LogoLoader';
+import { useTranslation } from 'react-i18next';
+import { t_field } from '../../src/utils/lang';
 export default function FeesScreen() {
   const {
     theme,
@@ -23,9 +25,19 @@ export default function FeesScreen() {
   const {
     user
   } = useAuth();
+  const { t } = useTranslation();
+  const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as { code: string }).code : user?.role;
+  const isStudent = roleCode === 'student';
   const [activeTab, setActiveTab] = useState<'breakdown' | 'history'>('breakdown');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { data: profile, refetch: refetchProfile } = useStudentQuery<Student>(
+    '/students/profile/me',
+    'profile',
+    3 * 60 * 1000,
+    user?.userId,
+    { enabled: !!user?.userId && isStudent }
+  );
   const [userProfile, setUserProfile] = useState<any>(null);
   const [fees, setFees] = useState<StudentFee[]>([]);
   const [receipts, setReceipts] = useState<FeeReceipt[]>([]);
@@ -37,30 +49,29 @@ export default function FeesScreen() {
   });
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   useEffect(() => {
-    loadData();
-  }, [user?.userId]);
-  const loadData = async () => {
-    const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as any).code : user?.role;
-    if (!user?.userId || roleCode !== 'student') return;
-    try {
-      // Get Student Profile first to get the correct Student ID
-      const student = await StudentService.getProfile();
-      if (!student?.id) return;
-      setUserProfile(student);
-      const feeData = await StudentService.getFees(student.id);
-      setFees(feeData.fees || []);
-      setSummary(feeData.summary || {
-        total_due: 0,
-        total_paid: 0,
-        balance: 0
-      });
-    } catch (error) {
+    const run = async () => {
+      if (!user?.userId || !isStudent || !profile?.id) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setUserProfile(profile);
+        const feeData = await StudentService.getFees(profile.id);
+        setFees(feeData.fees || []);
+        setSummary(feeData.summary || {
+          total_due: 0,
+          total_paid: 0,
+          balance: 0
+        });
+      } catch {
 
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+    void run();
+  }, [user?.userId, isStudent, profile?.id]);
   const loadSchoolSettings = async () => {
     try {
       const data = await SchoolSettingsService.getSettings();
@@ -72,10 +83,20 @@ export default function FeesScreen() {
   useEffect(() => {
     loadSchoolSettings();
   }, []);
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    loadData();
+    try {
+      const fresh = await refetchProfile();
+      const sid = fresh?.id ?? profile?.id;
+      if (sid) {
+        const feeData = await StudentService.getFees(sid);
+        setFees(feeData.fees || []);
+        setSummary(feeData.summary || { total_due: 0, total_paid: 0, balance: 0 });
+      }
+    } finally {
+      setRefreshing(false);
+    }
   };
   const loadReceipts = async () => {
     if (!userProfile?.id) return;
@@ -192,6 +213,11 @@ export default function FeesScreen() {
         </html>
       `;
 
+      if (Platform.OS === 'web') {
+        await printHtmlOnWeb(html);
+        return;
+      }
+      const [Print, Sharing] = await Promise.all([import('expo-print'), import('expo-sharing')]);
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
     } catch (error) {
@@ -207,7 +233,7 @@ export default function FeesScreen() {
     const percent = dueAmount > 0 ? item.amount_paid / dueAmount * 100 : 0;
     return <View style={styles.feeCard}>
       <View style={styles.feeHeader}>
-        <Text style={styles.feeTitle}>{item.fee_type}</Text>
+        <Text style={styles.feeTitle}>{t_field(item.fee_type, item.fee_type_te)}</Text>
         <Text style={styles.feeAmount}>₹{dueAmount.toLocaleString()}</Text>
       </View>
 
@@ -231,7 +257,7 @@ export default function FeesScreen() {
   };
   if (loading) {
     return <ScreenLayout>
-      <StudentHeader title="Fees" />
+      <StudentHeader title={t('fees')} />
       <View style={{
         flex: 1,
         justifyContent: 'center',
@@ -242,7 +268,7 @@ export default function FeesScreen() {
     </ScreenLayout>;
   }
   return <ScreenLayout>
-    <StudentHeader title="Fees" />
+    <StudentHeader title={t('fees')} />
 
     <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
                 {refreshing &&
@@ -322,7 +348,10 @@ export default function FeesScreen() {
     </ScrollView>
   </ScreenLayout>;
 }
-const getStyles = (theme: Theme) => StyleSheet.create({
+const getStyles = (theme: SchoolTheme) => {
+  const c = theme.colors;
+  const isDark = theme.dark;
+  return StyleSheet.create({
   scrollContainer: {
     padding: 20,
     paddingBottom: 40
@@ -350,13 +379,13 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     fontWeight: '600'
   },
   summaryValue: {
-    color: theme.colors.background,
+    color: isDark ? '#F8FAFC' : c.background,
     fontSize: 32,
     fontWeight: '800',
     marginTop: 4
   },
   payBtnMock: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 25
@@ -399,12 +428,12 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   /* Tabs */
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.surface,
     padding: 6,
     borderRadius: 14,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#f1f5f9'
+    borderColor: c.borderLight
   },
   tab: {
     flex: 1,
@@ -413,27 +442,27 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     borderRadius: 10
   },
   activeTab: {
-    backgroundColor: '#e0e7ff'
+    backgroundColor: isDark ? 'rgba(99,102,241,0.22)' : '#e0e7ff'
   },
   tabText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748b'
+    color: c.textSecondary
   },
   activeTabText: {
-    color: '#4338ca',
+    color: c.primary,
     fontWeight: '700'
   },
   /* Receipt Card */
   receiptCard: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.background,
     borderRadius: 16,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: c.borderLight,
     elevation: 2,
-    shadowColor: theme.colors.text,
+    shadowColor: c.textPrimary,
     shadowOpacity: 0.05,
     shadowRadius: 5
   },
@@ -446,11 +475,11 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   receiptNo: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1e293b'
+    color: c.textStrong
   },
   receiptDate: {
     fontSize: 12,
-    color: '#64748b',
+    color: c.textSecondary,
     marginTop: 2
   },
   receiptAmount: {
@@ -477,14 +506,14 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     flex: 1
   },
   feeCard: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.background,
     borderRadius: 16,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#f1f5f9',
+    borderColor: c.borderLight,
     elevation: 2,
-    shadowColor: theme.colors.text,
+    shadowColor: c.textPrimary,
     shadowOpacity: 0.05,
     shadowRadius: 5
   },
@@ -496,16 +525,16 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   feeTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1e293b'
+    color: c.textStrong
   },
   feeAmount: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1e293b'
+    color: c.textStrong
   },
   progressBarBg: {
     height: 6,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: isDark ? c.borderLight : '#f1f5f9',
     borderRadius: 3,
     overflow: 'hidden',
     marginBottom: 12
@@ -540,6 +569,7 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     marginTop: 20,
-    color: '#94a3b8'
+    color: c.textMuted
   }
 });
+};

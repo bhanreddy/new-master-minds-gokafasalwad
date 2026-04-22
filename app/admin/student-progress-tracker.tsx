@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Dimensions } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -174,7 +177,7 @@ export default function StudentProgressTracker() {
   const [data, setData] = useState<StudentTrackerData | null>(null);
   const handleSearch = async () => {
     if (!studentId.trim()) {
-      Alert.alert('Required', 'Please enter a Student ID (e.g., 101)');
+      alertCompat('Required', 'Please enter a Student ID (e.g., 101)');
       return;
     }
     setLoading(true);
@@ -183,7 +186,7 @@ export default function StudentProgressTracker() {
       const result = await fetchStudentTracker(studentId);
       setData(result);
     } catch (e) {
-      Alert.alert('Error', 'Student Not Found. Try 101, 102, or 103.');
+      alertCompat('Error', 'Student Not Found. Try 101, 102, or 103.');
     } finally {
       setLoading(false);
     }
@@ -333,7 +336,7 @@ const diff = sub.currMarks - sub.prevMarks;
                             <Ionicons name="search-outline" size={20} color="#64748B" style={{
               marginRight: 8
             }} />
-                            <TextInput style={styles.input} placeholder="Enter Student ID (101, 102, 103)" placeholderTextColor="#94A3B8" value={studentId} onChangeText={setStudentId} />
+                            <AppTextInput style={styles.input} placeholder="Enter Student ID (101, 102, 103)" placeholderTextColor="#94A3B8" value={studentId} onChangeText={setStudentId} />
                         </View>
                         <TouchableOpacity style={styles.searchBtn} onPress={handleSearch} disabled={loading}>
                             {loading ? <LogoLoader color="#FFF" /> : <Feather name="arrow-right" size={20} color="#FFF" />}

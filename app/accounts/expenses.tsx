@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, StatusBar, Modal, Alert, KeyboardAvoidingView,
-  Platform, ScrollView, Pressable, Dimensions,
-} from 'react-native';
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Modal, KeyboardAvoidingView,
+  Platform, ScrollView, Pressable, Dimensions} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import Animated, {
   FadeInDown, FadeIn, Layout,
   useAnimatedStyle, useSharedValue,
@@ -96,12 +99,12 @@ const SearchBar = ({ value, onChange, isDark }: any) => {
     borderWidth: focused.value === 1 ? 1.5 : 1,
   }));
   return (
-    <Animated.View style={[srchSt.wrap, { backgroundColor: isDark ? '#111827' : '#fff' }, borderStyle]}>
+    <Animated.View style={[srchSt.wrap, ds.searchBarWrapper, { backgroundColor: isDark ? '#111827' : '#fff' }, borderStyle]}>
       <Ionicons name="search-outline" size={18} color={isDark ? '#475569' : '#94A3B8'} style={{ marginRight: 10 }} />
-      <TextInput
-        style={[srchSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }]}
+      <AppTextInput
+        style={[ds.inputInChrome, srchSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }]}
         placeholder="Search expenses…"
-        placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
+        placeholderTextColor={isDark ? '#374151' : '#94A3B8'}
         value={value}
         onChangeText={onChange}
         onFocus={() => { focused.value = withTiming(1, { duration: 160 }); }}
@@ -286,10 +289,10 @@ const FormInput = ({ label, value, onChange, placeholder, multiline = false, key
         {label}{required && <Text style={{ color: '#EF4444' }}> *</Text>}
       </Text>
       <Animated.View style={[formSt.wrap, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC' }, multiline && { height: 90, alignItems: 'flex-start', paddingVertical: 12 }, bStyle]}>
-        <TextInput
-          style={[formSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }, multiline && { textAlignVertical: 'top', height: 66 }]}
+        <AppTextInput
+          style={[ds.inputInChrome, formSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }, multiline && { textAlignVertical: 'top', height: 66 }]}
           placeholder={placeholder}
-          placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
+          placeholderTextColor={isDark ? '#374151' : '#94A3B8'}
           value={value}
           onChangeText={onChange}
           multiline={multiline}
@@ -360,6 +363,7 @@ const dtSt = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AccountsExpenses() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { expenses, loading, fetchExpenses, createExpense, updateStatus } = useExpenses();
   const { user } = useAuth();
@@ -383,9 +387,9 @@ export default function AccountsExpenses() {
   }, [searchQuery, activeTab]);
 
   const handleAddExpense = async () => {
-    if (!newTitle || !newAmount) { Alert.alert('Required', 'Title and Amount are required.'); return; }
+    if (!newTitle || !newAmount) { alertCompat('Required', 'Title and Amount are required.'); return; }
     const amount = parseFloat(newAmount);
-    if (isNaN(amount) || amount <= 0) { Alert.alert('Invalid Amount', 'Enter a valid positive number.'); return; }
+    if (isNaN(amount) || amount <= 0) { alertCompat('Invalid Amount', 'Enter a valid positive number.'); return; }
     setIsSubmitting(true);
     const success = await createExpense({
       title: newTitle, category: newCategory, amount,
@@ -398,25 +402,25 @@ export default function AccountsExpenses() {
   const resetForm = () => { setNewTitle(''); setNewCategory(CATEGORIES[0]); setNewAmount(''); setNewDescription(''); };
 
   const handleApprove = (expense: Expense) => {
-    Alert.alert('Approve Expense', `Approve "${expense.title}" for ${fmtINR(expense.amount)}?`, [
+    alertCompat('Confirm Approve', `Are you sure you want to approve this expense?\n\n"${expense.title}" · ${fmtINR(expense.amount)}`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve', onPress: async () => { const ok = await updateStatus(expense.id, 'approved'); if (ok) setSelectedExpense(null); } },
     ]);
   };
   const handlePay = (expense: Expense) => {
-    Alert.alert('Mark as Paid', `Confirm payment of ${fmtINR(expense.amount)}?`, [
+    alertCompat('Mark as Paid', `Confirm payment of ${fmtINR(expense.amount)}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Mark Paid', onPress: async () => { const ok = await updateStatus(expense.id, 'paid'); if (ok) setSelectedExpense(null); } },
     ]);
   };
   const confirmDelete = async () => {
-    if (!selectedExpense || !deleteReason.trim()) { Alert.alert('Required', 'Please state a reason.'); return; }
+    if (!selectedExpense || !deleteReason.trim()) { alertCompat('Required', 'Please state a reason.'); return; }
     setDeleting(true);
     try {
       await PolicyService.deleteWithReason('expenses', selectedExpense.id, deleteReason);
       setIsDeleteModalVisible(false); setSelectedExpense(null); setDeleteReason('');
       fetchExpenses(searchQuery);
-    } catch { Alert.alert('Error', 'Failed to delete expense.'); }
+    } catch { alertCompat('Error', 'Failed to delete expense.'); }
     finally { setDeleting(false); }
   };
 
@@ -429,7 +433,7 @@ export default function AccountsExpenses() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0F1E' : '#F1F5F9'} />
-      <AdminHeader title="Expense Tracker" showBackButton />
+      {!shellActive && <AdminHeader title="Expense Tracker" showBackButton />}
 
       {/* Tab bar */}
       <TabBar active={activeTab} onChange={setActiveTab} isDark={isDark} />
@@ -499,9 +503,9 @@ export default function AccountsExpenses() {
               <View style={[{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? '#0F172A' : '#E2E8F0', marginRight: 8 }]}>
                 <Text style={{ fontSize: 15, fontWeight: '800', color: isDark ? '#64748B' : '#475569' }}>₹</Text>
               </View>
-              <TextInput
-                style={[formSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }]}
-                placeholder="0.00" placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
+              <AppTextInput
+                style={[ds.inputInChrome, formSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }]}
+                placeholder="0.00" placeholderTextColor={isDark ? '#374151' : '#94A3B8'}
                 keyboardType="numeric" value={newAmount} onChangeText={setNewAmount}
               />
             </View>

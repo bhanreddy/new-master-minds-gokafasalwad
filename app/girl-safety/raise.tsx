@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Switch, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { GirlSafetyService } from '../../src/services/girlSafetyService';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,15 +26,15 @@ export default function RaiseComplaintScreen() {
 
     const handleSubmit = async () => {
         if (!category) {
-            Alert.alert('Required', 'Please select a category');
+            alertCompat('Required', 'Please select a category');
             return;
         }
         if (!description.trim()) {
-            Alert.alert('Required', 'Please describe the incident');
+            alertCompat('Required', 'Please describe the incident');
             return;
         }
 
-        Alert.alert(
+        alertCompat(
             'Confirm Submission',
             'Are you sure you want to submit this complaint? Your data is secure and will only be seen by authorized staff.',
             [
@@ -47,11 +50,11 @@ export default function RaiseComplaintScreen() {
                                 description: description.trim(),
                                 is_anonymous: isAnonymous
                             });
-                            Alert.alert('Success', 'Your complaint has been submitted confidentially.', [
+                            alertCompat('Success', 'Your complaint has been submitted confidentially.', [
                                 { text: 'OK', onPress: () => router.back() }
                             ]);
                         } catch (error: any) {
-                            Alert.alert('Error', error?.message || 'Failed to submit complaint');
+                            alertCompat('Error', error?.message || 'Failed to submit complaint');
                         } finally {
                             setLoading(false);
                         }
@@ -88,7 +91,7 @@ export default function RaiseComplaintScreen() {
                 </View>
 
                 <Text style={styles.label}>Description of the Incident <Text style={styles.req}>*</Text></Text>
-                <TextInput
+                <AppTextInput
                     style={styles.textArea}
                     placeholder="Please provide details of what happened, where, and when..."
                     placeholderTextColor="#94A3B8"

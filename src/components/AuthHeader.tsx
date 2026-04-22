@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Image, Dimensions, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions, Pressable, Platform } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
     useSharedValue,
@@ -16,6 +16,7 @@ import { SCHOOL_CONFIG } from "../constants/schoolConfig";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { isTelugu } from "../utils/lang";
 
 const { width } = Dimensions.get("window");
 
@@ -30,6 +31,8 @@ const MOTION = {
     entrance: { BRAND: 100, TITLE: 200, SUB: 300 },
     easing: { SMOOTH: Easing.bezier(0.16, 1, 0.3, 1) },
 };
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function AmbientGlow({ size, top, left, color, delay }: {
     size: number; top: number; left: number; color: string; delay: number;
@@ -80,7 +83,7 @@ export default function AuthHeader({ title, subtitle, glowColor = "rgba(79,70,22
     const { t, i18n } = useTranslation();
 
     const toggleLanguage = async () => {
-        const newLang = i18n.language === 'en' ? 'te' : 'en';
+        const newLang = isTelugu(i18n.language) ? 'en' : 'te';
         await i18n.changeLanguage(newLang);
         await AsyncStorage.setItem('appLanguage', newLang);
     };
@@ -105,22 +108,22 @@ export default function AuthHeader({ title, subtitle, glowColor = "rgba(79,70,22
 
             <View style={styles.headerContent}>
                 <Reveal delayMs={0} style={styles.topBar}>
-                    <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Pressable style={[styles.backBtn, Platform.OS === 'web' && { cursor: 'pointer' }]} onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                         <Ionicons name="arrow-back" size={24} color="#FFF" />
-                    </TouchableOpacity>
+                    </Pressable>
 
                     <View style={styles.rightHeaderControls}>
                         {/* Language Toggler */}
                         {showLangToggle && (
-                            <TouchableOpacity style={styles.langToggleBtn} onPress={toggleLanguage}>
-                                <Text style={i18n.language === 'en' ? styles.langActive : styles.langInactive}>
+                            <Pressable style={[styles.langToggleBtn, Platform.OS === 'web' && { cursor: 'pointer' }]} onPress={toggleLanguage}>
+                                <Text style={!isTelugu(i18n.language) ? styles.langActive : styles.langInactive}>
                                     {t('languageEnglish')}
                                 </Text>
                                 <Text style={styles.langSeparator}> | </Text>
-                                <Text style={i18n.language === 'te' ? styles.langActive : styles.langInactive}>
+                                <Text style={isTelugu(i18n.language) ? styles.langActive : styles.langInactive}>
                                     {t('languageTelugu')}
                                 </Text>
-                            </TouchableOpacity>
+                            </Pressable>
                         )}
 
                         <View style={styles.brandPill}>

@@ -1,41 +1,73 @@
-import { supabase } from './supabaseConfig';
-import { DisciplineRecord } from '../types/models';
+import { api } from './apiClient';
 
-export const DCGDService = {
-    /**
-     * Get discipline records for a student
-     */
-    getRecords: async (studentId: string): Promise<DisciplineRecord[]> => {
-        const { data, error } = await supabase
-            .from('discipline_records')
-            .select('*')
-            .eq('student_id', studentId)
-            .order('incident_date', { ascending: false });
-
-        if (error) throw error;
-        return data || [];
-    },
-
-    /**
-     * Get summary of student profile (Class, Roll etc.)
-     * Reuses the Common Student Service or fetches directly if specialized needed.
-     */
-    getProfileSummary: async (studentId: string) => {
-        const { data, error } = await supabase
-            .from('student_enrollments')
-            .select(`
-                *,
-                class_sections (
-                    classes (name),
-                    sections (name)
-                ),
-                academic_years (code)
-            `)
-            .eq('student_id', studentId)
-            .eq('status', 'active')
-            .single();
-
-        if (error) return null; // Handle UI accordingly
-        return data;
-    }
+export type DcgdProgram = {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  display_order: number;
+  is_active: boolean;
 };
+
+export type DcgdStudentProfile = {
+  name: string | null;
+  photo_url: string | null;
+  admission_no: string | null;
+  roll_number: number | null;
+  class_section_label: string | null;
+};
+
+export type DcgdPagePayload = {
+  visible: boolean;
+  settings: {
+    page_title: string;
+    subtitle: string;
+    updated_at?: string;
+  } | null;
+  programs: DcgdProgram[];
+  profile: DcgdStudentProfile | null;
+};
+
+/** Student DCGD payload from SchoolIMS API (backed by Nexsyrus DCGD microservice data in Postgres). */
+export async function fetchStudentDcgdPage(): Promise<DcgdPagePayload | null> {
+  try {
+    return await api.get<DcgdPagePayload>('/dcgd', undefined, { silent: true });
+  } catch {
+    return null;
+  }
+}
+
+export type DcgdContentItem = {
+  id: number;
+  title: string;
+  link_url: string | null;
+  pdf_url: string | null;
+  image_url: string | null;
+  content_body: string | null;
+  display_order: number;
+};
+
+export type DcgdProgramContentPayload = {
+  program: {
+    id: number;
+    name: string;
+    description: string;
+    icon: string;
+  };
+  content: DcgdContentItem[];
+};
+
+/** Fetch content for a specific program. */
+export async function fetchProgramContent(
+  programId: number,
+): Promise<DcgdProgramContentPayload | null> {
+  try {
+    return await api.get<DcgdProgramContentPayload>(
+      `/dcgd/programs/${programId}/content`,
+      undefined,
+      { silent: true },
+    );
+  } catch {
+    return null;
+  }
+}

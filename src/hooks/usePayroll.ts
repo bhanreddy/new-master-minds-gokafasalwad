@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { PayrollService } from '../services/payrollService';
+import { PayrollService, MarkPayrollPaidResult } from '../services/payrollService';
 import { PayrollEntry } from '../types/payroll';
 
 export function usePayroll() {
@@ -24,17 +24,22 @@ export function usePayroll() {
         setLoading(false);
     }, [selectedMonth, selectedYear]);
 
-    const markAsPaid = async (id: string) => {
-        const success = await PayrollService.markAsPaid(id);
-        if (success) {
-            // Optimistic update
-            setPayrollData(prev => prev.map(item =>
-                item.id === id
-                    ? { ...item, status: 'paid', payment_date: new Date().toISOString().split('T')[0] }
-                    : item
-            ));
+    const markAsPaid = async (id: string): Promise<MarkPayrollPaidResult> => {
+        const result = await PayrollService.markAsPaid(id);
+        if (result.ok) {
+            setPayrollData(prev => {
+                const next = prev.map(item =>
+                    item.id === id
+                        ? { ...item, status: 'paid' as const, payment_date: new Date().toISOString().split('T')[0] }
+                        : item
+                );
+                const paid = next.filter(p => p.status === 'paid').reduce((sum, p) => sum + (Number(p.net_salary) || 0), 0);
+                const pending = next.filter(p => p.status === 'pending').reduce((sum, p) => sum + (Number(p.net_salary) || 0), 0);
+                setSummary({ total_paid: paid, total_pending: pending });
+                return next;
+            });
         }
-        return success;
+        return result;
     };
 
     return {

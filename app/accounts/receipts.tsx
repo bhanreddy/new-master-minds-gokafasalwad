@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, StatusBar, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ScrollView } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -7,14 +11,33 @@ import { useTranslation } from 'react-i18next';
 import { FeeService } from '../../src/services/feeService';
 import { generateReceiptPDF } from '../../src/utils/pdfGenerator';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+
+/** Map API fee_type label to Receipts filter chip (fee_types are school-defined names). */
+function feeTypeToFilterCategory(feeType: string | undefined): 'Fees' | 'Uniform' | 'Transport' | 'Other' {
+  const n = (feeType || '').toLowerCase().trim();
+  if (!n) return 'Other';
+  if (/\buniform\b|dress|apparel/.test(n)) return 'Uniform';
+  if (/transport|conveyance|\bbus\b|\bvan\b/.test(n)) return 'Transport';
+  if (
+    /tuition|academic|examination|exam\b|admission|lab fee|library|development|activity|hostel|sports|magazine|stationery|calendar|computer|smart/.test(
+      n
+    )
+  )
+    return 'Fees';
+  if (/\bfee\b/.test(n)) return 'Fees';
+  return 'Other';
+}
+
 export default function ReceiptsScreen() {
   const {
     theme,
     isDark
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
+  const { shellActive } = useAccountsWebChrome();
   const {
     t
   } = useTranslation();
@@ -50,11 +73,35 @@ export default function ReceiptsScreen() {
       setLoading(false);
     }
   };
+
+  const filteredReceipts = useMemo(() => {
+    let list = receipts;
+    if (selectedFilter !== 'All') {
+      list = list.filter((r) => feeTypeToFilterCategory(r.raw?.fee_type) === selectedFilter);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => {
+        const name = (r.student || '').toLowerCase();
+        const adm = String(r.admission_no ?? '').toLowerCase();
+        const ref = String(r.raw?.transaction_ref ?? '').toLowerCase();
+        const id = String(r.id ?? '').toLowerCase();
+        return name.includes(q) || adm.includes(q) || ref.includes(q) || id.includes(q);
+      });
+    }
+    return list;
+  }, [receipts, selectedFilter, searchQuery]);
+
   const handlePrint = async (transaction: any) => {
     try {
-      await generateReceiptPDF(transaction);
+      // Ensure academic_year is passed even if nested or named slightly differently
+      const receiptData = {
+        ...transaction,
+        academic_year: transaction.academic_year || (transaction as any).academicYear
+      };
+      await generateReceiptPDF(receiptData);
     } catch (error) {
-      Alert.alert('Error', 'Failed to generate receipt PDF');
+      alertCompat('Error', 'Failed to generate receipt PDF');
     }
   };
   const renderReceiptItem = ({
@@ -101,12 +148,12 @@ export default function ReceiptsScreen() {
   };
   return <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <AdminHeader title="Receipts" showBackButton={true} />
+            {!shellActive && <AdminHeader title="Receipts" showBackButton={true} />}
             <View style={styles.content}>
                 {/* Search Bar */}
-                <View style={styles.searchContainer}>
+                <View style={[styles.searchContainer, ds.searchBarWrapper]}>
                     <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
-                    <TextInput style={styles.searchInput} placeholder="Search by transaction ID or Name" placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
+                    <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder="Search by transaction ID or Name" placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
                 </View>
                 {/* Filters */}
                 <View style={styles.filterContainer}>
@@ -122,9 +169,9 @@ export default function ReceiptsScreen() {
                 </View>
                 {loading ? <LogoLoader size={60} color="#6366F1" style={{
         marginTop: 20
-      }} /> : <FlatList data={receipts} renderItem={renderReceiptItem} keyExtractor={(item) => item.id} showsVerticalScrollIndicator={false} contentContainerStyle={{
+      }} /> : <FlatList data={filteredReceipts} renderItem={renderReceiptItem} keyExtractor={(item) => item.id} showsVerticalScrollIndicator={false} contentContainerStyle={{
         paddingBottom: 20
-      }} ListEmptyComponent={<Text style={styles.emptyText}>No receipts found</Text>} />}
+      }} ListEmptyComponent={<Text style={styles.emptyText}>{receipts.length === 0 ? 'No receipts found' : 'No receipts match your filters'}</Text>} />}
             </View>
         </View>;
 }
@@ -145,7 +192,8 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: 15,
     height: 50,
     marginTop: 20,
-    elevation: 1
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
   },
   searchIcon: {
     marginRight: 10

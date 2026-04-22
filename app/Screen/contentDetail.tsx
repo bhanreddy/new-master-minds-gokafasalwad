@@ -20,7 +20,7 @@ export default function ContentDetailScreen() {
   const styles = React.useMemo(() => getStyles(), []);
   const params = useLocalSearchParams();
 
-  const { i18n } = useTranslation();
+  useTranslation(); // Subscribe so t_field(title/body) updates when language changes.
 
   // We expect params: { title, content, image } or fetch by ID if needed.
   // For now, let's assume we pass the data or fetch it.

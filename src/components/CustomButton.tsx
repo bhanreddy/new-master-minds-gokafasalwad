@@ -1,7 +1,8 @@
-import React from 'react';
-import { Text, StyleSheet, StyleProp, ViewStyle, TextStyle, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { Text, StyleSheet, StyleProp, ViewStyle, TextStyle, Pressable, Platform } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { HapticFeedback, SPRING_BOUNCE } from '../utils/animations';
+import { useTheme } from '../hooks/useTheme';
 
 interface CustomButtonProps {
     title: string;
@@ -15,6 +16,7 @@ interface CustomButtonProps {
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const CustomButton: React.FC<CustomButtonProps> = ({ title, onPress, variant = 'primary', style, textStyle, disabled }) => {
+    const { theme } = useTheme();
     const scale = useSharedValue(1);
     const opacity = useSharedValue(1);
 
@@ -34,11 +36,26 @@ const CustomButton: React.FC<CustomButtonProps> = ({ title, onPress, variant = '
         opacity.value = withSpring(1, SPRING_BOUNCE);
     };
 
-    const backgroundColor = variant === 'danger' ? '#ff4d4d' : '#007bff';
+    const backgroundColor = variant === 'danger' ? theme.colors.danger : theme.colors.primary;
+
+    const styles = useMemo(() => StyleSheet.create({
+        button: {
+            paddingVertical: theme.spacing.md,
+            paddingHorizontal: theme.spacing.xl,
+            borderRadius: theme.shape.borderRadiusSM,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        text: {
+            color: theme.colors.surface,
+            fontWeight: 'bold',
+            fontSize: theme.typography.fontSizeLG,
+        },
+    }), [theme]);
 
     return (
         <AnimatedPressable
-            style={[styles.button, { backgroundColor }, style, animatedStyle, disabled && { opacity: 0.6 }]}
+            style={[styles.button, { backgroundColor }, style, animatedStyle, disabled && { opacity: 0.6 }, Platform.OS === 'web' && { cursor: disabled ? 'not-allowed' : 'pointer' }]}
             onPress={onPress}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
@@ -48,20 +65,5 @@ const CustomButton: React.FC<CustomButtonProps> = ({ title, onPress, variant = '
         </AnimatedPressable>
     );
 };
-
-const styles = StyleSheet.create({
-    button: {
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    text: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-});
 
 export default CustomButton;

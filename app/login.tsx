@@ -11,7 +11,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import AnimatedInput from '@/src/components/AnimatedInput';
 import PremiumButton from '@/src/components/PremiumButton';
 import AuthHeader from '@/src/components/AuthHeader';
-import { Alert } from 'react-native';
+import { showAlert } from '@/src/components/CustomAlert';
 import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
 import { SCHOOL_NAME } from '@/src/constants/school';
@@ -62,7 +62,7 @@ const StudentLoginScreen: React.FC = () => {
   const handleLogin = async () => {
     if (!email || !password) {
       setError(true);
-      Alert.alert('Error', 'Please enter both email and password');
+      showAlert({ type: 'error', title: 'Error', message: 'Please enter both email and password' });
       return;
     }
     setLoading(true);
@@ -70,7 +70,7 @@ const StudentLoginScreen: React.FC = () => {
       const response = await signIn(email, password);
 
       if (response.error || !response.session) {
-        Alert.alert('Login Failed', response.error || 'Invalid credentials');
+        showAlert({ type: 'error', title: 'Login Failed', message: response.error || 'Invalid credentials' });
         return;
       }
 
@@ -79,12 +79,12 @@ const StudentLoginScreen: React.FC = () => {
       if (userRole === 'student') {
         if (__DEV__) { }
       } else {
-        Alert.alert('Access Restricted', 'This login is for students only. Please use the Staff or Admin login.');
+        showAlert({ type: 'warning', title: 'Access Restricted', message: 'This login is for students only. Please use the Staff or Admin login.' });
         await AuthService.signOut();
       }
     } catch (error: any) {
 
-      Alert.alert('Login Failed', error.message || 'Invalid credentials');
+      showAlert({ type: 'error', title: 'Login Failed', message: error.message || 'Invalid credentials' });
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,11 @@ const styles = StyleSheet.create({
 
   bodyContainer: {
     flex: 1,
-    paddingHorizontal: 24
+    paddingHorizontal: 24,
+    ...Platform.select({
+      web: { alignItems: 'center' } as any,
+      default: {},
+    }),
   },
   overlapSection: {
     marginTop: -60, // 100x SaaS Layout Technique
@@ -186,8 +190,9 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     ...Platform.select({
+      web: { maxWidth: 480, alignSelf: 'center' } as any,
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 24 },
-      android: { elevation: 4 }
+      android: { elevation: 4 },
     }),
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.03)'

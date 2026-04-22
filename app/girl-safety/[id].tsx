@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
+
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { GirlSafetyService, ComplaintDetails } from '../../src/services/girlSafetyService';
 import { Ionicons } from '@expo/vector-icons';
@@ -146,7 +148,7 @@ export default function ComplaintDetailScreen() {
             {/* Reply Input Box */}
             {!isResolved ?
       <View style={styles.replyBox}>
-                    <TextInput
+                    <AppTextInput
           style={styles.replyInput}
           placeholder="Type a message..."
           placeholderTextColor="#94A3B8"

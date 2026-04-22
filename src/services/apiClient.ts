@@ -4,14 +4,33 @@ import { Alert, Platform } from 'react-native';
 import { supabase } from './supabaseConfig';
 import NetInfo from '@react-native-community/netinfo';
 import { API_URL, SCHOOL_ID } from '../constants/school';
+import { showAlert } from '../components/CustomAlert';
+
+/**
+ * Cross-platform alert helper.
+ * On web, Alert.alert() is a no-op, so we use CustomAlert (showAlert).
+ * On native, Alert.alert() works fine and is used as the primary.
+ */
+function alertFn(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    showAlert({ type: 'error', title, message });
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 /** school_id for all API requests — from build-time env. Never hardcode. */
 const SCHOOL_ID_PARAM = String(SCHOOL_ID);
 
 const getApiBaseUrl = () => {
   const url = API_URL.trim();
+  // Web browser: ensure we use localhost (not Android emulator address)
   if (Platform.OS === 'web' && url.includes('10.0.2.2')) {
     return url.replace('10.0.2.2', 'localhost');
+  }
+  // Android emulator: needs 10.0.2.2 to reach host machine's localhost
+  if (Platform.OS === 'android' && url.includes('localhost')) {
+    return url.replace('localhost', '10.0.2.2');
   }
   return url;
 };
@@ -162,7 +181,7 @@ export async function apiRequest<T>(
 
         // 1. IGNORE Login/Refresh endpoints (invalid credentials, not session expiry)
         if (endpoint.includes('/login') || endpoint.includes('/refresh')) {
-          if (!silent) Alert.alert('Login Failed', errorData.error || 'Invalid credentials');
+          if (!silent) alertFn('Login Failed', errorData.error || 'Invalid credentials');
           throw new APIError(
             errorData.error || 'Invalid credentials',
             401,
@@ -285,7 +304,7 @@ export async function apiRequest<T>(
           });
         }
         const message = errorData.error || 'Server temporarily unavailable. Please try again.';
-        if (!silent) Alert.alert('Service Unavailable', message);
+        if (!silent) alertFn('Service Unavailable', message);
         throw new APIError(message, 503, undefined, requestId);
       }
 
@@ -296,7 +315,7 @@ export async function apiRequest<T>(
           ? 'Tenant context missing. Please restart the app and try again.'
           : (errorData.message || rawError || 'Validation failed');
         if (!silent) {
-          Alert.alert('Error', message);
+          alertFn('Error', message);
         }
         throw new APIError(
           message,
@@ -309,7 +328,7 @@ export async function apiRequest<T>(
       // Handle Rate Limit (429)
       if (response.status === 429) {
         const message = errorData.error || errorData.message || 'Rate limit exceeded. Please try again later.';
-        if (!silent) Alert.alert('Too Many Requests', message);
+        if (!silent) alertFn('Too Many Requests', message);
 
         throw new APIError(message, 429, undefined, requestId);
       }
@@ -318,14 +337,14 @@ export async function apiRequest<T>(
       if (response.status === 403) {
         const message = errorData.error || errorData.message || 'Access denied';
         const code = errorData.code;
-        if (!silent) Alert.alert('Access Denied', message);
+        if (!silent) alertFn('Access Denied', message);
         throw new APIError(message, 403, undefined, requestId, code);
       }
 
       // Generic error
       const genericMsg = errorData.message || errorData.error || 'Request failed';
 
-      if (!silent) Alert.alert('Error', `${genericMsg}\n\nCode: ${response.status}\nID: ${requestId || 'N/A'}`);
+      if (!silent) alertFn('Error', `${genericMsg}\n\nCode: ${response.status}\nID: ${requestId || 'N/A'}`);
       throw new APIError(
         genericMsg,
         response.status,
@@ -358,12 +377,12 @@ export async function apiRequest<T>(
     }
 
     if (error?.name === 'AbortError') {
-      if (!silent) Alert.alert('Network Timeout', 'The server took too long to respond. Please check your internet connection or try again later.');
+      if (!silent) alertFn('Network Timeout', 'The server took too long to respond. Please check your internet connection or try again later.');
       throw new APIError('Request timed out. Please try again.');
     }
 
     // Network error
-    if (!silent) Alert.alert('Network Error', 'Please check your internet connection.');
+    if (!silent) alertFn('Network Error', 'Please check your internet connection.');
     throw new APIError('Network error. Please check your connection.');
   }
 }

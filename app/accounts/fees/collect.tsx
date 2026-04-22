@@ -1,14 +1,22 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-    View, Text, StyleSheet, TextInput, TouchableOpacity,
-    ScrollView, Alert, Animated, Easing, Pressable, Platform
-} from 'react-native';
+    View, Text, StyleSheet, TouchableOpacity,
+    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator} from 'react-native';
+import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import QRCode from 'react-native-qrcode-svg';
 import AdminHeader from '../../../src/components/AdminHeader';
-import { useAuth } from '../../../src/hooks/useAuth';
+import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService as FeesService } from '../../../src/services/feeService';
+import { UpiSettingsService } from '../../../src/services/upiSettingsService';
+import { APIError } from '../../../src/services/apiClient';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { generateReceiptPDF } from '../../../src/utils/pdfGenerator';
+import { showConfirm, showSuccess, showError } from '../../../src/components/CustomAlert';
+import { buildUpiPayUri, parseInrAmount } from '../../../src/utils/upiDeepLink';
 import LogoLoader from '../../../src/components/LogoLoader';
 
 export const generateUUID = () => {
@@ -111,14 +119,19 @@ const modeStyles = StyleSheet.create({
 export default function CollectFeesScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
-    const { user } = useAuth();
     const { theme, isDark } = useTheme();
+    const { shellActive } = useAccountsWebChrome();
     const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
     const [loading, setLoading] = useState(false);
     const [amount, setAmount] = useState('');
     const [mode, setMode] = useState('Cash');
     const [remarks, setRemarks] = useState('');
     const [focused, setFocused] = useState(false);
+    const [paymentError, setPaymentError] = useState<string | null>(null);
+    const [upiLoading, setUpiLoading] = useState(false);
+    const [upiLoadError, setUpiLoadError] = useState<string | null>(null);
+    const [schoolUpiId, setSchoolUpiId] = useState('');
+    const [schoolPayeeName, setSchoolPayeeName] = useState('');
 
     const feeId = params.feeId as string;
     const studentName = params.name as string;
@@ -139,84 +152,187 @@ export default function CollectFeesScreen() {
         ]).start();
     }, []);
 
+    const [upiFetchTick, setUpiFetchTick] = useState(0);
+
+    useEffect(() => {
+        if (mode !== 'UPI') return;
+        let alive = true;
+        setUpiLoading(true);
+        setUpiLoadError(null);
+        UpiSettingsService.get()
+            .then((d) => {
+                if (!alive) return;
+                setSchoolUpiId((d.upi_id ?? '').trim());
+                setSchoolPayeeName((d.display_name ?? '').trim());
+            })
+            .catch((e) => {
+                if (!alive) return;
+                setUpiLoadError(e instanceof APIError ? e.message : 'Could not load school UPI settings.');
+            })
+            .finally(() => {
+                if (alive) setUpiLoading(false);
+            });
+        return () => {
+            alive = false;
+        };
+    }, [mode, upiFetchTick]);
+
     const dueNum = parseFloat(dueAmount) || 0;
     const amountNum = parseFloat(amount) || 0;
     const remaining = Math.max(0, dueNum - amountNum);
     const isOverpay = amountNum > dueNum && dueNum > 0;
     const isReady = amountNum > 0 && !isOverpay;
+    const inrAmountStr = parseInrAmount(amount);
+    const upiPayUri =
+        mode === 'UPI' && inrAmountStr && schoolUpiId && schoolPayeeName
+            ? buildUpiPayUri(schoolUpiId, schoolPayeeName, inrAmountStr, remarks)
+            : '';
+    const upiQrReady = mode === 'UPI' && isReady && !!upiPayUri && !upiLoading && !upiLoadError;
+
+    const recordPayment = async () => {
+        const result = await FeesService.collectFee({
+            student_fee_id: feeId,
+            amount: amountNum,
+            payment_method: mode.toLowerCase() as 'cash' | 'upi' | 'cheque',
+            transaction_ref: generateUUID(),
+            remarks,
+        });
+        setPaymentError(null);
+        if (Platform.OS === 'web') {
+            await showSuccess(
+                '✓ Payment Recorded',
+                `Ref: ${result.transaction_ref || (result as any).id}\n\nLedger updated successfully.`,
+                [
+                    {
+                        text: 'Print Receipt',
+                        onPress: async () => {
+                            await generateReceiptPDF({
+                                ...result,
+                                student_name: studentName,
+                                admission_no: admissionNo,
+                                fee_type: feeType,
+                                academic_year: result.academic_year || (result as any).academicYear,
+                                paid_at: new Date().toISOString(),
+                            });
+                        },
+                    },
+                    { text: 'Done' },
+                ],
+            );
+            router.back();
+            return;
+        }
+        alertCompat(
+            '✓ Payment Recorded',
+            `Ref: ${result.transaction_ref || (result as any).id}\n\nLedger updated successfully.`,
+            [
+                {
+                    text: 'Print Receipt',
+                    onPress: async () => {
+                        await generateReceiptPDF({
+                            ...result,
+                            student_name: studentName,
+                            admission_no: admissionNo,
+                            fee_type: feeType,
+                            academic_year: result.academic_year || (result as any).academicYear,
+                            paid_at: new Date().toISOString(),
+                        });
+                        router.back();
+                    },
+                },
+                { text: 'Done', onPress: () => router.back() },
+            ],
+        );
+    };
 
     const handleCollect = async () => {
+        setPaymentError(null);
         if (!amount || isNaN(amountNum) || amountNum <= 0) {
-            Alert.alert('Invalid Amount', 'Please enter a valid amount greater than zero.');
+            const m = 'Please enter a valid amount greater than zero.';
+            setPaymentError(m);
+            alertCompat('Invalid Amount', m);
             return;
         }
         if (!isNaN(dueNum) && amountNum > dueNum) {
-            Alert.alert('Overpayment', `₹${amountNum} exceeds due amount ₹${dueNum}.`);
+            const m = `₹${amountNum} exceeds due amount ₹${dueNum}.`;
+            setPaymentError(m);
+            alertCompat('Overpayment', m);
             return;
         }
         if (amountNum > 1000000) {
-            Alert.alert('Invalid Amount', 'Amount exceeds maximum limit of ₹10,00,000.');
+            const m = 'Amount exceeds maximum limit of ₹10,00,000.';
+            setPaymentError(m);
+            alertCompat('Invalid Amount', m);
             return;
         }
         if (!feeId) {
-            Alert.alert('Error', 'Fee record identifier is missing.');
+            const m = 'Fee record identifier is missing. Go back and open Collect from the fee ledger again.';
+            setPaymentError(m);
+            alertCompat('Error', m);
             return;
         }
 
-        Alert.alert(
-            'Confirm Payment',
-            `Record ₹${amountNum.toLocaleString('en-IN')} via ${mode}?\n\nThis action is permanent and will be logged.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Confirm & Record',
-                    onPress: async () => {
-                        setLoading(true);
-                        try {
-                            const result = await FeesService.collectFee({
-                                student_fee_id: feeId,
-                                amount: amountNum,
-                                payment_method: mode.toLowerCase() as any,
-                                transaction_ref: generateUUID(),
-                                remarks,
-                            });
-                            Alert.alert(
-                                '✓ Payment Recorded',
-                                `Ref: ${result.transaction_ref || result.id}\n\nLedger updated successfully.`,
-                                [
-                                    {
-                                        text: 'Print Receipt',
-                                        onPress: async () => {
-                                            await generateReceiptPDF({
-                                                ...result,
-                                                student_name: studentName,
-                                                admission_no: admissionNo,
-                                                fee_type: feeType,
-                                                paid_at: new Date().toISOString(),
-                                            });
-                                            router.back();
-                                        },
-                                    },
-                                    { text: 'Done', onPress: () => router.back() },
-                                ]
-                            );
-                        } catch (error: any) {
-                            Alert.alert(
-                                'Payment Failed',
-                                error.message || 'Could not process payment. Check backend logs.'
-                            );
-                        } finally {
-                            setLoading(false);
-                        }
-                    },
-                },
-            ]
-        );
+        if (mode === 'UPI') {
+            if (upiLoading) {
+                const m = 'Loading school UPI settings…';
+                setPaymentError(m);
+                return;
+            }
+            if (upiLoadError) {
+                setPaymentError(upiLoadError);
+                return;
+            }
+            if (!schoolUpiId || !schoolPayeeName) {
+                const m =
+                    'School UPI is not configured. Ask an admin to set UPI ID under Admin → UPI fee settings, or use Cash/Cheque.';
+                setPaymentError(m);
+                alertCompat('UPI not configured', m);
+                return;
+            }
+            if (!inrAmountStr) {
+                const m = 'Enter a valid amount for UPI (up to 2 decimal places).';
+                setPaymentError(m);
+                return;
+            }
+            if (!upiPayUri) {
+                const m = 'Could not build UPI payment link. Check amount and school UPI settings.';
+                setPaymentError(m);
+                return;
+            }
+        }
+
+        const confirmMsg =
+            mode === 'UPI'
+                ? `Record ₹${amountNum.toLocaleString('en-IN')} UPI payment to the ledger?\n\nOnly confirm after the payer has completed payment in their UPI app (you should have shown them the QR above).`
+                : `Record ₹${amountNum.toLocaleString('en-IN')} via ${mode}?\n\nThis action is permanent and will be logged.`;
+
+        const confirmed = await showConfirm({
+            title: 'Confirm Payment',
+            message: confirmMsg,
+            confirmText: 'Confirm & Record',
+            cancelText: 'Cancel',
+            type: 'confirm',
+        });
+        if (!confirmed) return;
+        setLoading(true);
+        try {
+            await recordPayment();
+        } catch (error: any) {
+            const msg =
+                error?.message ||
+                (Platform.OS === 'web'
+                    ? 'Could not process payment. Check network and permissions (fees.collect).'
+                    : 'Could not process payment. Check backend logs.');
+            setPaymentError(msg);
+            await showError('Payment Failed', msg);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <View style={styles.container}>
-            <AdminHeader title="Collect Fee" showBackButton={true} />
+            {!shellActive && <AdminHeader title="Collect Fee" showBackButton={true} />}
 
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -303,13 +419,16 @@ export default function CollectFeesScreen() {
                         isOverpay && styles.amountBoxError,
                     ]}>
                         <Text style={styles.rupeeSymbol}>₹</Text>
-                        <TextInput
-                            style={styles.amountInput}
+                        <AppTextInput
+                            style={[ds.inputInChrome, styles.amountInput]}
                             keyboardType="numeric"
                             value={amount}
-                            onChangeText={setAmount}
+                            onChangeText={(t) => {
+                                setPaymentError(null);
+                                setAmount(t);
+                            }}
                             placeholder="0"
-                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#D1D5DB'}
+                            placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
                             onFocus={() => setFocused(true)}
                             onBlur={() => setFocused(false)}
                         />
@@ -340,7 +459,10 @@ export default function CollectFeesScreen() {
                                             styles.chip,
                                             amountNum === val && styles.chipActive,
                                         ]}
-                                        onPress={() => setAmount(String(val))}
+                                        onPress={() => {
+                                            setPaymentError(null);
+                                            setAmount(String(val));
+                                        }}
                                     >
                                         <Text style={[
                                             styles.chipText,
@@ -362,7 +484,10 @@ export default function CollectFeesScreen() {
                                 key={m.id}
                                 item={m}
                                 selected={mode === m.id}
-                                onPress={() => setMode(m.id)}
+                                onPress={() => {
+                                    setPaymentError(null);
+                                    setMode(m.id);
+                                }}
                                 theme={theme}
                                 isDark={isDark}
                             />
@@ -371,13 +496,16 @@ export default function CollectFeesScreen() {
 
                     {/* Remarks */}
                     <Text style={styles.inputLabel}>Remarks</Text>
-                    <TextInput
+                    <AppTextInput
                         style={styles.remarksInput}
                         multiline
                         value={remarks}
-                        onChangeText={setRemarks}
+                        onChangeText={(t) => {
+                            setPaymentError(null);
+                            setRemarks(t);
+                        }}
                         placeholder="e.g. Receipt no. 1234, partial for Q1…"
-                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#D1D5DB'}
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
                     />
                 </Animated.View>
 
@@ -399,10 +527,82 @@ export default function CollectFeesScreen() {
                         </View>
                     )}
 
+                    {mode === 'UPI' && isReady ? (
+                        <View style={styles.upiQrSection}>
+                            <Text style={styles.upiQrTitle}>Pay via UPI</Text>
+                            <Text style={styles.upiQrSub}>
+                                Show this QR to the payer. Amount and note update when you change the fields above.
+                            </Text>
+                            {upiLoading ? (
+                                <View style={styles.upiQrCenter}>
+                                    <ActivityIndicator color="#3B82F6" />
+                                    <Text style={styles.upiQrMuted}>Loading school UPI…</Text>
+                                </View>
+                            ) : upiLoadError ? (
+                                <View style={styles.upiQrWarn}>
+                                    <Text style={styles.upiQrWarnText}>{upiLoadError}</Text>
+                                    <TouchableOpacity onPress={() => setUpiFetchTick((n) => n + 1)} style={{ marginTop: 10 }}>
+                                        <Text style={styles.upiQrLink}>Retry</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => setMode('Cash')}>
+                                        <Text style={[styles.upiQrLink, { marginTop: 6 }]}>Use Cash / Cheque instead</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ) : !schoolUpiId || !schoolPayeeName ? (
+                                <View style={styles.upiQrWarn}>
+                                    <Text style={styles.upiQrWarnText}>
+                                        School UPI is not set. An admin must configure it under Admin → UPI fee settings.
+                                    </Text>
+                                </View>
+                            ) : !inrAmountStr ? (
+                                <Text style={styles.upiQrMuted}>Enter a valid amount to generate the QR.</Text>
+                            ) : (
+                                <>
+                                    <View style={styles.upiQrFrame}>
+                                        <QRCode value={upiPayUri} size={200} color="#0f172a" backgroundColor="#FFFFFF" />
+                                    </View>
+                                    <View style={styles.upiQrMeta}>
+                                        <Text style={styles.upiQrMetaLine}>
+                                            <Text style={styles.upiQrMetaLab}>UPI ID </Text>
+                                            {schoolUpiId}
+                                        </Text>
+                                        <Text style={styles.upiQrMetaLine}>
+                                            <Text style={styles.upiQrMetaLab}>Amount </Text>₹{inrAmountStr}
+                                        </Text>
+                                        {remarks.trim() ? (
+                                            <Text style={styles.upiQrMetaLine} numberOfLines={2}>
+                                                <Text style={styles.upiQrMetaLab}>Note </Text>
+                                                {remarks.trim()}
+                                            </Text>
+                                        ) : null}
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.upiShareBtn}
+                                        onPress={() => Share.share({ message: upiPayUri, title: 'UPI payment' }).catch(() => {})}
+                                    >
+                                        <Text style={styles.upiShareBtnText}>Share UPI link</Text>
+                                    </TouchableOpacity>
+                                    <Text style={styles.upiLedgerHint}>
+                                        After payment appears in the school UPI account, tap the green button below to record it in the fee ledger.
+                                    </Text>
+                                </>
+                            )}
+                        </View>
+                    ) : null}
+
+                    {paymentError ? (
+                        <View style={[styles.errorBanner, { borderColor: isDark ? 'rgba(248,113,113,0.5)' : '#FECACA', backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2' }]}>
+                            <Text style={[styles.errorBannerText, { color: isDark ? '#FECACA' : '#991B1B' }]}>{paymentError}</Text>
+                        </View>
+                    ) : null}
+
                     <TouchableOpacity
-                        style={[styles.payBtn, (!isReady || loading) && styles.payBtnDisabled]}
+                        style={[
+                            styles.payBtn,
+                            (!isReady || loading || (mode === 'UPI' && !upiQrReady)) && styles.payBtnDisabled,
+                        ]}
                         onPress={handleCollect}
-                        disabled={!isReady || loading}
+                        disabled={!isReady || loading || (mode === 'UPI' && !upiQrReady)}
                         activeOpacity={0.85}
                     >
                         {loading ? (
@@ -410,11 +610,15 @@ export default function CollectFeesScreen() {
                         ) : (
                             <View style={styles.payBtnInner}>
                                 <Text style={styles.payBtnText}>
-                                    {isReady
-                                        ? `Collect ₹${amountNum.toLocaleString('en-IN')}`
-                                        : 'Enter Amount to Continue'}
+                                    {!isReady
+                                        ? 'Enter Amount to Continue'
+                                        : mode === 'UPI'
+                                            ? `Record ₹${amountNum.toLocaleString('en-IN')} to ledger`
+                                            : `Collect ₹${amountNum.toLocaleString('en-IN')}`}
                                 </Text>
-                                {isReady && <Text style={styles.payBtnArrow}>→</Text>}
+                                {isReady && (mode !== 'UPI' || upiQrReady) ? (
+                                    <Text style={styles.payBtnArrow}>→</Text>
+                                ) : null}
                             </View>
                         )}
                     </TouchableOpacity>
@@ -665,9 +869,9 @@ const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
 
     // ── Remarks ──
     remarksInput: {
-        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
-        borderWidth: 1.5,
-        borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
         borderRadius: 14,
         padding: 14,
         fontSize: 14,
@@ -723,5 +927,71 @@ const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
         color: 'rgba(255,255,255,0.7)',
         fontSize: 18,
         fontWeight: '600',
+    },
+    errorBanner: {
+        marginBottom: 12,
+        padding: 14,
+        borderRadius: 14,
+        borderWidth: 1,
+    },
+    errorBannerText: {
+        fontSize: 14,
+        lineHeight: 20,
+        fontWeight: '600',
+    },
+    upiQrSection: {
+        marginBottom: 12,
+        padding: 18,
+        borderRadius: 18,
+        backgroundColor: isDark ? '#1C1F2A' : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(245,158,11,0.25)' : '#FDE68A',
+    },
+    upiQrTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: isDark ? '#FBBF24' : '#B45309',
+        marginBottom: 6,
+    },
+    upiQrSub: {
+        fontSize: 13,
+        lineHeight: 19,
+        color: isDark ? 'rgba(255,255,255,0.55)' : '#6B7280',
+        marginBottom: 16,
+    },
+    upiQrCenter: { alignItems: 'center', paddingVertical: 24, gap: 10 },
+    upiQrMuted: { fontSize: 13, color: isDark ? 'rgba(255,255,255,0.45)' : '#6B7280' },
+    upiQrWarn: { paddingVertical: 8 },
+    upiQrWarnText: { fontSize: 13, lineHeight: 20, color: '#F87171', fontWeight: '600' },
+    upiQrLink: { marginTop: 10, fontSize: 13, fontWeight: '700', color: '#3B82F6' },
+    upiQrFrame: {
+        alignSelf: 'center',
+        padding: 14,
+        borderRadius: 16,
+        backgroundColor: '#FFFFFF',
+        marginBottom: 14,
+        ...Platform.select({
+            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8 },
+            android: { elevation: 4 },
+            default: {},
+        }),
+    },
+    upiQrMeta: { marginBottom: 12, gap: 6 },
+    upiQrMetaLine: { fontSize: 13, color: isDark ? '#E5E7EB' : '#374151', fontWeight: '600' },
+    upiQrMetaLab: { fontWeight: '700', color: isDark ? 'rgba(251,191,36,0.9)' : '#B45309' },
+    upiShareBtn: {
+        alignSelf: 'flex-start',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF',
+        marginBottom: 12,
+    },
+    upiShareBtnText: { fontSize: 13, fontWeight: '800', color: '#3B82F6' },
+    upiLedgerHint: {
+        fontSize: 12,
+        lineHeight: 18,
+        color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280',
+        fontStyle: 'italic' as const,
     },
 });

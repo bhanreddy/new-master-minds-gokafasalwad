@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput,
-  StatusBar, Modal, Alert, KeyboardAvoidingView, Platform, ScrollView,
-  Animated as RNAnimated,
-} from 'react-native';
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView,
+  Animated as RNAnimated} from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from 'react-native-reanimated';
@@ -96,9 +99,9 @@ export default function AdminExpenses() {
 
   // --- HANDLERS ---
   const handleAddExpense = async () => {
-    if (!newTitle || !newAmount) { Alert.alert('Validation', 'Please fill in Title and Amount'); return; }
+    if (!newTitle || !newAmount) { alertCompat('Validation', 'Please fill in Title and Amount'); return; }
     const amount = parseFloat(newAmount);
-    if (isNaN(amount) || amount <= 0) { Alert.alert('Validation', 'Invalid amount'); return; }
+    if (isNaN(amount) || amount <= 0) { alertCompat('Validation', 'Invalid amount'); return; }
     setIsSubmitting(true);
     const payload: CreateExpenseRequest = {
       title: newTitle, category: newCategory, amount,
@@ -107,7 +110,7 @@ export default function AdminExpenses() {
     };
     const success = await createExpense(payload);
     setIsSubmitting(false);
-    if (success) { setIsAddModalVisible(false); resetForm(); Alert.alert('Success', 'Expense created successfully'); }
+    if (success) { setIsAddModalVisible(false); resetForm(); alertCompat('Success', 'Expense created successfully'); }
   };
 
   const resetForm = () => {
@@ -115,14 +118,14 @@ export default function AdminExpenses() {
   };
 
   const handleApprove = async (expense: Expense) => {
-    Alert.alert('Confirm Approve', 'Are you sure you want to approve this expense?', [
+    alertCompat('Confirm Approve', 'Are you sure you want to approve this expense?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve', onPress: async () => { const s = await updateStatus(expense.id, 'approved'); if (s) setSelectedExpense(null); } },
     ]);
   };
 
   const handlePay = async (expense: Expense) => {
-    Alert.alert('Confirm Payment', 'Mark this expense as Paid?', [
+    alertCompat('Confirm Payment', 'Mark this expense as Paid?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Mark Paid', onPress: async () => { const s = await updateStatus(expense.id, 'paid'); if (s) setSelectedExpense(null); } },
     ]);
@@ -132,13 +135,13 @@ export default function AdminExpenses() {
 
   const confirmDelete = async () => {
     if (!selectedExpense) return;
-    if (!deleteReason.trim()) { Alert.alert('Required', 'Please provide a reason for deletion.'); return; }
+    if (!deleteReason.trim()) { alertCompat('Required', 'Please provide a reason for deletion.'); return; }
     setDeleting(true);
     try {
       await PolicyService.deleteWithReason('expenses', selectedExpense.id, deleteReason);
       setIsDeleteModalVisible(false); setSelectedExpense(null); setDeleteReason('');
-      fetchExpenses(searchQuery); Alert.alert('Success', 'Expense deleted.');
-    } catch { Alert.alert('Error', 'Failed to delete expense.'); }
+      fetchExpenses(searchQuery); alertCompat('Success', 'Expense deleted.');
+    } catch { alertCompat('Error', 'Failed to delete expense.'); }
     finally { setDeleting(false); }
   };
 
@@ -224,14 +227,14 @@ export default function AdminExpenses() {
       {activeTab === 'list' ? (
         <>
           {/* ── SEARCH ── */}
-          <View style={[styles.searchContainer, searchFocused && styles.searchContainerFocused]}>
+          <View style={[styles.searchContainer, ds.searchBarWrapper, searchFocused && styles.searchContainerFocused]}>
             <Ionicons
               name="search-outline" size={17}
               color={searchFocused ? '#6366F1' : '#9CA3AF'}
               style={styles.searchIcon}
             />
-            <TextInput
-              style={styles.searchInput}
+            <AppTextInput
+              style={[ds.inputInChrome, styles.searchInput]}
               placeholder="Search by title, category..."
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
@@ -340,7 +343,7 @@ export default function AdminExpenses() {
             <View style={styles.fieldSep} />
 
             <Text style={styles.label}>TITLE</Text>
-            <TextInput
+            <AppTextInput
               style={styles.input}
               placeholder="e.g. Lab Equipment"
               placeholderTextColor="#9CA3AF"
@@ -353,7 +356,7 @@ export default function AdminExpenses() {
               <View style={styles.currencyBox}>
                 <Text style={styles.currencyBoxText}>₹</Text>
               </View>
-              <TextInput
+              <AppTextInput
                 style={[styles.input, { flex: 1 }]}
                 placeholder="0.00"
                 placeholderTextColor="#9CA3AF"
@@ -385,7 +388,7 @@ export default function AdminExpenses() {
               DESCRIPTION{' '}
               <Text style={styles.labelOpt}>(optional)</Text>
             </Text>
-            <TextInput
+            <AppTextInput
               style={[styles.input, { height: 72, textAlignVertical: 'top' }]}
               multiline
               placeholder="Any additional details..."
@@ -507,7 +510,7 @@ export default function AdminExpenses() {
             <Text style={styles.deleteSubtitle}>
               This is permanent and will be recorded in the audit log.
             </Text>
-            <TextInput
+            <AppTextInput
               style={[styles.input, { height: 90, textAlignVertical: 'top', marginTop: 16, width: '100%' }]}
               placeholder="Reason (e.g. Unjustified, Budget exceeded)"
               placeholderTextColor="#9CA3AF"
@@ -573,7 +576,7 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     marginHorizontal: 20, marginTop: 14,
     paddingHorizontal: 14, borderRadius: 14,
     height: 50, elevation: 2,
-    borderWidth: 1.5, borderColor: 'transparent',
+    borderWidth: 1.5, borderColor: '#CBD5E1',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06, shadowRadius: 5,

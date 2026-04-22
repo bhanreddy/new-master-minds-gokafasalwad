@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,22 +24,24 @@ export default function PaySlip() {
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [loading, setLoading] = useState(true);
   const {
     user
   } = useAuth();
   useEffect(() => {
-    if (user) {
-      // Priority: Use staff_id if available, fallback to user.id (though backend expects staff_id)
-      const targetId = (user as any).staff_id || user.userId;
-
-      StaffService.getPayslips(targetId).then((data) => {
-
-        setPayslips(data);
-      }).catch(() => {
-
-        Alert.alert('Error', 'Failed to load payslips');
-      });
+    if (!user) {
+      setLoading(false);
+      return;
     }
+    setLoading(true);
+    StaffService.getMyPayslips()
+      .then((data) => {
+        setPayslips(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        alertCompat('Error', 'Failed to load payslips');
+      })
+      .finally(() => setLoading(false));
   }, [user?.userId]);
 
   // Calculate totals dynamically
@@ -83,7 +86,9 @@ export default function PaySlip() {
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Payslips</Text>
       </View>
-      {payslips.length === 0 ? <View style={styles.emptyContainer}>
+      {loading ? <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>Loading payslips…</Text>
+      </View> : payslips.length === 0 ? <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>No payslips found</Text>
       </View> : <View style={styles.listContainer}>
         {payslips.map((item, index) => {

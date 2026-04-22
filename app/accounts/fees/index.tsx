@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+import { styles as ds } from '@/src/theme/styles';
+
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, StatusBar, Pressable, Platform
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Pressable, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AdminHeader from '../../../src/components/AdminHeader';
+import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import Animated, {
   FadeInDown, FadeIn, useAnimatedStyle,
   useSharedValue, withSpring, withTiming, interpolate
@@ -281,6 +284,7 @@ const pillStyles = StyleSheet.create({
 export default function AccountsFees() {
   const { user } = useAuth();
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
 
@@ -384,22 +388,22 @@ export default function AccountsFees() {
         barStyle="light-content"
         backgroundColor={isDark ? '#0F1117' : '#1E293B'}
       />
-      <AdminHeader title="Fee Management" showBackButton />
+      {!shellActive && <AdminHeader title="Fee Management" showBackButton />}
 
       {/* Search bar */}
       <Animated.View
         entering={FadeInDown.duration(400)}
-        style={[styles.searchWrap, searchFocused && styles.searchWrapFocused]}
+        style={[styles.searchWrap, ds.searchBarWrapper, searchFocused && styles.searchWrapFocused]}
       >
         <Ionicons
           name="search"
           size={18}
           color={searchFocused ? '#3B82F6' : (isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF')}
         />
-        <TextInput
-          style={styles.searchInput}
+        <AppTextInput
+          style={[ds.inputInChrome, styles.searchInput]}
           placeholder="Search by name, ID or class…"
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#D1D5DB'}
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
           value={searchQuery}
           onChangeText={setSearchQuery}
           onFocus={() => setSearchFocused(true)}

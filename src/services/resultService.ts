@@ -10,6 +10,7 @@ export interface ExamSummary {
 export interface ExamListEntry {
     id: string;
     name: string;
+    name_te?: string;
     exam_type: string;
     start_date: string;
     end_date: string;
@@ -23,6 +24,8 @@ export interface ExamListEntry {
 
 export interface SubjectResult {
     subject: string;
+    subject_te?: string;
+    name_te?: string;
     marks_obtained: number;
     max_marks: number;
     passing_marks: number;
@@ -34,6 +37,7 @@ export interface SubjectResult {
 export interface StudentResultDetail {
     exam_id: string;
     exam_name: string;
+    exam_name_te?: string;
     exam_type: string;
     subjects: SubjectResult[];
     total_obtained: number;

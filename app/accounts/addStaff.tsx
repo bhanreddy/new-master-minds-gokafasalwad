@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import AppTextInput from '@/src/components/AppTextInput';
+
 import {
-  View, Text, StyleSheet, ScrollView, TextInput,
+  View, Text, StyleSheet, ScrollView,
   TouchableOpacity, StatusBar, KeyboardAvoidingView,
-  Platform, Alert, Pressable, Dimensions,
-} from 'react-native';
+  Platform, Pressable, Dimensions} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -17,9 +18,12 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../src/hooks/useAuth';
 import { StaffService } from '@/src/services/staffService';
+import { ReferenceDataService } from '../../src/services/referenceDataService';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -30,13 +34,31 @@ const SECTION_COLORS = {
   contact: { accent: '#F59E0B', bg_light: '#FFFBEB', bg_dark: '#451A03' },
 };
 
-const DESIGNATION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  '1': { label: 'Principal', icon: 'star-outline', color: '#8B5CF6' },
-  '2': { label: 'Teacher', icon: 'book-outline', color: '#3B82F6' },
-  '3': { label: 'Admin', icon: 'shield-outline', color: '#10B981' },
-  '4': { label: 'Accountant', icon: 'calculator-outline', color: '#F59E0B' },
-  '5': { label: 'Librarian', icon: 'library-outline', color: '#EC4899' },
-  '10': { label: 'Driver', icon: 'car-outline', color: '#EF4444' },
+// Replaced static DESIGNATION_CONFIG with a dynamic stylish generator
+const getDesigStyle = (name: string, id: string) => {
+  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + parseInt(id);
+  const colors = [
+    { color: '#8B5CF6', grad: ['#5B21B6', '#8B5CF6'] as [string, string], icon: 'star-outline' },
+    { color: '#3B82F6', grad: ['#1D4ED8', '#3B82F6'] as [string, string], icon: 'book-outline' },
+    { color: '#10B981', grad: ['#065F46', '#10B981'] as [string, string], icon: 'shield-outline' },
+    { color: '#F59E0B', grad: ['#B45309', '#F59E0B'] as [string, string], icon: 'calculator-outline' },
+    { color: '#EC4899', grad: ['#9D174D', '#EC4899'] as [string, string], icon: 'library-outline' },
+    { color: '#0EA5E9', grad: ['#0369A1', '#0EA5E9'] as [string, string], icon: 'briefcase-outline' },
+    { color: '#EF4444', grad: ['#991B1B', '#EF4444'] as [string, string], icon: 'car-outline' },
+  ];
+  const defaults: Record<string, any> = {
+    'Principal': colors[0],
+    'Vice Principal': colors[1],
+    'Teacher': colors[1],
+    'Senior Teacher': colors[5],
+    'Lab Assistant': colors[2],
+    'Librarian': colors[4],
+    'Clerk': colors[3],
+    'Accountant': colors[3],
+    'Admin': colors[2],
+    'Driver': colors[6]
+  };
+  return defaults[name] || colors[hash % colors.length];
 };
 
 const GENDER_CONFIG: Record<string, { label: string; icon: string; grad: [string, string] }> = {
@@ -46,20 +68,14 @@ const GENDER_CONFIG: Record<string, { label: string; icon: string; grad: [string
 };
 
 // ─── Live Staff Avatar ────────────────────────────────────────────────────────
-const LiveAvatar = ({ firstName, lastName, designationId, isDark }: any) => {
-  const initials = [firstName?.[0], lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?';
-  const des = DESIGNATION_CONFIG[designationId] || DESIGNATION_CONFIG['2'];
+const LiveAvatar = ({ firstName, lastName, designationId, designationName, isDark }: any) => {
+  const fNameStr = firstName || '';
+  const lNameStr = lastName || '';
+  const initials = [fNameStr[0], lNameStr[0]].filter(Boolean).join('').toUpperCase() || '?';
+  const des = getDesigStyle(designationName || 'Staff', designationId?.toString() || '0');
   const gender = GENDER_CONFIG['1'];
 
-  const gradMap: Record<string, [string, string]> = {
-    '1': ['#7C3AED', '#8B5CF6'],
-    '2': ['#1D4ED8', '#3B82F6'],
-    '3': ['#065F46', '#10B981'],
-    '4': ['#92400E', '#F59E0B'],
-    '5': ['#9D174D', '#EC4899'],
-    '10': ['#991B1B', '#EF4444'],
-  };
-  const grad = gradMap[designationId] || gradMap['2'];
+  const grad = des.grad;
 
   return (
     <Animated.View entering={FadeIn.duration(400)} style={avatarSt.wrap}>
@@ -121,7 +137,7 @@ const InputField = ({
             color={isDark ? '#475569' : '#94A3B8'}
           />
         </Animated.View>
-        <TextInput
+        <AppTextInput
           style={[inputSt.input, { color: isDark ? '#E2E8F0' : '#0F172A' }]}
           placeholder={placeholder}
           placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
@@ -148,16 +164,17 @@ const inputSt = StyleSheet.create({
 });
 
 // ─── Designation Selector Card Grid ──────────────────────────────────────────
-const DesignationSelector = ({ value, onChange, isDark }: any) => {
-  const entries = Object.entries(DESIGNATION_CONFIG);
+const DesignationSelector = ({ value, onChange, options, isDark }: any) => {
   return (
     <View style={desSt.group}>
       <Text style={[desSt.label, { color: isDark ? '#64748B' : '#64748B' }]}>
         Designation <Text style={{ color: '#EF4444' }}>*</Text>
       </Text>
       <View style={desSt.grid}>
-        {entries.map(([key, cfg]) => {
+        {options.map((opt: any) => {
+          const key = opt.id.toString();
           const active = value === key;
+          const cfg = getDesigStyle(opt.name, key);
           return (
             <Pressable
               key={key}
@@ -178,7 +195,7 @@ const DesignationSelector = ({ value, onChange, isDark }: any) => {
                 { color: active ? cfg.color : (isDark ? '#64748B' : '#94A3B8') },
                 active && { fontWeight: '800' },
               ]}>
-                {cfg.label}
+                {opt.name}
               </Text>
               {active && (
                 <View style={[desSt.activeDot, { backgroundColor: cfg.color }]} />
@@ -314,7 +331,7 @@ const SalaryField = ({ value, onChange, isDark, accentColor }: any) => {
         <View style={[salSt.prefix, { backgroundColor: isDark ? '#0F172A' : '#E2E8F0' }]}>
           <Text style={[salSt.prefixText, { color: isDark ? '#64748B' : '#475569' }]}>₹</Text>
         </View>
-        <TextInput
+        <AppTextInput
           style={[inputSt.input, { color: isDark ? '#E2E8F0' : '#0F172A', marginLeft: 8 }]}
           placeholder="e.g. 45,000"
           placeholderTextColor={isDark ? '#374151' : '#CBD5E1'}
@@ -343,6 +360,7 @@ const salSt = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AddStaffScreen() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -350,78 +368,118 @@ export default function AddStaffScreen() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(false);
+  const [designations, setDesignations] = useState<any[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [originalEmail, setOriginalEmail] = useState('');
+  const [originalPhone, setOriginalPhone] = useState('');
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', password: '',
-    phone: '', designationId: '2', salary: '', genderId: '1',
+    phone: '', designationId: '', salary: '', genderId: '1',
     staffCode: '', dob: '', joiningDate: new Date().toISOString().split('T')[0],
   });
 
   const update = (key: string, val: string) => setFormData(p => ({ ...p, [key]: val }));
 
   useEffect(() => {
+    let mounted = true;
+    ReferenceDataService.getStaffDesignations().then(data => {
+      if (mounted) {
+        setDesignations(data);
+        if (!formData.designationId && data.length > 0) {
+          update('designationId', data[0].id.toString());
+        }
+      }
+    }).catch(console.error);
+    
     if (id) { setIsEditMode(true); loadUserData(id as string); }
+    return () => { mounted = false; };
   }, [id]);
 
   const loadUserData = async (userId: string) => {
     try {
       const data: any = await StaffService.getById(userId);
       if (data) {
+        const loadedEmail = data.email || '';
+        const loadedPhone = data.phone || '';
         setFormData({
           firstName: data.first_name || '', lastName: data.last_name || '',
-          email: data.email || '', password: '', phone: data.phone || '',
+          email: loadedEmail, password: '', phone: loadedPhone,
           designationId: data.designation_id?.toString() || '2',
           salary: data.salary ? data.salary.toString() : '',
           genderId: data.gender === 'Female' ? '2' : data.gender === 'Other' ? '3' : '1',
           staffCode: data.staff_code || '', dob: data.dob || '',
           joiningDate: data.joining_date || '',
         });
+        // Store originals for auth change detection
+        setOriginalEmail(loadedEmail);
+        setOriginalPhone(loadedPhone);
       }
-    } catch { Alert.alert('Error', 'Failed to load staff data'); }
+    } catch { alertCompat('Error', 'Failed to load staff data'); }
   };
 
   const handleSave = async () => {
     if (!formData.firstName || !formData.lastName || !formData.staffCode || !formData.joiningDate) {
-      Alert.alert('Required Fields', 'Please fill Name, Staff Code, and Joining Date.'); return;
+      alertCompat('Required Fields', 'Please fill Name, Staff Code, and Joining Date.'); return;
     }
     if (!isEditMode && !formData.password) {
-      Alert.alert('Password Required', 'Set a password for the new staff account.'); return;
+      alertCompat('Password Required', 'Set a password for the new staff account.'); return;
+    }
+    // Validate password length if provided (both create and edit)
+    if (formData.password && formData.password.length > 0 && formData.password.length < 6) {
+      alertCompat('Invalid Password', 'Password must be at least 6 characters.'); return;
     }
     setLoading(true);
     try {
-      const payload = {
+      const selectedDesig = designations.find(d => d.id.toString() === formData.designationId);
+      const desigName = selectedDesig?.name?.toLowerCase() || '';
+      
+      let calculatedRole = 'staff';
+      if (desigName === 'principal') calculatedRole = 'principal';
+      else if (desigName.includes('admin')) calculatedRole = 'admin';
+      else if (desigName === 'driver') calculatedRole = 'driver';
+
+      const payload: any = {
         first_name: formData.firstName, last_name: formData.lastName, middle_name: '',
-        email: formData.email, password: formData.password || undefined,
+        email: formData.email, 
         phone: formData.phone, designation_id: parseInt(formData.designationId),
         department: '', salary: formData.salary ? parseFloat(formData.salary) : undefined,
         gender_id: parseInt(formData.genderId), staff_code: formData.staffCode,
         joining_date: formData.joiningDate, dob: formData.dob || undefined,
-        role_code: formData.designationId === '10' ? 'driver' : formData.designationId === '3' ? 'admin' : 'staff',
+        role_code: calculatedRole,
       };
+
+      // Include password: always for create, only if typed for edit
+      if (!isEditMode) {
+        payload.password = formData.password;
+      } else if (formData.password && formData.password.length >= 6) {
+        payload.password = formData.password;
+      }
+
       if (isEditMode) {
-        await StaffService.update(id as string, payload as any);
-        Alert.alert('Updated!', 'Staff record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        const result = await StaffService.update(id as string, payload);
+        // Check for partial success (auth update failed)
+        if ((result as any)?.authError) {
+          alertCompat('Partial Update', `Profile saved, but login credentials failed to update: ${(result as any).authError}`);
+        } else {
+          alertCompat('Updated!', 'Staff record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        }
       } else {
         await StaffService.create(payload);
-        Alert.alert('Created!', 'New staff member added successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        alertCompat('Created!', 'New staff member added successfully.', [{ text: 'OK', onPress: () => router.back() }]);
       }
     } catch (error: any) {
-      Alert.alert('Save Failed', error.message || 'An unexpected error occurred.');
+      alertCompat('Save Failed', error.message || 'An unexpected error occurred.');
     } finally { setLoading(false); }
   };
 
-  const desCfg = DESIGNATION_CONFIG[formData.designationId] || DESIGNATION_CONFIG['2'];
-  const heroGradMap: Record<string, [string, string]> = {
-    '1': ['#5B21B6', '#8B5CF6'], '2': ['#1D4ED8', '#3B82F6'],
-    '3': ['#065F46', '#10B981'], '4': ['#92400E', '#F59E0B'],
-    '5': ['#9D174D', '#EC4899'], '10': ['#991B1B', '#EF4444'],
-  };
-  const heroGrad: [string, string] = heroGradMap[formData.designationId] || ['#1D4ED8', '#3B82F6'];
+  const currentDesigName = designations.find(d => d.id.toString() === formData.designationId)?.name || 'Staff';
+  const desCfg = getDesigStyle(currentDesigName, formData.designationId || '0');
+  const heroGrad: [string, string] = desCfg.grad;
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0F1E' : '#F1F5F9'} />
-      <AdminHeader title={isEditMode ? 'Edit Staff' : 'Add Staff'} showBackButton />
+      {!shellActive && <AdminHeader title={isEditMode ? 'Edit Staff' : 'Add Staff'} showBackButton />}
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView
@@ -449,6 +507,7 @@ export default function AddStaffScreen() {
                 firstName={formData.firstName}
                 lastName={formData.lastName}
                 designationId={formData.designationId}
+                designationName={currentDesigName}
                 isDark={isDark}
               />
 
@@ -466,7 +525,7 @@ export default function AddStaffScreen() {
               {/* Designation live pill */}
               <View style={[styles.desPill, { backgroundColor: desCfg.color + '28', borderColor: desCfg.color + '50' }]}>
                 <Ionicons name={desCfg.icon as any} size={11} color={desCfg.color} />
-                <Text style={[styles.desPillText, { color: desCfg.color }]}>{desCfg.label.toUpperCase()}</Text>
+                <Text style={[styles.desPillText, { color: desCfg.color }]}>{typeof currentDesigName === 'string' ? currentDesigName.toUpperCase() : 'STAFF'}</Text>
               </View>
 
               {/* Mode pill */}
@@ -516,6 +575,7 @@ export default function AddStaffScreen() {
 
             <DesignationSelector
               value={formData.designationId}
+              options={designations}
               onChange={(v: string) => update('designationId', v)}
               isDark={isDark}
             />
@@ -536,10 +596,14 @@ export default function AddStaffScreen() {
             <InputField label="Phone Number" placeholder="+91 98765 43210" value={formData.phone}
               onChangeText={(t: string) => update('phone', t)} keyboardType="phone-pad"
               icon="call-outline" accentColor={SECTION_COLORS.contact.accent} isDark={isDark} />
-            {!isEditMode && (
+            {!isEditMode ? (
               <InputField label="Initial Password" placeholder="Min 6 characters" value={formData.password}
                 onChangeText={(t: string) => update('password', t)} secureTextEntry
                 icon="lock-closed-outline" required accentColor={SECTION_COLORS.contact.accent} isDark={isDark} />
+            ) : (
+              <InputField label="Reset Password" placeholder="Leave empty to keep current" value={formData.password}
+                onChangeText={(t: string) => update('password', t)} secureTextEntry
+                icon="key-outline" accentColor={SECTION_COLORS.contact.accent} isDark={isDark} />
             )}
           </SectionCard>
 

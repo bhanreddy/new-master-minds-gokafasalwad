@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
     View,
     Text,
-    TextInput,
     TouchableOpacity,
     StyleSheet,
     StatusBar,
@@ -11,6 +10,7 @@ import {
     Platform,
     ScrollView,
 } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
 
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -84,7 +84,7 @@ const ForgotPasswordScreen: React.FC = () => {
                         >
                             <View style={styles.inputContainer}>
                                 <MaterialIcons name="alternate-email" size={22} color="#888" style={styles.inputIcon} />
-                                <TextInput
+                                <AppTextInput
                                     style={styles.input}
                                     placeholder="Enter ID or Email"
                                     placeholderTextColor="#B0B0B0"
@@ -203,6 +203,10 @@ const getStyles = (theme: Theme) => StyleSheet.create({
         paddingHorizontal: 30,
         paddingTop: 10,
         paddingBottom: 40,
+        ...Platform.select({
+            web: { alignItems: 'center', maxWidth: 480, alignSelf: 'center', width: '100%' } as any,
+            default: {},
+        }),
     },
     subtitleText: {
         fontSize: 16,
@@ -233,6 +237,14 @@ const getStyles = (theme: Theme) => StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: '#1F2937',
+        height: 52,
+        ...Platform.select({
+            web: {
+                outlineWidth: 0,
+                outlineStyle: 'none',
+            } as any,
+            default: {},
+        }),
     },
     loginButtonContainer: {
         width: '100%',

@@ -1,6 +1,8 @@
 import { supabase } from './supabaseConfig';
-import { api } from './apiClient';
+import { api, APIError } from './apiClient';
 import { PayrollEntry } from '../types/payroll';
+
+export type MarkPayrollPaidResult = { ok: true } | { ok: false; message: string };
 
 export const PayrollService = {
   /**
@@ -48,15 +50,23 @@ export const PayrollService = {
   },
 
   /**
-   * Mark a payroll entry as PAID.
+   * Mark a payroll entry as PAID (Node API). silent: true avoids duplicate alerts; caller shows the message.
    */
-  async markAsPaid(id: string): Promise<boolean> {
+  async markAsPaid(id: string): Promise<MarkPayrollPaidResult> {
     try {
-      await api.put(`/payroll/${id}/pay`);
-      return true;
-    } catch (err) {
-
-      return false;
+      await api.put(`/payroll/${id}/pay`, undefined, { silent: true });
+      return { ok: true };
+    } catch (err: unknown) {
+      const message =
+        err instanceof APIError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to update payment status.';
+      if (__DEV__) {
+        console.warn('[PayrollService.markAsPaid]', id, message);
+      }
+      return { ok: false, message };
     }
   }
 };

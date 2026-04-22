@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
-import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { CustomAlertProvider, ensurePortalRoot } from '../src/components/CustomAlert';
+export { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { validateBuildConfig } from '../src/constants/school';
 import '../src/i18n';
 import { AuthService } from '../src/services/authService';
@@ -8,12 +9,18 @@ import { ThemeProvider, ThemeContext } from '../src/context/ThemeContext';
 import { ThemeProvider as NavThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Platform } from 'react-native';
+import { View, Text, ScrollView, Platform, StyleSheet, Alert } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from '../src/components/CustomToast';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { useNotifications } from '../src/hooks/useNotifications';
 import { useAuthGuard } from '../src/hooks/useAuthGuard';
 import { useNotificationObserver } from '../src/hooks/useNotificationObserver';
 import { AuthGate } from '../src/components/AuthGate';
+import SchoolRibbon from '../src/components/SchoolRibbon';
 import { useSchoolHeader } from '../src/hooks/useSchoolHeader';
+import { notificationManager } from '../src/services/notificationManager';
 
 // NOTE: setNotificationHandler is set once in notificationManager.ts (module-level).
 // NOTE: setBackgroundMessageHandler is registered in index.js (the JS entry point)
@@ -37,6 +44,11 @@ export default function Layout() {
   const [appReady, setAppReady] = useState(false);
   const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [buildConfigError, setBuildConfigError] = useState<string | null>(null);
+
+  // Inject portal root for web (must happen before any alert can fire)
+  useEffect(() => {
+    ensurePortalRoot();
+  }, []);
 
   // Validate build configuration on startup
   useEffect(() => {
@@ -75,6 +87,41 @@ export default function Layout() {
     // Note: scheduleMidnightCheck was removed from AuthService if it existed
   }, []);
 
+  // Initialize notification channels once at app startup
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      notificationManager.createChannels();
+    }
+  }, []);
+
+  // OEM Battery Prompt Check
+  useEffect(() => {
+    const checkBatteryPrompt = async () => {
+      if (Platform.OS !== 'android') return;
+      const shown = await AsyncStorage.getItem('battery_prompt_shown');
+      if (shown !== 'true') {
+        Alert.alert(
+          "Enable Full Notifications",
+          "To receive all alerts on time, please disable battery optimization for SchoolIMS.\n\nGo to: Settings → Battery → SchoolIMS → Don't optimize",
+          [
+            { text: "Later", onPress: () => AsyncStorage.setItem('battery_prompt_shown', 'true') },
+            {
+              text: "Open Settings",
+              onPress: async () => {
+                await AsyncStorage.setItem('battery_prompt_shown', 'true');
+                IntentLauncher.startActivityAsync(
+                  IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                ).catch(() => {});
+              }
+            }
+          ]
+        );
+      }
+    };
+    // Delay to avoid clashing with splash screen / other prompts
+    setTimeout(checkBatteryPrompt, 2000);
+  }, []);
+
   useEffect(() => {
     if (loaded || error) {
       setAppReady(true);
@@ -107,10 +154,12 @@ export default function Layout() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <ThemeSyncWrapper />
-        {showCustomSplash && (
-          <AppSplash onFinish={() => setShowCustomSplash(false)} />
-        )}
+        <CustomAlertProvider>
+          <ThemeSyncWrapper />
+          {showCustomSplash && (
+            <AppSplash onFinish={() => setShowCustomSplash(false)} />
+          )}
+        </CustomAlertProvider>
       </ThemeProvider>
     </AuthProvider>);
 
@@ -120,7 +169,7 @@ function ThemeSyncWrapper() {
   const { theme, isDark } = useContext(ThemeContext);
   const getSchoolHeader = useSchoolHeader();
 
-  // Convert our custom theme to React Navigation theme format
+  // Convert our custom SchoolTheme to React Navigation theme format
   const baseNavTheme = isDark ? DarkTheme : DefaultTheme;
   const navTheme = {
     ...baseNavTheme,
@@ -130,7 +179,7 @@ function ThemeSyncWrapper() {
       primary: theme.colors.primary,
       background: theme.colors.background,
       card: theme.colors.card,
-      text: theme.colors.text,
+      text: theme.colors.textPrimary,
       border: theme.colors.border,
       notification: theme.colors.notification
     }
@@ -138,26 +187,34 @@ function ThemeSyncWrapper() {
 
   return (
     <NavThemeProvider value={navTheme}>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
-      <ErrorBoundary>
-        <AuthGate>
-          <Stack
-            screenOptions={{
-              ...getSchoolHeader(),
-              headerShown: false, // Default to false but provide the options for screens that opt-in
-              animation: 'slide_from_right',
-              contentStyle: { backgroundColor: theme.colors.background }
-            }} />
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
+        <SchoolRibbon />
+        <View style={styles.stackShell}>
+          <AuthGate>
+            <Stack
+              screenOptions={{
+                ...getSchoolHeader(),
+                headerShown: false, // Default to false but provide the options for screens that opt-in
+                animation: 'slide_from_right',
+                contentStyle: { backgroundColor: theme.colors.background }
+              }} />
+          </AuthGate>
+        </View>
+        {/* Auth guard and hooks run AFTER the Stack navigator has mounted */}
+        <NavigationReady />
 
-        </AuthGate>
-      </ErrorBoundary>
-      {/* Auth guard and hooks run AFTER the Stack navigator has mounted */}
-      <NavigationReady />
-
-      {/* Global Animated Splash Screen Overlay removed - now native AnimatedSplash handles this */}
+        <Toast config={toastConfig} />
+        {/* Global Animated Splash Screen Overlay removed - now native AnimatedSplash handles this */}
+      </GestureHandlerRootView>
     </NavThemeProvider>);
 
 }
+
+const styles = StyleSheet.create({
+  gestureRoot: { flex: 1 },
+  stackShell: { flex: 1 },
+});
 
 /**
  * This component runs hooks that depend on React Navigation being fully mounted.
