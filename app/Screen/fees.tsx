@@ -67,7 +67,7 @@ const FeesScreen = () => {
     item,
     index
 
-  }: {item: StudentFee;index: number;}) => {
+  }: { item: StudentFee; index: number; }) => {
     const color = getStatusColor(item.status);
     return <Animated.View entering={FadeInUp.delay(index * 100).duration(500)} style={styles.card}>
       <View style={styles.cardHeader}>
@@ -163,7 +163,7 @@ export default FeesScreen;
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   loadingContainer: {
     flex: 1,

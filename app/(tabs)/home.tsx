@@ -1,63 +1,95 @@
 /**
- * HomeScreen.tsx — Premium v5
+ * HomeScreen.tsx — Premium v7.1
  * ─────────────────────────────────────────────────────────
- * ✦ Feature cards: FULL vivid gradient backgrounds — colourful,
- *   instantly recognisable, premium glass footer strip
- * ✦ Single top announcement (fresh ≤ 36h above grid, stale below)
- * ✦ Complete dark ↔ light mode on every element
- * ✦ Rural-friendly: bold labels, large icons, clear contrast
+ * v7.1 changes:
+ * • FeatureCard: subtitle removed, height 168 → 128, icon chip 44 → 50, glyph 22 → 24
+ * • homeTabs data preserved (subtitleKey untouched for future reuse)
+ * ─────────────────────────────────────────────────────────
+ * Design philosophy (rural-UX aware):
+ * ✦ COLOR = RECOGNITION — full-color tiles for low-literacy / quick-glance scanning
+ * ✦ Premium comes from EXECUTION:
+ *   • 3-stop jewel-tone gradients
+ *   • Top-left radial light highlight
+ *   • Frosted-glass icon chip with 1px inner border
+ *   • Colored shadow tight + dark ambient layered
+ *
+ * REQUIRES: npx expo install expo-blur
  */
 
-import React, { useState, useCallback, useMemo, useEffect, createContext, useContext } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  RefreshControl,
-  Pressable,
-  Platform,
-} from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  Dimensions,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, {
-  FadeInUp,
+  Extrapolation,
   FadeInDown,
-  useSharedValue,
+  FadeInUp,
+  interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from '@/src/utils/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 
+import HeaderCard from '../../src/components/HeaderCard';
+import LogoLoader from '../../src/components/LogoLoader';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
-import HeaderCard from '../../src/components/HeaderCard';
 import { useAuth } from '../../src/hooks/useAuth';
-import { StudentService, StudentDashboardResponse } from '../../src/services/studentService';
 import { useStudentQuery } from '../../src/hooks/useStudentQuery';
-import { AttendanceSummary } from '../../src/types/models';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
-import LogoLoader from '../../src/components/LogoLoader';
+import { StudentDashboardResponse } from '../../src/services/studentService';
+import { AttendanceSummary } from '../../src/types/models';
 import { t_field } from '../../src/utils/lang';
 
 const { width } = Dimensions.get('window');
 const H_PAD = 20;
-
-/** Lazy-loaded react-native-svg module (home-only decorative Ring/DotGrid). */
-type ReactNativeSvgModule = typeof import('react-native-svg');
-const HomeSvgContext = createContext<ReactNativeSvgModule | null>(null);
 const GAP = 12;
 const CARD_W = (width - H_PAD * 2 - GAP) / 2;
 
 /* ═══════════════════════════════════════════
-   TYPES + DATA
+   DESIGN TOKENS
+═══════════════════════════════════════════ */
+const tokens = {
+  radius: { sm: 8, md: 12, lg: 16, xl: 20, '2xl': 24, '3xl': 32 },
+  space: { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32, 10: 40 },
+} as const;
+
+const palette = (isDark: boolean) => ({
+  bg: isDark ? '#06080E' : '#EEF2F8',
+  surface: isDark ? '#0D1117' : '#FFFFFF',
+  surfaceElevated: isDark ? '#141822' : '#FFFFFF',
+  border: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
+  borderStrong: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)',
+  textPrimary: isDark ? 'rgba(255,255,255,0.94)' : '#0F172A',
+  textSecondary: isDark ? 'rgba(255,255,255,0.62)' : '#475569',
+  textTertiary: isDark ? 'rgba(255,255,255,0.38)' : '#94A3B8',
+  accent: '#6366F1',
+  success: isDark ? '#34D399' : '#059669',
+  warning: isDark ? '#FBBF24' : '#D97706',
+  danger: isDark ? '#F87171' : '#DC2626',
+});
+
+type ReactNativeSvgModule = typeof import('react-native-svg');
+const HomeSvgContext = createContext<ReactNativeSvgModule | null>(null);
+
+/* ═══════════════════════════════════════════
+   TYPES + DATA — JEWEL-TONE 3-STOP PALETTE
 ═══════════════════════════════════════════ */
 interface HomeTab {
   key: string;
@@ -65,66 +97,60 @@ interface HomeTab {
   translationKey?: string;
   subtitleKey: string;
   ionIcon: keyof typeof Ionicons.glyphMap;
-  grad: [string, string];   // vivid gradient pair
-  shadowColor: string;             // colored drop shadow
+  /** 3-stop gradient: [deep edge, mid base, light top-highlight] */
+  grad: [string, string, string];
+  /** Single shadow hue — keep tight, don't oversaturate */
+  shadow: string;
 }
 
 const homeTabs: HomeTab[] = [
   {
     key: 'messages',
-    subtitleKey: 'dashboard.featureSubtitles.school_updates',
     translationKey: 'announcements.title', title: 'Announcements',
+    subtitleKey: 'dashboard.featureSubtitles.school_updates',
     ionIcon: 'megaphone-outline',
-    grad: ['#4F7FE8', '#7B54E0'], shadowColor: '#4F7FE8',
+    grad: ['#3730A3', '#4F46E5', '#818CF8'],
+    shadow: '#4F46E5',
   },
   {
     key: 'complaints',
-    subtitleKey: 'dashboard.featureSubtitles.raise_concern',
     translationKey: 'complaints.title', title: 'Complaints',
+    subtitleKey: 'dashboard.featureSubtitles.raise_concern',
     ionIcon: 'alert-circle-outline',
-    grad: ['#F05656', '#C62B2B'], shadowColor: '#F05656',
+    grad: ['#991B1B', '#DC2626', '#F87171'],
+    shadow: '#DC2626',
   },
   {
     key: 'lifeValues',
-    subtitleKey: 'dashboard.featureSubtitles.character_growth',
     translationKey: 'lifeValues', title: 'Life Values',
+    subtitleKey: 'dashboard.featureSubtitles.character_growth',
     ionIcon: 'heart-outline',
-    grad: ['#12BB78', '#0A8E58'], shadowColor: '#12BB78',
-  },
-  {
-    key: 'hostel',
-    subtitleKey: 'dashboard.featureSubtitles.stay_services',
-    translationKey: 'hostel', title: 'Hostel',
-    ionIcon: 'bed-outline',
-    grad: ['#0DB8AC', '#098F84'], shadowColor: '#0DB8AC',
+    grad: ['#065F46', '#10B981', '#6EE7B7'],
+    shadow: '#10B981',
   },
   {
     key: 'busmap',
-    subtitleKey: 'dashboard.featureSubtitles.live_bus',
     translationKey: 'admin_dashboard.transport', title: 'Transport',
+    subtitleKey: 'dashboard.featureSubtitles.live_bus',
     ionIcon: 'bus-outline',
-    grad: ['#F5A623', '#D4820F'], shadowColor: '#F5A623',
+    grad: ['#B45309', '#F59E0B', '#FCD34D'],
+    shadow: '#F59E0B',
   },
   {
     key: 'projects',
-    subtitleKey: 'dashboard.featureSubtitles.lab_innovation',
     translationKey: 'scienceProjects', title: 'Science Projects',
+    subtitleKey: 'dashboard.featureSubtitles.lab_innovation',
     ionIcon: 'flask-outline',
-    grad: ['#17A8CC', '#0F7FA0'], shadowColor: '#17A8CC',
-  },
-  {
-    key: 'test',
-    subtitleKey: 'dashboard.featureSubtitles.assessments',
-    translationKey: 'exams', title: 'Exams',
-    ionIcon: 'document-text-outline',
-    grad: ['#A855F7', '#7C3AED'], shadowColor: '#A855F7',
+    grad: ['#075985', '#0EA5E9', '#7DD3FC'],
+    shadow: '#0EA5E9',
   },
   {
     key: 'profile',
-    subtitleKey: 'dashboard.featureSubtitles.personal_details',
     translationKey: 'menu.profile', title: 'Student Profile',
+    subtitleKey: 'dashboard.featureSubtitles.personal_details',
     ionIcon: 'person-circle-outline',
-    grad: ['#6366F1', '#4338CA'], shadowColor: '#6366F1',
+    grad: ['#9F1239', '#E11D48', '#FDA4AF'],
+    shadow: '#E11D48',
   },
 ];
 
@@ -140,29 +166,32 @@ const routeMap: Record<string, string> = {
 };
 
 /* ═══════════════════════════════════════════
-   CIRCULAR RING
+   RING
 ═══════════════════════════════════════════ */
-const Ring = ({ pct, size = 86, sw = 7, color = '#22D3EE', isDark }: {
-  pct: number; size?: number; sw?: number; color?: string; isDark: boolean;
+const Ring = ({ pct, size = 104, sw = 8, color, isDark }: {
+  pct: number; size?: number; sw?: number; color: string; isDark: boolean;
 }) => {
   const svgMod = useContext(HomeSvgContext);
   const r = (size - sw) / 2;
   const circ = 2 * Math.PI * r;
+  const animatedPct = useSharedValue(0);
+  useEffect(() => { animatedPct.value = withTiming(pct, { duration: 900 }); }, [pct]);
+
   if (!svgMod) {
-    return <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: sw, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }} />;
+    return <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: sw, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }} />;
   }
   const Svg = svgMod.default;
   const { Circle, Defs, LinearGradient: SvgGrad, Stop } = svgMod;
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
       <Defs>
-        <SvgGrad id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
+        <SvgGrad id="rg" x1="0%" y1="0%" x2="100%" y2="100%">
           <Stop offset="0%" stopColor={color} stopOpacity="1" />
           <Stop offset="100%" stopColor="#6366F1" stopOpacity="1" />
         </SvgGrad>
       </Defs>
       <Circle cx={size / 2} cy={size / 2} r={r}
-        stroke={isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)'}
+        stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)'}
         strokeWidth={sw} fill="none" />
       <Circle cx={size / 2} cy={size / 2} r={r}
         stroke="url(#rg)" strokeWidth={sw} fill="none"
@@ -174,21 +203,21 @@ const Ring = ({ pct, size = 86, sw = 7, color = '#22D3EE', isDark }: {
 };
 
 /* ═══════════════════════════════════════════
-   DOT GRID TEXTURE
+   NOISE TEXTURE — hero only
 ═══════════════════════════════════════════ */
-const DotGrid = ({ color, size }: { color: string; size: number }) => {
+const Noise = ({ opacity = 0.08 }: { opacity?: number }) => {
   const svgMod = useContext(HomeSvgContext);
   if (!svgMod) return null;
   const Svg = svgMod.default;
-  const { Circle, Defs, Pattern, Rect } = svgMod;
+  const { Defs, Filter, FeTurbulence, Rect } = svgMod as any;
   return (
-    <Svg width={size} height={size} style={StyleSheet.absoluteFillObject}>
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <Defs>
-        <Pattern id="d" x="0" y="0" width="18" height="18" patternUnits="userSpaceOnUse">
-          <Circle cx="2" cy="2" r="1.4" fill={color} />
-        </Pattern>
+        <Filter id="n">
+          <FeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
+        </Filter>
       </Defs>
-      <Rect width={size} height={size} fill="url(#d)" />
+      <Rect width="100%" height="100%" filter="url(#n)" opacity={opacity} />
     </Svg>
   );
 };
@@ -198,30 +227,24 @@ const DotGrid = ({ color, size }: { color: string; size: number }) => {
 ═══════════════════════════════════════════ */
 const S_CFG = {
   present: { bg: 'rgba(16,185,129,0.14)', dot: '#10B981', dk: '#34D399', lt: '#059669' },
-  absent: { bg: 'rgba(239,68,68,0.13)', dot: '#EF4444', dk: '#F87171', lt: '#DC2626' },
-  late: { bg: 'rgba(245,158,11,0.13)', dot: '#F59E0B', dk: '#FCD34D', lt: '#D97706' },
-  half_day: { bg: 'rgba(249,115,22,0.13)', dot: '#F97316', dk: '#FB923C', lt: '#EA580C' },
+  absent: { bg: 'rgba(239,68,68,0.14)', dot: '#EF4444', dk: '#F87171', lt: '#DC2626' },
+  late: { bg: 'rgba(245,158,11,0.14)', dot: '#F59E0B', dk: '#FBBF24', lt: '#D97706' },
+  half_day: { bg: 'rgba(249,115,22,0.14)', dot: '#F97316', dk: '#FB923C', lt: '#EA580C' },
 } as const;
 
 const STATUS_I18N: Record<string, keyof typeof S_CFG | 'not_marked'> = {
-  present: 'present',
-  absent: 'absent',
-  late: 'late',
-  half_day: 'half_day',
-  not_marked: 'not_marked',
+  present: 'present', absent: 'absent', late: 'late', half_day: 'half_day', not_marked: 'not_marked',
 };
 
 const StatusPill = ({ status, isDark }: { status: string; isDark: boolean }) => {
   const { t } = useTranslation();
   const sk = STATUS_I18N[status] ?? 'not_marked';
-  const c =
-    sk === 'not_marked'
-      ? { bg: 'rgba(148,163,184,0.1)', dot: '#94A3B8', dk: '#94A3B8', lt: '#64748B' }
-      : (S_CFG as any)[sk];
-  const label =
-    sk === 'not_marked'
-      ? t('studentHome.attendanceStatus.not_marked')
-      : t(`studentHome.attendanceStatus.${sk}`);
+  const c = sk === 'not_marked'
+    ? { bg: isDark ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.14)', dot: '#94A3B8', dk: '#CBD5E1', lt: '#64748B' }
+    : (S_CFG as any)[sk];
+  const label = sk === 'not_marked'
+    ? t('studentHome.attendanceStatus.not_marked')
+    : t(`studentHome.attendanceStatus.${sk}`);
   return (
     <View style={[sp.pill, { backgroundColor: c.bg }]}>
       <View style={[sp.dot, { backgroundColor: c.dot }]} />
@@ -230,81 +253,274 @@ const StatusPill = ({ status, isDark }: { status: string; isDark: boolean }) => 
   );
 };
 const sp = StyleSheet.create({
-  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 50, gap: 7, alignSelf: 'flex-start' },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  lbl: { fontSize: 13, fontWeight: '700', letterSpacing: 0.15 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 50, gap: 6, alignSelf: 'flex-start' },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  lbl: { fontSize: 12, fontWeight: '700', letterSpacing: 0.15 },
 });
 
 /* ═══════════════════════════════════════════
-   FEATURE CARD — colourful gradient, premium
+   FEATURE CARD — v7.1: SLIM, ICON-FORWARD
+   • Subtitle removed (icon + title carry meaning)
+   • Height 168 → 128 (~25% shorter)
+   • Icon chip 44 → 50, glyph 22 → 24 (icon = anchor)
+   • All v7 depth tricks preserved
 ═══════════════════════════════════════════ */
 const FeatureCard = ({ tab, isDark, onPress }: {
-  tab: HomeTab & { title: string; subtitle: string }; isDark: boolean; onPress: () => void;
+  tab: HomeTab & { title: string }; isDark: boolean; onPress: () => void;
 }) => {
-  const { t } = useTranslation();
   const scale = useSharedValue(1);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const pressGlow = useSharedValue(0);
+
+  const animCard = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animGlow = useAnimatedStyle(() => ({ opacity: pressGlow.value }));
 
   return (
-    <Animated.View style={[{ width: CARD_W }, anim]}>
+    <Animated.View style={[{ width: CARD_W }, animCard]}>
       <Pressable
         onPressIn={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          scale.value = withSpring(0.93, { damping: 11, mass: 0.38 });
+          scale.value = withSpring(0.95, { damping: 14, mass: 0.4 });
+          pressGlow.value = withTiming(1, { duration: 160 });
         }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 11, mass: 0.38 }); }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 14, mass: 0.4 });
+          pressGlow.value = withTiming(0, { duration: 240 });
+        }}
+        onPress={onPress}
+      >
+        <View style={[fc.shell, {
+          ...Platform.select({
+            ios: {
+              shadowColor: tab.shadow,
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: isDark ? 0.35 : 0.30,
+              shadowRadius: 18,
+            },
+            android: { elevation: 8 },
+          }),
+        }]}>
+          {/* Base 3-stop gradient — diagonal for depth */}
+          <LinearGradient
+            colors={tab.grad}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 1, y: 0 }}
+            style={fc.card}
+          >
+            {/* Top-left RADIAL light highlight */}
+            <View style={fc.lightHighlight} pointerEvents="none" />
+
+            {/* Bottom-right soft darkening */}
+            <View style={fc.softShade} pointerEvents="none" />
+
+            {/* 1px inner highlight along top edge */}
+            <View style={fc.innerEdge} pointerEvents="none" />
+
+            {/* Press state glow */}
+            <Animated.View
+              pointerEvents="none"
+              style={[fc.pressGlow, animGlow]}
+            />
+
+            {/* Header row: icon chip + arrow */}
+            <View style={fc.headerRow}>
+              <View style={fc.iconChipWrap}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 28 : 0}
+                  tint="light"
+                  style={fc.iconChipBlur}
+                >
+                  <View style={fc.iconChipInner}>
+                    <Ionicons name={tab.ionIcon} size={24} color="#fff" />
+                  </View>
+                </BlurView>
+              </View>
+
+              <View style={fc.arrowChip}>
+                <Ionicons name="arrow-forward" size={13} color="#fff" />
+              </View>
+            </View>
+
+            {/* Title only */}
+            <Text style={fc.title} numberOfLines={2}>{tab.title}</Text>
+          </LinearGradient>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+};
+
+const fc = StyleSheet.create({
+  shell: {
+    borderRadius: tokens.radius['xl'],
+    backgroundColor: 'transparent',
+  },
+  card: {
+    borderRadius: tokens.radius['xl'],
+    padding: tokens.space[4],
+    minHeight: 128,
+    overflow: 'hidden',
+    justifyContent: 'space-between',
+  },
+  lightHighlight: {
+    position: 'absolute',
+    top: -30, left: -30,
+    width: 110, height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    opacity: 0.9,
+  },
+  softShade: {
+    position: 'absolute',
+    bottom: -40, right: -40,
+    width: 110, height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  innerEdge: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.30)',
+  },
+  pressGlow: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: tokens.radius['xl'],
+  },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.space[2],
+  },
+  iconChipWrap: {
+    borderRadius: tokens.radius.md + 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  iconChipBlur: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconChipInner: {
+    width: 50, height: 50,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.24)',
+    borderRadius: tokens.radius.md + 2,
+  },
+  arrowChip: {
+    width: 28, height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+
+  title: {
+    fontSize: 16.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    lineHeight: 21,
+    color: '#FFFFFF',
+  },
+});
+
+/* ═══════════════════════════════════════════
+   ANNOUNCEMENT CARD — warm for fresh, muted for stale
+═══════════════════════════════════════════ */
+const AnnouncementCard = ({
+  notice, isDark, isFresh, onPress,
+}: {
+  notice: any; isDark: boolean; isFresh: boolean; onPress: () => void;
+}) => {
+  const { t } = useTranslation();
+  const P = palette(isDark);
+  const scale = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const accent = isFresh ? '#F97316' : (isDark ? '#64748B' : '#94A3B8');
+  const timeAgo = notice.created_at ? getTimeAgo(new Date(notice.created_at), t) : '';
+  const noticeFallback = t('studentHome.noticeFallback');
+
+  const warmBg = isFresh
+    ? (isDark ? ['#1F1408', '#0E0A06'] as const : ['#FFF7ED', '#FFEDD5'] as const)
+    : (isDark ? ['#0D1117', '#0D1117'] as const : ['#FFFFFF', '#F8FAFC'] as const);
+
+  return (
+    <Animated.View style={anim}>
+      <Pressable
+        onPressIn={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          scale.value = withSpring(0.98, { damping: 14 });
+        }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 14 }); }}
         onPress={onPress}
       >
         <LinearGradient
-          colors={isDark
-            /* dark: slightly muted so it doesn't scream */
-            ? [tab.grad[0] + 'DD', tab.grad[1] + 'BB']
-            /* light: full vivid */
-            : [tab.grad[0], tab.grad[1]]
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[
-            fc.card,
-            {
-              // coloured shadow matching the card hue
-              ...Platform.select({
-                ios: {
-                  shadowColor: tab.shadowColor,
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: isDark ? 0.55 : 0.42,
-                  shadowRadius: 16,
-                },
-                android: { elevation: 10 },
-              }),
-            },
-          ]}
+          colors={warmBg}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={[an.card, {
+            borderColor: isFresh ? (isDark ? 'rgba(249,115,22,0.28)' : 'rgba(249,115,22,0.30)') : P.border,
+            ...Platform.select({
+              ios: {
+                shadowColor: isFresh ? '#F97316' : (isDark ? '#000' : '#0F172A'),
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: isFresh ? (isDark ? 0.22 : 0.15) : (isDark ? 0.28 : 0.05),
+                shadowRadius: 14,
+              },
+              android: { elevation: isFresh ? 6 : 3 },
+            }),
+          }]}
         >
-          {/* White dot texture overlay */}
-          <DotGrid color="rgba(255,255,255,0.10)" size={CARD_W} />
+          {/* Left accent bar */}
+          <LinearGradient
+            colors={[accent, accent + '55']}
+            start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
+            style={an.leftBar}
+          />
 
-          {/* Bright top-right bloom */}
-          <View style={fc.bloom} />
+          <View style={an.body}>
+            {/* Meta row */}
+            <View style={an.metaRow}>
+              {isFresh ? (
+                <View style={[an.livePill, { backgroundColor: 'rgba(249,115,22,0.16)' }]}>
+                  <View style={[an.liveDot, { backgroundColor: '#F97316' }]} />
+                  <Text style={an.liveTxt}>{t('studentHome.tagNewAnnouncement').toUpperCase()}</Text>
+                </View>
+              ) : (
+                <View style={[an.stalePill, { backgroundColor: isDark ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.16)' }]}>
+                  <Ionicons name="megaphone" size={10} color={P.textTertiary} />
+                  <Text style={[an.announceTag, { color: P.textTertiary }]}>
+                    {t('studentHome.tagAnnouncement').toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={[an.timeAgo, { color: P.textTertiary }]}>{timeAgo}</Text>
+            </View>
 
-          {/* Bottom-left deep shadow blob */}
-          <View style={[fc.shadowBlob, { backgroundColor: tab.grad[1] + '99' }]} />
+            {/* Title */}
+            <Text style={[an.title, { color: P.textPrimary }]} numberOfLines={1}>
+              {t_field(notice.title, notice.title_te) || noticeFallback}
+            </Text>
 
-          {/* Icon — frosted circle */}
-          <View style={fc.iconCircle}>
-            <Ionicons name={tab.ionIcon} size={28} color="#fff" />
-          </View>
+            {/* Body */}
+            <Text style={[an.excerpt, { color: P.textSecondary }]} numberOfLines={2}>
+              {t_field(notice.content, notice.content_te)}
+            </Text>
 
-          {/* Title */}
-          <Text style={fc.title} numberOfLines={2}>{tab.title}</Text>
-
-          {/* Subtitle */}
-          <Text style={fc.subtitle} numberOfLines={1}>{tab.subtitle}</Text>
-
-          {/* Bottom glass action strip */}
-          <View style={fc.glassStrip}>
-            <Text style={fc.openLabel}>{t('studentHome.open')}</Text>
-            <View style={fc.arrowCircle}>
-              <Ionicons name="arrow-forward" size={14} color="#fff" />
+            {/* Read more */}
+            <View style={an.readRow}>
+              <Text style={[an.readMore, { color: accent }]}>
+                {t('studentHome.readFullAnnouncement')}
+              </Text>
+              <View style={[an.readArrow, { backgroundColor: accent + (isDark ? '24' : '20') }]}>
+                <Ionicons name="arrow-forward" size={12} color={accent} />
+              </View>
             </View>
           </View>
         </LinearGradient>
@@ -313,209 +529,80 @@ const FeatureCard = ({ tab, isDark, onPress }: {
   );
 };
 
-const fc = StyleSheet.create({
+const an = StyleSheet.create({
   card: {
-    borderRadius: 22,
-    padding: 16,
-    minHeight: 158,
-    overflow: 'hidden',
-    gap: 8,
-  },
-  bloom: {
-    position: 'absolute', top: -30, right: -30,
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  shadowBlob: {
-    position: 'absolute', bottom: -20, left: -20,
-    width: 80, height: 80, borderRadius: 40,
-  },
-  iconCircle: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.38)',
-  },
-  title: {
-    fontSize: 15, fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.05, lineHeight: 20,
-    flex: 1,
-    textShadowColor: 'rgba(0,0,0,0.22)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  subtitle: {
-    fontSize: 11.5, fontWeight: '600',
-    color: 'rgba(255,255,255,0.70)',
-    lineHeight: 15,
-  },
-  glassStrip: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 'auto' as any,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 14,
-    paddingHorizontal: 12, paddingVertical: 7,
+    flexDirection: 'row',
+    borderRadius: tokens.radius['xl'],
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.30)',
+    overflow: 'hidden',
   },
-  openLabel: {
-    fontSize: 11, fontWeight: '800',
-    color: '#FFFFFF', letterSpacing: 1,
-    textTransform: 'uppercase',
+  leftBar: { width: 4 },
+  body: { flex: 1, padding: tokens.space[4], gap: tokens.space[2] },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  livePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6,
   },
-  arrowCircle: {
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+  stalePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6,
+  },
+  liveDot: { width: 5, height: 5, borderRadius: 3 },
+  liveTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: '#F97316' },
+  announceTag: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  timeAgo: { fontSize: 11, fontWeight: '600' },
+  title: { fontSize: 15.5, fontWeight: '800', letterSpacing: -0.1, lineHeight: 21, marginTop: 2 },
+  excerpt: { fontSize: 13, fontWeight: '500', lineHeight: 19 },
+  readRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  readMore: { fontSize: 12.5, fontWeight: '800', letterSpacing: 0.1 },
+  readArrow: {
+    width: 22, height: 22, borderRadius: 11,
     justifyContent: 'center', alignItems: 'center',
   },
 });
 
-/* ═══════════════════════════════════════════
-   ANNOUNCEMENT CARD
-═══════════════════════════════════════════ */
-const AnnouncementCard = ({
-  notice, isDark, isFresh, onPress,
-}: {
-  notice: any; isDark: boolean; isFresh: boolean; onPress: () => void;
-}) => {
-  const { t, i18n } = useTranslation();
-  const scale = useSharedValue(1);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const accent = isFresh ? '#F97316' : '#64748B';
-  const localeTag = i18n.language?.startsWith('te') ? 'te-IN' : 'en-IN';
-  const date = notice.created_at
-    ? new Date(notice.created_at).toLocaleDateString(localeTag, { day: 'numeric', month: 'short', year: 'numeric' })
-    : '';
-  const tagLabel = isFresh ? t('studentHome.tagNewAnnouncement') : t('studentHome.tagAnnouncement');
-  const noticeFallback = t('studentHome.noticeFallback');
+function getTimeAgo(date: Date, t: any): string {
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hrs = Math.floor(mins / 60);
+  const days = Math.floor(hrs / 24);
+  if (mins < 1) return t('studentHome.justNow') || 'just now';
+  if (mins < 60) return `${mins}m`;
+  if (hrs < 24) return `${hrs}h`;
+  if (days < 7) return `${days}d`;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
 
+/* ═══════════════════════════════════════════
+   SECTION LABEL — with colored dot (scan anchor)
+═══════════════════════════════════════════ */
+const SectionLabel = ({ text, isDark, accent = '#6366F1', badge }: {
+  text: string; isDark: boolean; accent?: string; badge?: string;
+}) => {
+  const P = palette(isDark);
   return (
-    <Animated.View style={anim}>
-      <Pressable
-        onPressIn={() => { scale.value = withSpring(0.97, { damping: 14 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 14 }); }}
-        onPress={onPress}
-      >
-        {isDark ? (
-          <View style={[an.darkCard, { borderColor: accent + '38' }]}>
-            <View style={[an.bgBlob, { backgroundColor: accent + '10' }]} />
-            <View style={an.inner}>
-              <View style={an.topRow}>
-                <View style={[an.tag, { backgroundColor: accent + '22' }]}>
-                  {isFresh && <View style={[an.liveDot, { backgroundColor: accent }]} />}
-                  <Text style={[an.tagTxt, { color: accent }]}>
-                    {isFresh ? `📣 ${tagLabel}` : `📋 ${tagLabel}`}
-                  </Text>
-                </View>
-                <Text style={an.darkDate}>{date}</Text>
-              </View>
-              <Text style={an.darkTitle} numberOfLines={1}>{t_field(notice.title, notice.title_te) || noticeFallback}</Text>
-              <Text style={an.darkBody} numberOfLines={2}>{t_field(notice.content, notice.content_te)}</Text>
-              <View style={[an.footer, { borderTopColor: 'rgba(255,255,255,0.07)' }]}>
-                <Text style={[an.readMore, { color: accent }]}>{t('studentHome.readFullAnnouncement')}</Text>
-                <Ionicons name="arrow-forward-circle" size={18} color={accent} />
-              </View>
-            </View>
-            <LinearGradient
-              colors={[accent, accent + '40']}
-              start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-              style={an.leftBar}
-            />
-          </View>
-        ) : (
-          <LinearGradient
-            colors={isFresh ? ['#FFF7ED', '#FFEDD5'] : ['#F8FAFC', '#F1F5F9']}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[an.lightCard, { borderColor: accent + '32' }]}
-          >
-            <View style={an.inner}>
-              <View style={an.topRow}>
-                <View style={[an.tag, { backgroundColor: accent + '18' }]}>
-                  {isFresh && <View style={[an.liveDot, { backgroundColor: accent }]} />}
-                  <Text style={[an.tagTxt, { color: accent }]}>
-                    {isFresh ? `📣 ${tagLabel}` : `📋 ${tagLabel}`}
-                  </Text>
-                </View>
-                <Text style={[an.darkDate, { color: '#94A3B8' }]}>{date}</Text>
-              </View>
-              <Text style={[an.darkTitle, { color: '#0F172A' }]} numberOfLines={1}>{t_field(notice.title, notice.title_te) || noticeFallback}</Text>
-              <Text style={[an.darkBody, { color: '#475569' }]} numberOfLines={2}>{t_field(notice.content, notice.content_te)}</Text>
-              <View style={[an.footer, { borderTopColor: 'rgba(0,0,0,0.06)' }]}>
-                <Text style={[an.readMore, { color: accent }]}>{t('studentHome.readFullAnnouncement')}</Text>
-                <Ionicons name="arrow-forward-circle" size={18} color={accent} />
-              </View>
-            </View>
-            <LinearGradient
-              colors={[accent, accent + '40']}
-              start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-              style={an.leftBar}
-            />
-          </LinearGradient>
-        )}
-      </Pressable>
-    </Animated.View>
+    <View style={sl.row}>
+      <View style={sl.leadBlock}>
+        <View style={[sl.dot, { backgroundColor: accent }]} />
+        <View style={[sl.dotGlow, { backgroundColor: accent, opacity: 0.25 }]} />
+      </View>
+      <Text style={[sl.text, { color: P.textTertiary }]}>{text}</Text>
+      {badge && (
+        <View style={[sl.badge, { backgroundColor: accent + (isDark ? '24' : '1A') }]}>
+          <Text style={[sl.badgeTxt, { color: accent }]}>{badge}</Text>
+        </View>
+      )}
+    </View>
   );
 };
-
-const an = StyleSheet.create({
-  darkCard: {
-    backgroundColor: '#0D0F16', borderRadius: 20, borderWidth: 1, overflow: 'hidden',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16 },
-      android: { elevation: 8 },
-    }),
-  },
-  lightCard: {
-    borderRadius: 20, borderWidth: 1, overflow: 'hidden',
-    ...Platform.select({
-      ios: { shadowColor: '#F97316', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 },
-      android: { elevation: 4 },
-    }),
-  },
-  bgBlob: { position: 'absolute', top: 0, right: 0, width: 160, height: 120, borderBottomLeftRadius: 120 },
-  inner: { padding: 18, gap: 9 },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tag: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  liveDot: { width: 6, height: 6, borderRadius: 3 },
-  tagTxt: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
-  darkDate: { fontSize: 11, color: 'rgba(255,255,255,0.3)', fontWeight: '500' },
-  darkTitle: { fontSize: 15.5, fontWeight: '800', color: 'rgba(255,255,255,0.95)', letterSpacing: 0.1, lineHeight: 22 },
-  darkBody: { fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 19 },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, marginTop: 2 },
-  readMore: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
-  leftBar: { position: 'absolute', top: 16, bottom: 16, left: 0, width: 4, borderRadius: 2 },
-});
-
-/* ═══════════════════════════════════════════
-   SECTION LABEL
-═══════════════════════════════════════════ */
-const SectionLabel = ({
-  text, isDark, accent = '#22D3EE', badge,
-}: {
-  text: string; isDark: boolean; accent?: string; badge?: string;
-}) => (
-  <View style={[sl.row, {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.68)',
-    borderColor: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(255,255,255,0.7)',
-  }]}>
-    <LinearGradient colors={[accent, accent + '55']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={sl.bar} />
-    <Text style={[sl.text, { color: isDark ? 'rgba(255,255,255,0.48)' : '#64748B' }]}>{text}</Text>
-    {badge && (
-      <View style={[sl.badge, { backgroundColor: accent + (isDark ? '22' : '18') }]}>
-        <Text style={[sl.badgeTxt, { color: accent }]}>{badge}</Text>
-      </View>
-    )}
-  </View>
-);
 const sl = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 14, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
-  bar: { width: 3, height: 17, borderRadius: 3 },
-  text: { flex: 1, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.8 },
-  badge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
-  badgeTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: tokens.space[3], paddingHorizontal: 2 },
+  leadBlock: { width: 6, height: 6, justifyContent: 'center', alignItems: 'center' },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  dotGlow: { position: 'absolute', width: 14, height: 14, borderRadius: 7 },
+  text: { flex: 1, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.6 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  badgeTxt: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 });
 
 /* ═══════════════════════════════════════════
@@ -523,82 +610,58 @@ const sl = StyleSheet.create({
 ═══════════════════════════════════════════ */
 const TeacherCard = ({ name, role, isDark }: { name: string; role: string; isDark: boolean }) => {
   const { t } = useTranslation();
-  const contact = t('studentHome.teacherContact');
-  return isDark ? (
-    <View style={tc.darkCard}>
-      <DotGrid color="rgba(129,140,248,0.11)" size={width} />
-      <View style={tc.row}>
-        <LinearGradient colors={['#818CF8', '#5B21B6']} style={tc.avatar}>
-          <Ionicons name="person" size={22} color="#fff" />
-        </LinearGradient>
-        <View style={{ flex: 1 }}>
-          <Text style={tc.darkName}>{name}</Text>
-          <Text style={tc.darkRole}>{role}</Text>
-        </View>
-        <View style={tc.contactBtn}>
-          <LinearGradient
-            colors={['rgba(129,140,248,0.22)', 'rgba(129,140,248,0.08)']}
-            style={tc.contactGrad}
-          >
-            <Ionicons name="mail-outline" size={14} color="#818CF8" />
-            <Text style={tc.contactTxt}>{contact}</Text>
-          </LinearGradient>
-        </View>
+  const P = palette(isDark);
+  return (
+    <View style={[tc.card, {
+      backgroundColor: P.surfaceElevated,
+      borderColor: P.border,
+      ...Platform.select({
+        ios: { shadowColor: isDark ? '#000' : '#6366F1', shadowOffset: { width: 0, height: 6 }, shadowOpacity: isDark ? 0.28 : 0.10, shadowRadius: 14 },
+        android: { elevation: isDark ? 5 : 3 },
+      }),
+    }]}>
+      <LinearGradient
+        colors={['#4F46E5', '#6366F1', '#818CF8']}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }}
+        style={tc.avatar}
+      >
+        <View style={tc.avatarHighlight} />
+        <Ionicons name="person" size={22} color="#fff" />
+      </LinearGradient>
+      <View style={{ flex: 1 }}>
+        <Text style={[tc.name, { color: P.textPrimary }]} numberOfLines={1}>{name}</Text>
+        <Text style={[tc.role, { color: P.textTertiary }]} numberOfLines={1}>{role}</Text>
       </View>
-      <LinearGradient colors={['#818CF8', '#5B21B6']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={tc.leftBar} />
-    </View>
-  ) : (
-    <View style={tc.lightCard}>
-      <View style={[tc.lightTint, { backgroundColor: '#EEF2FF' }]} />
-      <View style={tc.row}>
-        <LinearGradient colors={['#818CF8', '#5B21B6']} style={tc.avatar}>
-          <Ionicons name="person" size={22} color="#fff" />
-        </LinearGradient>
-        <View style={{ flex: 1 }}>
-          <Text style={[tc.darkName, { color: '#0F172A' }]}>{name}</Text>
-          <Text style={[tc.darkRole, { color: '#94A3B8' }]}>{role}</Text>
-        </View>
-        <Pressable style={tc.lightContactBtn}>
-          <Ionicons name="mail-outline" size={13} color="#818CF8" />
-          <Text style={tc.contactTxt}>{contact}</Text>
-        </Pressable>
-      </View>
-      <LinearGradient colors={['#818CF8', '#5B21B6']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={tc.leftBar} />
+      <Pressable style={[tc.contactBtn, { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.12)' }]}>
+        <Ionicons name="mail-outline" size={13} color={isDark ? '#A5B4FC' : '#6366F1'} />
+        <Text style={[tc.contactTxt, { color: isDark ? '#A5B4FC' : '#6366F1' }]}>{t('studentHome.teacherContact')}</Text>
+      </Pressable>
     </View>
   );
 };
-
 const tc = StyleSheet.create({
-  darkCard: {
-    backgroundColor: '#0D0F16', borderRadius: 20, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(129,140,248,0.2)',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14 },
-      android: { elevation: 6 },
-    }),
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: tokens.space[3],
+    padding: tokens.space[4], borderRadius: tokens.radius['xl'], borderWidth: 1,
   },
-  lightCard: {
-    backgroundColor: '#FFF', borderRadius: 20, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
-    ...Platform.select({
-      ios: { shadowColor: '#818CF8', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12 },
-      android: { elevation: 4 },
-    }),
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarHighlight: {
+    position: 'absolute', top: -14, left: -14,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
-  lightTint: { position: 'absolute', top: 0, right: 0, width: 120, height: 100, borderBottomLeftRadius: 120, opacity: 0.5 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 18 },
-  avatar: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
-  darkName: { fontSize: 15.5, fontWeight: '800', color: 'rgba(255,255,255,0.92)', letterSpacing: 0.1, marginBottom: 3 },
-  darkRole: { fontSize: 12, color: 'rgba(255,255,255,0.38)', fontWeight: '500' },
-  contactBtn: { overflow: 'hidden', borderRadius: 20 },
-  contactGrad: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  lightContactBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(129,140,248,0.1)' },
-  contactTxt: { fontSize: 12, color: '#818CF8', fontWeight: '700' },
-  leftBar: { position: 'absolute', top: 14, bottom: 14, left: 0, width: 4, borderRadius: 2 },
+  name: { fontSize: 15, fontWeight: '800', letterSpacing: -0.1, marginBottom: 2 },
+  role: { fontSize: 12, fontWeight: '500' },
+  contactBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: tokens.radius.md,
+  },
+  contactTxt: { fontSize: 12, fontWeight: '700' },
 });
 
 /* ═══════════════════════════════════════════
-   SNAPSHOT CARD
+   SNAPSHOT CARD — HERO
 ═══════════════════════════════════════════ */
 const SnapshotCard = ({
   pct, attColor, todayStatus, presentDays, totalDays, isDark, onPress,
@@ -607,158 +670,137 @@ const SnapshotCard = ({
   presentDays: number; totalDays: number; isDark: boolean; onPress: () => void;
 }) => {
   const { t } = useTranslation();
+  const P = palette(isDark);
   const scale = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const chips = [
-    { n: presentDays, c: isDark ? '#34D399' : '#059669', l: t('studentHome.chipPresent'), k: 'p' },
-    { n: totalDays - presentDays, c: isDark ? '#F87171' : '#DC2626', l: t('studentHome.chipAbsent'), k: 'a' },
-    { n: totalDays, c: isDark ? '#94A3B8' : '#64748B', l: t('studentHome.chipTotal'), k: 't' },
-  ];
+  const absent = Math.max(0, totalDays - presentDays);
 
   return (
     <Animated.View style={anim}>
       <Pressable
-        onPressIn={() => { scale.value = withSpring(0.975, { damping: 14 }); }}
+        onPressIn={() => { scale.value = withSpring(0.985, { damping: 14 }); }}
         onPressOut={() => { scale.value = withSpring(1, { damping: 14 }); }}
         onPress={onPress}
       >
-        {isDark ? (
-          <View style={sn.darkCard}>
-            <DotGrid color="rgba(34,211,238,0.065)" size={width} />
-            <View style={sn.header}>
-              <View style={sn.labelRow}>
-                <View style={[sn.pulse, { backgroundColor: attColor }]} />
-                <Text style={sn.darkLbl}>{t('studentHome.todaysSnapshot')}</Text>
+        <View style={[sn.card, {
+          backgroundColor: P.surfaceElevated,
+          borderColor: P.border,
+          ...Platform.select({
+            ios: {
+              shadowColor: isDark ? '#000' : attColor,
+              shadowOffset: { width: 0, height: isDark ? 10 : 8 },
+              shadowOpacity: isDark ? 0.45 : 0.14,
+              shadowRadius: isDark ? 22 : 20,
+            },
+            android: { elevation: isDark ? 10 : 5 },
+          }),
+        }]}>
+          {/* Soft radial glow behind ring */}
+          <View style={[sn.glow, { backgroundColor: attColor + (isDark ? '2A' : '18') }]} />
+
+          {/* Header */}
+          <View style={sn.header}>
+            <View style={sn.headerLeft}>
+              <View style={[sn.livePulseOuter, { backgroundColor: attColor + '2A' }]}>
+                <View style={[sn.livePulse, { backgroundColor: attColor }]} />
               </View>
-              <View style={sn.viewRow}>
-                <Text style={sn.viewTxt}>{t('studentHome.attendanceLink')}</Text>
-                <Ionicons name="chevron-forward" size={13} color="#475569" />
-              </View>
+              <Text style={[sn.headerLbl, { color: P.textSecondary }]}>
+                {t('studentHome.todaysSnapshot')}
+              </Text>
             </View>
-            <View style={sn.metrics}>
-              <View style={sn.ringCol}>
-                <View style={sn.ringWrap}>
-                  <Ring pct={pct} size={86} sw={7} color={attColor} isDark />
-                  <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={[sn.ringPct, { color: attColor }]}>{pct}%</Text>
-                    <Text style={sn.ringSub}>{t('studentHome.overall')}</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={sn.divDark} />
-              <View style={sn.rightCol}>
-                <Text style={sn.darkSubLbl}>{t('studentHome.todaysStatus')}</Text>
-                <StatusPill status={todayStatus} isDark />
-                <View style={sn.chipRow}>
-                  {chips.map(ch => (
-                    <View key={ch.k} style={sn.darkChip}>
-                      <Text style={[sn.chipNum, { color: ch.c }]}>{ch.n}</Text>
-                      <Text style={sn.darkChipLbl}>{ch.l}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+            <View style={sn.headerRight}>
+              <Text style={[sn.viewTxt, { color: P.textTertiary }]}>
+                {t('studentHome.attendanceLink')}
+              </Text>
+              <Ionicons name="chevron-forward" size={13} color={P.textTertiary} />
             </View>
-            <LinearGradient
-              colors={[attColor + '00', attColor + '40', attColor + '00']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={sn.bottomLine}
-            />
           </View>
-        ) : (
-          <LinearGradient colors={['#FFFFFF', '#F0F9FF']} style={sn.lightCard}>
-            <View style={sn.header}>
-              <View style={sn.labelRow}>
-                <View style={[sn.pulse, { backgroundColor: attColor }]} />
-                <Text style={[sn.darkLbl, { color: '#475569' }]}>{t('studentHome.todaysSnapshot')}</Text>
-              </View>
-              <View style={sn.viewRow}>
-                <Text style={[sn.viewTxt, { color: '#94A3B8' }]}>{t('studentHome.attendanceLink')}</Text>
-                <Ionicons name="chevron-forward" size={13} color="#CBD5E1" />
+
+          {/* Main content */}
+          <View style={sn.content}>
+            <View style={sn.ringWrap}>
+              <Ring pct={pct} size={108} sw={8} color={attColor} isDark={isDark} />
+              <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={[sn.ringPct, { color: attColor }]}>{pct}</Text>
+                <Text style={[sn.ringUnit, { color: P.textTertiary }]}>PERCENT</Text>
               </View>
             </View>
-            <View style={sn.metrics}>
-              <View style={sn.ringCol}>
-                <View style={sn.ringWrap}>
-                  <Ring pct={pct} size={86} sw={7} color={attColor} isDark={false} />
-                  <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={[sn.ringPct, { color: attColor }]}>{pct}%</Text>
-                    <Text style={[sn.ringSub, { color: '#94A3B8' }]}>{t('studentHome.overall')}</Text>
-                  </View>
+
+            <View style={sn.statsCol}>
+              <Text style={[sn.statLbl, { color: P.textTertiary }]}>
+                {t('studentHome.todaysStatus')}
+              </Text>
+              <StatusPill status={todayStatus} isDark={isDark} />
+
+              <View style={[sn.divider, { backgroundColor: P.border }]} />
+
+              <View style={sn.statsRow}>
+                <View style={sn.statItem}>
+                  <Text style={[sn.statNum, { color: P.success }]}>{presentDays}</Text>
+                  <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipPresent')}</Text>
                 </View>
-              </View>
-              <View style={sn.divLight} />
-              <View style={sn.rightCol}>
-                <Text style={[sn.darkSubLbl, { color: '#94A3B8' }]}>{t('studentHome.todaysStatus')}</Text>
-                <StatusPill status={todayStatus} isDark={false} />
-                <View style={sn.chipRow}>
-                  {chips.map(ch => (
-                    <View key={ch.k} style={sn.lightChip}>
-                      <Text style={[sn.chipNum, { color: ch.c }]}>{ch.n}</Text>
-                      <Text style={[sn.darkChipLbl, { color: '#94A3B8' }]}>{ch.l}</Text>
-                    </View>
-                  ))}
+                <View style={[sn.vDiv, { backgroundColor: P.border }]} />
+                <View style={sn.statItem}>
+                  <Text style={[sn.statNum, { color: P.danger }]}>{absent}</Text>
+                  <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipAbsent')}</Text>
+                </View>
+                <View style={[sn.vDiv, { backgroundColor: P.border }]} />
+                <View style={sn.statItem}>
+                  <Text style={[sn.statNum, { color: P.textPrimary }]}>{totalDays}</Text>
+                  <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipTotal')}</Text>
                 </View>
               </View>
             </View>
-            <LinearGradient
-              colors={[attColor + '00', attColor + '30', attColor + '00']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={sn.bottomLine}
-            />
-          </LinearGradient>
-        )}
+          </View>
+        </View>
       </Pressable>
     </Animated.View>
   );
 };
 
 const sn = StyleSheet.create({
-  darkCard: {
-    backgroundColor: '#0A0C12', borderRadius: 24, borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)', overflow: 'hidden', padding: 20,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.45, shadowRadius: 20 },
-      android: { elevation: 10 },
-    }),
+  card: {
+    borderRadius: tokens.radius['2xl'],
+    borderWidth: 1,
+    padding: tokens.space[5],
+    overflow: 'hidden',
   },
-  lightCard: {
-    borderRadius: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)',
-    overflow: 'hidden', padding: 20,
-    ...Platform.select({
-      ios: { shadowColor: '#0EA5E9', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.1, shadowRadius: 16 },
-      android: { elevation: 5 },
-    }),
+  glow: {
+    position: 'absolute',
+    top: 40, left: -40,
+    width: 220, height: 220,
+    borderRadius: 110,
+    opacity: 0.5,
   },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  pulse: { width: 8, height: 8, borderRadius: 4 },
-  darkLbl: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.2 },
-  viewRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  viewTxt: { fontSize: 12, fontWeight: '600', color: '#475569' },
-  metrics: { flexDirection: 'row', alignItems: 'center' },
-  ringCol: { alignItems: 'center' },
-  ringWrap: { width: 86, height: 86, justifyContent: 'center', alignItems: 'center' },
-  ringPct: { fontSize: 22, fontWeight: '900', letterSpacing: -0.8, lineHeight: 26 },
-  ringSub: { fontSize: 9, fontWeight: '600', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 0.6 },
-  divDark: { width: 1, height: 88, backgroundColor: 'rgba(255,255,255,0.06)', marginHorizontal: 20 },
-  divLight: { width: 1, height: 88, backgroundColor: 'rgba(0,0,0,0.06)', marginHorizontal: 20 },
-  rightCol: { flex: 1, gap: 10 },
-  darkSubLbl: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 1 },
-  chipRow: { flexDirection: 'row', gap: 6, marginTop: 2 },
-  darkChip: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, paddingVertical: 8, alignItems: 'center', gap: 2 },
-  lightChip: { flex: 1, backgroundColor: 'rgba(0,0,0,0.04)', borderRadius: 10, paddingVertical: 8, alignItems: 'center', gap: 2 },
-  chipNum: { fontSize: 16, fontWeight: '900', letterSpacing: -0.4 },
-  darkChipLbl: { fontSize: 8.5, fontWeight: '700', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', letterSpacing: 0.5 },
-  bottomLine: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: tokens.space[5] },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  livePulseOuter: { width: 14, height: 14, borderRadius: 7, justifyContent: 'center', alignItems: 'center' },
+  livePulse: { width: 7, height: 7, borderRadius: 4 },
+  headerLbl: { fontSize: 13, fontWeight: '700', letterSpacing: 0.15 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  viewTxt: { fontSize: 11, fontWeight: '600' },
+
+  content: { flexDirection: 'row', alignItems: 'center', gap: tokens.space[5] },
+  ringWrap: { width: 108, height: 108, justifyContent: 'center', alignItems: 'center' },
+  ringPct: { fontSize: 32, fontWeight: '900', letterSpacing: -1.4, lineHeight: 34 },
+  ringUnit: { fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 2 },
+
+  statsCol: { flex: 1, gap: tokens.space[2] },
+  statLbl: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 },
+  divider: { height: 1, marginVertical: tokens.space[2] },
+  statsRow: { flexDirection: 'row', alignItems: 'center' },
+  statItem: { flex: 1, alignItems: 'center', gap: 2 },
+  statNum: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  statKey: { fontSize: 9.5, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
+  vDiv: { width: 1, height: 28 },
 });
 
 /* ═══════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════ */
 const HomeScreen = () => {
-  const { theme, isDark } = useTheme();
-  const S = React.useMemo(() => getStyles(isDark), [isDark]);
+  const { isDark } = useTheme();
+  const P = palette(isDark);
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -766,9 +808,7 @@ const HomeScreen = () => {
   const isStudent = user?.role?.code === 'student';
 
   const [svgMod, setSvgMod] = useState<ReactNativeSvgModule | null>(null);
-  useEffect(() => {
-    void import('react-native-svg').then(setSvgMod);
-  }, []);
+  useEffect(() => { void import('react-native-svg').then(setSvgMod); }, []);
 
   const [refreshing, setRefreshing] = useState(false);
   const { data: dash, refetch } = useStudentQuery<StudentDashboardResponse>(
@@ -791,12 +831,8 @@ const HomeScreen = () => {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try { await refetch(); } finally { setRefreshing(false); }
   }, [refetch]);
 
   const nav = (key: string) => {
@@ -808,22 +844,33 @@ const HomeScreen = () => {
   const total = Number(attendanceStats?.total || 0);
   const present = Number(attendanceStats?.present || 0);
   const pct = total > 0 ? Math.round((present / total) * 100) : 0;
-  const attClr = pct >= 85 ? '#22D3EE' : pct >= 70 ? '#FBBF24' : '#F87171';
+  const attClr = pct >= 85 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444';
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: e => { scrollY.value = e.contentOffset.y; } });
 
-  /* 36-hour notice rule */
+  const heroParallax = useAnimatedStyle(() => ({
+    transform: [{
+      translateY: interpolate(scrollY.value, [-200, 0, 200], [-100, 0, 60], Extrapolation.CLAMP),
+    }],
+    opacity: interpolate(scrollY.value, [0, 120, 260], [1, 0.82, 0.4], Extrapolation.CLAMP),
+  }));
+  const greetingStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 80], [1, 0], Extrapolation.CLAMP),
+    transform: [{
+      translateY: interpolate(scrollY.value, [0, 120], [0, -20], Extrapolation.CLAMP),
+    }],
+  }));
+
   const FRESH = 36 * 60 * 60 * 1000;
   const isFresh = (n: any) => !!n?.created_at && Date.now() - new Date(n.created_at).getTime() < FRESH;
   const freshNotices = notices.filter(isFresh);
   const staleNotices = notices.filter(n => !isFresh(n));
-  const topNotice = freshNotices[0] ?? null;   // single fresh notice above grid
-  const belowNotice = topNotice ? staleNotices[0] ?? null : staleNotices[0] ?? null;
+  const topNotice = freshNotices[0] ?? null;
+  const belowNotice = topNotice ? (staleNotices[0] ?? null) : (staleNotices[0] ?? null);
 
   const hr = new Date().getHours();
-  const gStr =
-    hr < 12 ? t('dashboard.good_morning') : hr < 17 ? t('dashboard.good_afternoon') : t('dashboard.good_evening');
+  const gStr = hr < 12 ? t('dashboard.good_morning') : hr < 17 ? t('dashboard.good_afternoon') : t('dashboard.good_evening');
   const gIco = hr < 12 ? '☀️' : hr < 17 ? '🌤️' : '🌙';
 
   const classSec = useMemo(() => {
@@ -834,163 +881,185 @@ const HomeScreen = () => {
     return `${cn} · ${t('studentHome.sectionPrefix')} ${sec}`.trim();
   }, [student, t]);
 
-  const bg = isDark ? '#060810' : '#E8EEF6';
-  const heroBg = isDark ? '#07080F' : '#1C3557';
-
   return (
     <HomeSvgContext.Provider value={svgMod}>
-    <ScreenLayout>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor="transparent" translucent />
-      <StudentHeader scrollY={scrollY} />
+      <ScreenLayout>
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor="transparent" translucent />
+        <StudentHeader scrollY={scrollY} />
 
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={[S.scroll, { backgroundColor: bg }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing} onRefresh={onRefresh}
-            tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent"
-          />
-        }
-      >
-        {refreshing && <View style={S.loaderRow}><LogoLoader size={28} /></View>}
-
-        {/* ── HERO ── */}
-        <View style={[S.hero, { backgroundColor: heroBg, paddingTop: Math.max(insets.top, 36) + 60 }]}>
-          <View style={S.meshLayer} pointerEvents="none">
-            <View style={[S.orb, { width: 300, height: 300, top: -80, left: -80, backgroundColor: '#1E40AF', opacity: 0.28 }]} />
-            <View style={[S.orb, { width: 220, height: 220, top: 10, right: -50, backgroundColor: '#6D28D9', opacity: 0.22 }]} />
-            <View style={[S.orb, { width: 180, height: 180, bottom: -30, left: '25%' as any, backgroundColor: '#0369A1', opacity: 0.2 }]} />
-          </View>
-          <Animated.View entering={FadeInDown.delay(40).duration(600).springify()} style={S.greetRow}>
-            <Text style={S.greetEmoji}>{gIco}</Text>
-            <Text style={S.greetTxt}>{gStr}</Text>
-          </Animated.View>
-          <HeaderCard
-            studentName={student?.display_name || user?.displayName || t('studentHome.studentFallback')}
-            classSec={classSec}
-            rollNo={student?.current_enrollment?.roll_number || 'N/A'}
-          />
-        </View>
-
-        {/* ── BODY ── */}
-        <LinearGradient
-          colors={isDark
-            ? ['#060810', '#0A111E', '#060810']
-            : ['#EDF2F8', '#E6EEF8', '#EDF2F8']
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[S.scroll, { backgroundColor: P.bg }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing} onRefresh={onRefresh}
+              tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent"
+            />
           }
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={S.body}
         >
-          {/* 1. Snapshot */}
-          <Animated.View entering={FadeInUp.delay(160).duration(700).springify()}>
-            <SnapshotCard
-              pct={pct} attColor={attClr}
-              todayStatus={todaysStatus}
-              presentDays={present} totalDays={total}
-              isDark={isDark}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/Screen/attendance');
-              }}
-            />
-          </Animated.View>
+          {refreshing && <View style={S.loaderRow}><LogoLoader size={28} /></View>}
 
-          {/* 2. Fresh notice ABOVE grid */}
-          {topNotice && (
-            <Animated.View entering={FadeInUp.delay(240).duration(700).springify()}>
-              <SectionLabel
-                text={t('studentHome.latestAnnouncement')}
-                isDark={isDark}
-                accent="#F97316"
-                badge={t('studentHome.badgeNew')}
-              />
-              <AnnouncementCard notice={topNotice} isDark={isDark} isFresh onPress={() => nav('messages')} />
+          {/* ── HERO ── */}
+          <Animated.View style={[
+            S.hero,
+            { paddingTop: Math.max(insets.top, 36) + 60 },
+            heroParallax,
+          ]}>
+            <LinearGradient
+              colors={isDark
+                ? ['#0A0E1A', '#0F1629', '#0A0E1A']
+                : ['#1E3A5F', '#2A4E7C', '#1E3A5F']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={S.heroGlow} />
+            <View style={S.heroWarmGlow} />
+            <Noise opacity={isDark ? 0.08 : 0.05} />
+
+            <Animated.View style={[S.greetRow, greetingStyle]} entering={FadeInDown.delay(40).duration(600)}>
+              <Text style={S.greetEmoji}>{gIco}</Text>
+              <Text style={S.greetTxt}>{gStr}</Text>
             </Animated.View>
-          )}
 
-          {/* 3. Quick Actions grid */}
-          <Animated.View entering={FadeInUp.delay(310).duration(700).springify()}>
-            <SectionLabel
-              text={t('dashboard.quick_actions')}
-              isDark={isDark}
-              accent={isDark ? '#38BDF8' : '#3B82F6'}
-            />
-            <View style={S.grid}>
-              {homeTabs.map((item, i) => (
-                <Animated.View key={item.key} entering={FadeInUp.delay(340 + i * 38).duration(560).springify()}>
-                  <FeatureCard
-                    tab={{
-                      ...item,
-                      title: item.translationKey ? (t(item.translationKey) as string) : item.title,
-                      subtitle: t(item.subtitleKey),
-                    }}
-                    isDark={isDark}
-                    onPress={() => nav(item.key)}
-                  />
-                </Animated.View>
-              ))}
-            </View>
-          </Animated.View>
-
-          {/* 4. Class Teacher */}
-          <Animated.View entering={FadeInUp.delay(460).duration(700).springify()}>
-            <SectionLabel text={t('studentHome.academicAdvisor')} isDark={isDark} accent="#818CF8" />
-            <TeacherCard
-              name={student?.current_enrollment?.class_teacher || t('studentHome.notAssigned')}
-              role={t('common.class_teacher')}
-              isDark={isDark}
+            <HeaderCard
+              studentName={student?.display_name || user?.displayName || t('studentHome.studentFallback')}
+              classSec={classSec}
+              rollNo={student?.current_enrollment?.roll_number || 'N/A'}
             />
           </Animated.View>
 
-          {/* 5. Stale / fallback notice BELOW grid */}
-          {belowNotice && (
-            <Animated.View entering={FadeInUp.delay(520).duration(700).springify()}>
-              <SectionLabel
-                text={topNotice ? t('studentHome.previousUpdate') : t('studentHome.recentUpdate')}
+          {/* ── BODY ── */}
+          <View style={[S.body, {
+            backgroundColor: P.bg,
+            borderColor: P.border,
+          }]}>
+            {/* 1. Snapshot — HERO */}
+            <Animated.View entering={FadeInUp.delay(160).duration(700).springify()}>
+              <SnapshotCard
+                pct={pct} attColor={attClr}
+                todayStatus={todaysStatus}
+                presentDays={present} totalDays={total}
                 isDark={isDark}
-                accent="#64748B"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  router.push('/Screen/attendance');
+                }}
               />
-              <AnnouncementCard notice={belowNotice} isDark={isDark} isFresh={false} onPress={() => nav('messages')} />
             </Animated.View>
-          )}
-        </LinearGradient>
-      </Animated.ScrollView>
-    </ScreenLayout>
+
+            {/* 2. Fresh notice */}
+            {topNotice && (
+              <Animated.View entering={FadeInUp.delay(240).duration(700).springify()}>
+                <SectionLabel
+                  text={t('studentHome.latestAnnouncement')}
+                  isDark={isDark}
+                  accent="#F97316"
+                  badge={t('studentHome.badgeNew')}
+                />
+                <AnnouncementCard notice={topNotice} isDark={isDark} isFresh onPress={() => nav('messages')} />
+              </Animated.View>
+            )}
+
+            {/* 3. Quick Actions grid */}
+            <Animated.View entering={FadeInUp.delay(310).duration(700).springify()}>
+              <SectionLabel
+                text={t('dashboard.quick_actions')}
+                isDark={isDark}
+                accent="#6366F1"
+              />
+              <View style={S.grid}>
+                {homeTabs.map((item, i) => (
+                  <Animated.View key={item.key} entering={FadeInUp.delay(340 + i * 34).duration(540).springify()}>
+                    <FeatureCard
+                      tab={{
+                        ...item,
+                        title: item.translationKey ? (t(item.translationKey) as string) : item.title,
+                      }}
+                      isDark={isDark}
+                      onPress={() => nav(item.key)}
+                    />
+                  </Animated.View>
+                ))}
+              </View>
+            </Animated.View>
+
+            {/* 4. Class Teacher */}
+            <Animated.View entering={FadeInUp.delay(460).duration(700).springify()}>
+              <SectionLabel text={t('studentHome.academicAdvisor')} isDark={isDark} accent="#818CF8" />
+              <TeacherCard
+                name={student?.current_enrollment?.class_teacher || t('studentHome.notAssigned')}
+                role={t('common.class_teacher')}
+                isDark={isDark}
+              />
+            </Animated.View>
+
+            {/* 5. Older notice */}
+            {belowNotice && (
+              <Animated.View entering={FadeInUp.delay(520).duration(700).springify()}>
+                <SectionLabel
+                  text={topNotice ? t('studentHome.previousUpdate') : t('studentHome.recentUpdate')}
+                  isDark={isDark}
+                  accent="#94A3B8"
+                />
+                <AnnouncementCard notice={belowNotice} isDark={isDark} isFresh={false} onPress={() => nav('messages')} />
+              </Animated.View>
+            )}
+          </View>
+        </Animated.ScrollView>
+      </ScreenLayout>
     </HomeSvgContext.Provider>
   );
 };
 
 export default HomeScreen;
 
-/* ═══════════════════════════════════════════
-   ROOT STYLES
-═══════════════════════════════════════════ */
-const getStyles = (isDark: boolean) => StyleSheet.create({
-  scroll: { paddingBottom: 72 },
+const S = StyleSheet.create({
+  scroll: { paddingBottom: 80 },
   loaderRow: { alignItems: 'center', paddingVertical: 18 },
 
-  hero: { paddingBottom: 56, overflow: 'hidden' },
-  meshLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
-  orb: { position: 'absolute', borderRadius: 999 },
+  hero: { paddingBottom: 64, overflow: 'hidden' },
+  heroGlow: {
+    position: 'absolute',
+    top: -100, left: '18%',
+    width: 420, height: 420,
+    borderRadius: 210,
+    backgroundColor: '#6366F1',
+    opacity: 0.20,
+  },
+  heroWarmGlow: {
+    position: 'absolute',
+    top: 60, right: -80,
+    width: 260, height: 260,
+    borderRadius: 130,
+    backgroundColor: '#F59E0B',
+    opacity: 0.10,
+  },
 
-  greetRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 22, marginBottom: 12 },
-  greetEmoji: { fontSize: 17 },
-  greetTxt: { fontSize: 14, color: 'rgba(255,255,255,0.58)', fontWeight: '600', letterSpacing: 0.3 },
+  greetRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: H_PAD + 2,
+    marginBottom: tokens.space[3],
+  },
+  greetEmoji: { fontSize: 16 },
+  greetTxt: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
 
   body: {
-    marginTop: -32,
+    marginTop: -28,
     paddingHorizontal: H_PAD,
-    paddingTop: 10,
-    paddingBottom: 8,
-    gap: 30,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    overflow: 'hidden',
+    paddingTop: tokens.space[3],
+    paddingBottom: tokens.space[2],
+    gap: tokens.space[7],
+    borderTopLeftRadius: tokens.radius['3xl'],
+    borderTopRightRadius: tokens.radius['3xl'],
     borderTopWidth: 1,
-    borderColor: isDark ? 'rgba(148,163,184,0.14)' : 'rgba(255,255,255,0.62)',
   },
+
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
 });

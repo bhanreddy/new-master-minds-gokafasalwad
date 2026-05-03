@@ -5,7 +5,8 @@ import { styles as ds } from '@/src/theme/styles';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   StatusBar, Switch, ScrollView,
-  Animated as RNAnimated} from 'react-native';
+  Animated as RNAnimated
+} from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -502,7 +503,7 @@ export default function AdminNotices() {
 // STYLES
 // ─────────────────────────────────────────────────────────────────────────────
 const getStyles = (theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.card },
+  container: { flex: 1, backgroundColor: 'transparent' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 14, fontSize: 13, color: theme.colors.textSecondary, letterSpacing: 0.3 },
 

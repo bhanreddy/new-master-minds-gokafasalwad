@@ -11,7 +11,7 @@
  */
 
 import type { SchoolTheme } from '../theme/types';
-import { defaultLightTheme, defaultDarkTheme } from '../theme/types';
+import { defaultDarkTheme, defaultLightTheme } from '../theme/types';
 
 /** Build `rgba(...)` from `#RRGGBB` / `#RGB` for ribbon overlays and dividers. */
 export function schoolColorWithAlpha(hex: string, alpha: number): string {
@@ -42,39 +42,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultLightTheme,
     colors: {
       ...defaultLightTheme.colors,
-      // Primary brand color - Indigo 600 (current app default)
-      primary: '#4F46E5',
-      primaryLight: '#818CF8',
-      primaryDark: '#4338CA',
-      // Secondary color - Emerald for success/positive actions
-      secondary: '#10B981',
-      // Accent color - Gold (matches ribbon accent)
-      accent: '#D4AF37',
-      // Backgrounds
-      background: '#F8FAFC',
+      // Primary brand color – Deep Purple (from logo outer ring)
+      primary: '#4B1A6B',
+      primaryLight: '#7B4FA2',
+      primaryDark: '#3A1155',
+      // Secondary color – Lavender (from logo lower arc)
+      secondary: '#9B8DB8',
+      // Accent color – Cerulean Blue (from logo globe & hands)
+      accent: '#0D8ECF',
+      // Backgrounds – subtle purple-tinted neutrals
+      background: '#F9F7FC',
       surface: '#FFFFFF',
       card: '#FFFFFF',
-      // Text colors - Slate palette
-      textPrimary: '#334155',
-      textStrong: '#0F172A',
-      textSecondary: '#64748B',
-      textMuted: '#94A3B8',
-      // Borders
-      border: '#E2E8F0',
-      borderLight: '#F1F5F9',
+      // Text colors – deep purple-slate palette
+      textPrimary: '#2D2440',
+      textStrong: '#1A0E2E',
+      textSecondary: '#6B5F80',
+      textMuted: '#9B91AB',
+      text: '#2D2440',
+      textTertiary: '#9B91AB',
+      // Borders – purple-tinted
+      border: '#E4DFF0',
+      borderLight: '#F0ECF6',
       // Semantic colors
       danger: '#EF4444',
       success: '#10B981',
       warning: '#F59E0B',
-      info: '#3B82F6',
+      info: '#0D8ECF',
       notification: '#EF4444',
-      // Navigation
-      navPill: '#EEF2FF',
-      navIconActive: '#4F46E5',
-      navIconInactive: '#94A3B8',
+      // Navigation – purple pill tints
+      navPill: '#F0EBF7',
+      navIconActive: '#4B1A6B',
+      navIconInactive: '#9B91AB',
       // Header/Footer backgrounds (with transparency for glass effect)
-      headerBg: 'rgba(248,250,252, 0.85)',
-      footerBg: 'rgba(255,255,255, 0.90)',
+      headerBg: 'rgba(249,247,252, 0.88)',
+      footerBg: 'rgba(255,255,255, 0.92)',
+      // Alert colors
+      alertBg: '#FEFCE8',
+      alertBorder: '#FEF08A',
+      alertIcon: '#EAB308',
+      alertText: '#854D0E',
+      alertBgDanger: '#FEF2F2',
+      alertBorderDanger: '#FECACA',
+      alertIconDanger: '#EF4444',
+      alertTextDanger: '#991B1B',
+      alertBgInfo: '#EDF7FC',
+      alertBorderInfo: '#B3DFEF',
+      alertIconInfo: '#0D8ECF',
+      alertTextInfo: '#0A5F8A',
     },
     typography: {
       fontFamily: 'System',
@@ -138,37 +153,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultDarkTheme,
     colors: {
       ...defaultDarkTheme.colors,
-      // Primary colors shift to lighter variants for dark mode
-      primary: '#818CF8',
-      primaryLight: '#A5B4FC',
-      primaryDark: '#6366F1',
-      secondary: '#34D399',
-      accent: '#D4AF37',
-      // Dark backgrounds
-      background: '#0B0F19',
-      surface: '#151B2B',
-      card: '#151B2B',
+      // Primary – lighter purple for dark mode legibility
+      primary: '#B48FD9',
+      primaryLight: '#CDB3E8',
+      primaryDark: '#9A6CC4',
+      // Secondary – light lavender
+      secondary: '#C4B8D8',
+      // Accent – brighter cerulean blue
+      accent: '#3DB5E8',
+      // Dark backgrounds – deep purple-ink tones
+      background: '#0D0A14',
+      surface: '#1A1526',
+      card: '#1A1526',
       // Light text for dark backgrounds
-      textPrimary: '#E2E8F0',
-      textStrong: '#F1F5F9',
-      textSecondary: '#94A3B8',
-      textMuted: '#64748B',
-      // Darker borders
-      border: '#1E293B',
-      borderLight: '#334155',
+      textPrimary: '#E4DFF0',
+      textStrong: '#F3F0F8',
+      textSecondary: '#9B91AB',
+      textMuted: '#6B5F80',
+      text: '#E4DFF0',
+      textTertiary: '#6B5F80',
+      // Darker borders – purple-ink
+      border: '#2A2240',
+      borderLight: '#3D3358',
       // Lighter semantic colors for dark mode
       danger: '#F87171',
       success: '#34D399',
       warning: '#FBBF24',
-      info: '#60A5FA',
+      info: '#3DB5E8',
       notification: '#F87171',
-      // Navigation
-      navPill: 'rgba(99,102,241, 0.15)',
-      navIconActive: '#818CF8',
-      navIconInactive: '#475569',
-      // Header/Footer with dark glass effect
-      headerBg: 'rgba(11,15,25, 0.85)',
-      footerBg: 'rgba(21,27,43, 0.90)',
+      // Navigation – purple tint
+      navPill: 'rgba(180,143,217, 0.15)',
+      navIconActive: '#B48FD9',
+      navIconInactive: '#4A3F62',
+      // Header/Footer with dark purple glass effect
+      headerBg: 'rgba(13,10,20, 0.88)',
+      footerBg: 'rgba(26,21,38, 0.92)',
+      // Alert colors (dark mode)
+      alertBg: 'rgba(234,179,8, 0.1)',
+      alertBorder: 'rgba(234,179,8, 0.2)',
+      alertIcon: '#FBBF24',
+      alertText: '#FEF08A',
+      alertBgDanger: 'rgba(239,68,68, 0.1)',
+      alertBorderDanger: 'rgba(239,68,68, 0.2)',
+      alertIconDanger: '#F87171',
+      alertTextDanger: '#FECACA',
+      alertBgInfo: 'rgba(13,142,207, 0.12)',
+      alertBorderInfo: 'rgba(13,142,207, 0.25)',
+      alertIconInfo: '#3DB5E8',
+      alertTextInfo: '#B3DFEF',
     },
     typography: {
       fontFamily: 'System',
@@ -231,59 +263,59 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
 };
 
 export const SCHOOL_CONFIG = {
-    // The official name of the school displayed in headers and reports
-    name: "SCHOOL IMS",
+  // The official name of the school displayed in headers and reports
+  name: "Slate School Kosgi",
 
-    // Short line under the school name on the header ribbon (gold text)
-    tagline: "Excellence in education since inception",
+  // Short line under the school name on the header ribbon (gold text)
+  tagline: "You can LEARN something new Everyday,  if you LISTEN",
 
-    // Motto / core values shown in the first info column of the ribbon (letterhead)
-    motto: "Integrity · Respect · Excellence · Responsibility",
+  // Motto / core values shown in the first info column of the ribbon (letterhead)
+  motto: "You believe us... We will prove it",
 
-    // The school logo used in headers and reports
-    // Ensure the image exists in assets/images/
-    logo: require('../../assets/images/icon-v2.png'),
+  // The school logo used in headers and reports
+  // Ensure the image exists in assets/images/
+  logo: require('../../assets/images/icon-v2.png'),
 
-    // Optional: School Address for reports
-    address: "123 School Street, City, State - 509407",
+  // Optional: School Address for reports
+  address: "SLATE SCHOOL ,KOSGI.,Hakeempet-Polepally Road.,Dist Narayanpet., Telangana-509339",
 
-    // Optional: Contact info for reports
-    contact: "9347556547",
+  // Optional: Contact info for reports
+  contact: "9347556547",
 
-    // Optional: School email for letterhead / reports
-    email: "office@schoolims.com",
+  // Optional: School email for letterhead / reports
+  email: "slateschoolkosgi@gmail.com",
 
-    // Website or Email
-    website: "www.schoolims.com",
+  // Website or Email
+  website: "www.nexsyrus.com",
 
-    // CBSE Affiliation No (if applicable)
-    cbseAffiliationNo: "NA",
+  // CBSE Affiliation No (if applicable)
+  cbseAffiliationNo: "NA",
 
-    // School Code (if applicable)
-    schoolCode: "NA",
+  // School Code (if applicable)
+  schoolCode: "NA",
 
+  /**
+   * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
+   * Adjust `ribbonGradient` stops for your brand; `accent` drives gold trim and taglines.
+   */
+  theme: {
+    /** Stripes, tagline text, soft dividers – cerulean blue from logo globe */
+    accent: '#0D8ECF',
+    /** Four-stop diagonal ribbon – deep purple to lavender (logo ring) */
+    ribbonGradient: ['#3A1155', '#4B1A6B', '#6A3D8F', '#9B8DB8'] as const,
+    /** Optional stops for expo-linear-gradient (length must match ribbonGradient) */
+    ribbonGradientLocations: [0, 0.30, 0.65, 1] as const,
+    /** Main title on the ribbon */
+    ribbonTitle: '#FFFFFF',
+    /** Scrolling marquee dot separator */
+    marqueeSeparator: 'rgba(255,255,255,0.85)',
+    /** Letterhead / info column body */
+    ribbonBody: 'rgba(255,255,255,0.92)',
+    ribbonBodyMuted: 'rgba(255,255,255,0.9)',
     /**
-     * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
-     * Adjust `ribbonGradient` stops for your brand; `accent` drives gold trim and taglines.
+     * Icons over the ribbon / unsafe area (`expo-status-bar`).
+     * Use `light` on dark gradients, `dark` if you switch to a light ribbon.
      */
-    theme: {
-        /** Stripes, tagline text, soft dividers (derived via schoolColorWithAlpha) */
-        accent: '#D4AF37',
-        /** Four-stop diagonal ribbon background */
-        ribbonGradient: ['#062A4A', '#0F4C81', '#1B6CB0', '#0D3A5C'] as const,
-        /** Optional stops for expo-linear-gradient (length must match ribbonGradient) */
-        ribbonGradientLocations: [0, 0.32, 0.68, 1] as const,
-        /** Main title on the ribbon */
-        ribbonTitle: '#FFFFFF',
-        /** Scrolling marquee dot separator */
-        marqueeSeparator: 'rgba(255,255,255,0.85)',
-        /** Letterhead / info column body */
-        ribbonBody: 'rgba(255,255,255,0.92)',
-        ribbonBodyMuted: 'rgba(255,255,255,0.9)',
-        /**
-         * Icons over the ribbon / unsafe area (`expo-status-bar`).
-         * Use `light` on dark gradients, `dark` if you switch to a light ribbon.
-         */
-        statusBarOnRibbon: 'light' as 'light' | 'dark',
-    },
+    statusBarOnRibbon: 'light' as 'light' | 'dark',
+  },
 };

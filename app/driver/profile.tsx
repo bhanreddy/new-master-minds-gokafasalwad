@@ -293,7 +293,7 @@ export default function DriverProfile() {
 
 /* ════════════════════════════ STYLES ════════════════════════════ */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  screen: { flex: 1, backgroundColor: 'transparent'},
   scrollContent: { padding: 20 },
 
   /* ── Hero Card ── */

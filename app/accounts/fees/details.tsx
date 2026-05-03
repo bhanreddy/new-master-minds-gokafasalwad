@@ -453,7 +453,7 @@ function SummaryCell({ label, value, color, isDark }: {
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDark ? '#0F1117' : '#F3F4F8',
+    backgroundColor: 'transparent',
   },
   centered: {
     flex: 1,

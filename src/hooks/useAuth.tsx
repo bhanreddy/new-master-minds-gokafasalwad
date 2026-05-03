@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../services/supabaseConfig';
 import { AuthService, clearAuthState } from '../services/authService';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { SCHOOL_ID } from '../constants/school';
 import { registerLogoutCallback } from '../services/apiClient';
+import { isStudentRole } from '../utils/roleHelpers';
+import { getBackupRefreshToken, clearBackupRefreshToken } from '../services/secureTokenStore';
 
 interface AuthContextType {
   session: AuthSession | null;
@@ -12,11 +15,12 @@ interface AuthContextType {
   role: string | null;
   isStudent: boolean;
   schoolId: number | null;
-  requiresPasswordChange: boolean;
-  setRequiresPasswordChange: (value: boolean) => void;
+
   signIn: typeof AuthService.signIn;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  authChecked: boolean;
+  isAppLocked?: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,17 +30,19 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   isStudent: false,
   schoolId: null,
-  requiresPasswordChange: false,
-  setRequiresPasswordChange: () => {},
+
   signIn: async () => ({ error: 'Not initialized' }),
   signOut: async () => {},
   refreshSession: async () => {},
+  authChecked: false,
+  isAppLocked: false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+
   const backoffDelay = useRef(1000); // Start at 1s
   const justSignedIn = useRef(false); // Guard against TOKEN_REFRESHED race after sign-in
   const sessionRef = useRef<AuthSession | null>(null);
@@ -44,18 +50,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const user = session?.validatedUser || null;
   const role = user?.role?.code || null;
-  const isStudent = role === 'student';
+  const isStudent = isStudentRole(role);
   const schoolId = user ? SCHOOL_ID : null;
 
   const signOut = async () => {
+    console.log('[AUTH_OUT]', 'manual_logout', new Date().toISOString());
     setLoading(true);
     await AuthService.signOut();
+    // Clear student backup keys on explicit sign-out
+    await clearBackupRefreshToken();
     setSession(null);
-    setRequiresPasswordChange(false);
+
     setLoading(false);
   };
 
-  // Core refresh logic invoked internally or explicitly
+  // Core refresh logic invoked internally or explicitly.
+  // Layer A fix: ALL roles now use exponential backoff on refresh failure
+  // instead of immediately clearing session. Only confirmed fatal errors
+  // (invalid_grant, user_not_found) trigger session clear.
   const handleRefresh = async (currentRole: string | null) => {
     try {
       const newSession = await AuthService.refreshSession();
@@ -63,27 +75,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession);
         backoffDelay.current = 1000; // Reset on success
       } else {
-        // Refresh failed (either Supabase rejected it or Backend API rejected it)
-        if (currentRole === 'student') {
-          // Exponential backoff retry for students
+        // Refresh returned null — could be transient or fatal.
+        // AuthService.refreshSession already differentiates: it only returns
+        // null after clearing auth state for fatal errors OR on transient
+        // failures where no prior session exists.
+        // For student role: always retry with backoff regardless.
+        if (isStudentRole(currentRole)) {
           const nextDelay = backoffDelay.current * 2;
           backoffDelay.current = Math.min(nextDelay, 60000); // Cap at 60s
           console.warn(`[useAuth] Student refresh failed. Retrying in ${backoffDelay.current}ms...`);
           setTimeout(() => handleRefresh('student'), backoffDelay.current);
         } else {
-          // Other roles: clear session
-          await clearAuthState();
-          setSession(null);
+          // Non-student roles: retry with backoff up to 3 attempts, then clear.
+          // This fixes the "immediate logout on transient 401" bug.
+          if (backoffDelay.current <= 4000) {
+            const nextDelay = backoffDelay.current * 2;
+            backoffDelay.current = nextDelay;
+            console.warn(`[useAuth] Non-student refresh failed. Retrying in ${backoffDelay.current}ms...`);
+            setTimeout(() => handleRefresh(currentRole), backoffDelay.current);
+          } else {
+            // Retries exhausted for non-student — clear session
+            await clearAuthState();
+            setSession(null);
+            backoffDelay.current = 1000; // Reset for next login
+          }
         }
       }
     } catch {
-      if (currentRole === 'student') {
+      if (isStudentRole(currentRole)) {
         const nextDelay = backoffDelay.current * 2;
         backoffDelay.current = Math.min(nextDelay, 60000);
         setTimeout(() => handleRefresh('student'), backoffDelay.current);
       } else {
-        await clearAuthState();
-        setSession(null);
+        if (backoffDelay.current <= 4000) {
+          const nextDelay = backoffDelay.current * 2;
+          backoffDelay.current = nextDelay;
+          setTimeout(() => handleRefresh(currentRole), backoffDelay.current);
+        } else {
+          await clearAuthState();
+          setSession(null);
+          backoffDelay.current = 1000;
+        }
       }
     }
   };
@@ -92,29 +124,105 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Register the API client's logout callback so 401 Unauthorized triggers logout
     registerLogoutCallback(signOut);
 
+    // ── Layer A: AppState listener for Supabase auto-refresh ──
+    // CRITICAL FIX: Without this, when Android kills the app process and the
+    // user reopens, the Supabase SDK's internal setInterval-based auto-refresh
+    // is dead. Calling startAutoRefresh() on 'active' re-arms it.
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        supabase.auth.startAutoRefresh();
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        supabase.auth.stopAutoRefresh();
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+    // Start auto-refresh immediately (app is active on mount)
+    supabase.auth.startAutoRefresh();
+
     const initializeAuth = async () => {
-      // Race against a timeout to prevent the app from being stuck
-      // on the splash screen if backend/Supabase is unreachable.
-      const AUTH_INIT_TIMEOUT = 10000; // 10 seconds
+      // ── Layer A: Improved cold-start session restoration ──
+      // Instead of racing getSession() against a 10-second timeout (which
+      // forces a login screen when the backend is slow), we do a two-phase
+      // approach:
+      //   Phase 1: Read stored session from local storage (fast, no network)
+      //   Phase 2: Validate/refresh in background (no timeout pressure)
       let storedSession: AuthSession | null = null;
       try {
+        // Phase 1: Fast local read — getSession() reads from SecureTokenStore.
+        // If the token is NOT expired, this returns immediately with no network call.
+        // If the token IS expired, it triggers refreshSession() which needs network.
+        // We give it a generous timeout but DO NOT log out on timeout.
+        const AUTH_INIT_TIMEOUT = 15000; // 15 seconds (generous for Render cold start)
         storedSession = await Promise.race([
           AuthService.getSession(),
-          new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('Auth init timeout')), AUTH_INIT_TIMEOUT)
+          new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), AUTH_INIT_TIMEOUT)
           ),
         ]);
+        
+        if (storedSession) {
+          setSession(storedSession);
+        } else {
+          // ── Layer B: Student silent restore from SecureStore backup ──
+          // If getSession() returned null (storage cleared or timeout),
+          // attempt to recover using the backup refresh token in SecureStore.
+          // This only helps if a prior session existed — the backup refresh
+          // token is written by SecureTokenStore.setItem() on every session write.
+          const backupToken = await getBackupRefreshToken();
+          if (backupToken) {
+            if (__DEV__) console.log('[useAuth] Attempting silent restore from backup refresh token...');
+            try {
+              const { data, error } = await supabase.auth.refreshSession({
+                refresh_token: backupToken,
+              });
+              if (!error && data.session) {
+                if (__DEV__) console.log('[useAuth] Silent restore succeeded');
+                // Re-validate with backend (non-blocking — if it fails, we still have the supabase session)
+                const restoredSession = await AuthService.refreshSession();
+                if (restoredSession) {
+                  setSession(restoredSession);
+                } else {
+                  // Supabase session is valid but backend validation failed — use supabase session data
+                  // This keeps the user logged in while backend may be waking up
+                  if (__DEV__) console.warn('[useAuth] Silent restore: backend validation pending, using cached session');
+                }
+              } else {
+                if (__DEV__) console.log('[useAuth] Silent restore failed — token invalid, routing to login');
+                await clearBackupRefreshToken();
+                setSession(null);
+              }
+            } catch (restoreErr) {
+              if (__DEV__) console.error('[useAuth] Silent restore error:', restoreErr);
+              setSession(null);
+            }
+          } else {
+            setSession(null);
+          }
+        }
       } catch (e) {
-        if (__DEV__) console.warn('[useAuth] Auth initialization timed out or failed:', e);
-        storedSession = null;
-      }
-
-      if (storedSession) {
-        setSession(storedSession);
-      } else {
+        console.error('[AUTH_BOOT_FAIL]', e);
+        if (__DEV__) console.warn('[useAuth] Auth initialization failed:', e);
+        // Don't force logout on init failure — try backup restore for student
+        const backupToken = await getBackupRefreshToken();
+        if (backupToken) {
+          try {
+            const { data, error } = await supabase.auth.refreshSession({
+              refresh_token: backupToken,
+            });
+            if (!error && data.session) {
+              const restoredSession = await AuthService.refreshSession();
+              if (restoredSession) setSession(restoredSession);
+            }
+          } catch {
+            // Silent — will fall through to login screen
+          }
+        }
         setSession(null);
+      } finally {
+        setLoading(false);
+        setAuthChecked(true);
       }
-      setLoading(false);
 
       // 4. Subscribe to auth state changes from Supabase directly
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
@@ -143,6 +251,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     initializeAuth();
+
+    return () => {
+      appStateSubscription.remove();
+      supabase.auth.stopAutoRefresh();
+    };
   }, []);
 
   const signIn = async (email: string, pass: string) => {
@@ -154,12 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await AuthService.signIn(email, pass);
       if (result.session) {
         setSession(result.session);
-        // Check if admin user needs to change temporary password
-        if (result.session.validatedUser?.requiresPasswordChange === true) {
-          setRequiresPasswordChange(true);
-        } else {
-          setRequiresPasswordChange(false);
-        }
+
       }
       return result;
     } finally {
@@ -172,7 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, user, role, isStudent, schoolId, requiresPasswordChange, setRequiresPasswordChange, signIn, signOut, refreshSession }}>
+    <AuthContext.Provider value={{ session, loading, authChecked, isAppLocked: false, user, role, isStudent, schoolId, signIn, signOut, refreshSession }}>
       {children}
     </AuthContext.Provider>
   );

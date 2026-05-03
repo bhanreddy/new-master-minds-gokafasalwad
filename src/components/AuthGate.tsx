@@ -5,7 +5,7 @@ import { ThemeContext } from '../context/ThemeContext';
 import LogoLoader from './LogoLoader';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-    const { isAppLocked, loading } = useAuth();
+    const { isAppLocked, loading, authChecked } = useAuth();
     // Default fallback colors in case theme isn't fully ready
     const theme = useContext(ThemeContext)?.theme || {
         colors: { background: '#FFFFFF', primary: '#4F46E5', text: '#000000' }
@@ -16,9 +16,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             {/* Always render children so Expo Router doesn't unmount the Stack and crash */}
             {children}
 
-            {(isAppLocked || loading) && (
+            {(isAppLocked || loading || !authChecked) && (
                 <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: theme.colors.background }]}>
-                    {loading ? (
+                    {(!authChecked || loading) ? (
                         <LogoLoader size={60} color={theme.colors.primary} />
                     ) : (
                         <View style={styles.lockedWarning}>

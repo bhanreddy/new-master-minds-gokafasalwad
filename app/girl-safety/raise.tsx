@@ -152,7 +152,7 @@ export default function RaiseComplaintScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FAFAF9',
+        backgroundColor: 'transparent',
     },
     scrollContent: {
         padding: 20,

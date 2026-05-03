@@ -16,59 +16,59 @@ const HostelProfileScreen = () => {
   } = useAuth();
   return <ScreenLayout>
 
-            {/* ===== HEADER ===== */}
-            <StudentHeader showBackButton={true} title="Hostel" />
+    {/* ===== HEADER ===== */}
+    <StudentHeader showBackButton={true} title="Hostel" />
 
-            {/* ===== CONTENT ===== */}
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+    {/* ===== CONTENT ===== */}
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
 
-                {/* ===== TITLE ===== */}
-                <Text style={styles.pageTitle}>Hostel Profile</Text>
+      {/* ===== TITLE ===== */}
+      <Text style={styles.pageTitle}>Hostel Profile</Text>
 
-                {/* ===== STUDENT HOSTEL INFO ===== */}
-                <Text style={styles.sectionTitle}>Student Hostel Information</Text>
+      {/* ===== STUDENT HOSTEL INFO ===== */}
+      <Text style={styles.sectionTitle}>Student Hostel Information</Text>
 
-                <View style={styles.infoCard}>
-                    <InfoRow label="Name" value={user?.name || 'Student'} />
-                    <InfoRow label="Hostel No" value={(user as any)?.hostelBlock || 'N/A'} />
-                    <InfoRow label="Warden No" value="**********" />
-                    <InfoRow label="Hostel Name" value={(user as any)?.hostelName || 'Not Assigned'} />
-                </View>
+      <View style={styles.infoCard}>
+        <InfoRow label="Name" value={user?.name || 'Student'} />
+        <InfoRow label="Hostel No" value={(user as any)?.hostelBlock || 'N/A'} />
+        <InfoRow label="Warden No" value="**********" />
+        <InfoRow label="Hostel Name" value={(user as any)?.hostelName || 'Not Assigned'} />
+      </View>
 
-                {/* ===== HOSTEL DETAILS ===== */}
-                <Text style={styles.sectionTitle}>Hostel Details</Text>
+      {/* ===== HOSTEL DETAILS ===== */}
+      <Text style={styles.sectionTitle}>Hostel Details</Text>
 
-                <View style={styles.detailsCard}>
-                    <InfoRow label="Room Type" value="2 Sharing" />
-                    <InfoRow label="Facilities" value="AC / Non-AC" />
+      <View style={styles.detailsCard}>
+        <InfoRow label="Room Type" value="2 Sharing" />
+        <InfoRow label="Facilities" value="AC / Non-AC" />
 
-                    <View style={styles.locationRow}>
-                        <Text style={styles.label}>Location</Text>
-                        <TouchableOpacity>
-                            <Text style={styles.mapLink}>View on Maps</Text>
-                        </TouchableOpacity>
-                    </View>
+        <View style={styles.locationRow}>
+          <Text style={styles.label}>Location</Text>
+          <TouchableOpacity>
+            <Text style={styles.mapLink}>View on Maps</Text>
+          </TouchableOpacity>
+        </View>
 
-                    <InfoRow label="Hostel Fee" value="₹ ——— / Year" />
-                </View>
+        <InfoRow label="Hostel Fee" value="₹ ——— / Year" />
+      </View>
 
-                {/* ===== HOSTEL IMAGE ===== */}
-                <View style={styles.imageCard}>
-                    <View style={styles.imagePlaceholder}>
-                        <Text style={styles.imageText}>Hostel Image</Text>
-                    </View>
-                </View>
+      {/* ===== HOSTEL IMAGE ===== */}
+      <View style={styles.imageCard}>
+        <View style={styles.imagePlaceholder}>
+          <Text style={styles.imageText}>Hostel Image</Text>
+        </View>
+      </View>
 
-                {/* ===== APPLY CTA ===== */}
-                <TouchableOpacity style={styles.applyButton} activeOpacity={0.85} onPress={() => {
+      {/* ===== APPLY CTA ===== */}
+      <TouchableOpacity style={styles.applyButton} activeOpacity={0.85} onPress={() => {
         // TODO: initiate call / application
       }}>
-                    <Text style={styles.applyText}>📞 Call to Apply</Text>
-                </TouchableOpacity>
+        <Text style={styles.applyText}>📞 Call to Apply</Text>
+      </TouchableOpacity>
 
-            </ScrollView>
+    </ScrollView>
 
-        </ScreenLayout>;
+  </ScreenLayout>;
 };
 export default HostelProfileScreen;
 
@@ -87,9 +87,9 @@ const InfoRow = ({
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   return <View style={styles.row}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{value}</Text>
-    </View>;
+    <Text style={styles.label}>{label}</Text>
+    <Text style={styles.value}>{value}</Text>
+  </View>;
 };
 
 /* ============================ STYLES ============================ */

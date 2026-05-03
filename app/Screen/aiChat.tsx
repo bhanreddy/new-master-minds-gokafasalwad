@@ -22,54 +22,54 @@ type Message = {
 
 // --- Components ---
 
-// 1. Message Bubble Component
-const MessageBubble = React.memo(({ item }: {item: Message;}) => {
+// 1. Message Bubble Component 
+const MessageBubble = React.memo(({ item }: { item: Message; }) => {
   const isUser = item.sender === 'user';
 
   return (
     <Animated.View
       entering={FadeInUp.duration(300).springify()}
       style={[
-      styles.messageBubbleWrapper,
-      isUser ? styles.userBubbleWrapper : styles.aiBubbleWrapper]
+        styles.messageBubbleWrapper,
+        isUser ? styles.userBubbleWrapper : styles.aiBubbleWrapper]
       }>
 
-            {/* Avatar for AI */}
-            {!isUser &&
-      <View style={styles.aiAvatar}>
-                    <MaterialIcons name="smart-toy" size={16} color="#FFF" />
-                </View>
+      {/* Avatar for AI */}
+      {!isUser &&
+        <View style={styles.aiAvatar}>
+          <MaterialIcons name="smart-toy" size={16} color="#FFF" />
+        </View>
       }
-            <View style={[
-      styles.messageBubble,
-      isUser ? styles.userBubble : styles.aiBubble]
+      <View style={[
+        styles.messageBubble,
+        isUser ? styles.userBubble : styles.aiBubble]
       }>
-                <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
-                    {item.text}
-                </Text>
-                <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.aiTimestamp]}>
-                    {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
-            </View>
-        </Animated.View>);
+        <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
+          {item.text}
+        </Text>
+        <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.aiTimestamp]}>
+          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      </View>
+    </Animated.View>);
 
 });
 
 // 2. Typing Indicator
 const TypingIndicator = () =>
-<Animated.View
-  entering={FadeInUp.duration(200)}
-  exiting={FadeOut.duration(200)}
-  style={styles.typingContainer}>
+  <Animated.View
+    entering={FadeInUp.duration(200)}
+    exiting={FadeOut.duration(200)}
+    style={styles.typingContainer}>
 
-        <View style={styles.aiAvatar}>
-            <MaterialIcons name="smart-toy" size={16} color="#FFF" />
-        </View>
-        <View style={styles.typingBubble}>
-            <LogoLoader size={30} color="#4F46E5" />
-            <Text style={styles.typingText}>Thinking...</Text>
-        </View>
-    </Animated.View>;
+    <View style={styles.aiAvatar}>
+      <MaterialIcons name="smart-toy" size={16} color="#FFF" />
+    </View>
+    <View style={styles.typingBubble}>
+      <LogoLoader size={30} color="#4F46E5" />
+      <Text style={styles.typingText}>Thinking...</Text>
+    </View>
+  </Animated.View>;
 
 // --- Main Screen ---
 
@@ -93,16 +93,16 @@ export default function AIChatScreen() {
       "Start New Chat?",
       "This will clear your current conversation.",
       [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "New Chat",
-        style: "destructive",
-        onPress: () => {
-          setMessages([]);
-          setInput("");
-          Keyboard.dismiss();
-        }
-      }]
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "New Chat",
+          style: "destructive",
+          onPress: () => {
+            setMessages([]);
+            setInput("");
+            Keyboard.dismiss();
+          }
+        }]
 
     );
   };
@@ -163,42 +163,42 @@ export default function AIChatScreen() {
   };
 
   const renderEmptyState = () =>
-  <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-                <MaterialIcons name="auto-awesome" size={48} color="#4F46E5" />
-            </View>
-            <Text style={styles.emptyTitle}>Hi, Student! 👋</Text>
-            <Text style={styles.emptySubtitle}>I'm your AI study assistant. Ask me anything about your subjects.</Text>
-            <View style={styles.suggestionContainer}>
-                <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Explain Newton's laws")}>
-                    <Text style={styles.suggestionText}>🍎 Explain Newton's laws</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Solve a quadratic equation")}>
-                    <Text style={styles.suggestionText}>➗ Solve quadratic equation</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Summarize history chapter 1")}>
-                    <Text style={styles.suggestionText}>📜 Summarize History Ch 1</Text>
-                </TouchableOpacity>
-            </View>
-        </View>;
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconCircle}>
+        <MaterialIcons name="auto-awesome" size={48} color="#4F46E5" />
+      </View>
+      <Text style={styles.emptyTitle}>Hi, Student! 👋</Text>
+      <Text style={styles.emptySubtitle}>I'm your AI study assistant. Ask me anything about your subjects.</Text>
+      <View style={styles.suggestionContainer}>
+        <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Explain Newton's laws")}>
+          <Text style={styles.suggestionText}>🍎 Explain Newton's laws</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Solve a quadratic equation")}>
+          <Text style={styles.suggestionText}>➗ Solve quadratic equation</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.suggestionChip} onPress={() => setInput("Summarize history chapter 1")}>
+          <Text style={styles.suggestionText}>📜 Summarize History Ch 1</Text>
+        </TouchableOpacity>
+      </View>
+    </View>;
 
   return (
     <ScreenLayout>
-            <StudentHeader showBackButton={true} title="AI Assistant" />
-            <View style={styles.container}>
-                {/* TOOLBAR */}
-                <View style={styles.toolbar}>
-                    <View style={styles.modelBadge}>
-                        <FontAwesome5 name="robot" size={14} color="#4F46E5" />
-                        <Text style={styles.modelText}>NexSyrus AI</Text>
-                    </View>
-                    <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
-                        <Feather name="refresh-cw" size={16} color="#555" />
-                        <Text style={styles.newChatButtonText}>New Chat</Text>
-                    </TouchableOpacity>
-                </View>
-                {/* MESSAGES */}
-                <FlatList
+      <StudentHeader showBackButton={true} title="AI Assistant" />
+      <View style={styles.container}>
+        {/* TOOLBAR */}
+        <View style={styles.toolbar}>
+          <View style={styles.modelBadge}>
+            <FontAwesome5 name="robot" size={14} color="#4F46E5" />
+            <Text style={styles.modelText}>NexSyrus AI</Text>
+          </View>
+          <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
+            <Feather name="refresh-cw" size={16} color="#555" />
+            <Text style={styles.newChatButtonText}>New Chat</Text>
+          </TouchableOpacity>
+        </View>
+        {/* MESSAGES */}
+        <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
@@ -208,14 +208,14 @@ export default function AIChatScreen() {
           ListFooterComponent={loading ? <TypingIndicator /> : <View style={{ height: 20 }} />}
           keyboardShouldPersistTaps="handled" />
 
-                {/* INPUT AREA */}
-                <KeyboardAvoidingView
+        {/* INPUT AREA */}
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
 
-                    <View style={styles.inputWrapper}>
-                        <View style={[styles.inputContainer, ds.searchBarWrapper]}>
-                            <AppTextInput
+          <View style={styles.inputWrapper}>
+            <View style={[styles.inputContainer, ds.searchBarWrapper]}>
+              <AppTextInput
                 placeholder="Ask a doubt..."
                 style={[ds.inputInChrome, styles.input]}
                 value={input}
@@ -223,29 +223,29 @@ export default function AIChatScreen() {
                 multiline
                 maxLength={500} />
 
-                            <TouchableOpacity
+              <TouchableOpacity
                 onPress={sendMessage}
                 disabled={!input.trim() || loading}
                 style={[
-                styles.sendButton,
-                (!input.trim() || loading) && styles.sendButtonDisabled]
+                  styles.sendButton,
+                  (!input.trim() || loading) && styles.sendButtonDisabled]
                 }>
 
-                                <Ionicons name="arrow-up" size={24} color="#FFF" />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.disclaimer}>AI can make mistakes. Check important info.</Text>
-                    </View>
-                </KeyboardAvoidingView>
+                <Ionicons name="arrow-up" size={24} color="#FFF" />
+              </TouchableOpacity>
             </View>
-        </ScreenLayout>);
+            <Text style={styles.disclaimer}>AI can make mistakes. Check important info.</Text>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </ScreenLayout>);
 
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F7F8FA"
+    backgroundColor: 'transparent'
   },
   toolbar: {
     flexDirection: 'row',

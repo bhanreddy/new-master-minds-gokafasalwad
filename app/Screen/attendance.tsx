@@ -62,7 +62,7 @@ const AttendanceStatsBanner = memo(function AttendanceStatsBanner({ // OPT: Pure
   percentage: number; // OPT:
   stats: AttendanceSummary; // OPT:
   styles: ReturnType<typeof getStyles>; // OPT:
-  t: (k: string, d?: string) => string; // OPT: Narrow i18n signature for this subtree.
+  t: (k: string, d?: string) => any; // OPT: Narrow i18n signature for this subtree.
 }) {
   return (
     <View style={styles.summaryContainer}>
@@ -157,7 +157,7 @@ function AttendanceScreenInner() { // OPT: Inner tree wrapped by ErrorBoundary b
 
   const percentage = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0; // OPT: Same formula as before.
 
-  const tStable = useCallback((k: string, d?: string) => t(k, d), [t]); // OPT: Stable function ref for memo child props.
+  const tStable = useCallback((k: string, d?: string) => t(k, d as any), [t]); // OPT: Stable function ref for memo child props.
 
   const onRefresh = useCallback(async () => { // OPT: Pull forces network via hook refetch(true).
     setRefreshing(true); // OPT: Show refresh control.
@@ -225,7 +225,7 @@ export default function AttendanceScreen() { // OPT: Default export wraps with E
 
 const getStyles = (theme: Theme) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f9fafb' },
+    container: { flex: 1, backgroundColor: 'transparent'},
     summaryContainer: { padding: 20, paddingBottom: 10 },
     summaryCard: {
       borderRadius: 20,

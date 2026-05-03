@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -129,176 +129,176 @@ export default function AddAccountsStaff() {
     }
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={ADMIN_THEME.colors.primary} />
-            <AdminHeader title="Add Accounts Staff" showBackButton />
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-                {/* Header Card */}
-                <LinearGradient colors={['#FBBF24', '#F59E0B']} start={{
+    <StatusBar barStyle="light-content" backgroundColor={ADMIN_THEME.colors.primary} />
+    <AdminHeader title="Add Accounts Staff" showBackButton />
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Header Card */}
+      <LinearGradient colors={['#FBBF24', '#F59E0B']} start={{
         x: 0,
         y: 0
       }} end={{
         x: 1,
         y: 1
       }} style={styles.headerCard}>
-                    <Ionicons name="person-add" size={40} color="#fff" />
-                    <Text style={styles.headerTitle}>Create New Accounts Staff</Text>
-                    <Text style={styles.headerSubtitle}>
-                        Add accounts department staff who can manage fees and financial operations
-                    </Text>
-                </LinearGradient>
-                {/* Form */}
-                <View style={styles.form}>
-                    {/* Personal Information */}
-                    <Text style={styles.sectionTitle}>Personal Information</Text>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            First Name <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="Enter first name" value={formData.first_name} onChangeText={(text) => updateField('first_name', text)} autoCapitalize="words" />
-                        </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Middle Name</Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="Enter middle name (optional)" value={formData.middle_name} onChangeText={(text) => updateField('middle_name', text)} autoCapitalize="words" />
-                        </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Last Name <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="Enter last name" value={formData.last_name} onChangeText={(text) => updateField('last_name', text)} autoCapitalize="words" />
-                        </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Staff Code <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="card-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="e.g. ACC001" value={formData.staff_code} onChangeText={(text) => updateField('staff_code', text)} autoCapitalize="characters" />
-                        </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Mobile Number <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="Enter mobile number" value={formData.phone} onChangeText={(text) => updateField('phone', text)} keyboardType="phone-pad" maxLength={15} />
-                        </View>
-                    </View>
-                    {/* Date of Birth */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Date of Birth</Text>
-                        <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}>
-                            <Ionicons name="calendar-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <Text style={[styles.input, {
+        <Ionicons name="person-add" size={40} color="#fff" />
+        <Text style={styles.headerTitle}>Create New Accounts Staff</Text>
+        <Text style={styles.headerSubtitle}>
+          Add accounts department staff who can manage fees and financial operations
+        </Text>
+      </LinearGradient>
+      {/* Form */}
+      <View style={styles.form}>
+        {/* Personal Information */}
+        <Text style={styles.sectionTitle}>Personal Information</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            First Name <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="Enter first name" value={formData.first_name} onChangeText={(text) => updateField('first_name', text)} autoCapitalize="words" />
+          </View>
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Middle Name</Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="Enter middle name (optional)" value={formData.middle_name} onChangeText={(text) => updateField('middle_name', text)} autoCapitalize="words" />
+          </View>
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Last Name <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="Enter last name" value={formData.last_name} onChangeText={(text) => updateField('last_name', text)} autoCapitalize="words" />
+          </View>
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Staff Code <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="card-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="e.g. ACC001" value={formData.staff_code} onChangeText={(text) => updateField('staff_code', text)} autoCapitalize="characters" />
+          </View>
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Mobile Number <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="Enter mobile number" value={formData.phone} onChangeText={(text) => updateField('phone', text)} keyboardType="phone-pad" maxLength={15} />
+          </View>
+        </View>
+        {/* Date of Birth */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Date of Birth</Text>
+          <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}>
+            <Ionicons name="calendar-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <Text style={[styles.input, {
               paddingTop: 12
             }]}>
-                                {formData.dob ? formData.dob.toLocaleDateString() : 'Select date of birth'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                    {showDatePicker && <DateTimePicker value={formData.dob || new Date()} mode="date" display="default" onChange={onDateChange} maximumDate={new Date()} />}
-                    {/* Gender */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Gender <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.genderRow}>
-                            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 1 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 1)}>
-                                <Ionicons name="male" size={20} color={formData.gender_id === 1 ? '#fff' : '#6B7280'} />
-                                <Text style={[styles.genderText, formData.gender_id === 1 && styles.genderTextActive]}>
-                                    Male
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 2 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 2)}>
-                                <Ionicons name="female" size={20} color={formData.gender_id === 2 ? '#fff' : '#6B7280'} />
-                                <Text style={[styles.genderText, formData.gender_id === 2 && styles.genderTextActive]}>
-                                    Female
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 3 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 3)}>
-                                <Ionicons name="transgender" size={20} color={formData.gender_id === 3 ? '#fff' : '#6B7280'} />
-                                <Text style={[styles.genderText, formData.gender_id === 3 && styles.genderTextActive]}>
-                                    Other
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                    {/* Salary */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Salary</Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="cash-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="e.g. 50000" value={formData.salary} onChangeText={(text) => updateField('salary', text)} keyboardType="numeric" />
-                        </View>
-                    </View>
-                    {/* Login Credentials */}
-                    <Text style={[styles.sectionTitle, {
+              {formData.dob ? formData.dob.toLocaleDateString() : 'Select date of birth'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {showDatePicker && <DateTimePicker value={formData.dob || new Date()} mode="date" display="default" onChange={onDateChange} maximumDate={new Date()} />}
+        {/* Gender */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Gender <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.genderRow}>
+            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 1 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 1)}>
+              <Ionicons name="male" size={20} color={formData.gender_id === 1 ? '#fff' : '#6B7280'} />
+              <Text style={[styles.genderText, formData.gender_id === 1 && styles.genderTextActive]}>
+                Male
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 2 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 2)}>
+              <Ionicons name="female" size={20} color={formData.gender_id === 2 ? '#fff' : '#6B7280'} />
+              <Text style={[styles.genderText, formData.gender_id === 2 && styles.genderTextActive]}>
+                Female
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.genderButton, formData.gender_id === 3 && styles.genderButtonActive]} onPress={() => updateField('gender_id', 3)}>
+              <Ionicons name="transgender" size={20} color={formData.gender_id === 3 ? '#fff' : '#6B7280'} />
+              <Text style={[styles.genderText, formData.gender_id === 3 && styles.genderTextActive]}>
+                Other
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {/* Salary */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Salary</Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="cash-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="e.g. 50000" value={formData.salary} onChangeText={(text) => updateField('salary', text)} keyboardType="numeric" />
+          </View>
+        </View>
+        {/* Login Credentials */}
+        <Text style={[styles.sectionTitle, {
           marginTop: 24
         }]}>Login Credentials</Text>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Email <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="accountant@school.com" value={formData.email} onChangeText={(text) => updateField('email', text)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
-                        </View>
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>
-                            Password <Text style={styles.required}>*</Text>
-                        </Text>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-                            <AppTextInput style={styles.input} placeholder="Minimum 6 characters" value={formData.password} onChangeText={(text) => updateField('password', text)} secureTextEntry autoCapitalize="none" />
-                        </View>
-                        <Text style={styles.hint}>Password must be at least 6 characters long</Text>
-                    </View>
-                    {/* Permissions Info */}
-                    <View style={styles.infoCard}>
-                        <Ionicons name="information-circle" size={24} color="#3B82F6" />
-                        <View style={styles.infoContent}>
-                            <Text style={styles.infoTitle}>Accounts Department Permissions</Text>
-                            <Text style={styles.infoText}>
-                                • View and manage student fees{'\n'}
-                                • Collect fee payments{'\n'}
-                                • View transactions and generate receipts{'\n'}
-                                • Access financial reports
-                            </Text>
-                        </View>
-                    </View>
-                    {/* Submit Button */}
-                    <TouchableOpacity style={[styles.submitButton, loading && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={loading}>
-                        <LinearGradient colors={loading ? ['#9CA3AF', '#6B7280'] : ['#FBBF24', '#F59E0B']} start={{
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Email <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="accountant@school.com" value={formData.email} onChangeText={(text) => updateField('email', text)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          </View>
+        </View>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>
+            Password <Text style={styles.required}>*</Text>
+          </Text>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+            <AppTextInput style={styles.input} placeholder="Minimum 6 characters" value={formData.password} onChangeText={(text) => updateField('password', text)} secureTextEntry autoCapitalize="none" />
+          </View>
+          <Text style={styles.hint}>Password must be at least 6 characters long</Text>
+        </View>
+        {/* Permissions Info */}
+        <View style={styles.infoCard}>
+          <Ionicons name="information-circle" size={24} color="#3B82F6" />
+          <View style={styles.infoContent}>
+            <Text style={styles.infoTitle}>Accounts Department Permissions</Text>
+            <Text style={styles.infoText}>
+              • View and manage student fees{'\n'}
+              • Collect fee payments{'\n'}
+              • View transactions and generate receipts{'\n'}
+              • Access financial reports
+            </Text>
+          </View>
+        </View>
+        {/* Submit Button */}
+        <TouchableOpacity style={[styles.submitButton, loading && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={loading}>
+          <LinearGradient colors={loading ? ['#9CA3AF', '#6B7280'] : ['#FBBF24', '#F59E0B']} start={{
             x: 0,
             y: 0
           }} end={{
             x: 1,
             y: 0
           }} style={styles.submitGradient}>
-                            {loading ? <LogoLoader color="#fff" /> : <>
-                                    <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                                    <Text style={styles.submitText}>Create Accounts Staff</Text>
-                                </>}
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        </View>;
+            {loading ? <LogoLoader color="#fff" /> : <>
+              <Ionicons name="checkmark-circle" size={24} color="#fff" />
+              <Text style={styles.submitText}>Create Accounts Staff</Text>
+            </>}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   content: {
     padding: 20,

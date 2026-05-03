@@ -558,19 +558,19 @@ function getStyles(theme: Theme, isDark: boolean) {
 
   const heroShadow = isDark
     ? {
-        shadowColor: theme.colors.primary,
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.22,
-        shadowRadius: 28,
-        elevation: 14,
-      }
+      shadowColor: theme.colors.primary,
+      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.22,
+      shadowRadius: 28,
+      elevation: 14,
+    }
     : {
-        shadowColor: theme.colors.primaryDark,
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.12,
-        shadowRadius: 24,
-        elevation: 8,
-      };
+      shadowColor: theme.colors.primaryDark,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.12,
+      shadowRadius: 24,
+      elevation: 8,
+    };
 
   return StyleSheet.create({
     headerGradient: {
@@ -589,7 +589,7 @@ function getStyles(theme: Theme, isDark: boolean) {
     container: {
       padding: 20,
       paddingTop: 20,
-      backgroundColor: theme.colors.background,
+      backgroundColor: 'transparent',
     },
 
     heroWrapper: {

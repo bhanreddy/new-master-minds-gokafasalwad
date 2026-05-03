@@ -209,7 +209,7 @@ export default function AccessRequestsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: ADMIN_THEME.colors.background.surface,
+        backgroundColor: 'transparent',
     },
     tabContainer: {
         flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, Switch } from 'react-native';
+import { View, StyleSheet, Pressable, Platform, Switch, ViewStyle, TextStyle } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -15,15 +15,22 @@ import { useTheme } from '../hooks/useTheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SCHOOL_NAME } from '../constants/school';
 
+/** Reanimated can wrap the vector icon; it must not be nested inside `Animated.Text` (causes "Text strings must be rendered within a <Text> component" on Android). */
+const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
+
 interface StudentHeaderProps {
     onMenuPress?: () => void;
     scrollY?: SharedValue<number>;
     menuUserType?: 'student' | 'staff' | 'driver';
+    /** Override container style (e.g. transparent background) */
+    style?: ViewStyle;
+    /** Override title text style */
+    titleStyle?: TextStyle;
 }
 
 const isWeb = Platform.OS === 'web';
 
-const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, title?: string, showSettingsButton?: boolean }> = ({ onMenuPress, showBackButton = false, title, showSettingsButton = true, scrollY, menuUserType = 'student' }) => {
+const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, title?: string, showSettingsButton?: boolean }> = ({ onMenuPress, showBackButton = false, title, showSettingsButton = true, scrollY, menuUserType = 'student', style: containerStyleOverride, titleStyle: titleStyleOverride }) => {
     const router = useRouter();
     const { theme, isDark } = useTheme();
     const { t, i18n } = useTranslation();
@@ -136,7 +143,8 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
             styles.container,
             { paddingTop: Math.max(insets.top, 36) }, // Guarantee enough space for status bar
             isAbsolute && styles.absoluteHeader,
-            animatedStyle
+            animatedStyle,
+            containerStyleOverride,
         ]}>
             {!scrollY && (
                 <LinearGradient
@@ -152,18 +160,14 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 {showNavBack ? (
                     <Pressable onPress={handleBack} style={Platform.OS === 'web' && { cursor: 'pointer' }}>
                         <Animated.View style={[styles.iconButton, iconColorStyle]}>
-                            <Animated.Text style={fontColorStyle}>
-                                <Ionicons name="arrow-back" size={22} color="inherit" />
-                            </Animated.Text>
+                            <AnimatedIonicons name="arrow-back" size={22} style={fontColorStyle} />
                         </Animated.View>
                     </Pressable>
                 ) : null}
                 {showNavMenu ? (
                     <Pressable onPress={handleMenuPress} style={Platform.OS === 'web' && { cursor: 'pointer' }}>
                         <Animated.View style={[styles.iconButton, iconColorStyle]}>
-                            <Animated.Text style={fontColorStyle}>
-                                <Ionicons name="menu" size={22} color="inherit" />
-                            </Animated.Text>
+                            <AnimatedIonicons name="menu" size={22} style={fontColorStyle} />
                         </Animated.View>
                     </Pressable>
                 ) : null}
@@ -172,7 +176,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
             {/* Center: title (sub-pages) OR school name + Diary/LMS (home). Single flex:1 region avoids overlap with rightActions. */}
             <View style={styles.centerRegion}>
                 {title ? (
-                    <Animated.Text style={[styles.headerTitle, fontColorStyle]} numberOfLines={1}>
+                    <Animated.Text style={[styles.headerTitle, fontColorStyle, titleStyleOverride]} numberOfLines={1}>
                         {title}
                     </Animated.Text>
                 ) : !showBackButton ? (
@@ -212,16 +216,36 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
             <View style={styles.rightActions}>
                 {/* Language Switch (Native Toggle) */}
                 <View style={styles.langSwitch}>
-                    <Text style={[styles.langLabel, !isTeluguLang && styles.langLabelActive]}>En</Text>
+                    <Animated.Text
+                        style={[
+                            styles.langLabelBase,
+                            fontColorStyle,
+                            { opacity: !isTeluguLang ? 1 : 0.42, fontWeight: !isTeluguLang ? '800' : '600' },
+                        ]}
+                    >
+                        En
+                    </Animated.Text>
                     <Switch
                         value={isTeluguLang}
                         onValueChange={toggleLanguage}
-                        trackColor={{ false: 'rgba(255,255,255,0.25)', true: 'rgba(255,255,255,0.25)' }}
+                        trackColor={
+                            isDark
+                                ? { false: 'rgba(255,255,255,0.25)', true: 'rgba(255,255,255,0.25)' }
+                                : { false: 'rgba(15,23,42,0.22)', true: 'rgba(15,23,42,0.22)' }
+                        }
                         thumbColor={isTeluguLang ? '#FFFFFF' : '#FFFFFF'}
-                        ios_backgroundColor="rgba(255,255,255,0.15)"
+                        ios_backgroundColor={isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.12)'}
                         style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
                     />
-                    <Text style={[styles.langLabel, isTeluguLang && styles.langLabelActive]}>Te</Text>
+                    <Animated.Text
+                        style={[
+                            styles.langLabelBase,
+                            fontColorStyle,
+                            { opacity: isTeluguLang ? 1 : 0.42, fontWeight: isTeluguLang ? '800' : '600' },
+                        ]}
+                    >
+                        Te
+                    </Animated.Text>
                 </View>
 
                 {/* Settings Button */}
@@ -233,9 +257,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                         }}
                         style={[{ padding: 4 }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                     >
-                        <Animated.Text style={fontColorStyle}>
-                            <Ionicons name="settings-outline" size={20} color="inherit" />
-                        </Animated.Text>
+                        <AnimatedIonicons name="settings-outline" size={20} style={fontColorStyle} />
                     </Pressable>
                 )}
             </View>
@@ -324,15 +346,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 2,
     },
-    langLabel: {
+    langLabelBase: {
         fontSize: 11,
-        fontWeight: '600',
-        color: 'rgba(255,255,255,0.4)',
         letterSpacing: 0.3,
-    },
-    langLabelActive: {
-        color: '#FFFFFF',
-        fontWeight: '800',
     },
     headerTitle: {
         fontSize: 18,

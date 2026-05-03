@@ -1,0 +1,38 @@
+{
+  "productName": "Slate School Kosgi",
+  "version": "1.0.0",
+  "identifier": "com.nexsyrus.schoolims.kosgi",
+  "build": {
+    "beforeDevCommand": "npx expo start --web",
+    "beforeBuildCommand": "npx expo export --platform web",
+    "devUrl": "http://localhost:8081",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Slate School Kosgi",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

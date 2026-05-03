@@ -474,7 +474,7 @@ export default function AccountsPayroll() {
 
 // ─── Root Styles ──────────────────────────────────────────────────────────────
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: isDark ? '#0A0F1E' : '#F1F5F9' },
+  container: { flex: 1, backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
   emptyWrap: { flex: 1, alignItems: 'center', paddingTop: 80, gap: 10 },
   emptyIconWrap: { width: 76, height: 76, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },

@@ -131,65 +131,65 @@ export default function ManageUsersScreen() {
   const renderItem = ({
     item
 
-  }: {item: any;}) => {
+  }: { item: any; }) => {
     const row = item as Record<string, unknown>;
     const displayName = personListDisplayName(row);
     const initial = (displayName.trim()[0] || 'U').toUpperCase();
     return <View style={styles.userCard}>
-            <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initial}</Text>
-            </View>
-            <View style={styles.userInfo}>
-                <Text style={styles.userName}>{displayName}</Text>
-                <Text style={styles.userSub}>
-                    {activeTab === 'student'
-                      ? studentEnrollmentSubtitle(row.current_enrollment)
-                      : staffRoleDepartmentLine(row)}
-                </Text>
-            </View>
-            <View style={styles.actions}>
-                <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
-                    <Ionicons name="create-outline" size={20} color="#3B82F6" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
-                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                </TouchableOpacity>
-            </View>
-        </View>;
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{initial}</Text>
+      </View>
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{displayName}</Text>
+        <Text style={styles.userSub}>
+          {activeTab === 'student'
+            ? studentEnrollmentSubtitle(row.current_enrollment)
+            : staffRoleDepartmentLine(row)}
+        </Text>
+      </View>
+      <View style={styles.actions}>
+        <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionBtn}>
+          <Ionicons name="create-outline" size={20} color="#3B82F6" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
+          <Ionicons name="trash-outline" size={20} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+    </View>;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            {!shellActive && <AdminHeader title="Manage Users" />}
-            {/* TABS */}
-            <View style={styles.tabs}>
-                <TouchableOpacity style={[styles.tab, activeTab === 'student' && styles.activeTab]} onPress={() => setActiveTab('student')}>
-                    <Text style={[styles.tabText, activeTab === 'student' && styles.activeTabText]}>Students</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.tab, activeTab === 'staff' && styles.activeTab]} onPress={() => setActiveTab('staff')}>
-                    <Text style={[styles.tabText, activeTab === 'staff' && styles.activeTabText]}>Staff</Text>
-                </TouchableOpacity>
-            </View>
-            {/* SEARCH */}
-            <View style={[styles.searchContainer, ds.searchBarWrapper]}>
-                <Ionicons name="search" size={20} color="#9CA3AF" />
-                <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder={`Search ${activeTab === 'student' ? 'Students' : 'Staff'}...`} value={searchQuery} onChangeText={setSearchQuery} />
-            </View>
-            {/* LIST */}
-            {loading ? <LogoLoader size={60} color="#3B82F6" style={{
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    {!shellActive && <AdminHeader title="Manage Users" />}
+    {/* TABS */}
+    <View style={styles.tabs}>
+      <TouchableOpacity style={[styles.tab, activeTab === 'student' && styles.activeTab]} onPress={() => setActiveTab('student')}>
+        <Text style={[styles.tabText, activeTab === 'student' && styles.activeTabText]}>Students</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.tab, activeTab === 'staff' && styles.activeTab]} onPress={() => setActiveTab('staff')}>
+        <Text style={[styles.tabText, activeTab === 'staff' && styles.activeTabText]}>Staff</Text>
+      </TouchableOpacity>
+    </View>
+    {/* SEARCH */}
+    <View style={[styles.searchContainer, ds.searchBarWrapper]}>
+      <Ionicons name="search" size={20} color="#9CA3AF" />
+      <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder={`Search ${activeTab === 'student' ? 'Students' : 'Staff'}...`} value={searchQuery} onChangeText={setSearchQuery} />
+    </View>
+    {/* LIST */}
+    {loading ? <LogoLoader size={60} color="#3B82F6" style={{
       marginTop: 40
     }} /> : <FlatList data={filteredUsers} renderItem={renderItem} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={styles.emptyText}>No users found.</Text>} />}
-            {/* FAB to Add New */}
-            <TouchableOpacity style={styles.fab} onPress={() => {
-      if (activeTab === 'student') router.push('/accounts/addStudent');else router.push('/accounts/addStaff');
+    {/* FAB to Add New */}
+    <TouchableOpacity style={styles.fab} onPress={() => {
+      if (activeTab === 'student') router.push('/accounts/addStudent'); else router.push('/accounts/addStaff');
     }}>
-                <Ionicons name="add" size={28} color="#fff" />
-            </TouchableOpacity>
-        </View>;
+      <Ionicons name="add" size={28} color="#fff" />
+    </TouchableOpacity>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   tabs: {
     flexDirection: 'row',

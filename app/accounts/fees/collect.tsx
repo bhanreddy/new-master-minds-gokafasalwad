@@ -4,7 +4,8 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator} from 'react-native';
+    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator
+} from 'react-native';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
@@ -578,7 +579,7 @@ export default function CollectFeesScreen() {
                                     </View>
                                     <TouchableOpacity
                                         style={styles.upiShareBtn}
-                                        onPress={() => Share.share({ message: upiPayUri, title: 'UPI payment' }).catch(() => {})}
+                                        onPress={() => Share.share({ message: upiPayUri, title: 'UPI payment' }).catch(() => { })}
                                     >
                                         <Text style={styles.upiShareBtnText}>Share UPI link</Text>
                                     </TouchableOpacity>
@@ -650,7 +651,7 @@ const summaryStyles = StyleSheet.create({
 const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: isDark ? '#0F1117' : '#F3F4F8',
+        backgroundColor: 'transparent',
     },
     content: {
         padding: 16,

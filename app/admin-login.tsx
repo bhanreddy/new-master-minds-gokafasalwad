@@ -12,7 +12,7 @@ import AuthHeader from '@/src/components/AuthHeader';
 import { showAlert } from '@/src/components/CustomAlert';
 import { AuthService } from '@/src/services/authService';
 import LogoLoader from '../src/components/LogoLoader';
-import ChangePasswordModal from '@/src/components/admin/ChangePasswordModal';
+
 import { SCHOOL_NAME } from '@/src/constants/school';
 
 const { width } = Dimensions.get('window');
@@ -139,8 +139,7 @@ const AdminLoginScreen: React.FC = () => {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Blocking modal for forced password change */}
-      <ChangePasswordModal />
+
     </View>);
 
 };
@@ -148,8 +147,8 @@ const AdminLoginScreen: React.FC = () => {
 export default AdminLoginScreen;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFC' },
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  root: { flex: 1, backgroundColor: 'transparent'},
+  container: { flex: 1, backgroundColor: 'transparent'},
 
   bodyContainer: {
     flex: 1,

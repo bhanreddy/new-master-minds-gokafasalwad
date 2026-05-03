@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
@@ -108,77 +109,77 @@ export default function ReceiptsScreen() {
     item,
     index
 
-  }: {item: any;index: number;}) => {
+  }: { item: any; index: number; }) => {
     return <Animated.View entering={FadeInDown.delay(index * 100).duration(500)} style={styles.receiptCard}>
-            <View style={[styles.receiptLeft, {
+      <View style={[styles.receiptLeft, {
         flex: 1
       }]}>
-                <View style={[styles.iconBox, {
+        <View style={[styles.iconBox, {
           backgroundColor: '#E0F2FE'
         }]}>
-                    <Ionicons name="receipt" size={20} color="#0284C7" />
-                </View>
-                <View style={{
+          <Ionicons name="receipt" size={20} color="#0284C7" />
+        </View>
+        <View style={{
           flex: 1
         }}>
-                    <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
-                    <Text style={styles.receiptDetails}>{item.admission_no} • {item.class}</Text>
-                </View>
-            </View>
-            <View style={[styles.receiptRight, {
+          <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
+          <Text style={styles.receiptDetails}>{item.admission_no} • {item.class}</Text>
+        </View>
+      </View>
+      <View style={[styles.receiptRight, {
         flexShrink: 0,
         marginLeft: 10
       }]}>
-                <Text style={styles.amount}>{item.amount}</Text>
-                <Text style={styles.date}>{item.date}</Text>
-                <View style={{
+        <Text style={styles.amount}>{item.amount}</Text>
+        <Text style={styles.date}>{item.date}</Text>
+        <View style={{
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'flex-end',
           gap: 12,
           marginTop: 6
         }}>
-                    <Text style={styles.typeBadge}>{item.type}</Text>
-                    <TouchableOpacity onPress={() => handlePrint(item.raw)}>
-                        <Ionicons name="print-outline" size={18} color="#6366F1" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Animated.View>;
+          <Text style={styles.typeBadge}>{item.type}</Text>
+          <TouchableOpacity onPress={() => handlePrint(item.raw)}>
+            <Ionicons name="print-outline" size={18} color="#6366F1" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Animated.View>;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            {!shellActive && <AdminHeader title="Receipts" showBackButton={true} />}
-            <View style={styles.content}>
-                {/* Search Bar */}
-                <View style={[styles.searchContainer, ds.searchBarWrapper]}>
-                    <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
-                    <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder="Search by transaction ID or Name" placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
-                </View>
-                {/* Filters */}
-                <View style={styles.filterContainer}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    {!shellActive && <AdminHeader title="Receipts" showBackButton={true} />}
+    <View style={styles.content}>
+      {/* Search Bar */}
+      <View style={[styles.searchContainer, ds.searchBarWrapper]}>
+        <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+        <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder="Search by transaction ID or Name" placeholderTextColor="#9CA3AF" value={searchQuery} onChangeText={setSearchQuery} />
+      </View>
+      {/* Filters */}
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{
           gap: 10
         }}>
-                        {filters.map((filter, index) => {
+          {filters.map((filter, index) => {
             return <TouchableOpacity key={index} onPress={() => setSelectedFilter(filter)} style={[styles.filterChip, selectedFilter === filter && styles.activeFilterChip]}>
-                                <Text style={[styles.filterText, selectedFilter === filter && styles.activeFilterText]}>{filter}</Text>
-                            </TouchableOpacity>;
+              <Text style={[styles.filterText, selectedFilter === filter && styles.activeFilterText]}>{filter}</Text>
+            </TouchableOpacity>;
           })}
-                    </ScrollView>
-                </View>
-                {loading ? <LogoLoader size={60} color="#6366F1" style={{
+        </ScrollView>
+      </View>
+      {loading ? <LogoLoader size={60} color="#6366F1" style={{
         marginTop: 20
       }} /> : <FlatList data={filteredReceipts} renderItem={renderReceiptItem} keyExtractor={(item) => item.id} showsVerticalScrollIndicator={false} contentContainerStyle={{
         paddingBottom: 20
       }} ListEmptyComponent={<Text style={styles.emptyText}>{receipts.length === 0 ? 'No receipts found' : 'No receipts match your filters'}</Text>} />}
-            </View>
-        </View>;
+    </View>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   content: {
     flex: 1,

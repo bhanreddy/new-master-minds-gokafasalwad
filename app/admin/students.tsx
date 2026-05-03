@@ -38,10 +38,10 @@ export default function AdminStudentsScreen() {
   // Reference Data
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
-  const [statuses, setStatuses] = useState<{id: number;name: string;}[]>([]);
+  const [statuses, setStatuses] = useState<{ id: number; name: string; }[]>([]);
 
   // UI State
-  const [filterModal, setFilterModal] = useState<{visible: boolean;type: 'class' | 'section' | 'status' | 'sort' | null;}>({
+  const [filterModal, setFilterModal] = useState<{ visible: boolean; type: 'class' | 'section' | 'status' | 'sort' | null; }>({
     visible: false,
     type: null
   });
@@ -58,9 +58,9 @@ export default function AdminStudentsScreen() {
     const loadRefs = async () => {
       try {
         const [cls, sec, sts] = await Promise.all([
-        ClassService.getClasses(),
-        ClassService.getSections(),
-        StudentService.getStatuses()]
+          ClassService.getClasses(),
+          ClassService.getSections(),
+          StudentService.getStatuses()]
         );
         setClasses(cls);
         setSections(sec);
@@ -112,8 +112,8 @@ export default function AdminStudentsScreen() {
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (page === 1) fetchStudents();else
-      setPage(1); // Setting page 1 will trigger fetch
+      if (page === 1) fetchStudents(); else
+        setPage(1); // Setting page 1 will trigger fetch
     }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -153,28 +153,28 @@ export default function AdminStudentsScreen() {
 
     return (
       <Animated.View entering={FadeInUp.delay(index * 50).springify().damping(12)} style={styles.card}>
-                <TouchableOpacity
+        <TouchableOpacity
           style={styles.cardHeader}
           onPress={() => router.push({ pathname: '/admin/addStudent', params: { id: item.id } })}>
 
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{item.first_name?.charAt(0) || '?'}</Text>
-                    </View>
-                    <View style={styles.info}>
-                        <Text style={styles.name}>{fullName}</Text>
-                        <Text style={styles.details}>
-                            {enrollment.class_code || 'N/A'} - {enrollment.section_name || 'N/A'}
-                            {enrollment.roll_number ? ` • Roll ${enrollment.roll_number}` : ''}
-                        </Text>
-                        <Text style={styles.subDetails}>{item.admission_no}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusInactive]}>
-                        <Text style={[styles.statusText, isActive ? styles.statusTextActive : styles.statusTextInactive]}>
-                            {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
-                        </Text>
-                    </View>
-                </TouchableOpacity>
-            </Animated.View>);
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{item.first_name?.charAt(0) || '?'}</Text>
+          </View>
+          <View style={styles.info}>
+            <Text style={styles.name}>{fullName}</Text>
+            <Text style={styles.details}>
+              {enrollment.class_code || 'N/A'} - {enrollment.section_name || 'N/A'}
+              {enrollment.roll_number ? ` • Roll ${enrollment.roll_number}` : ''}
+            </Text>
+            <Text style={styles.subDetails}>{item.admission_no}</Text>
+          </View>
+          <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusInactive]}>
+            <Text style={[styles.statusText, isActive ? styles.statusTextActive : styles.statusTextInactive]}>
+              {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>);
 
   };
 
@@ -191,9 +191,9 @@ export default function AdminStudentsScreen() {
     if (filterModal.type === 'section') return [{ id: null, name: 'All Sections' }, ...sections];
     if (filterModal.type === 'status') return [{ id: null, name: 'All Statuses' }, ...statuses];
     if (filterModal.type === 'sort') return [
-    { id: 'name', name: 'Name' },
-    { id: 'roll_number', name: 'Roll Number' },
-    { id: 'admission_no', name: 'Admission No' }];
+      { id: 'name', name: 'Name' },
+      { id: 'roll_number', name: 'Roll Number' },
+      { id: 'admission_no', name: 'Admission No' }];
 
     return [];
   };
@@ -208,165 +208,165 @@ export default function AdminStudentsScreen() {
 
   return (
     <View style={styles.container}>
-            <AdminHeader title="Students" showNotification scrollY={scrollY} />
-            <View style={styles.headerArea}>
-                <View style={[styles.searchBox, ds.searchBarWrapper]}>
-                    <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-                    <AppTextInput
+      <AdminHeader title="Students" showNotification scrollY={scrollY} />
+      <View style={styles.headerArea}>
+        <View style={[styles.searchBox, ds.searchBarWrapper]}>
+          <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+          <AppTextInput
             style={[ds.inputInChrome, styles.searchInput]}
             placeholder="Search by name or admission no..."
             placeholderTextColor={theme.colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery} />
 
-                    {searchQuery ?
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-                            <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-                        </TouchableOpacity> :
-          null}
-                </View>
-                <View style={styles.filterRow}>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <TouchableOpacity
+          {searchQuery ?
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity> :
+            null}
+        </View>
+        <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <TouchableOpacity
               style={[styles.filterChip, selectedClass && styles.filterChipActive]}
               onPress={() => handleOpenFilter('class')}>
 
-                            <Text style={[styles.filterChipText, selectedClass && styles.filterChipTextActive]}>
-                                {selectedClass ? classes.find((c) => c.id === selectedClass)?.name : 'Class'}
-                            </Text>
-                            <Ionicons name="chevron-down" size={14} color={selectedClass ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+              <Text style={[styles.filterChipText, selectedClass && styles.filterChipTextActive]}>
+                {selectedClass ? classes.find((c) => c.id === selectedClass)?.name : 'Class'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={selectedClass ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.filterChip, selectedSection && styles.filterChipActive]}
               onPress={() => handleOpenFilter('section')}>
 
-                            <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive]}>
-                                {selectedSection ? sections.find((s) => s.id === selectedSection)?.name : 'Section'}
-                            </Text>
-                            <Ionicons name="chevron-down" size={14} color={selectedSection ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+              <Text style={[styles.filterChipText, selectedSection && styles.filterChipTextActive]}>
+                {selectedSection ? sections.find((s) => s.id === selectedSection)?.name : 'Section'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={selectedSection ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.filterChip, selectedStatus && styles.filterChipActive]}
               onPress={() => handleOpenFilter('status')}>
 
-                            <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive]}>
-                                {selectedStatus ? statuses.find((s) => String(s.id) === String(selectedStatus))?.name : 'Status'}
-                            </Text>
-                            <Ionicons name="chevron-down" size={14} color={selectedStatus ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
+              <Text style={[styles.filterChipText, selectedStatus && styles.filterChipTextActive]}>
+                {selectedStatus ? statuses.find((s) => String(s.id) === String(selectedStatus))?.name : 'Status'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={selectedStatus ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.filterChip, sortBy !== 'name' && styles.filterChipActive]}
               onPress={() => handleOpenFilter('sort')}>
 
-                            <Ionicons name="swap-vertical" size={14} color={sortBy !== 'name' ? theme.colors.primary : theme.colors.textSecondary} style={{ marginRight: 4 }} />
-                            <Text style={[styles.filterChipText, sortBy !== 'name' && styles.filterChipTextActive]}>
-                                {sortBy === 'name' ? 'Sort' : currentFilterOptions().find((o) => o.id === sortBy)?.name}
-                            </Text>
-                            <Ionicons name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={14} color={sortBy !== 'name' ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                        </TouchableOpacity>
-                    </ScrollView>
-                </View>
+              <Ionicons name="swap-vertical" size={14} color={sortBy !== 'name' ? theme.colors.primary : theme.colors.textSecondary} style={{ marginRight: 4 }} />
+              <Text style={[styles.filterChipText, sortBy !== 'name' && styles.filterChipTextActive]}>
+                {sortBy === 'name' ? 'Sort' : currentFilterOptions().find((o) => o.id === sortBy)?.name}
+              </Text>
+              <Ionicons name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={14} color={sortBy !== 'name' ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+      {loading && !refreshing ?
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <LogoLoader size={60} color={theme.colors.primary} />
+          <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>Fetching students...</Text>
+        </View> :
+
+        <Animated.FlatList
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          data={students}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+          ListEmptyComponent={
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <Ionicons name="people-outline" size={60} color={theme.colors.border} />
+              <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>No students found matching your criteria.</Text>
             </View>
-            {loading && !refreshing ?
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <LogoLoader size={60} color={theme.colors.primary} />
-                    <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>Fetching students...</Text>
-                </View> :
+          }
+          ListFooterComponent={students.length > 0 ? () =>
+            <View style={styles.pagination}>
+              <TouchableOpacity
+                disabled={page === 1}
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+                style={[styles.pageButton, page === 1 && { opacity: 0.5 }]}>
 
-      <Animated.FlatList
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        data={students}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-        ListEmptyComponent={
-        <View style={{ padding: 40, alignItems: 'center' }}>
-                            <Ionicons name="people-outline" size={60} color={theme.colors.border} />
-                            <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>No students found matching your criteria.</Text>
-                        </View>
-        }
-        ListFooterComponent={students.length > 0 ? () =>
-        <View style={styles.pagination}>
-                            <TouchableOpacity
-            disabled={page === 1}
-            onPress={() => setPage((p) => Math.max(1, p - 1))}
-            style={[styles.pageButton, page === 1 && { opacity: 0.5 }]}>
+                <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.pageInfo}>{page} of {pagination.total_pages || 1}</Text>
+              <TouchableOpacity
+                disabled={page >= pagination.total_pages}
+                onPress={() => setPage((p) => p + 1)}
+                style={[styles.pageButton, page >= pagination.total_pages && { opacity: 0.5 }]}>
 
-                                <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
-                            </TouchableOpacity>
-                            <Text style={styles.pageInfo}>{page} of {pagination.total_pages || 1}</Text>
-                            <TouchableOpacity
-            disabled={page >= pagination.total_pages}
-            onPress={() => setPage((p) => p + 1)}
-            style={[styles.pageButton, page >= pagination.total_pages && { opacity: 0.5 }]}>
-
-                                <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
-                            </TouchableOpacity>
-                        </View> :
-        null} />
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View> :
+            null} />
 
       }
-            {/* Filter Modal */}
-            <Modal
+      {/* Filter Modal */}
+      <Modal
         visible={filterModal.visible}
         transparent
         animationType="fade"
         onRequestClose={() => setFilterModal({ visible: false, type: null })}>
 
-                <TouchableOpacity
+        <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setFilterModal({ visible: false, type: null })}>
 
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select {currentFilterLabel()}</Text>
-                            <TouchableOpacity onPress={() => setFilterModal({ visible: false, type: null })}>
-                                <Ionicons name="close" size={24} color={theme.colors.text} />
-                            </TouchableOpacity>
-                        </View>
-                        <FlatList
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select {currentFilterLabel()}</Text>
+              <TouchableOpacity onPress={() => setFilterModal({ visible: false, type: null })}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
               data={currentFilterOptions()}
               keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) =>
-              <TouchableOpacity
-                style={[
-                styles.optionItem,
-                String(getSelectedValue()) === String(item.id) && styles.optionItemSelected]
-                }
-                onPress={() => handleSelectFilter(item.id)}>
+                <TouchableOpacity
+                  style={[
+                    styles.optionItem,
+                    String(getSelectedValue()) === String(item.id) && styles.optionItemSelected]
+                  }
+                  onPress={() => handleSelectFilter(item.id)}>
 
-                                    <Text style={[
-                styles.optionText,
-                String(getSelectedValue()) === String(item.id) && styles.optionTextSelected]
-                }>
-                                        {item.name}
-                                    </Text>
-                                    {String(getSelectedValue()) === String(item.id) &&
-                <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
-                }
-                                </TouchableOpacity>
+                  <Text style={[
+                    styles.optionText,
+                    String(getSelectedValue()) === String(item.id) && styles.optionTextSelected]
+                  }>
+                    {item.name}
+                  </Text>
+                  {String(getSelectedValue()) === String(item.id) &&
+                    <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
+                  }
+                </TouchableOpacity>
               } />
 
-                    </View>
-                </TouchableOpacity>
-            </Modal>
-            <TouchableOpacity
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      <TouchableOpacity
         style={styles.fab}
         onPress={() => router.push('/admin/addStudent')}>
 
-                <Ionicons name="add" size={30} color="#fff" />
-            </TouchableOpacity>
-        </View>);
+        <Ionicons name="add" size={30} color="#fff" />
+      </TouchableOpacity>
+    </View>);
 
 }
 
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: 'transparent'
   },
   headerArea: {
     paddingHorizontal: 20,

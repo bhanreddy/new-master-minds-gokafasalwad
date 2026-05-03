@@ -140,8 +140,8 @@ const DriverLoginScreen: React.FC = () => {
 export default DriverLoginScreen;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFC' },
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  root: { flex: 1, backgroundColor: 'transparent'},
+  container: { flex: 1, backgroundColor: 'transparent'},
 
   bodyContainer: {
     flex: 1,

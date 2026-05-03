@@ -37,37 +37,37 @@ export default function WebViewScreen() {
   };
   if (!uri) {
     return <ScreenLayout>
-                <StudentHeader showBackButton={true} title="Error" />
-                <View style={styles.centerContainer}>
-                    <Text style={styles.errorText}>Invalid URL provided.</Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-                        <Text style={styles.retryText}>Go Back</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScreenLayout>;
+      <StudentHeader showBackButton={true} title="Error" />
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>Invalid URL provided.</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
+          <Text style={styles.retryText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    </ScreenLayout>;
   }
   return <ScreenLayout>
-            <StudentHeader showBackButton={true} title={pageTitle} />
-            <View style={styles.container}>
-                {hasError ? <View style={styles.centerContainer}>
-                        <Text style={styles.errorText}>Failed to load content.</Text>
-                        <Text style={styles.subErrorText}>Please check your internet connection.</Text>
-                        {/* WebView might not support reload nicely without ref, so simple back for now or retry logic could be added */}
-                    </View> : <WebView source={{
+    <StudentHeader showBackButton={true} title={pageTitle} />
+    <View style={styles.container}>
+      {hasError ? <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>Failed to load content.</Text>
+        <Text style={styles.subErrorText}>Please check your internet connection.</Text>
+        {/* WebView might not support reload nicely without ref, so simple back for now or retry logic could be added */}
+      </View> : <WebView source={{
         uri: uri
       }} style={styles.webview} startInLoadingState={true} renderLoading={() => {
-return <View style={styles.loadingOverlay}>
-                                <LogoLoader size={60} color="#4F46E5" />
-                            </View>;
+        return <View style={styles.loadingOverlay}>
+          <LogoLoader size={60} color="#4F46E5" />
+        </View>;
       }} onLoadStart={handleLoadStart} onLoadEnd={handleLoadEnd} onError={handleError} javaScriptEnabled={true} domStorageEnabled={true} scalesPageToFit={true} // For Android text sizing
       />}
-            </View>
-        </ScreenLayout>;
+    </View>
+  </ScreenLayout>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb'
+    backgroundColor: 'transparent'
   },
   webview: {
     flex: 1

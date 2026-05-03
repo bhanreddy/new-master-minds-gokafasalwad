@@ -225,7 +225,7 @@ export default function PolicyManagerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: 'transparent'},
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee', paddingTop: 60 },
   backBtn: { marginRight: 15 },
   title: { fontSize: 20, fontWeight: 'bold' },

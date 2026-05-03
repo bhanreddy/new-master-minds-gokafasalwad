@@ -77,7 +77,7 @@ const StaffProfileScreen = () => {
           </View>
 
           <Text style={styles.name}>{user?.name || 'Staff Member'}</Text>
-          <Text style={styles.designation}>{user?.role ? user?.role.charAt(0).toUpperCase() + user?.role.slice(1) : 'Staff'}</Text>
+          <Text style={styles.designation}>{user?.role ? user?.role.name.charAt(0).toUpperCase() + user?.role.name.slice(1) : 'Staff'}</Text>
           <Text style={styles.staffId}>Staff ID: {user?.staff_code || user?.staff_id || 'N/A'}</Text>
 
           <View style={styles.quickStatsRow}>
@@ -177,7 +177,7 @@ export default StaffProfileScreen;
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   scrollContent: {
     padding: 20

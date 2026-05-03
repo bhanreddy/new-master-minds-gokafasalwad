@@ -96,8 +96,8 @@ function MovingSchoolRibbon() {
   const width = Dimensions.get('window').width;
   const translateX = useRef(new Animated.Value(width)).current;
   const [contentWidth, setContentWidth] = useState(0);
-  const schoolName = t('schoolRibbon.brandName', { defaultValue: SCHOOL_NAME || SCHOOL_CONFIG.name });
-  const tagline = t('schoolRibbon.tagline', { defaultValue: SCHOOL_CONFIG.tagline?.trim() || '' });
+  const schoolName = SCHOOL_NAME || SCHOOL_CONFIG.name;
+  const tagline = SCHOOL_CONFIG.tagline?.trim() || '';
 
   const bodyH = movingRibbonBodyHeight();
   const backdropH = insets.top + bodyH;
@@ -259,10 +259,10 @@ const shellStyles = StyleSheet.create({
 function StaticLetterheadRibbon() {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
-  const schoolName = t('schoolRibbon.brandName', { defaultValue: SCHOOL_NAME || SCHOOL_CONFIG.name });
-  const tagline = t('schoolRibbon.tagline', { defaultValue: SCHOOL_CONFIG.tagline?.trim() || '' });
-  const motto = t('schoolRibbon.motto', { defaultValue: SCHOOL_CONFIG.motto?.trim() || '' });
-  const address = t('schoolRibbon.address', { defaultValue: SCHOOL_CONFIG.address?.trim() || '' });
+  const schoolName = SCHOOL_NAME || SCHOOL_CONFIG.name;
+  const tagline = SCHOOL_CONFIG.tagline?.trim() || '';
+  const motto = SCHOOL_CONFIG.motto?.trim() || '';
+  const address = SCHOOL_CONFIG.address?.trim() || '';
   const phone = SCHOOL_CONFIG.contact?.trim() || '';
   const email = SCHOOL_CONFIG.email?.trim() || '';
 

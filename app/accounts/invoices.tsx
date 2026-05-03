@@ -84,7 +84,7 @@ export default function AccountsInvoices() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   centered: {
     flex: 1,

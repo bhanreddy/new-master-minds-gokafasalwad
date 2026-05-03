@@ -6,7 +6,8 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, StatusBar, KeyboardAvoidingView,
   Platform, Modal, FlatList, Keyboard, Pressable,
-  Dimensions} from 'react-native';
+  Dimensions
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -781,7 +782,7 @@ export default function AddStudentScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: isDark ? '#0A0F1E' : '#F1F5F9' },
+  container: { flex: 1, backgroundColor: 'transparent' },
 
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? '#0A0F1E' : '#F1F5F9', gap: 10 },
   loadingTitle: { fontSize: 17, fontWeight: '800', color: isDark ? '#E2E8F0' : '#1E293B', marginTop: 8 },

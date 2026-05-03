@@ -133,7 +133,7 @@ export default function WhyAdsScreen() {
 
 const getStyles = (colors: ThemeColors) =>
     StyleSheet.create({
-        container: { flex: 1, backgroundColor: colors.background },
+        container: { flex: 1, backgroundColor: 'transparent'},
         header: {
             flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
             paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 16 : 36, paddingBottom: 16,

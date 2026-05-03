@@ -742,7 +742,7 @@ export default function DiaryScreen() {
 
 const getStyles = (theme: SchoolTheme, isDark: boolean) =>
   StyleSheet.create({
-    root: { flex: 1, backgroundColor: theme.colors.background },
+    root: { flex: 1, backgroundColor: 'transparent' },
     scroll: { flex: 1 },
     scrollContent: { paddingTop: 12, paddingBottom: 80 },
 

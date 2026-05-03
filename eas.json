@@ -9,30 +9,34 @@
       "distribution": "internal",
       "channel": "development"
     },
-    "preview": {
+    "internal": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "internal",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
-      },
-      "ios": {
-        "simulator": false
-      },
-      "env": {}
+      }
     },
     "production": {
       "distribution": "store",
       "autoIncrement": true,
       "channel": "production",
       "android": {
-        "buildType": "aab"
+        "buildType": "app-bundle"
+      }
+    },
+    "school-12": {
+      "android": {
+        "buildType": "apk"
       },
-      "ios": {
-        "simulator": false,
-        "resourceClass": "m1-medium"
-      },
-      "env": {}
+      "env": {
+        "EXPO_PUBLIC_SCHOOL_ID": "12",
+        "EXPO_PUBLIC_SCHOOL_CODE": "SSK",
+        "EXPO_PUBLIC_SCHOOL_NAME": "SLATE SCHOOL KOSGI",
+        "EXPO_PUBLIC_API_URL": "https://schoolims-multitenancy.onrender.com/api/v1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://jztckbupiepiqfrxhszt.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6dGNrYnVwaWVwaXFmcnhoc3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMzgyMTYsImV4cCI6MjA4ODcxNDIxNn0.TC6mwwLezkwMmPxkIzRnR7NPyworRVzQ_vXCkRmnz4o"
+      }
     }
   },
   "submit": {

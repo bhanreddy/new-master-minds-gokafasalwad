@@ -7,7 +7,7 @@ export default function GirlSafetyLayout() {
     useRequireRole('admin', 'staff', 'student', 'principal');
 
     return (
-        <Stack screenOptions={{ headerShown: true }}>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent'}, headerShown: true }}>
             <Stack.Screen
                 name="index"
                 options={{

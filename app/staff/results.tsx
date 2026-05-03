@@ -28,46 +28,46 @@ interface ExamCategory {
 }
 
 const EXAM_CATEGORIES: ExamCategory[] = [
-{
-  key: 'slip_test',
-  title: 'Slip Tests',
-  icon: 'document-text',
-  color: '#3B82F6',
-  description: 'Weekly slip tests and unit tests',
-  subExams: ['ST-1', 'ST-2', 'ST-3', 'ST-4', 'ST-5']
-},
-{
-  key: 'fa_results',
-  title: 'Formative Assessment',
-  icon: 'analytics',
-  color: '#10B981',
-  description: 'FA-1 to FA-4 Internal Exams',
-  subExams: ['FA-1', 'FA-2', 'FA-3', 'FA-4']
-},
-{
-  key: 'sa_results',
-  title: 'Summative Assessment',
-  icon: 'school',
-  color: '#F59E0B',
-  description: 'Half-yearly and Annual Exams',
-  subExams: ['SA-1', 'SA-2']
-},
-{
-  key: 'special',
-  title: 'Special Exams',
-  icon: 'star',
-  color: '#8B5CF6',
-  description: 'Talent tests and special evaluations',
-  subExams: ['Special-1', 'Special-2']
-},
-{
-  key: 'weekend',
-  title: 'Weekend Exams',
-  icon: 'calendar',
-  color: '#EC4899',
-  description: 'Weekly practice (IIT/NEET)',
-  subExams: ['W-1', 'W-2', 'W-3', 'W-4']
-}];
+  {
+    key: 'slip_test',
+    title: 'Slip Tests',
+    icon: 'document-text',
+    color: '#3B82F6',
+    description: 'Weekly slip tests and unit tests',
+    subExams: ['ST-1', 'ST-2', 'ST-3', 'ST-4', 'ST-5']
+  },
+  {
+    key: 'fa_results',
+    title: 'Formative Assessment',
+    icon: 'analytics',
+    color: '#10B981',
+    description: 'FA-1 to FA-4 Internal Exams',
+    subExams: ['FA-1', 'FA-2', 'FA-3', 'FA-4']
+  },
+  {
+    key: 'sa_results',
+    title: 'Summative Assessment',
+    icon: 'school',
+    color: '#F59E0B',
+    description: 'Half-yearly and Annual Exams',
+    subExams: ['SA-1', 'SA-2']
+  },
+  {
+    key: 'special',
+    title: 'Special Exams',
+    icon: 'star',
+    color: '#8B5CF6',
+    description: 'Talent tests and special evaluations',
+    subExams: ['Special-1', 'Special-2']
+  },
+  {
+    key: 'weekend',
+    title: 'Weekend Exams',
+    icon: 'calendar',
+    color: '#EC4899',
+    description: 'Weekly practice (IIT/NEET)',
+    subExams: ['W-1', 'W-2', 'W-3', 'W-4']
+  }];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers: derive unique class-sections from flat assignment list
@@ -81,8 +81,8 @@ interface ClassSectionGroup {
 }
 
 function getUniqueClassSections(
-assignments: TeacherClassAssignment[])
-: ClassSectionGroup[] {
+  assignments: TeacherClassAssignment[])
+  : ClassSectionGroup[] {
   const seen = new Set<string>();
   const result: ClassSectionGroup[] = [];
   for (const a of assignments) {
@@ -133,25 +133,25 @@ export default function UploadMarks() {
   // Derived: subjects available for the chosen class-section
   const availableSubjects = useMemo(
     () =>
-    assignments.filter(
-      (a) => a.class_section_id === selectedClassSectionId
-    ),
+      assignments.filter(
+        (a) => a.class_section_id === selectedClassSectionId
+      ),
     [assignments, selectedClassSectionId]
   );
 
   // Derived: resolved assignment (the single row we actually use for API calls)
   const selectedAssignment: TeacherClassAssignment | null = useMemo(
     () =>
-    assignments.find(
-      (a) =>
-      a.class_section_id === selectedClassSectionId &&
-      a.subject_id === selectedSubjectId
-    ) ?? null,
+      assignments.find(
+        (a) =>
+          a.class_section_id === selectedClassSectionId &&
+          a.subject_id === selectedSubjectId
+      ) ?? null,
     [assignments, selectedClassSectionId, selectedSubjectId]
   );
 
   // ── data state ───────────────────────────────────────────────────────────────
-  const [marks, setMarks] = useState<{[key: string]: string;}>({});
+  const [marks, setMarks] = useState<{ [key: string]: string; }>({});
   const [students, setStudents] = useState<StudentWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -219,7 +219,7 @@ export default function UploadMarks() {
         subject_id: selectedAssignment.subject_id
       });
       setMaxMarks(data.max_marks ? data.max_marks.toString() : '100');
-      const newMarks: {[key: string]: string;} = {};
+      const newMarks: { [key: string]: string; } = {};
       if (data.marks?.length > 0) {
         data.marks.forEach((m: any) => {
           newMarks[m.student_id] = m.marks_obtained.toString();
@@ -282,31 +282,31 @@ export default function UploadMarks() {
       'Confirm Upload',
       `Upload ${selectedCategory.title} – ${selectedSubExam} marks for ${selectedAssignment.class_name}-${selectedAssignment.section_name} (${selectedAssignment.subject_name})?`,
       [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Upload',
-        onPress: async () => {
-          try {
-            setLoading(true);
-            await ResultService.upload({
-              class_section_id: selectedAssignment.class_section_id,
-              exam_category: selectedCategory.key,
-              sub_exam: selectedSubExam,
-              subject_id: selectedAssignment.subject_id,
-              max_marks: Number(maxMarks),
-              results: filledMarks
-            });
-            alertCompat('Success', 'Marks uploaded successfully!');
-            setSelectedCategory(null);
-            setMarks({});
-          } catch (e) {
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Upload',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await ResultService.upload({
+                class_section_id: selectedAssignment.class_section_id,
+                exam_category: selectedCategory.key,
+                sub_exam: selectedSubExam,
+                subject_id: selectedAssignment.subject_id,
+                max_marks: Number(maxMarks),
+                results: filledMarks
+              });
+              alertCompat('Success', 'Marks uploaded successfully!');
+              setSelectedCategory(null);
+              setMarks({});
+            } catch (e) {
 
-            alertCompat('Error', 'Failed to upload marks');
-          } finally {
-            setLoading(false);
+              alertCompat('Error', 'Failed to upload marks');
+            } finally {
+              setLoading(false);
+            }
           }
-        }
-      }]
+        }]
 
     );
   };
@@ -314,25 +314,25 @@ export default function UploadMarks() {
   // ── renders ───────────────────────────────────────────────────────────────────
 
   const renderDashboard = () =>
-  <ScrollView contentContainerStyle={styles.dashboardContent}>
+    <ScrollView contentContainerStyle={styles.dashboardContent}>
       <View style={styles.headerSection}>
         <Text style={styles.pageTitle}>Marks Entry</Text>
         <Text style={styles.pageSubtitle}>Select an exam category to begin</Text>
       </View>
       <View style={styles.gridContainer}>
         {EXAM_CATEGORIES.map((cat, index) =>
-      <Animated.View
-        key={cat.key}
-        entering={FadeInDown.delay(index * 80).duration(500)}
-        style={styles.cardContainer}>
+          <Animated.View
+            key={cat.key}
+            entering={FadeInDown.delay(index * 80).duration(500)}
+            style={styles.cardContainer}>
 
             <TouchableOpacity
-          style={styles.card}
-          activeOpacity={0.75}
-          onPress={() => {
-            setSelectedCategory(cat);
-            if (cat.subExams?.length) setSelectedSubExam(cat.subExams[0]);
-          }}>
+              style={styles.card}
+              activeOpacity={0.75}
+              onPress={() => {
+                setSelectedCategory(cat);
+                if (cat.subExams?.length) setSelectedSubExam(cat.subExams[0]);
+              }}>
 
               <View style={[styles.iconBox, { backgroundColor: cat.color + '18' }]}>
                 <Ionicons name={cat.icon} size={22} color={cat.color} />
@@ -341,26 +341,26 @@ export default function UploadMarks() {
                 <Text style={styles.cardTitle}>{cat.title}</Text>
                 <Text style={styles.cardSubtitle}>{cat.description}</Text>
                 {cat.subExams &&
-            <View style={styles.badgeRow}>
+                  <View style={styles.badgeRow}>
                     {cat.subExams.slice(0, 4).map((sub) =>
-              <View key={sub} style={[styles.badge, { borderColor: cat.color + '60' }]}>
+                      <View key={sub} style={[styles.badge, { borderColor: cat.color + '60' }]}>
                         <Text style={[styles.badgeText, { color: cat.color }]}>{sub}</Text>
                       </View>
-              )}
+                    )}
                     {cat.subExams.length > 4 &&
-              <Text style={[styles.badgeMore, { color: cat.color }]}>
+                      <Text style={[styles.badgeMore, { color: cat.color }]}>
                         +{cat.subExams.length - 4}
                       </Text>
-              }
+                    }
                   </View>
-            }
+                }
               </View>
               <View style={[styles.arrowBox, { backgroundColor: cat.color }]}>
                 <Ionicons name="arrow-forward" size={16} color="#fff" />
               </View>
             </TouchableOpacity>
           </Animated.View>
-      )}
+        )}
       </View>
     </ScrollView>;
 
@@ -410,28 +410,28 @@ export default function UploadMarks() {
             <Ionicons name="book-outline" size={11} /> SUBJECT
           </Text>
           {availableSubjects.length === 0 ?
-          <Text style={styles.noSubjectText}>No subjects for this class.</Text> :
+            <Text style={styles.noSubjectText}>No subjects for this class.</Text> :
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}>
 
               {availableSubjects.map((a) => {
-              const active = selectedSubjectId === a.subject_id;
-              return (
-                <TouchableOpacity
-                  key={a.subject_id}
-                  style={[styles.chip, styles.chipSubject, active && styles.chipSubjectActive]}
-                  onPress={() => setSelectedSubjectId(a.subject_id)}
-                  activeOpacity={0.7}>
+                const active = selectedSubjectId === a.subject_id;
+                return (
+                  <TouchableOpacity
+                    key={a.subject_id}
+                    style={[styles.chip, styles.chipSubject, active && styles.chipSubjectActive]}
+                    onPress={() => setSelectedSubjectId(a.subject_id)}
+                    activeOpacity={0.7}>
 
                     <Text style={[styles.chipText, active && styles.chipSubjectTextActive]}>
                       {a.subject_name}
                     </Text>
                   </TouchableOpacity>);
 
-            })}
+              })}
             </ScrollView>
           }
         </View>
@@ -468,7 +468,7 @@ export default function UploadMarks() {
   };
 
   const renderUploadForm = () =>
-  <>
+    <>
       {renderFilterSection()}
 
       {/* ── Max Marks Input ─────────────────────────────────────────────── */}
@@ -478,17 +478,17 @@ export default function UploadMarks() {
           <Text style={styles.maxMarksLabel}>Total Marks</Text>
         </View>
         <AppTextInput
-        style={styles.maxMarksInput}
-        value={maxMarks}
-        onChangeText={handleMaxMarksChange}
-        keyboardType="numeric"
-        maxLength={3} />
+          style={styles.maxMarksInput}
+          value={maxMarks}
+          onChangeText={handleMaxMarksChange}
+          keyboardType="numeric"
+          maxLength={3} />
 
       </View>
 
       {/* ── Context Banner ──────────────────────────────────────────────── */}
       {selectedAssignment &&
-    <Animated.View entering={FadeInRight.duration(300)} style={styles.contextBanner}>
+        <Animated.View entering={FadeInRight.duration(300)} style={styles.contextBanner}>
           <Ionicons name="information-circle-outline" size={14} color="#6366F1" />
           <Text style={styles.contextText} numberOfLines={1}>
             {selectedAssignment.class_name}-{selectedAssignment.section_name}
@@ -496,12 +496,12 @@ export default function UploadMarks() {
             {'  ·  '}{selectedSubExam}
           </Text>
         </Animated.View>
-    }
+      }
 
       {/* ── Student List ────────────────────────────────────────────────── */}
       <ScrollView
-      contentContainerStyle={styles.listContent}
-      showsVerticalScrollIndicator={false}>
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}>
 
         <View style={styles.tableHeader}>
           <Text style={[styles.headerCell, { flex: 2 }]}>Student</Text>
@@ -511,56 +511,56 @@ export default function UploadMarks() {
         </View>
 
         {loading ?
-      <View style={styles.loadingContainer}>
+          <View style={styles.loadingContainer}>
             <LogoLoader size={60} color="#8B5CF6" />
             <Text style={styles.loadingText}>Loading...</Text>
           </View> :
-      students.length > 0 ?
-      students.map((student, index) =>
-      <Animated.View
-        key={student.id}
-        entering={FadeInDown.delay(index * 40).duration(350)}
-        style={styles.studentRow}>
+          students.length > 0 ?
+            students.map((student, index) =>
+              <Animated.View
+                key={student.id}
+                entering={FadeInDown.delay(index * 40).duration(350)}
+                style={styles.studentRow}>
 
-              <View style={styles.studentAvatar}>
-                <Text style={styles.studentAvatarText}>
-                  {(student.person.first_name?.[0] ?? '?').toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 2, marginLeft: 10 }}>
-                <Text style={styles.studentName}>
-                  {student.person.display_name ??
-            `${student.person.first_name} ${student.person.last_name}`}
-                </Text>
-                <Text style={styles.studentRoll}>#{student.admission_no}</Text>
-              </View>
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <AppTextInput
-            style={[
-            styles.markInput,
-            marks[student.id] ? styles.markInputFilled : null]
-            }
-            placeholder="—"
-            placeholderTextColor="#9CA3AF"
-            keyboardType="numeric"
-            maxLength={3}
-            value={marks[student.id] || ''}
-            onChangeText={(text) => handleMarkChange(student.id, text)} />
+                <View style={styles.studentAvatar}>
+                  <Text style={styles.studentAvatarText}>
+                    {(student.person.first_name?.[0] ?? '?').toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 2, marginLeft: 10 }}>
+                  <Text style={styles.studentName}>
+                    {student.person.display_name ??
+                      `${student.person.first_name} ${student.person.last_name}`}
+                  </Text>
+                  <Text style={styles.studentRoll}>#{student.admission_no}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <AppTextInput
+                    style={[
+                      styles.markInput,
+                      marks[student.id] ? styles.markInputFilled : null]
+                    }
+                    placeholder="—"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="numeric"
+                    maxLength={3}
+                    value={marks[student.id] || ''}
+                    onChangeText={(text) => handleMarkChange(student.id, text)} />
 
-              </View>
-            </Animated.View>
-      ) :
+                </View>
+              </Animated.View>
+            ) :
 
-      <View style={styles.emptyStudents}>
-            <Ionicons name="people-outline" size={40} color="#D1D5DB" />
-            <Text style={styles.emptyStudentsText}>No students found</Text>
-            <Text style={styles.emptyStudentsSubtext}>
-              {selectedAssignment ?
-          `No students in ${selectedAssignment.class_name}-${selectedAssignment.section_name}` :
-          'Select a class and subject above'}
-            </Text>
-          </View>
-      }
+            <View style={styles.emptyStudents}>
+              <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+              <Text style={styles.emptyStudentsText}>No students found</Text>
+              <Text style={styles.emptyStudentsSubtext}>
+                {selectedAssignment ?
+                  `No students in ${selectedAssignment.class_name}-${selectedAssignment.section_name}` :
+                  'Select a class and subject above'}
+              </Text>
+            </View>
+        }
       </ScrollView>
 
       {/* ── Submit Button ────────────────────────────────────────────────── */}
@@ -571,19 +571,19 @@ export default function UploadMarks() {
           </Text>
         </View>
         <TouchableOpacity
-        style={[styles.submitButton, (loading || !selectedAssignment) && styles.submitButtonDisabled]}
-        onPress={handleSubmit}
-        disabled={loading || !selectedAssignment}
-        activeOpacity={0.85}>
+          style={[styles.submitButton, (loading || !selectedAssignment) && styles.submitButtonDisabled]}
+          onPress={handleSubmit}
+          disabled={loading || !selectedAssignment}
+          activeOpacity={0.85}>
 
           {loading ?
-        <LogoLoader size={30} color="#fff" /> :
+            <LogoLoader size={30} color="#fff" /> :
 
-        <>
+            <>
               <Text style={styles.submitText}>Upload Results</Text>
               <Ionicons name="cloud-upload" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </>
-        }
+          }
         </TouchableOpacity>
       </View>
     </>;
@@ -599,7 +599,7 @@ export default function UploadMarks() {
         showBackButton={true} />
 
       {selectedCategory &&
-      <TouchableOpacity style={styles.backToDash} onPress={handleBackToDashboard}>
+        <TouchableOpacity style={styles.backToDash} onPress={handleBackToDashboard}>
           <Ionicons name="arrow-back" size={15} color="#6B7280" />
           <Text style={styles.backText}>All Exams</Text>
         </TouchableOpacity>
@@ -615,414 +615,414 @@ export default function UploadMarks() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getStyles = (theme: Theme, isDark: boolean) =>
-StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.card
-  },
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: 'transparent'
+    },
 
-  // ── Dashboard ────────────────────────────────────────────────────────────
-  dashboardContent: {
-    padding: 20,
-    paddingBottom: 40
-  },
-  headerSection: {
-    marginBottom: 22
-  },
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: theme.colors.text,
-    letterSpacing: -0.3
-  },
-  pageSubtitle: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginTop: 4
-  },
-  gridContainer: {
-    gap: 12
-  },
-  cardContainer: {
-    width: '100%'
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: isDark ? 0.3 : 0.04,
-    shadowRadius: 8,
-    elevation: 2
-  },
-  iconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 13
-  },
-  textContainer: {
-    flex: 1
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 2
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    color: theme.colors.textSecondary
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 6
-  },
-  badge: {
-    borderWidth: 1,
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 1
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '600'
-  },
-  badgeMore: {
-    fontSize: 10,
-    fontWeight: '600',
-    alignSelf: 'center'
-  },
-  arrowBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8
-  },
+    // ── Dashboard ────────────────────────────────────────────────────────────
+    dashboardContent: {
+      padding: 20,
+      paddingBottom: 40
+    },
+    headerSection: {
+      marginBottom: 22
+    },
+    pageTitle: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: theme.colors.text,
+      letterSpacing: -0.3
+    },
+    pageSubtitle: {
+      fontSize: 13,
+      color: theme.colors.textSecondary,
+      marginTop: 4
+    },
+    gridContainer: {
+      gap: 12
+    },
+    cardContainer: {
+      width: '100%'
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+      padding: 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.04,
+      shadowRadius: 8,
+      elevation: 2
+    },
+    iconBox: {
+      width: 46,
+      height: 46,
+      borderRadius: 13,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 13
+    },
+    textContainer: {
+      flex: 1
+    },
+    cardTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.colors.text,
+      marginBottom: 2
+    },
+    cardSubtitle: {
+      fontSize: 12,
+      color: theme.colors.textSecondary
+    },
+    badgeRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 4,
+      marginTop: 6
+    },
+    badge: {
+      borderWidth: 1,
+      borderRadius: 5,
+      paddingHorizontal: 5,
+      paddingVertical: 1
+    },
+    badgeText: {
+      fontSize: 10,
+      fontWeight: '600'
+    },
+    badgeMore: {
+      fontSize: 10,
+      fontWeight: '600',
+      alignSelf: 'center'
+    },
+    arrowBox: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: 8
+    },
 
-  // ── Back nav ─────────────────────────────────────────────────────────────
-  backToDash: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    backgroundColor: theme.colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : theme.colors.card
-  },
-  backText: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    fontWeight: '600',
-    marginLeft: 5
-  },
+    // ── Back nav ─────────────────────────────────────────────────────────────
+    backToDash: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+      paddingVertical: 9,
+      backgroundColor: theme.colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : theme.colors.card
+    },
+    backText: {
+      fontSize: 13,
+      color: theme.colors.textSecondary,
+      fontWeight: '600',
+      marginLeft: 5
+    },
 
-  // ── Filter Section ───────────────────────────────────────────────────────
-  filterSection: {
-    backgroundColor: theme.colors.background,
-    paddingTop: 14,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : theme.colors.card,
-    gap: 10
-  },
-  filterGroup: {
-    paddingHorizontal: 16
-  },
-  filterLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    color: theme.colors.textTertiary,
-    marginBottom: 6,
-    textTransform: 'uppercase'
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingRight: 16
-  },
-  chip: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
-  },
-  chipActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#8B5CF6'
-  },
-  chipSubject: {
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
-  },
-  chipSubjectActive: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#10B981'
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.textSecondary
-  },
-  chipTextActive: {
-    color: '#8B5CF6'
-  },
-  chipSubjectTextActive: {
-    color: '#10B981'
-  },
-  examTab: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
-  },
-  examTabActive: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#F59E0B'
-  },
-  examTabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.textSecondary
-  },
-  examTabTextActive: {
-    color: '#F59E0B'
-  },
-  emptyFilterBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    margin: 16,
-    padding: 12,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FECACA'
-  },
-  emptyFilterText: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '500',
-    flex: 1
-  },
-  noSubjectText: {
-    color: theme.colors.textTertiary,
-    fontSize: 12,
-    fontStyle: 'italic'
-  },
+    // ── Filter Section ───────────────────────────────────────────────────────
+    filterSection: {
+      backgroundColor: theme.colors.background,
+      paddingTop: 14,
+      paddingBottom: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : theme.colors.card,
+      gap: 10
+    },
+    filterGroup: {
+      paddingHorizontal: 16
+    },
+    filterLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      color: theme.colors.textTertiary,
+      marginBottom: 6,
+      textTransform: 'uppercase'
+    },
+    chipRow: {
+      flexDirection: 'row',
+      gap: 8,
+      paddingRight: 16
+    },
+    chip: {
+      paddingVertical: 7,
+      paddingHorizontal: 14,
+      borderRadius: 20,
+      backgroundColor: theme.colors.card,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
+    },
+    chipActive: {
+      backgroundColor: '#EEF2FF',
+      borderColor: '#8B5CF6'
+    },
+    chipSubject: {
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
+    },
+    chipSubjectActive: {
+      backgroundColor: '#F0FDF4',
+      borderColor: '#10B981'
+    },
+    chipText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.colors.textSecondary
+    },
+    chipTextActive: {
+      color: '#8B5CF6'
+    },
+    chipSubjectTextActive: {
+      color: '#10B981'
+    },
+    examTab: {
+      paddingVertical: 7,
+      paddingHorizontal: 14,
+      borderRadius: 20,
+      backgroundColor: theme.colors.card,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
+    },
+    examTabActive: {
+      backgroundColor: '#FFF7ED',
+      borderColor: '#F59E0B'
+    },
+    examTabText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.colors.textSecondary
+    },
+    examTabTextActive: {
+      color: '#F59E0B'
+    },
+    emptyFilterBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      margin: 16,
+      padding: 12,
+      backgroundColor: '#FEF2F2',
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: '#FECACA'
+    },
+    emptyFilterText: {
+      color: '#DC2626',
+      fontSize: 13,
+      fontWeight: '500',
+      flex: 1
+    },
+    noSubjectText: {
+      color: theme.colors.textTertiary,
+      fontSize: 12,
+      fontStyle: 'italic'
+    },
 
-  // ── Max Marks ────────────────────────────────────────────────────────────
-  maxMarksRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingLeft: 18,
-    paddingRight: 24,
-    paddingVertical: 14,
-    backgroundColor: theme.colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6'
-  },
-  maxMarksLeft: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  maxMarksLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.textSecondary
-  },
-  maxMarksInput: {
-    borderWidth: 1.5,
-    borderColor: '#8B5CF6',
-    borderRadius: 8,
-    width: 72,
-    height: 44,
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#8B5CF6',
-    backgroundColor: '#F5F3FF',
-    marginRight: 2
-  },
+    // ── Max Marks ────────────────────────────────────────────────────────────
+    maxMarksRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingLeft: 18,
+      paddingRight: 24,
+      paddingVertical: 14,
+      backgroundColor: theme.colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6'
+    },
+    maxMarksLeft: {
+      flexDirection: 'row',
+      alignItems: 'center'
+    },
+    maxMarksLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: theme.colors.textSecondary
+    },
+    maxMarksInput: {
+      borderWidth: 1.5,
+      borderColor: '#8B5CF6',
+      borderRadius: 8,
+      width: 72,
+      height: 44,
+      textAlign: 'center',
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#8B5CF6',
+      backgroundColor: '#F5F3FF',
+      marginRight: 2
+    },
 
-  // ── Context Banner ───────────────────────────────────────────────────────
-  contextBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginHorizontal: 18,
-    marginTop: 10,
-    marginBottom: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 8
-  },
-  contextText: {
-    fontSize: 12,
-    color: '#6366F1',
-    fontWeight: '600',
-    flex: 1
-  },
+    // ── Context Banner ───────────────────────────────────────────────────────
+    contextBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginHorizontal: 18,
+      marginTop: 10,
+      marginBottom: 2,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      backgroundColor: '#EEF2FF',
+      borderRadius: 8
+    },
+    contextText: {
+      fontSize: 12,
+      color: '#6366F1',
+      fontWeight: '600',
+      flex: 1
+    },
 
-  // ── Student List ─────────────────────────────────────────────────────────
-  listContent: {
-    padding: 18,
-    paddingBottom: 180
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    marginBottom: 10,
-    paddingHorizontal: 6
-  },
-  headerCell: {
-    fontSize: 11,
-    color: theme.colors.textTertiary,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    gap: 10
-  },
-  loadingText: {
-    color: theme.colors.textSecondary,
-    fontSize: 13
-  },
-  studentRow: {
-    backgroundColor: theme.colors.background,
-    borderRadius: 12,
-    padding: 11,
-    paddingHorizontal: 13,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: isDark ? 0.2 : 0.03,
-    shadowRadius: 3,
-    elevation: 1
-  },
-  studentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#EEF2FF',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  studentAvatarText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#8B5CF6'
-  },
-  studentName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text
-  },
-  studentRoll: {
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-    marginTop: 1
-  },
-  markInput: {
-    borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB',
-    borderRadius: 8,
-    width: 56,
-    height: 38,
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.text,
-    backgroundColor: theme.colors.card
-  },
-  markInputFilled: {
-    borderColor: '#8B5CF6',
-    backgroundColor: '#F5F3FF',
-    color: '#8B5CF6'
-  },
-  emptyStudents: {
-    alignItems: 'center',
-    paddingVertical: 50,
-    gap: 8
-  },
-  emptyStudentsText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.textSecondary
-  },
-  emptyStudentsSubtext: {
-    fontSize: 13,
-    color: theme.colors.textTertiary,
-    textAlign: 'center'
-  },
+    // ── Student List ─────────────────────────────────────────────────────────
+    listContent: {
+      padding: 18,
+      paddingBottom: 180
+    },
+    tableHeader: {
+      flexDirection: 'row',
+      marginBottom: 10,
+      paddingHorizontal: 6
+    },
+    headerCell: {
+      fontSize: 11,
+      color: theme.colors.textTertiary,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5
+    },
+    loadingContainer: {
+      alignItems: 'center',
+      paddingVertical: 40,
+      gap: 10
+    },
+    loadingText: {
+      color: theme.colors.textSecondary,
+      fontSize: 13
+    },
+    studentRow: {
+      backgroundColor: theme.colors.background,
+      borderRadius: 12,
+      padding: 11,
+      paddingHorizontal: 13,
+      marginBottom: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0.2 : 0.03,
+      shadowRadius: 3,
+      elevation: 1
+    },
+    studentAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: '#EEF2FF',
+      justifyContent: 'center',
+      alignItems: 'center'
+    },
+    studentAvatarText: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: '#8B5CF6'
+    },
+    studentName: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: theme.colors.text
+    },
+    studentRoll: {
+      fontSize: 11,
+      color: theme.colors.textSecondary,
+      marginTop: 1
+    },
+    markInput: {
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB',
+      borderRadius: 8,
+      width: 56,
+      height: 38,
+      textAlign: 'center',
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.colors.text,
+      backgroundColor: theme.colors.card
+    },
+    markInputFilled: {
+      borderColor: '#8B5CF6',
+      backgroundColor: '#F5F3FF',
+      color: '#8B5CF6'
+    },
+    emptyStudents: {
+      alignItems: 'center',
+      paddingVertical: 50,
+      gap: 8
+    },
+    emptyStudentsText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.textSecondary
+    },
+    emptyStudentsSubtext: {
+      fontSize: 13,
+      color: theme.colors.textTertiary,
+      textAlign: 'center'
+    },
 
-  // ── Submit ───────────────────────────────────────────────────────────────
-  floatingAction: {
-    position: 'absolute',
-    bottom: 90,
-    left: 18,
-    right: 18,
-    gap: 8
-  },
-  submitCountBadge: {
-    alignSelf: 'center',
-    backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
-  },
-  submitCountText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.textSecondary
-  },
-  submitButton: {
-    backgroundColor: '#8B5CF6',
-    paddingVertical: 15,
-    borderRadius: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#C4B5FD',
-    shadowOpacity: 0,
-    elevation: 0
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.2
-  }
-});
+    // ── Submit ───────────────────────────────────────────────────────────────
+    floatingAction: {
+      position: 'absolute',
+      bottom: 90,
+      left: 18,
+      right: 18,
+      gap: 8
+    },
+    submitCountBadge: {
+      alignSelf: 'center',
+      backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.9)',
+      paddingHorizontal: 14,
+      paddingVertical: 5,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'
+    },
+    submitCountText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.colors.textSecondary
+    },
+    submitButton: {
+      backgroundColor: '#8B5CF6',
+      paddingVertical: 15,
+      borderRadius: 16,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#8B5CF6',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+      elevation: 6
+    },
+    submitButtonDisabled: {
+      backgroundColor: '#C4B5FD',
+      shadowOpacity: 0,
+      elevation: 0
+    },
+    submitText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+      letterSpacing: 0.2
+    }
+  });

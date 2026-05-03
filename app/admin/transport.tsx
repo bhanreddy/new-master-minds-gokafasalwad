@@ -655,7 +655,7 @@ const getStyles = (theme: Theme) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#F9FAFB', // softer default background
+      backgroundColor: 'transparent', // softer default background
     },
     listContent: {
       paddingHorizontal: 20,

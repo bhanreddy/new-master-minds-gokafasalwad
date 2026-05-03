@@ -293,7 +293,7 @@ export default function LMSPage() {
       setVideoModalVisible(true);
       return;
     }
-    Linking.openURL(item.content_url).catch(() => {});
+    Linking.openURL(item.content_url).catch(() => { });
   }, []);
 
   const closeVideoModal = useCallback(() => {
@@ -549,7 +549,7 @@ function getStyles(theme: Theme, isDark: boolean, isWide: boolean, winW: number)
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme.colors.card,
+      backgroundColor: 'transparent',
     },
     loaderWrap: {
       flex: 1,

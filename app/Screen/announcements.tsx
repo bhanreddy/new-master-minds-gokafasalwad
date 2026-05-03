@@ -60,26 +60,46 @@ const NoticeTimelineRow = memo(function NoticeTimelineRow({ // OPT: Pure timelin
   const { t } = useTranslation(); // OPT: Subscribe so t_field + labels update on language change.
   return (
     <View style={styles.timelineItem}>
-      <View style={styles.leftCol}>
-        <Text style={styles.dateText}>{item.date}</Text>
-        <Text style={styles.timeText}>{item.time}</Text>
-        <View style={styles.verticalLine} />
-      </View>
-      <View style={[styles.dot, { backgroundColor: item.color }]} />
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>{t_field(item.title, item.title_te)}</Text>
-          {item.important ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{t('announcements.important', 'Important')}</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={styles.message} onPress={onMessagePress}>
-          {t_field(item.message, item.message_te)}
-        </Text>
-        <Ionicons name={item.icon as 'notifications'} size={24} color={item.color + '40'} style={styles.bgIcon} />
-      </View>
+      {[
+        <View key="left" style={styles.leftCol}>
+          {[
+            <Text key="d" style={styles.dateText}>
+              {item.date}
+            </Text>,
+            <Text key="tt" style={styles.timeText}>
+              {item.time}
+            </Text>,
+            <View key="line" style={styles.verticalLine} />,
+          ]}
+        </View>,
+        <View key="dot" style={[styles.dot, { backgroundColor: item.color }]} />,
+        <View key="card" style={styles.card}>
+          {[
+            <View key="hdr" style={styles.cardHeader}>
+              {[
+                <Text key="ttl" style={styles.cardTitle}>
+                  {t_field(item.title, item.title_te)}
+                </Text>,
+                item.important ? (
+                  <View key="imp" style={styles.badge}>
+                    <Text style={styles.badgeText}>{t('announcements.important', 'Important')}</Text>
+                  </View>
+                ) : null,
+              ]}
+            </View>,
+            <Text key="msg" style={styles.message} onPress={onMessagePress}>
+              {t_field(item.message, item.message_te)}
+            </Text>,
+            <Ionicons
+              key="bg-ic"
+              name={item.icon as 'notifications'}
+              size={24}
+              color={item.color + '40'}
+              style={styles.bgIcon}
+            />,
+          ]}
+        </View>,
+      ]}
     </View>
   ); // OPT: memoized row subtree
 });
@@ -127,34 +147,47 @@ function AnnouncementsScreenInner() { // OPT: Wrapped by ErrorBoundary in defaul
     [] // OPT:
   );
 
-  return ( // OPT: Screen chrome + conditional list vs loader.
-    <ScreenLayout> {/* OPT: */}
-      <StudentHeader showBackButton={true} title={t('announcements.title', 'Announcements')} /> {/* OPT: */}
-      <View style={styles.container}> {/* OPT: */}
-        <View style={styles.headerSection}> {/* OPT: */}
-          <View style={styles.iconBox}> {/* OPT: */}
-            <Ionicons name="notifications" size={24} color="#4f46e5" /> {/* OPT: */}
-          </View> {/* OPT: */}
-          <View> {/* OPT: */}
-            <Text style={styles.pageTitle}>{t('announcements.title', 'Notice Board')}</Text> {/* OPT: */}
-            <Text style={styles.subtitle}>{t('announcements.subtitle', 'Latest updates and events')}</Text> {/* OPT: */}
-          </View> {/* OPT: */}
-        </View> {/* OPT: */}
-        {loading ? ( // OPT: First paint while hook resolves cache/network.
-          <LogoLoader size={60} color="#4f46e5" style={{ marginTop: 50 }} />
-        ) : (
-          <FlatList
-            data={notices}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            {...listProps}
-            ListEmptyComponent={emptyList}
-          />
-        )}
-      </View> {/* OPT: main column */}
-    </ScreenLayout>
+  return ( // OPT: Screen chrome + conditional list vs loader. Avoid whitespace-only text nodes between View siblings (RN requires Text for raw strings).
+    <ScreenLayout>{[
+        <StudentHeader
+          key="screen-hdr"
+          showBackButton={true}
+          title={t('announcements.title', 'Announcements')}
+        />,
+        <View key="screen-body" style={styles.container}>{[
+          <View key="hdr-sec" style={styles.headerSection}>
+            {[
+              <View key="hdr-icon" style={styles.iconBox}>
+                <Ionicons name="notifications" size={24} color="#4f46e5" />
+              </View>,
+              <View key="hdr-titles">
+                {[
+                  <Text key="pg-title" style={styles.pageTitle}>
+                    {t('announcements.title', 'Notice Board')}
+                  </Text>,
+                  <Text key="pg-sub" style={styles.subtitle}>
+                    {t('announcements.subtitle', 'Latest updates and events')}
+                  </Text>,
+                ]}
+              </View>,
+            ]}
+          </View>,
+          loading ? ( // OPT: First paint while hook resolves cache/network.
+            <LogoLoader key="loader" size={60} color="#4f46e5" style={{ marginTop: 50 }} />
+          ) : (
+            <FlatList
+              key="list"
+              data={notices}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              contentContainerStyle={styles.listContainer}
+              showsVerticalScrollIndicator={false}
+              {...listProps}
+              ListEmptyComponent={emptyList}
+            />
+          ),
+        ]}</View>,
+      ]}</ScreenLayout>
   ); // OPT:
 }
 
@@ -169,7 +202,7 @@ export default function AnnouncementsScreen() { // OPT: Root export wraps inner 
 const getStyles = (theme: SchoolTheme) => {
   const c = theme.colors;
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: c.background },
+    container: { flex: 1, backgroundColor: 'transparent'},
     headerSection: {
       flexDirection: 'row',
       alignItems: 'center',

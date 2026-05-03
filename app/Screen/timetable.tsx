@@ -74,13 +74,13 @@ export default function TimetableScreen() {
               </View>
               <View style={[styles.slotContent, !slot && styles.emptySlot]}>
                 {slot ?
-                <>
+                  <>
                     <Text style={styles.subjectText}>{slot.subject_name}</Text>
                     <Text style={styles.teacherText}>{slot.teacher_name}</Text>
                     {slot.room_no && <Text style={styles.roomText}>Room: {slot.room_no}</Text>}
                   </> :
 
-                <Text style={styles.noClassText}>Free Period</Text>
+                  <Text style={styles.noClassText}>Free Period</Text>
                 }
               </View>
             </View>);
@@ -108,16 +108,16 @@ export default function TimetableScreen() {
         contentContainerStyle={styles.scrollContent}>
 
         {loading ?
-        <LogoLoader size={60} color={theme.colors.primary} style={styles.loader} /> :
-        slots.length === 0 ?
-        <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyText}>No timetable found</Text>
-          </View> :
+          <LogoLoader size={60} color={theme.colors.primary} style={styles.loader} /> :
+          slots.length === 0 ?
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={48} color={theme.colors.textSecondary} />
+              <Text style={styles.emptyText}>No timetable found</Text>
+            </View> :
 
-        <View style={styles.timetableContainer}>
-            {renderDaySchedule()}
-          </View>
+            <View style={styles.timetableContainer}>
+              {renderDaySchedule()}
+            </View>
         }
       </ScrollView>
     </View>);
@@ -126,7 +126,7 @@ export default function TimetableScreen() {
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: 'transparent'
   },
   header: {
     flexDirection: 'row',

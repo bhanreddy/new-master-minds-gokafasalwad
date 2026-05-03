@@ -7,6 +7,44 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:75898876293f2adaf6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.slateschool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:3c2f5c6e1d091d43f6ff6f",
+        "android_client_info": {
+          "package_name": "com.schoolims.default2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:50612038206:android:499d5ecee3be6755f6ff6f",
         "android_client_info": {
           "package_name": "com.testapp.app"

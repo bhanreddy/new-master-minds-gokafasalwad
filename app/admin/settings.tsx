@@ -321,7 +321,7 @@ export default function AdminSettings() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
+    container: { flex: 1, backgroundColor: 'transparent' },
     scroll: { padding: 20, paddingBottom: 60 },
 
     // Profile card — deep violet accent for Admin role

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Switch, Image, Linking } from
-'react-native';
+  StatusBar, Switch, Image, Linking
+} from
+  'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
@@ -33,15 +34,15 @@ function SettingRow({ icon, iconColor, iconBg, label, isLast, rightElement, onPr
   const { theme } = useTheme();
   return (
     <>
-            <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
-                <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
-                    <Ionicons name={icon as any} size={18} color={iconColor} />
-                </View>
-                <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
-                <View style={RS.right}>{rightElement}</View>
-            </Wrapper>
-            {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
-        </>);
+      <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
+        <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
+          <Ionicons name={icon as any} size={18} color={iconColor} />
+        </View>
+        <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
+        <View style={RS.right}>{rightElement}</View>
+      </Wrapper>
+      {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
+    </>);
 
 }
 
@@ -74,16 +75,16 @@ interface GroupProps {
 function Group({ title, delay, borderColor, children, theme }: GroupProps) {
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(480)} style={GS.container}>
-            <Text style={GS.title}>{title}</Text>
-            <View style={[
-      GS.card, { backgroundColor: theme.colors.card },
-      borderColor ?
-      { borderColor, borderWidth: 1 } :
-      { borderWidth: 1, borderColor: theme.colors.border }]
+      <Text style={GS.title}>{title}</Text>
+      <View style={[
+        GS.card, { backgroundColor: theme.colors.card },
+        borderColor ?
+          { borderColor, borderWidth: 1 } :
+          { borderWidth: 1, borderColor: theme.colors.border }]
       }>
-                {children}
-            </View>
-        </Animated.View>);
+        {children}
+      </View>
+    </Animated.View>);
 
 }
 
@@ -114,204 +115,204 @@ export default function AccountsSettings() {
   const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
   const handlePress = (item: string) =>
-  alertCompat(item, 'This feature will be available in the next update.');
+    alertCompat(item, 'This feature will be available in the next update.');
 
   const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
   const redChevron = <MaterialIcons name="chevron-right" size={18} color="#EF4444" />;
 
   return (
     <View style={styles.container}>
-            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
-            {!shellActive && <AdminHeader title="Settings" showBackButton={true} />}
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
+      {!shellActive && <AdminHeader title="Settings" showBackButton={true} />}
 
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-                {/* ── Profile card ── */}
-                <Animated.View entering={FadeInDown.delay(80).duration(600)} style={styles.profileCard}>
-                    <View style={styles.blob1} />
-                    <View style={styles.blob2} />
+        {/* ── Profile card ── */}
+        <Animated.View entering={FadeInDown.delay(80).duration(600)} style={styles.profileCard}>
+          <View style={styles.blob1} />
+          <View style={styles.blob2} />
 
-                    <View style={styles.profileTop}>
-                        <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
-                            <Image
+          <View style={styles.profileTop}>
+            <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
+              <Image
                 source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3135/3135768.png' }}
                 style={styles.avatar} />
 
-                            <View style={styles.onlineDot} />
-                        </Animated.View>
+              <View style={styles.onlineDot} />
+            </Animated.View>
 
-                        <View style={styles.profileMeta}>
-                            <Text style={styles.profileName}>
-                                {user?.displayName || 'Accountant'}
-                            </Text>
-                            <View style={styles.idBadge}>
-                                <FontAwesome5 name="id-badge" size={9} color="#F59E0B" />
-                                <Text style={styles.idText}>
-                                    {user?.userId?.substring(0, 8).toUpperCase() || 'N/A'}
-                                </Text>
-                            </View>
-                        </View>
+            <View style={styles.profileMeta}>
+              <Text style={styles.profileName}>
+                {user?.displayName || 'Accountant'}
+              </Text>
+              <View style={styles.idBadge}>
+                <FontAwesome5 name="id-badge" size={9} color="#F59E0B" />
+                <Text style={styles.idText}>
+                  {user?.userId?.substring(0, 8).toUpperCase() || 'N/A'}
+                </Text>
+              </View>
+            </View>
 
-                        <TouchableOpacity
+            <TouchableOpacity
               style={styles.editChip}
               onPress={() => handlePress('Edit Profile')}
               activeOpacity={0.7}>
 
-                            <Ionicons name="pencil" size={11} color="#F59E0B" />
-                            <Text style={styles.editChipText}>Edit</Text>
-                        </TouchableOpacity>
-                    </View>
-                </Animated.View>
+              <Ionicons name="pencil" size={11} color="#F59E0B" />
+              <Text style={styles.editChipText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
 
-                {/* ── General ── */}
-                <Group title="General" delay={170} theme={theme}>
-                    <SettingRow
+        {/* ── General ── */}
+        <Group title="General" delay={170} theme={theme}>
+          <SettingRow
             icon="moon" iconColor="#6366F1" iconBg="#EEF2FF"
             label="Dark Mode"
             rightElement={
-            <Switch
-              trackColor={{ false: theme.colors.border, true: '#818CF8' }}
-              thumbColor="#fff"
-              onValueChange={() => toggleTheme()}
-              value={isDark} />
+              <Switch
+                trackColor={{ false: theme.colors.border, true: '#818CF8' }}
+                thumbColor="#fff"
+                onValueChange={() => toggleTheme()}
+                value={isDark} />
 
             } />
 
-                    <SettingRow
+          <SettingRow
             icon="language" iconColor="#3B82F6" iconBg="#EFF6FF"
             label="Language (Telugu)"
             isLast
             rightElement={
-            <Switch
-              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-              thumbColor="#fff"
-              onValueChange={(val) => {i18n.changeLanguage(val ? 'te' : 'en');}}
-              value={i18n.language === 'te'} />
+              <Switch
+                trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+                thumbColor="#fff"
+                onValueChange={(val) => { i18n.changeLanguage(val ? 'te' : 'en'); }}
+                value={i18n.language === 'te'} />
 
             } />
 
-                </Group>
+        </Group>
 
-                {/* ── Security ── */}
-                <Group title="Security" delay={250} theme={theme}>
-                    <SettingRow
+        {/* ── Security ── */}
+        <Group title="Security" delay={250} theme={theme}>
+          <SettingRow
             icon="finger-print" iconColor="#EC4899" iconBg="#FDF2F8"
             label={isBiometricAvailable ? 'Biometric Login' : 'Biometric (Not Available)'}
             rightElement={
-            <Switch
-              trackColor={{ false: '#E5E7EB', true: '#F472B6' }}
-              thumbColor={isBiometricEnabled ? '#fff' : '#f4f3f4'}
-              onValueChange={toggleBiometric}
-              value={isBiometricEnabled}
-              disabled={!isBiometricAvailable || biometricLoading} />
+              <Switch
+                trackColor={{ false: '#E5E7EB', true: '#F472B6' }}
+                thumbColor={isBiometricEnabled ? '#fff' : '#f4f3f4'}
+                onValueChange={toggleBiometric}
+                value={isBiometricEnabled}
+                disabled={!isBiometricAvailable || biometricLoading} />
 
             } />
 
-                    <SettingRow
+          <SettingRow
             icon="lock-closed" iconColor="#3B82F6" iconBg="#EFF6FF"
             label="Change Password"
             isLast
             onPress={() => router.push('/change-password')}
             rightElement={chevron} />
 
-                </Group>
+        </Group>
 
-                {/* ── Support ── */}
-                <Group title="Support" delay={330} theme={theme}>
-                    <SettingRow
+        {/* ── Support ── */}
+        <Group title="Support" delay={330} theme={theme}>
+          <SettingRow
             icon="help-buoy" iconColor="#8B5CF6" iconBg="#F5F3FF"
             label="Help Center"
             onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hey%2C%20I%20have%20a%20problem%20in%20the%20app')}
             rightElement={chevron} />
 
-                    <SettingRow
+          <SettingRow
             icon="shield-checkmark" iconColor="#06B6D4" iconBg="#ECFEFF"
             label="Privacy Policy"
             onPress={() => Linking.openURL('https://schoolims.nexsyrus.com/privacy')}
             rightElement={chevron} />
 
-                    <SettingRow
+          <SettingRow
             icon="megaphone-outline" iconColor="#F59E0B" iconBg="#FEF3C7"
             label="Why do we show Ads"
             onPress={() => (router as any).push('/why-ads')}
             rightElement={chevron} />
 
-                    <SettingRow
+          <SettingRow
             icon="logo-whatsapp" iconColor="#25D366" iconBg="#F0FDF4"
             label="Contact Us"
             onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hi%20there...')}
             rightElement={chevron} />
 
-                    <SettingRow
+          <SettingRow
             icon="code-slash" iconColor="#8B5CF6" iconBg="#F5F3FF"
             label="Dev Contact"
             isLast
             onPress={() => Linking.openURL('https://bhanureddy.nexsyrus.com')}
             rightElement={chevron} />
 
-                </Group>
+        </Group>
 
-                {/* ── Danger Zone ── */}
-                <Group title="Danger Zone" delay={410} borderColor="#FECACA" theme={theme}>
-                    <SettingRow
+        {/* ── Danger Zone ── */}
+        <Group title="Danger Zone" delay={410} borderColor="#FECACA" theme={theme}>
+          <SettingRow
             icon="trash-outline" iconColor="#EF4444" iconBg="#FEF2F2"
             label="Delete Account"
             labelColor="#EF4444"
             isLast
             onPress={() =>
-            alertCompat(
-              'Delete Account',
-              'This is permanent and cannot be undone. Continue?',
-              [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => Linking.openURL('https://example.com/delete-account') }]
+              alertCompat(
+                'Delete Account',
+                'This is permanent and cannot be undone. Continue?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => Linking.openURL('https://example.com/delete-account') }]
 
-            )
+              )
             }
             rightElement={redChevron} />
 
-                </Group>
+        </Group>
 
-                {/* ── Logout ── */}
-                <Animated.View entering={FadeInDown.delay(470).duration(500)}>
-                    <TouchableOpacity
+        {/* ── Logout ── */}
+        <Animated.View entering={FadeInDown.delay(470).duration(500)}>
+          <TouchableOpacity
             style={styles.logoutBtn}
             activeOpacity={0.8}
             onPress={() =>
-            alertCompat('Logout', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Logout', style: 'destructive', onPress: async () => {
-                await signOut();
-                router.replace('/welcome');
-              }
-            }]
-            )
+              alertCompat('Logout', 'Are you sure?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Logout', style: 'destructive', onPress: async () => {
+                    await signOut();
+                    router.replace('/welcome');
+                  }
+                }]
+              )
             }>
 
-                        <View style={styles.logoutIconWrap}>
-                            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-                        </View>
-                        <Text style={styles.logoutText}>Log Out</Text>
-                    </TouchableOpacity>
-                </Animated.View>
+            <View style={styles.logoutIconWrap}>
+              <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+            </View>
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </Animated.View>
 
-                {/* ── Version footer ── */}
-                <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
-                    <View style={styles.footerDot} />
-                    <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
-                    <View style={styles.footerDot} />
-                </Animated.View>
+        {/* ── Version footer ── */}
+        <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
+          <View style={styles.footerDot} />
+          <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+          <View style={styles.footerDot} />
+        </Animated.View>
 
-            </ScrollView>
-        </View>);
+      </ScrollView>
+    </View>);
 
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+  container: { flex: 1, backgroundColor: 'transparent' },
   scroll: { padding: 20, paddingBottom: 60 },
 
   // Profile card — amber accent for Accounts role

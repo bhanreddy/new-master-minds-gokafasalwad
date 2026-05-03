@@ -129,7 +129,7 @@ export default function PaySlip() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   scrollContent: {
     padding: 20

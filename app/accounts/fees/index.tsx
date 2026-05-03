@@ -451,7 +451,7 @@ export default function AccountsFees() {
 const getStyles = (theme: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDark ? '#0F1117' : '#F3F4F8',
+    backgroundColor: 'transparent',
   },
 
   // Search

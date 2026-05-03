@@ -255,7 +255,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: isDark ? '#0F172A' : '#F4F6FB',
+      backgroundColor: 'transparent',
     },
     content: {
       padding: 20,

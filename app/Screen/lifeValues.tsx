@@ -43,44 +43,44 @@ const LifeValuesScreen = () => {
     });
   };
   return <ScreenLayout>
-            <StudentHeader showBackButton={true} title="Life Values" />
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
-                <View style={styles.titleContainer}>
-                    <Text style={styles.pageTitle}>Life Values</Text>
-                    <Text style={styles.subtitle}>Timeless wisdom for modern life.</Text>
-                </View>
-                <Text style={styles.sectionTitle}>Modules</Text>
-                {loading ? <LogoLoader size={60} color="#006064" /> : modules.map((subject) => {
+    <StudentHeader showBackButton={true} title="Life Values" />
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+      <View style={styles.titleContainer}>
+        <Text style={styles.pageTitle}>Life Values</Text>
+        <Text style={styles.subtitle}>Timeless wisdom for modern life.</Text>
+      </View>
+      <Text style={styles.sectionTitle}>Modules</Text>
+      {loading ? <LogoLoader size={60} color="#006064" /> : modules.map((subject) => {
         return <TouchableOpacity key={subject.id} activeOpacity={0.9} onPress={() => handlePress(subject)}>
-                            <LinearGradient colors={['#e0f7fa', '#b2ebf2']} start={{
+          <LinearGradient colors={['#e0f7fa', '#b2ebf2']} start={{
             x: 0,
             y: 0
           }} end={{
             x: 1,
             y: 1
           }} style={styles.subjectCard}>
-                                <View style={styles.left}>
-                                    <View style={styles.iconCircle}>
-                                        <Text style={styles.icon}>🕉️</Text>
-                                    </View>
-                                    <View style={{
+            <View style={styles.left}>
+              <View style={styles.iconCircle}>
+                <Text style={styles.icon}>🕉️</Text>
+              </View>
+              <View style={{
                 flex: 1
               }}>
-                                        <Text style={styles.subjectText}>{subject.title}</Text>
-                                        <Text style={styles.descText} numberOfLines={1}>
-                                            {subject.description}
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={styles.arrowContainer}>
-                                    <Text style={styles.arrow}>›</Text>
-                                </View>
-                            </LinearGradient>
-                        </TouchableOpacity>;
+                <Text style={styles.subjectText}>{subject.title}</Text>
+                <Text style={styles.descText} numberOfLines={1}>
+                  {subject.description}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.arrowContainer}>
+              <Text style={styles.arrow}>›</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>;
       })}
-                {!loading && modules.length === 0 && <Text style={styles.empty}>No modules available yet.</Text>}
-            </ScrollView>
-        </ScreenLayout>;
+      {!loading && modules.length === 0 && <Text style={styles.empty}>No modules available yet.</Text>}
+    </ScrollView>
+  </ScreenLayout>;
 };
 export default LifeValuesScreen;
 

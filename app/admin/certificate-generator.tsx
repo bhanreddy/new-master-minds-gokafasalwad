@@ -5,7 +5,8 @@ import { styles as ds } from '@/src/theme/styles';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Dimensions, Image, Platform, Pressable,
-  Modal, KeyboardAvoidingView, ActivityIndicator} from 'react-native';
+  Modal, KeyboardAvoidingView, ActivityIndicator
+} from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

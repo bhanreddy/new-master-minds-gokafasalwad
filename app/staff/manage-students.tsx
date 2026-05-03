@@ -20,7 +20,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { AttendanceService } from '../../src/services/attendanceService';
 import { AttendanceStatus } from '../../src/types/schema';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
+import type { SchoolTheme } from '../../src/theme/types';
 import LogoLoader from '../../src/components/LogoLoader';
 
 interface StudentUI {
@@ -222,8 +222,8 @@ export default function ManageStudents() {
       });
       alertCompat('Submitted!', `Present: ${present}   Absent: ${absent}`);
       router.back();
-    } catch {
-      alertCompat('Error', 'Failed to submit attendance');
+    } catch (error: any) {
+      alertCompat('Error', 'Failed to submit attendance: ' + (error?.message || JSON.stringify(error)));
     } finally {
       setSubmitting(false);
     }
@@ -435,11 +435,11 @@ export default function ManageStudents() {
 }
 
 // ─── Theme styles ────────────────────────────────────────────────────────────
-const getStyles = (theme: Theme, isDark: boolean) =>
+const getStyles = (theme: SchoolTheme, isDark: boolean) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme.colors.background,
+      backgroundColor: 'transparent',
     },
 
     loadingState: {
@@ -479,7 +479,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     emptyTitle: {
       fontSize: 20,
       fontWeight: '800',
-      color: theme.colors.text,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.4,
     },
     emptySubtitle: {
@@ -536,7 +536,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     statsCardTitle: {
       fontSize: 17,
       fontWeight: '800',
-      color: theme.colors.text,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.3,
     },
     completionChip: {
@@ -581,7 +581,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     listMetaText: {
       fontSize: 11,
       fontWeight: '800',
-      color: theme.colors.textTertiary,
+      color: theme.colors.textMuted,
       textTransform: 'uppercase',
       letterSpacing: 2,
     },

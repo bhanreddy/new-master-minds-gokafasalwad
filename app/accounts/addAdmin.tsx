@@ -25,12 +25,12 @@ const InputField = ({
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   return <View style={styles.inputGroup}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.inputContainer}>
-            <Ionicons name={icon} size={20} color="#9CA3AF" style={styles.inputIcon} />
-            <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor="#9CA3AF" value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
-        </View>
-    </View>;
+    <Text style={styles.label}>{label}</Text>
+    <View style={styles.inputContainer}>
+      <Ionicons name={icon} size={20} color="#9CA3AF" style={styles.inputIcon} />
+      <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor="#9CA3AF" value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
+    </View>
+  </View>;
 };
 export default function AddAdminScreen() {
   const {
@@ -56,55 +56,55 @@ export default function AddAdminScreen() {
     router.back();
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            {!shellActive && <AdminHeader title={t('accounts.add_admin', 'Add New Admin')} />}
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    {!shellActive && <AdminHeader title={t('accounts.add_admin', 'Add New Admin')} />}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
       flex: 1
     }}>
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                    <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.section}>
-                        <Text style={styles.sectionHeader}>{t('common.admin_details', 'Admin Details')}</Text>
-                        <InputField label={t('common.full_name', 'Full Name')} placeholder="e.g. Rajesh Singh" value={formData.name} onChangeText={(text: string) => setFormData({
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('common.admin_details', 'Admin Details')}</Text>
+          <InputField label={t('common.full_name', 'Full Name')} placeholder="e.g. Rajesh Singh" value={formData.name} onChangeText={(text: string) => setFormData({
             ...formData,
             name: text
           })} icon="person-outline" />
-                        <InputField label={t('common.email', 'Email Address')} placeholder="e.g. admin@school.com" value={formData.email} onChangeText={(text: string) => setFormData({
+          <InputField label={t('common.email', 'Email Address')} placeholder="e.g. admin@school.com" value={formData.email} onChangeText={(text: string) => setFormData({
             ...formData,
             email: text
           })} keyboardType="email-address" icon="mail-outline" />
-                        <InputField label={t('common.phone', 'Phone Number')} placeholder="e.g. +91 98765 00000" value={formData.phone} onChangeText={(text: string) => setFormData({
+          <InputField label={t('common.phone', 'Phone Number')} placeholder="e.g. +91 98765 00000" value={formData.phone} onChangeText={(text: string) => setFormData({
             ...formData,
             phone: text
           })} keyboardType="phone-pad" icon="call-outline" />
-                    </Animated.View>
-                    <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.section}>
-                        <Text style={styles.sectionHeader}>{t('common.account_settings', 'Account Settings')}</Text>
-                        <InputField label={t('common.role', 'Role / Privileges')} placeholder="e.g. Accounts Manager" value={formData.role} onChangeText={(text: string) => setFormData({
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('common.account_settings', 'Account Settings')}</Text>
+          <InputField label={t('common.role', 'Role / Privileges')} placeholder="e.g. Accounts Manager" value={formData.role} onChangeText={(text: string) => setFormData({
             ...formData,
             role: text
           })} icon="shield-checkmark-outline" />
-                        <InputField label={t('common.password', 'Initial Password')} placeholder="••••••••" value={formData.password} onChangeText={(text: string) => setFormData({
+          <InputField label={t('common.password', 'Initial Password')} placeholder="••••••••" value={formData.password} onChangeText={(text: string) => setFormData({
             ...formData,
             password: text
           })} secureTextEntry={true} icon="lock-closed-outline" />
-                    </Animated.View>
-                    <Animated.View entering={FadeInDown.delay(300).duration(600)} style={{
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(300).duration(600)} style={{
           marginTop: 20,
           paddingBottom: 40
         }}>
-                        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                            <Text style={styles.saveButtonText}>{t('common.create_admin', 'Create Admin Account')}</Text>
-                            <Ionicons name="arrow-forward" size={20} color="#fff" />
-                        </TouchableOpacity>
-                    </Animated.View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </View>;
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Text style={styles.saveButtonText}>{t('common.create_admin', 'Create Admin Account')}</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   scrollContent: {
     padding: 20

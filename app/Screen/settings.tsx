@@ -287,7 +287,7 @@ export default function Settings() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
+    container: { flex: 1, backgroundColor: 'transparent' },
     scroll: { padding: 20, paddingBottom: 60 },
 
     // Profile card

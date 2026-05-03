@@ -105,77 +105,77 @@ const FeeRemindersAdmin = () => {
     }
   };
   return <ScreenLayout>
-            <AdminHeader title="Fee Reminders" showBackButton={true} />
-            <ScrollView style={styles.container}>
-                {/* Month Selection */}
-                <View style={styles.section}>
-                    <Text style={styles.label}>Select Month</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthSelector}>
-                        {months.map((month) => {
+    <AdminHeader title="Fee Reminders" showBackButton={true} />
+    <ScrollView style={styles.container}>
+      {/* Month Selection */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Select Month</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthSelector}>
+          {months.map((month) => {
             return <TouchableOpacity key={month} style={[styles.monthChip, selectedMonth === month && styles.selectedMonth]} onPress={() => setSelectedMonth(month)}>
-                                <Text style={[styles.monthText, selectedMonth === month && styles.selectedMonthText]}>{month}</Text>
-                            </TouchableOpacity>;
+              <Text style={[styles.monthText, selectedMonth === month && styles.selectedMonthText]}>{month}</Text>
+            </TouchableOpacity>;
           })}
-                    </ScrollView>
-                </View>
-                {/* Class Filter */}
-                <View style={styles.section}>
-                    <Text style={styles.label}>Filter by Class (Optional)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.classSelector}>
-                        <TouchableOpacity style={[styles.classChip, !selectedClass && styles.selectedClass]} onPress={() => setSelectedClass(null)}>
-                            <Text style={[styles.classText, !selectedClass && styles.selectedClassText]}>All Classes</Text>
-                        </TouchableOpacity>
-                        {classes.map((cls) => {
+        </ScrollView>
+      </View>
+      {/* Class Filter */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Filter by Class (Optional)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.classSelector}>
+          <TouchableOpacity style={[styles.classChip, !selectedClass && styles.selectedClass]} onPress={() => setSelectedClass(null)}>
+            <Text style={[styles.classText, !selectedClass && styles.selectedClassText]}>All Classes</Text>
+          </TouchableOpacity>
+          {classes.map((cls) => {
             return <TouchableOpacity key={cls.id} style={[styles.classChip, selectedClass === cls.id && styles.selectedClass]} onPress={() => setSelectedClass(cls.id)}>
-                                <Text style={[styles.classText, selectedClass === cls.id && styles.selectedClassText]}>{cls.name}</Text>
-                            </TouchableOpacity>;
+              <Text style={[styles.classText, selectedClass === cls.id && styles.selectedClassText]}>{cls.name}</Text>
+            </TouchableOpacity>;
           })}
-                    </ScrollView>
-                </View>
-                {/* Preview Stats */}
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Preview</Text>
-                    {loading && !previewStats ? <LogoLoader /> : <View>
-                            <View style={styles.statRow}>
-                                <Text>Target Students:</Text>
-                                <Text style={styles.statValue}>{previewStats?.total_students || 0}</Text>
-                            </View>
-                            <View style={styles.divider} />
-                            <Text style={styles.sampleLabel}>Sample Message:</Text>
-                            <Text style={styles.sampleText}>{previewStats?.sample_message || '-'}</Text>
-                        </View>}
-                </View>
-                {/* Send Button */}
-                <TouchableOpacity style={[styles.sendButton, (loading || !previewStats?.total_students) && styles.disabledButton]} disabled={loading || !previewStats?.total_students} onPress={() => setModalVisible(true)}>
-                    <Text style={styles.sendButtonText}>{loading ? 'Processing...' : 'SEND ALL REMINDERS'}</Text>
-                </TouchableOpacity>
-                {/* Confirmation Modal */}
-                <Modal visible={modalVisible} transparent animationType="slide">
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <Ionicons name="warning" size={48} color={COLORS.danger || 'red'} />
-                            <Text style={styles.modalTitle}>Confirm Bulk Send?</Text>
-                            <Text style={styles.modalText}>
-                                You are about to send fee reminders to <Text style={{
+        </ScrollView>
+      </View>
+      {/* Preview Stats */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Preview</Text>
+        {loading && !previewStats ? <LogoLoader /> : <View>
+          <View style={styles.statRow}>
+            <Text>Target Students:</Text>
+            <Text style={styles.statValue}>{previewStats?.total_students || 0}</Text>
+          </View>
+          <View style={styles.divider} />
+          <Text style={styles.sampleLabel}>Sample Message:</Text>
+          <Text style={styles.sampleText}>{previewStats?.sample_message || '-'}</Text>
+        </View>}
+      </View>
+      {/* Send Button */}
+      <TouchableOpacity style={[styles.sendButton, (loading || !previewStats?.total_students) && styles.disabledButton]} disabled={loading || !previewStats?.total_students} onPress={() => setModalVisible(true)}>
+        <Text style={styles.sendButtonText}>{loading ? 'Processing...' : 'SEND ALL REMINDERS'}</Text>
+      </TouchableOpacity>
+      {/* Confirmation Modal */}
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Ionicons name="warning" size={48} color={COLORS.danger || 'red'} />
+            <Text style={styles.modalTitle}>Confirm Bulk Send?</Text>
+            <Text style={styles.modalText}>
+              You are about to send fee reminders to <Text style={{
                 fontWeight: 'bold'
               }}>{previewStats?.total_students}</Text> students for <Text style={{
                 fontWeight: 'bold'
               }}>{selectedMonth}</Text>.
-                            </Text>
-                            <Text style={styles.modalSubText}>This action cannot be undone.</Text>
-                            <View style={styles.modalActions}>
-                                <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
-                                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.confirmButton} onPress={handleSendAll}>
-                                    <Text style={styles.confirmButtonText}>CONFIRM SEND</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                </Modal>
-            </ScrollView>
-        </ScreenLayout>;
+            </Text>
+            <Text style={styles.modalSubText}>This action cannot be undone.</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmButton} onPress={handleSendAll}>
+                <Text style={styles.confirmButtonText}>CONFIRM SEND</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  </ScreenLayout>;
 };
 export default FeeRemindersAdmin;
 const getStyles = (theme: Theme) => StyleSheet.create({

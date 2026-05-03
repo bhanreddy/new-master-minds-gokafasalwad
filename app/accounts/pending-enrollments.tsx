@@ -116,68 +116,68 @@ export default function PendingEnrollmentsScreen() {
     }
   };
 
-  const renderItem = ({ item }: {item: any;}) =>
-  <View style={styles.card}>
-            <View style={styles.cardContent}>
-                <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{item.first_name[0]}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{item.display_name}</Text>
-                    <Text style={styles.subText}>Adm No: {item.admission_no || 'N/A'}</Text>
-                    <Text style={styles.subText}>Joined: {new Date(item.admission_date).toLocaleDateString()}</Text>
-                </View>
-                <Pressable
-        style={({ pressed }) => [styles.enrollBtn, { opacity: pressed ? 0.8 : 1 }]}
-        onPress={() => handleEnrollPress(item)}>
+  const renderItem = ({ item }: { item: any; }) =>
+    <View style={styles.card}>
+      <View style={styles.cardContent}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{item.first_name[0]}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{item.display_name}</Text>
+          <Text style={styles.subText}>Adm No: {item.admission_no || 'N/A'}</Text>
+          <Text style={styles.subText}>Joined: {new Date(item.admission_date).toLocaleDateString()}</Text>
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.enrollBtn, { opacity: pressed ? 0.8 : 1 }]}
+          onPress={() => handleEnrollPress(item)}>
 
-                    <Text style={styles.enrollBtnText}>Enroll Now</Text>
-                </Pressable>
-            </View>
-        </View>;
+          <Text style={styles.enrollBtnText}>Enroll Now</Text>
+        </Pressable>
+      </View>
+    </View>;
 
   return (
     <View style={styles.container}>
-            {!shellActive && <AdminHeader title="Pending Enrollments" showBackButton />}
-            {loading ?
-      <View style={styles.center}>
-                    <LogoLoader size={60} color={theme.colors.primary} />
-                </View> :
+      {!shellActive && <AdminHeader title="Pending Enrollments" showBackButton />}
+      {loading ?
+        <View style={styles.center}>
+          <LogoLoader size={60} color={theme.colors.primary} />
+        </View> :
 
-      <FlatList
-        data={students}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-                            <Ionicons name="checkmark-circle-outline" size={64} color={theme.colors.success} />
-                            <Text style={styles.emptyText}>All active students are enrolled!</Text>
-                        </View>
-        } />
+        <FlatList
+          data={students}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="checkmark-circle-outline" size={64} color={theme.colors.success} />
+              <Text style={styles.emptyText}>All active students are enrolled!</Text>
+            </View>
+          } />
 
       }
-            {/* ENROLLMENT MODAL */}
-            <Modal
+      {/* ENROLLMENT MODAL */}
+      <Modal
         visible={enrollmentModalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setEnrollmentModalVisible(false)}>
 
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Enroll Student</Text>
-                            <Pressable onPress={() => setEnrollmentModalVisible(false)}>
-                                <Ionicons name="close" size={24} color={theme.colors.text} />
-                            </Pressable>
-                        </View>
-                        <Text style={styles.modalSubtitle}>
-                            Enrolling: <Text style={{ fontWeight: 'bold' }}>{selectedStudent?.display_name}</Text>
-                        </Text>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Select Class</Text>
-                            <DropDownPicker
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Enroll Student</Text>
+              <Pressable onPress={() => setEnrollmentModalVisible(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Enrolling: <Text style={{ fontWeight: 'bold' }}>{selectedStudent?.display_name}</Text>
+            </Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Select Class</Text>
+              <DropDownPicker
                 open={openClass}
                 value={classId}
                 items={classes}
@@ -189,10 +189,10 @@ export default function PendingEnrollmentsScreen() {
                 zIndex={3000}
                 listMode="SCROLLVIEW" />
 
-                        </View>
-                        <View style={[styles.inputGroup, { zIndex: 2000 }]}>
-                            <Text style={styles.label}>Select Section</Text>
-                            <DropDownPicker
+            </View>
+            <View style={[styles.inputGroup, { zIndex: 2000 }]}>
+              <Text style={styles.label}>Select Section</Text>
+              <DropDownPicker
                 open={openSection}
                 value={sectionId}
                 items={sections}
@@ -205,29 +205,29 @@ export default function PendingEnrollmentsScreen() {
                 listMode="SCROLLVIEW"
                 disabled={!classId} />
 
-                        </View>
-                        <Pressable
+            </View>
+            <Pressable
               style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
               onPress={submitEnrollment}
               disabled={submitting}>
 
-                            {submitting ?
-              <LogoLoader color="#FFF" /> :
+              {submitting ?
+                <LogoLoader color="#FFF" /> :
 
-              <Text style={styles.submitBtnText}>Confirm Enrollment</Text>
+                <Text style={styles.submitBtnText}>Confirm Enrollment</Text>
               }
-                        </Pressable>
-                    </View>
-                </View>
-            </Modal>
-        </View>);
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>);
 
 }
 
 const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: 'transparent'
   },
   listContent: {
     padding: 16

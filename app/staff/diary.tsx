@@ -85,7 +85,7 @@ export default function StaffDiary() {
           silent: true
         });
       } catch (e) {
-        if (__DEV__) {}
+        if (__DEV__) { }
       }
       alertCompat('Error', 'Could not load your assigned classes.');
     } finally {
@@ -123,7 +123,7 @@ export default function StaffDiary() {
           silent: true
         });
       } catch (e) {
-        if (__DEV__) {}
+        if (__DEV__) { }
       }
     }
   };
@@ -201,7 +201,7 @@ export default function StaffDiary() {
         silent: true
       });
     } catch (e) {
-      if (__DEV__) {}
+      if (__DEV__) { }
     }
     if (!selectedAssignment) {
       alertCompat('Error', 'Please select a class and subject');
@@ -257,7 +257,7 @@ export default function StaffDiary() {
           silent: true
         });
       } catch (e) {
-        if (__DEV__) {}
+        if (__DEV__) { }
       }
       alertCompat('Error', 'Failed to save homework');
     } finally {
@@ -275,201 +275,201 @@ export default function StaffDiary() {
       justifyContent: 'center',
       alignItems: 'center'
     }]}>
-                <LogoLoader size={60} color={theme.colors.primary} />
-            </View>;
+      <LogoLoader size={60} color={theme.colors.primary} />
+    </View>;
   }
   return <View style={[styles.container, {
     backgroundColor: theme.colors.background
   }]}>
-            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.background} />
-            <StaffHeader title="Diary & Homework" showBackButton={true} />
-            <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <Animated.View entering={FadeInDown.delay(80).duration(500)} style={styles.tabWrap}>
-                    <DiaryHistoryTabSwitcher
-                        active={activeTab}
-                        onChange={setActiveTab}
-                        todayLabel="Today"
-                        historyLabel="History"
-                    />
-                </Animated.View>
+    <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.background} />
+    <StaffHeader title="Diary & Homework" showBackButton={true} />
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <Animated.View entering={FadeInDown.delay(80).duration(500)} style={styles.tabWrap}>
+        <DiaryHistoryTabSwitcher
+          active={activeTab}
+          onChange={setActiveTab}
+          todayLabel="Today"
+          historyLabel="History"
+        />
+      </Animated.View>
 
-                {/* Assignment Selection + form — only on Today tab */}
-                {activeTab === 'today' ? <>
-                    <View style={[styles.selectionSection, isEditing && {
-        opacity: 0.6
-      }]}>
-                    <View style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-                        <Text style={[styles.sectionTitle, {
-            color: theme.colors.textStrong
-          }]}>Select Class & Subject</Text>
-                        {isEditing && <TouchableOpacity onPress={() => {
-            setIsEditing(false);
-            setExistingEntry(null);
-            setTitle('');
-            setDescription('');
+      {/* Assignment Selection + form — only on Today tab */}
+      {activeTab === 'today' ? <>
+        <View style={[styles.selectionSection, isEditing && {
+          opacity: 0.6
+        }]}>
+          <View style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}>
-                                <Text style={{
-              color: theme.colors.primary,
-              fontWeight: '600',
-              fontSize: 13
-            }}>Cancel Edit</Text>
-                            </TouchableOpacity>}
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assignmentsScroll} pointerEvents={isEditing ? 'none' : 'auto'}>
-                        {assignments.map((assign) => {
-            return <TouchableOpacity key={assign.assignment_id} disabled={isEditing} style={[styles.assignmentChip, {
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.card
-            }, selectedAssignment?.assignment_id === assign.assignment_id && {
-              borderColor: theme.colors.primary,
-              backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF'
-            }]} onPress={() => setSelectedAssignment(assign)}>
-                                <Text style={[styles.assignmentText, {
-                color: theme.colors.textSecondary
-              }, selectedAssignment?.assignment_id === assign.assignment_id && {
+            <Text style={[styles.sectionTitle, {
+              color: theme.colors.textStrong
+            }]}>Select Class & Subject</Text>
+            {isEditing && <TouchableOpacity onPress={() => {
+              setIsEditing(false);
+              setExistingEntry(null);
+              setTitle('');
+              setDescription('');
+            }}>
+              <Text style={{
                 color: theme.colors.primary,
-                fontWeight: '700'
-              }]}>
-                                    {assign.class_name}-{assign.section_name} : {assign.subject_name}
-                                </Text>
-                            </TouchableOpacity>;
-          })}
-                    </ScrollView>
-                </View>
-                <Animated.View entering={FadeInDown.delay(100).duration(600)} style={[styles.formCard, {
-        backgroundColor: theme.colors.card,
-        borderColor: theme.colors.border
-      }]}>
-                    <View style={styles.formHeader}>
-                        <Text style={[styles.cardTitle, {
-            color: theme.colors.textStrong
-          }]}>
-                            {existingEntry ? 'Modify Homework' : 'Post New Homework'}
-                        </Text>
-                        {existingEntry && <View style={styles.existingBadge}>
-                                <Text style={styles.existingBadgeText}>Existing Entry</Text>
-                            </View>}
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={[styles.label, {
-            color: theme.colors.textSecondary
-          }]}>Title (Optional)</Text>
-                        <AppTextInput style={{
-            backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
-            borderColor: theme.colors.border,
-            color: theme.colors.text
-          }} placeholder="e.g. Chapter 5 Summary" placeholderTextColor="#94A3B8" value={title} onChangeText={setTitle} />
-                    </View>
-                    <View style={styles.inputGroup}>
-                        <Text style={[styles.label, {
-            color: theme.colors.textSecondary
-          }]}>Description</Text>
-                        <AppTextInput style={[styles.textArea, {
-            backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
-            borderColor: theme.colors.border,
-            color: theme.colors.text
-          }]} placeholder="Details about the homework..." placeholderTextColor="#94A3B8" multiline numberOfLines={4} value={description} onChangeText={setDescription} textAlignVertical="top" />
-                    </View>
-                    <View style={styles.row}>
-                        <View style={[styles.inputGroup, {
-            flex: 1
-          }]}>
-                            <Text style={[styles.label, {
+                fontWeight: '600',
+                fontSize: 13
+              }}>Cancel Edit</Text>
+            </TouchableOpacity>}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assignmentsScroll} pointerEvents={isEditing ? 'none' : 'auto'}>
+            {assignments.map((assign) => {
+              return <TouchableOpacity key={assign.assignment_id} disabled={isEditing} style={[styles.assignmentChip, {
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.card
+              }, selectedAssignment?.assignment_id === assign.assignment_id && {
+                borderColor: theme.colors.primary,
+                backgroundColor: isDark ? 'rgba(99, 102, 241, 0.2)' : '#EEF2FF'
+              }]} onPress={() => setSelectedAssignment(assign)}>
+                <Text style={[styles.assignmentText, {
+                  color: theme.colors.textSecondary
+                }, selectedAssignment?.assignment_id === assign.assignment_id && {
+                  color: theme.colors.primary,
+                  fontWeight: '700'
+                }]}>
+                  {assign.class_name}-{assign.section_name} : {assign.subject_name}
+                </Text>
+              </TouchableOpacity>;
+            })}
+          </ScrollView>
+        </View>
+        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={[styles.formCard, {
+          backgroundColor: theme.colors.card,
+          borderColor: theme.colors.border
+        }]}>
+          <View style={styles.formHeader}>
+            <Text style={[styles.cardTitle, {
+              color: theme.colors.textStrong
+            }]}>
+              {existingEntry ? 'Modify Homework' : 'Post New Homework'}
+            </Text>
+            {existingEntry && <View style={styles.existingBadge}>
+              <Text style={styles.existingBadgeText}>Existing Entry</Text>
+            </View>}
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, {
               color: theme.colors.textSecondary
-            }]}>Due Date</Text>
-                            <View style={[fieldStyles.input, styles.dateInput, {
+            }]}>Title (Optional)</Text>
+            <AppTextInput style={{
               backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
               borderColor: theme.colors.border,
-              padding: Platform.OS === 'web' ? 0 : undefined,
-              overflow: 'hidden'
+              color: theme.colors.text
+            }} placeholder="e.g. Chapter 5 Summary" placeholderTextColor="#94A3B8" value={title} onChangeText={setTitle} />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, {
+              color: theme.colors.textSecondary
+            }]}>Description</Text>
+            <AppTextInput style={[styles.textArea, {
+              backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
+              borderColor: theme.colors.border,
+              color: theme.colors.text
+            }]} placeholder="Details about the homework..." placeholderTextColor="#94A3B8" multiline numberOfLines={4} value={description} onChangeText={setDescription} textAlignVertical="top" />
+          </View>
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, {
+              flex: 1
             }]}>
-                                {Platform.OS !== 'web' && <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />}
-                                {Platform.OS === 'web' ? (
-                                  React.createElement('input', {
-                                    type: 'date',
-                                    value: format(dueDate, 'yyyy-MM-dd'),
-                                    min: format(new Date(), 'yyyy-MM-dd'),
-                                    onChange: (e: any) => {
-                                      if (e.target.value) {
-                                        const [y, m, d] = e.target.value.split('-');
-                                        setDueDate(new Date(Number(y), Number(m) - 1, Number(d)));
-                                      }
-                                    },
-                                    style: {
-                                      border: 'none',
-                                      background: 'transparent',
-                                      width: '100%',
-                                      height: '100%',
-                                      outline: 'none',
-                                      color: theme.colors.text,
-                                      fontSize: '14px',
-                                      fontFamily: 'inherit',
-                                      cursor: 'pointer',
-                                      paddingLeft: '16px',
-                                      paddingRight: '16px'
-                                    }
-                                  })
-                                ) : (
-                                  <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => setShowDatePicker(true)}>
-                                      <Text style={[styles.dateValue, {
-                                        color: theme.colors.text
-                                      }]}>{format(dueDate, 'PPP')}</Text>
-                                  </TouchableOpacity>
-                                )}
-                            </View>
-                        </View>
-                        {Platform.OS !== 'web' && showDatePicker && <DateTimePicker value={dueDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} minimumDate={new Date()} />}
-                    </View>
-                    <TouchableOpacity style={[styles.postButton, {
-          backgroundColor: theme.colors.primary,
-          opacity: submitting ? 0.7 : 1
-        }]} activeOpacity={0.8} onPress={handlePost} disabled={submitting}>
-                        {submitting ? <LogoLoader color="#fff" /> : <>
-                                <Text style={styles.postButtonText}>{existingEntry ? 'Update Homework' : 'Post Homework'}</Text>
-                                <Ionicons name={existingEntry ? "save-outline" : "send"} size={18} color="#fff" style={{
-              marginLeft: 8
-            }} />
-                            </>}
-                    </TouchableOpacity>
-                </Animated.View>
-                </> : null}
+              <Text style={[styles.label, {
+                color: theme.colors.textSecondary
+              }]}>Due Date</Text>
+              <View style={[fieldStyles.input, styles.dateInput, {
+                backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
+                borderColor: theme.colors.border,
+                padding: Platform.OS === 'web' ? 0 : undefined,
+                overflow: 'hidden'
+              }]}>
+                {Platform.OS !== 'web' && <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />}
+                {Platform.OS === 'web' ? (
+                  React.createElement('input', {
+                    type: 'date',
+                    value: format(dueDate, 'yyyy-MM-dd'),
+                    min: format(new Date(), 'yyyy-MM-dd'),
+                    onChange: (e: any) => {
+                      if (e.target.value) {
+                        const [y, m, d] = e.target.value.split('-');
+                        setDueDate(new Date(Number(y), Number(m) - 1, Number(d)));
+                      }
+                    },
+                    style: {
+                      border: 'none',
+                      background: 'transparent',
+                      width: '100%',
+                      height: '100%',
+                      outline: 'none',
+                      color: theme.colors.text,
+                      fontSize: '14px',
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      paddingLeft: '16px',
+                      paddingRight: '16px'
+                    }
+                  })
+                ) : (
+                  <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => setShowDatePicker(true)}>
+                    <Text style={[styles.dateValue, {
+                      color: theme.colors.text
+                    }]}>{format(dueDate, 'PPP')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            {Platform.OS !== 'web' && showDatePicker && <DateTimePicker value={dueDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} minimumDate={new Date()} />}
+          </View>
+          <TouchableOpacity style={[styles.postButton, {
+            backgroundColor: theme.colors.primary,
+            opacity: submitting ? 0.7 : 1
+          }]} activeOpacity={0.8} onPress={handlePost} disabled={submitting}>
+            {submitting ? <LogoLoader color="#fff" /> : <>
+              <Text style={styles.postButtonText}>{existingEntry ? 'Update Homework' : 'Post Homework'}</Text>
+              <Ionicons name={existingEntry ? "save-outline" : "send"} size={18} color="#fff" style={{
+                marginLeft: 8
+              }} />
+            </>}
+          </TouchableOpacity>
+        </Animated.View>
+      </> : null}
 
-                {activeTab === 'history' ? (
-                    <DiaryHistoryDateSelectorButton
-                        selectedYmd={historyDate}
-                        onPress={() => setPickerVisible(true)}
-                    />
-                ) : null}
+      {activeTab === 'history' ? (
+        <DiaryHistoryDateSelectorButton
+          selectedYmd={historyDate}
+          onPress={() => setPickerVisible(true)}
+        />
+      ) : null}
 
-                <View style={styles.sectionHeader}>
-                    <Text style={[styles.sectionTitle, {
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, {
           color: theme.colors.textStrong
         }]}>
-                        {activeTab === 'today' ? "Today's homework" : 'Homework for selected day'}
-                    </Text>
-                </View>
-                <HomeworkDayList
-                    theme={theme}
-                    styles={styles}
-                    diaryEntries={diaryEntries}
-                    displayYmd={activeTab === 'today' ? todayYmd : historyDate}
-                    onEdit={handleEdit}
-                />
-            </ScrollView>
+          {activeTab === 'today' ? "Today's homework" : 'Homework for selected day'}
+        </Text>
+      </View>
+      <HomeworkDayList
+        theme={theme}
+        styles={styles}
+        diaryEntries={diaryEntries}
+        displayYmd={activeTab === 'today' ? todayYmd : historyDate}
+        onEdit={handleEdit}
+      />
+    </ScrollView>
 
-            <DiaryHistoryDatePickerSheet
-                visible={pickerVisible}
-                selectedYmd={historyDate}
-                availableYmds={calendarAvailableYmds}
-                onSelect={setHistoryDate}
-                onClose={() => setPickerVisible(false)}
-                subtitle="Dots mark days with posted homework"
-            />
-        </View>;
+    <DiaryHistoryDatePickerSheet
+      visible={pickerVisible}
+      selectedYmd={historyDate}
+      availableYmds={calendarAvailableYmds}
+      onSelect={setHistoryDate}
+      onClose={() => setPickerVisible(false)}
+      subtitle="Dots mark days with posted homework"
+    />
+  </View>;
 }
 
 function HomeworkDayList({

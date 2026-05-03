@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
@@ -323,7 +324,7 @@ const srStyles = StyleSheet.create({
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDark ? '#0F1117' : '#F3F4F8',
+    backgroundColor: 'transparent',
   },
   content: {
     padding: 16,

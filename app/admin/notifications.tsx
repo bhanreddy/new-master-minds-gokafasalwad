@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -412,7 +412,7 @@ const getStyles = (THEME_COLORS: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: THEME_COLORS.background,
+      backgroundColor: 'transparent',
     },
     scrollContent: {
       padding: 24,

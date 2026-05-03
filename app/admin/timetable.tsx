@@ -11,7 +11,8 @@ import {
   ScrollView,
   Modal,
   Animated,
-  Platform} from 'react-native';
+  Platform
+} from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
@@ -1074,7 +1075,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: isDark ? PALETTE.slate[900] : '#F4F6FB',
+      backgroundColor: 'transparent',
     },
 
     // Selector Panel

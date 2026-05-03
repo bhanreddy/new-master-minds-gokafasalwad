@@ -168,8 +168,8 @@ const StudentLoginScreen: React.FC = () => {
 export default StudentLoginScreen;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFC' },
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  root: { flex: 1, backgroundColor: 'transparent'},
+  container: { flex: 1, backgroundColor: 'transparent'},
 
   bodyContainer: {
     flex: 1,

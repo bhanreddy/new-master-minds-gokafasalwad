@@ -17,29 +17,29 @@ export default function NoProfileScreen() {
     session
   } = useAuth();
   return <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <Ionicons name="alert-circle" size={80} color="#EF4444" />
-                <Text style={styles.title}>Profile Not Found</Text>
-                <Text style={styles.message}>
-                    You are logged in as <Text style={{
+    <View style={styles.content}>
+      <Ionicons name="alert-circle" size={80} color="#EF4444" />
+      <Text style={styles.title}>Profile Not Found</Text>
+      <Text style={styles.message}>
+        You are logged in as <Text style={{
           fontWeight: 'bold'
         }}>{session?.supabaseSession?.user?.email || (user as any)?.email}</Text>,
-                    but no matching {user?.role?.name || user?.role?.code || 'user'} profile was found for your account.
-                </Text>
-                <Text style={styles.subMessage}>
-                    Please contact the school administrator to verify your account setup.
-                </Text>
+        but no matching {user?.role?.name || user?.role?.code || 'user'} profile was found for your account.
+      </Text>
+      <Text style={styles.subMessage}>
+        Please contact the school administrator to verify your account setup.
+      </Text>
 
-                <TouchableOpacity style={styles.button} onPress={signOut}>
-                    <Text style={styles.buttonText}>Logout</Text>
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>;
+      <TouchableOpacity style={styles.button} onPress={signOut}>
+        <Text style={styles.buttonText}>Logout</Text>
+      </TouchableOpacity>
+    </View>
+  </SafeAreaView>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FEF2F2',
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     padding: 24
   },

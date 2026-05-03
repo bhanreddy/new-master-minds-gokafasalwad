@@ -11,7 +11,8 @@ import {
   Dimensions,
   ActivityIndicator,
   Animated as RNAnimated,
-  RefreshControl as RNRefreshControl} from 'react-native';
+  RefreshControl as RNRefreshControl
+} from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -290,7 +291,7 @@ export default function SmartInsights() {
   const [generating, setGenerating] = useState(false);
   const [riskData, setRiskData] = useState<StudentRiskProfile[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
-  const inputRef = useRef<AppTextInput>(null);
+  const inputRef = useRef<any>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -602,14 +603,14 @@ export default function SmartInsights() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bg }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' }}>
         <LogoLoader size={60} color={COLORS.primary || '#6366F1'} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       {/* Subtle mesh background */}
       <LinearGradient
         colors={['#EEF2FF', '#F6F8FB', '#F6F8FB']}

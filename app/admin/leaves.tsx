@@ -272,7 +272,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme.colors.card,
+      backgroundColor: 'transparent',
     },
     tabRow: {
       flexDirection: 'row',

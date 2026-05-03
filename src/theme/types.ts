@@ -31,6 +31,10 @@ export interface SchoolThemeColors {
   textSecondary: string;
   /** Muted/tertiary text */
   textMuted: string;
+  /** Body text (alias for textPrimary — required by Theme compatibility) */
+  text: string;
+  /** Tertiary text (alias for textMuted — required by Theme compatibility) */
+  textTertiary: string;
   /** Default border color */
   border: string;
   /** Light border variant */
@@ -55,6 +59,30 @@ export interface SchoolThemeColors {
   headerBg: string;
   /** Footer background */
   footerBg: string;
+  /** Alert background (warning) */
+  alertBg: string;
+  /** Alert border (warning) */
+  alertBorder: string;
+  /** Alert icon (warning) */
+  alertIcon: string;
+  /** Alert text (warning) */
+  alertText: string;
+  /** Alert background (danger) */
+  alertBgDanger: string;
+  /** Alert border (danger) */
+  alertBorderDanger: string;
+  /** Alert icon (danger) */
+  alertIconDanger: string;
+  /** Alert text (danger) */
+  alertTextDanger: string;
+  /** Alert background (info) */
+  alertBgInfo: string;
+  /** Alert border (info) */
+  alertBorderInfo: string;
+  /** Alert icon (info) */
+  alertIconInfo: string;
+  /** Alert text (info) */
+  alertTextInfo: string;
 }
 
 export interface SchoolThemeTypography {
@@ -152,6 +180,8 @@ export const defaultLightTheme: SchoolTheme = {
     textStrong: '#0F172A',
     textSecondary: '#64748B',
     textMuted: '#94A3B8',
+    text: '#334155',
+    textTertiary: '#94A3B8',
     border: '#E2E8F0',
     borderLight: '#F1F5F9',
     danger: '#EF4444',
@@ -164,6 +194,18 @@ export const defaultLightTheme: SchoolTheme = {
     navIconInactive: '#94A3B8',
     headerBg: 'rgba(248,250,252, 0.85)',
     footerBg: 'rgba(255,255,255, 0.90)',
+    alertBg: '#FEFCE8',
+    alertBorder: '#FEF08A',
+    alertIcon: '#EAB308',
+    alertText: '#854D0E',
+    alertBgDanger: '#FEF2F2',
+    alertBorderDanger: '#FECACA',
+    alertIconDanger: '#EF4444',
+    alertTextDanger: '#991B1B',
+    alertBgInfo: '#EFF6FF',
+    alertBorderInfo: '#BFDBFE',
+    alertIconInfo: '#3B82F6',
+    alertTextInfo: '#1E40AF',
   },
   typography: {
     fontFamily: 'System',
@@ -242,6 +284,8 @@ export const defaultDarkTheme: SchoolTheme = {
     textStrong: '#F1F5F9',
     textSecondary: '#94A3B8',
     textMuted: '#64748B',
+    text: '#E2E8F0',
+    textTertiary: '#64748B',
     border: '#1E293B',
     borderLight: '#334155',
     danger: '#F87171',
@@ -254,6 +298,18 @@ export const defaultDarkTheme: SchoolTheme = {
     navIconInactive: '#475569',
     headerBg: 'rgba(11,15,25, 0.85)',
     footerBg: 'rgba(21,27,43, 0.90)',
+    alertBg: 'rgba(234,179,8, 0.1)',
+    alertBorder: 'rgba(234,179,8, 0.2)',
+    alertIcon: '#FBBF24',
+    alertText: '#FEF08A',
+    alertBgDanger: 'rgba(239,68,68, 0.1)',
+    alertBorderDanger: 'rgba(239,68,68, 0.2)',
+    alertIconDanger: '#F87171',
+    alertTextDanger: '#FECACA',
+    alertBgInfo: 'rgba(59,130,246, 0.1)',
+    alertBorderInfo: 'rgba(59,130,246, 0.2)',
+    alertIconInfo: '#60A5FA',
+    alertTextInfo: '#BFDBFE',
   },
   typography: {
     fontFamily: 'System',

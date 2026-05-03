@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar} from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -92,59 +92,59 @@ export default function AdminEvents() {
     item,
     index
 
-  }: {item: EventItem;index: number;}) => {
+  }: { item: EventItem; index: number; }) => {
     const typeStyle = getEventTypeStyle(item.event_type);
     return <Animated.View entering={FadeInDown.delay(index * 100).duration(500)}>
-                <View style={styles.card}>
-                    <View style={styles.dateBox}>
-                        <Text style={styles.dateText}>{getDay(item.start_date)}</Text>
-                        <Text style={styles.monthText}>{getMonth(item.start_date)}</Text>
-                    </View>
-                    <View style={styles.contentBox}>
-                        <View style={styles.titleRow}>
-                            <Text style={styles.title}>{t_field(item.title, item.title_te)}</Text>
-                            <View style={[styles.typeBadge, {
+      <View style={styles.card}>
+        <View style={styles.dateBox}>
+          <Text style={styles.dateText}>{getDay(item.start_date)}</Text>
+          <Text style={styles.monthText}>{getMonth(item.start_date)}</Text>
+        </View>
+        <View style={styles.contentBox}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{t_field(item.title, item.title_te)}</Text>
+            <View style={[styles.typeBadge, {
               backgroundColor: typeStyle.bg
             }]}>
-                                <Text style={[styles.typeText, {
+              <Text style={[styles.typeText, {
                 color: typeStyle.text
               }]}>
-                                    {item.event_type.charAt(0).toUpperCase() + item.event_type.slice(1)}
-                                </Text>
-                            </View>
-                        </View>
-                        <Text style={styles.dayText}>{getDayName(item.start_date)}</Text>
-                        {item.location && <View style={styles.locationRow}>
-                                <Ionicons name="location-sharp" size={14} color="#9CA3AF" />
-                                <Text style={styles.locationText}>{item.location}</Text>
-                            </View>}
-                    </View>
-                </View>
-            </Animated.View>;
+                {item.event_type.charAt(0).toUpperCase() + item.event_type.slice(1)}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.dayText}>{getDayName(item.start_date)}</Text>
+          {item.location && <View style={styles.locationRow}>
+            <Ionicons name="location-sharp" size={14} color="#9CA3AF" />
+            <Text style={styles.locationText}>{item.location}</Text>
+          </View>}
+        </View>
+      </View>
+    </Animated.View>;
   };
   return <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-            <AdminHeader title="Event Calendar" showBackButton={true} />
-            <View style={styles.tabs}>
-                <TouchableOpacity style={[styles.tab, activeTab === 'UPCOMING' && styles.activeTab]} onPress={() => setActiveTab('UPCOMING')}>
-                    <Text style={[styles.tabText, activeTab === 'UPCOMING' && styles.activeTabText]}>Upcoming</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.tab, activeTab === 'PAST' && styles.activeTab]} onPress={() => setActiveTab('PAST')}>
-                    <Text style={[styles.tabText, activeTab === 'PAST' && styles.activeTabText]}>Past</Text>
-                </TouchableOpacity>
-            </View>
-            {loading ? <View style={styles.centerContainer}>
-                    <LogoLoader size={60} color="#6366F1" />
-                </View> : <FlatList data={events} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} ListEmptyComponent={<Text style={styles.emptyText}>No events found</Text>} refreshing={loading} onRefresh={fetchEvents} />}
-            <TouchableOpacity style={styles.fab} onPress={() => alertCompat('Create Event', 'Feature coming soon')}>
-                <Ionicons name="add" size={30} color="#fff" />
-            </TouchableOpacity>
-        </View>;
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AdminHeader title="Event Calendar" showBackButton={true} />
+    <View style={styles.tabs}>
+      <TouchableOpacity style={[styles.tab, activeTab === 'UPCOMING' && styles.activeTab]} onPress={() => setActiveTab('UPCOMING')}>
+        <Text style={[styles.tabText, activeTab === 'UPCOMING' && styles.activeTabText]}>Upcoming</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.tab, activeTab === 'PAST' && styles.activeTab]} onPress={() => setActiveTab('PAST')}>
+        <Text style={[styles.tabText, activeTab === 'PAST' && styles.activeTabText]}>Past</Text>
+      </TouchableOpacity>
+    </View>
+    {loading ? <View style={styles.centerContainer}>
+      <LogoLoader size={60} color="#6366F1" />
+    </View> : <FlatList data={events} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} ListEmptyComponent={<Text style={styles.emptyText}>No events found</Text>} refreshing={loading} onRefresh={fetchEvents} />}
+    <TouchableOpacity style={styles.fab} onPress={() => alertCompat('Create Event', 'Feature coming soon')}>
+      <Ionicons name="add" size={30} color="#fff" />
+    </TouchableOpacity>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   centerContainer: {
     flex: 1,

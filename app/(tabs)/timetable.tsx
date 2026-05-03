@@ -352,8 +352,7 @@ export default TimeTableScreen;
 const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
-  },
+    backgroundColor: 'transparent'},
   scrollContent: {
     paddingTop: 16
   },

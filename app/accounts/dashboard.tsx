@@ -518,7 +518,7 @@ const MobileAnalyticsSection = ({ data, loading, styles, isDark, contentW }: any
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, marginTop: 12 }}>
             <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)' }}>
               <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Total Expected</Text>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.text }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.textPrimary }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)' }}>
               <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Collected</Text>
@@ -564,7 +564,7 @@ const MobileAnalyticsSection = ({ data, loading, styles, isDark, contentW }: any
           ) : (
             <View style={{ alignItems: 'center', justifyContent: 'center', height: 160, opacity: 0.5 }}>
               <Ionicons name="bar-chart-outline" size={40} color={theme.colors.textSecondary} style={{ marginBottom: 12 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>Not enough data yet</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>Not enough data yet</Text>
               <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 }}>Revenue trend appears after 2+ months</Text>
             </View>
           )}
@@ -662,7 +662,7 @@ export default function AccountsDashboard() {
 
           {/* Page header */}
           <Animated.View entering={FadeInDown.duration(350)} style={{ marginBottom: 24 }}>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.6, marginBottom: 4 }}>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: -0.6, marginBottom: 4 }}>
               Hello, <Text style={{ color: isDark ? '#818CF8' : '#4F46E5' }}>{user?.displayName?.split(' ')[0] || 'Admin'}</Text> 👋
             </Text>
             <Text style={{ fontSize: 13, color: theme.colors.textSecondary, fontWeight: '500' }}>
@@ -682,7 +682,7 @@ export default function AccountsDashboard() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#3B82F6', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 5 }} />
-              <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.text }}>Quick Actions</Text>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary }}>Quick Actions</Text>
             </View>
             <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.30)' : 'rgba(59,130,246,0.20)' }}>
               <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6' }}>{quickActions.length}</Text>

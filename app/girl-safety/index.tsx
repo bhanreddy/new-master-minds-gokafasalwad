@@ -79,22 +79,22 @@ export default function GirlSafetyTab() {
   if (user?.gender !== 'Female') {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-                <View style={styles.noAccessCard}>
-                    <View style={styles.noAccessIconContainer}>
-                        <Ionicons name="lock-closed" size={48} color="#EF4444" />
-                    </View>
-                    <Text style={styles.noAccessTitle}>Access Restricted</Text>
-                    <Text style={styles.noAccessText}>
-                        The Girl Safety feature is strictly reserved for female students. This space is maintained to provide confidential support and assistance exclusively to girls.
-                    </Text>
-                    <TouchableOpacity
+        <View style={styles.noAccessCard}>
+          <View style={styles.noAccessIconContainer}>
+            <Ionicons name="lock-closed" size={48} color="#EF4444" />
+          </View>
+          <Text style={styles.noAccessTitle}>Access Restricted</Text>
+          <Text style={styles.noAccessText}>
+            The Girl Safety feature is strictly reserved for female students. This space is maintained to provide confidential support and assistance exclusively to girls.
+          </Text>
+          <TouchableOpacity
             style={styles.goBackButton}
             onPress={() => router.back()}>
 
-                        <Text style={styles.goBackText}>Go Back</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>);
+            <Text style={styles.goBackText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>);
 
   }
 
@@ -105,75 +105,75 @@ export default function GirlSafetyTab() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':return '#F59E0B'; // Amber
-      case 'in_review':return '#3B82F6'; // Blue
-      case 'resolved':return '#10B981'; // Green
-      default:return '#6B7280'; // Gray
+      case 'pending': return '#F59E0B'; // Amber
+      case 'in_review': return '#3B82F6'; // Blue
+      case 'resolved': return '#10B981'; // Green
+      default: return '#6B7280'; // Gray
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending':return 'Pending';
-      case 'in_review':return 'In Review';
-      case 'resolved':return 'Resolved';
-      default:return status;
+      case 'pending': return 'Pending';
+      case 'in_review': return 'In Review';
+      case 'resolved': return 'Resolved';
+      default: return status;
     }
   };
 
-  const renderItem = ({ item }: {item: GirlSafetyComplaint;}) =>
-  <TouchableOpacity
-    style={styles.card}
-    activeOpacity={0.7}
-    onPress={() => router.push(`/girl-safety/${item.id}` as any)}>
+  const renderItem = ({ item }: { item: GirlSafetyComplaint; }) =>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.7}
+      onPress={() => router.push(`/girl-safety/${item.id}` as any)}>
 
-            <View style={styles.cardHeader}>
-                <Text style={styles.category}>{item.category}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-                    <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>{getStatusText(item.status)}</Text>
-                </View>
-            </View>
-            <Text style={styles.ticketNo}>Ticket: {item.ticket_no}</Text>
-            <Text style={styles.date}>{new Date(item.created_at).toLocaleDateString()} {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-            {item.is_anonymous &&
-    <View style={styles.anonBadge}>
-                    <Ionicons name="eye-off-outline" size={12} color="#7C3AED" />
-                    <Text style={styles.anonText}>Anonymous</Text>
-                </View>
-    }
-        </TouchableOpacity>;
+      <View style={styles.cardHeader}>
+        <Text style={styles.category}>{item.category}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
+          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>{getStatusText(item.status)}</Text>
+        </View>
+      </View>
+      <Text style={styles.ticketNo}>Ticket: {item.ticket_no}</Text>
+      <Text style={styles.date}>{new Date(item.created_at).toLocaleDateString()} {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+      {item.is_anonymous &&
+        <View style={styles.anonBadge}>
+          <Ionicons name="eye-off-outline" size={12} color="#7C3AED" />
+          <Text style={styles.anonText}>Anonymous</Text>
+        </View>
+      }
+    </TouchableOpacity>;
 
   return (
     <View style={styles.container}>
-            {/* Soft, calming header gradient */}
-            <LinearGradient
+      {/* Soft, calming header gradient */}
+      <LinearGradient
         colors={['#EDE9FE', '#F3E8FF', '#FFFFFF']}
         style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}>
 
-                <View style={styles.headerTop}>
-                    <View>
-                        <Text style={styles.title}>Girl Safety</Text>
-                        <Text style={styles.subtitle}>Confidential Support & Assistance</Text>
-                    </View>
-                    <Animated.View style={[pulseStyle]}>
-                        <TouchableOpacity style={styles.sosButton} onPress={handleCallHelpline}>
-                            <Ionicons name="call" size={20} color="#FFFFFF" />
-                            <Text style={styles.sosText}>SOS</Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                </View>
-                <Animated.View style={[styles.banner, entryStyle]}>
-                    <Ionicons name="shield-checkmark" size={24} color="#7C3AED" />
-                    <Text style={styles.bannerText}>
-                        Your safety is our priority. All complaints are highly confidential and routed directly to a trusted Lady Admin.
-                    </Text>
-                </Animated.View>
-            </LinearGradient>
-            <View style={styles.content}>
-                <View style={styles.listHeader}>
-                    <Text style={styles.listTitle}>Past Reports</Text>
-                </View>
-                <FlatList
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.title}>Girl Safety</Text>
+            <Text style={styles.subtitle}>Confidential Support & Assistance</Text>
+          </View>
+          <Animated.View style={[pulseStyle]}>
+            <TouchableOpacity style={styles.sosButton} onPress={handleCallHelpline}>
+              <Ionicons name="call" size={20} color="#FFFFFF" />
+              <Text style={styles.sosText}>SOS</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+        <Animated.View style={[styles.banner, entryStyle]}>
+          <Ionicons name="shield-checkmark" size={24} color="#7C3AED" />
+          <Text style={styles.bannerText}>
+            Your safety is our priority. All complaints are highly confidential and routed directly to a trusted Lady Admin.
+          </Text>
+        </Animated.View>
+      </LinearGradient>
+      <View style={styles.content}>
+        <View style={styles.listHeader}>
+          <Text style={styles.listTitle}>Past Reports</Text>
+        </View>
+        <FlatList
           data={complaints}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
@@ -182,42 +182,42 @@ export default function GirlSafetyTab() {
           refreshing={loading}
           onRefresh={fetchComplaints}
           ListEmptyComponent={
-          !loading ?
-          <View style={styles.emptyState}>
-                                <Ionicons name="leaf-outline" size={48} color="#C4B5FD" />
-                                <Text style={styles.emptyTitle}>You have no reports</Text>
-                                <Text style={styles.emptySubtitle}>If you feel unsafe or have been harassed, do not hesitate to reach out. We are here to help.</Text>
-                            </View> :
-          null
+            !loading ?
+              <View style={styles.emptyState}>
+                <Ionicons name="leaf-outline" size={48} color="#C4B5FD" />
+                <Text style={styles.emptyTitle}>You have no reports</Text>
+                <Text style={styles.emptySubtitle}>If you feel unsafe or have been harassed, do not hesitate to reach out. We are here to help.</Text>
+              </View> :
+              null
           } />
 
-            </View>
-            {/* Raise Complaint Button */}
-            <Animated.View style={[styles.fabContainer, entryStyle]}>
-                <TouchableOpacity
+      </View>
+      {/* Raise Complaint Button */}
+      <Animated.View style={[styles.fabContainer, entryStyle]}>
+        <TouchableOpacity
           style={styles.fab}
           activeOpacity={0.8}
           onPress={() => router.push('/girl-safety/raise' as any)}>
 
-                    <LinearGradient
+          <LinearGradient
             colors={['#8B5CF6', '#6D28D9']}
             style={styles.fabGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}>
 
-                        <Ionicons name="add" size={24} color="#FFF" />
-                        <Text style={styles.fabText}>Raise a Complaint</Text>
-                    </LinearGradient>
-                </TouchableOpacity>
-            </Animated.View>
-        </View>);
+            <Ionicons name="add" size={24} color="#FFF" />
+            <Text style={styles.fabText}>Raise a Complaint</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>);
 
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC'
+    backgroundColor: 'transparent'
   },
   headerGradient: {
     paddingHorizontal: 20,

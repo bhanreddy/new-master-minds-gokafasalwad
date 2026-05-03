@@ -7,7 +7,7 @@ export const INPUT_PLACEHOLDER_COLOR = '#94A3B8';
 const webInputBox = Platform.select({
   web: {
     outlineWidth: 0,
-    outlineStyle: 'none',
+    outlineStyle: 'none' as any,
     width: '100%',
     maxWidth: 480,
     boxSizing: 'border-box',
@@ -45,7 +45,7 @@ export const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         outlineWidth: 0,
-        outlineStyle: 'none',
+        outlineStyle: 'none' as any,
         flex: 1,
         minWidth: 0,
         maxWidth: 4000,

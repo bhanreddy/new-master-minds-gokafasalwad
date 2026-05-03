@@ -24,7 +24,7 @@ export default function AdminComplaints() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | 'OPEN' | 'IN PROGRESS' | 'CLOSED'>('ALL');
-  
+
   const [modalVisible, setModalVisible] = useState(false);
   const [newComplaint, setNewComplaint] = useState({
     title: '',
@@ -255,7 +255,7 @@ export default function AdminComplaints() {
     </View> : <FlatList data={filteredData} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} ListHeaderComponent={() => {
       return <Text style={styles.listHeader}>Recent Reports ({filteredData.length})</Text>;
     }} ListEmptyComponent={<Text style={styles.emptyText}>No complaints found</Text>} refreshing={loading} onRefresh={fetchComplaints} />}
-    
+
     <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
       <Ionicons name="add" size={24} color="#fff" />
     </TouchableOpacity>
@@ -325,7 +325,7 @@ export default function AdminComplaints() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   centerContainer: {
     flex: 1,

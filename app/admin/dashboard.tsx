@@ -569,6 +569,7 @@ export default function AdminDashboard() {
     ? windowWidth - sidebarW - webPad * 2
     : windowWidth - CONTAINER_PADDING * 2;
   const headerOffset = insets.top + (isWideScreen ? 64 : 58);
+  const mobileHeaderOffset = 74;
 
   const webGap = isWideScreen ? 48 : 32;
   const leftColWidth = isWideScreen ? Math.floor((contentWidth - webGap) * 0.4) : contentWidth;
@@ -1032,7 +1033,7 @@ export default function AdminDashboard() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
 
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={{ flex: 1, backgroundColor: isDark ? '#0B0F1A' : '#F0F2F5' }} />
+        <View style={{ flex: 1, backgroundColor: 'transparent' }} />
       </View>
 
       <AdminHeader
@@ -1058,7 +1059,7 @@ export default function AdminDashboard() {
       ) : (
         <>
           <Animated.ScrollView
-            contentContainerStyle={[styles.content, { paddingTop: 108 }]}
+            contentContainerStyle={[styles.content, { paddingTop: mobileHeaderOffset }]}
             showsVerticalScrollIndicator={false}
             onScroll={onScroll}
             scrollEventThrottle={16}
@@ -1087,7 +1088,7 @@ export default function AdminDashboard() {
 /* ─────────────────────────────────────────────────────────────────────────── */
 const getStyles = (theme: Theme, isDark: boolean, isWide = false) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? '#0B0F1A' : '#F0F2F5' },
+    container: { flex: 1, backgroundColor: 'transparent' },
     content: { paddingHorizontal: isWide ? 24 : CONTAINER_PADDING, paddingBottom: 48 },
     webRow: { flexDirection: 'row', justifyContent: 'space-between', gap: isWide ? 48 : 32 } as any,
 

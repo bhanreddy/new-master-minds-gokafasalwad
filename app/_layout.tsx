@@ -1,10 +1,11 @@
 import { Stack } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { CustomAlertProvider, ensurePortalRoot } from '../src/components/CustomAlert';
 export { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { validateBuildConfig } from '../src/constants/school';
 import '../src/i18n';
 import { AuthService } from '../src/services/authService';
-import { AuthProvider } from '../src/hooks/useAuth';
+import { AuthProvider, useAuth } from '../src/hooks/useAuth';
 import { ThemeProvider, ThemeContext } from '../src/context/ThemeContext';
 import { ThemeProvider as NavThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -94,33 +95,7 @@ export default function Layout() {
     }
   }, []);
 
-  // OEM Battery Prompt Check
-  useEffect(() => {
-    const checkBatteryPrompt = async () => {
-      if (Platform.OS !== 'android') return;
-      const shown = await AsyncStorage.getItem('battery_prompt_shown');
-      if (shown !== 'true') {
-        Alert.alert(
-          "Enable Full Notifications",
-          "To receive all alerts on time, please disable battery optimization for SchoolIMS.\n\nGo to: Settings → Battery → SchoolIMS → Don't optimize",
-          [
-            { text: "Later", onPress: () => AsyncStorage.setItem('battery_prompt_shown', 'true') },
-            {
-              text: "Open Settings",
-              onPress: async () => {
-                await AsyncStorage.setItem('battery_prompt_shown', 'true');
-                IntentLauncher.startActivityAsync(
-                  IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS
-                ).catch(() => {});
-              }
-            }
-          ]
-        );
-      }
-    };
-    // Delay to avoid clashing with splash screen / other prompts
-    setTimeout(checkBatteryPrompt, 2000);
-  }, []);
+
 
   useEffect(() => {
     if (loaded || error) {
@@ -222,8 +197,38 @@ const styles = StyleSheet.create({
  * Renders nothing visually.
  */
 function NavigationReady() {
+  const { user, authChecked } = useAuth();
   useAuthGuard();
   useNotifications();
   useNotificationObserver();
+
+  // OEM Battery Prompt Check - only after login
+  useEffect(() => {
+    const checkBatteryPrompt = async () => {
+      if (Platform.OS !== 'android' || !user || !authChecked) return;
+      const shown = await SecureStore.getItemAsync('battery_prompt_shown');
+      if (shown !== 'true') {
+        Alert.alert(
+          "Keep App Running",
+          "To prevent getting logged out, please disable battery optimization for this app.",
+          [
+            { text: "Skip", onPress: () => SecureStore.setItemAsync('battery_prompt_shown', 'true').catch(() => {}) },
+            {
+              text: "Open Settings",
+              onPress: async () => {
+                await SecureStore.setItemAsync('battery_prompt_shown', 'true').catch(() => {});
+                IntentLauncher.startActivityAsync(
+                  IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                ).catch(() => {});
+              }
+            }
+          ]
+        );
+      }
+    };
+    // Delay to avoid clashing with splash screen / other prompts
+    setTimeout(checkBatteryPrompt, 2000);
+  }, [user, authChecked]);
+
   return null;
 }

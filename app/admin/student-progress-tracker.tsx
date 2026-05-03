@@ -162,7 +162,7 @@ const fetchStudentTracker = async (id: string): Promise<StudentTrackerData> => {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       const data = MOCK_TRACKER_DB[id];
-      if (data) resolve(data);else reject(new Error('Student not found'));
+      if (data) resolve(data); else reject(new Error('Student not found'));
     }, 800);
   });
 };
@@ -195,48 +195,48 @@ export default function StudentProgressTracker() {
   // --- Components ---
 
   const renderHeader = () => {
-if (!data) return null;
+    if (!data) return null;
     const statusColor = data.status === 'improving' ? ADMIN_THEME.colors.success : data.status === 'declining' ? ADMIN_THEME.colors.danger : ADMIN_THEME.colors.warning;
     const statusIcon = data.status === 'improving' ? 'trending-up' : data.status === 'declining' ? 'trending-down' : 'minus';
     return <Animated.View entering={FadeInDown} style={styles.card}>
-                <View style={styles.headerTop}>
-                    <View>
-                        <Text style={styles.studentName}>{data.name}</Text>
-                        <Text style={styles.studentDetail}>{data.class} • Roll: {data.rollNo}</Text>
-                        <Text style={styles.studentDetail}>Guardian: {data.guardian}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, {
+      <View style={styles.headerTop}>
+        <View>
+          <Text style={styles.studentName}>{data.name}</Text>
+          <Text style={styles.studentDetail}>{data.class} • Roll: {data.rollNo}</Text>
+          <Text style={styles.studentDetail}>Guardian: {data.guardian}</Text>
+        </View>
+        <View style={[styles.statusBadge, {
           backgroundColor: statusColor + '20'
         }]}>
-                        <Feather name={statusIcon} size={16} color={statusColor} />
-                        <Text style={[styles.statusText, {
+          <Feather name={statusIcon} size={16} color={statusColor} />
+          <Text style={[styles.statusText, {
             color: statusColor
           }]}>{data.status.toUpperCase()}</Text>
-                    </View>
-                </View>
+        </View>
+      </View>
 
-                <View style={styles.divider} />
+      <View style={styles.divider} />
 
-                <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>Attendance</Text>
-                        <Text style={[styles.statValue, {
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Attendance</Text>
+          <Text style={[styles.statValue, {
             color: data.attendance < 75 ? ADMIN_THEME.colors.danger : ADMIN_THEME.colors.text.primary
           }]}>
-                            {data.attendance}%
-                        </Text>
-                    </View>
-                    <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>Avg Score</Text>
-                        <Text style={styles.statValue}>
-                            {Math.round(data.performance.reduce((acc, curr) => acc + curr.currMarks, 0) / data.performance.length)}%
-                        </Text>
-                    </View>
-                </View>
-            </Animated.View>;
+            {data.attendance}%
+          </Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Avg Score</Text>
+          <Text style={styles.statValue}>
+            {Math.round(data.performance.reduce((acc, curr) => acc + curr.currMarks, 0) / data.performance.length)}%
+          </Text>
+        </View>
+      </View>
+    </Animated.View>;
   };
   const renderComplaints = () => {
-if (!data) return null;
+    if (!data) return null;
     const {
       total,
       resolved,
@@ -244,123 +244,123 @@ if (!data) return null;
       critical
     } = data.complaints;
     return <Animated.View entering={FadeInDown.delay(100)}>
-                <Text style={styles.sectionTitle}>Complaints & Discipline</Text>
-                <View style={styles.complaintGrid}>
-                    <View style={[styles.complaintCard, {
+      <Text style={styles.sectionTitle}>Complaints & Discipline</Text>
+      <View style={styles.complaintGrid}>
+        <View style={[styles.complaintCard, {
           backgroundColor: '#F1F5F9'
         }]}>
-                        <Text style={styles.compValue}>{total}</Text>
-                        <Text style={styles.compLabel}>Total</Text>
-                    </View>
-                    <View style={[styles.complaintCard, {
+          <Text style={styles.compValue}>{total}</Text>
+          <Text style={styles.compLabel}>Total</Text>
+        </View>
+        <View style={[styles.complaintCard, {
           backgroundColor: '#ECFDF5'
         }]}>
-                        <Text style={[styles.compValue, {
+          <Text style={[styles.compValue, {
             color: ADMIN_THEME.colors.success
           }]}>{resolved}</Text>
-                        <Text style={styles.compLabel}>Resolved</Text>
-                    </View>
-                    <View style={[styles.complaintCard, {
+          <Text style={styles.compLabel}>Resolved</Text>
+        </View>
+        <View style={[styles.complaintCard, {
           backgroundColor: '#FEF2F2',
           borderColor: critical > 0 ? ADMIN_THEME.colors.danger : 'transparent',
           borderWidth: critical > 0 ? 1 : 0
         }]}>
-                        <Text style={[styles.compValue, {
+          <Text style={[styles.compValue, {
             color: ADMIN_THEME.colors.danger
           }]}>{pending}</Text>
-                        <Text style={styles.compLabel}>Pending</Text>
-                        {critical > 0 && <View style={styles.criticalBadge}>
-                                <Text style={styles.criticalText}>{critical} Critical</Text>
-                            </View>}
-                    </View>
-                </View>
-            </Animated.View>;
+          <Text style={styles.compLabel}>Pending</Text>
+          {critical > 0 && <View style={styles.criticalBadge}>
+            <Text style={styles.criticalText}>{critical} Critical</Text>
+          </View>}
+        </View>
+      </View>
+    </Animated.View>;
   };
   const renderComparison = () => {
-if (!data) return null;
+    if (!data) return null;
     return <Animated.View entering={FadeInDown.delay(200)}>
-                <Text style={styles.sectionTitle}>Academic Comparison (Prev vs Curr)</Text>
-                <View style={styles.card}>
-                    {data.performance.map((sub, i) => {
-const diff = sub.currMarks - sub.prevMarks;
+      <Text style={styles.sectionTitle}>Academic Comparison (Prev vs Curr)</Text>
+      <View style={styles.card}>
+        {data.performance.map((sub, i) => {
+          const diff = sub.currMarks - sub.prevMarks;
           const isPos = diff >= 0;
           return <View key={i} style={styles.subjectRow}>
-                                <View style={styles.subjectInfo}>
-                                    <Text style={styles.subjectName}>{sub.subject}</Text>
-                                    <View style={styles.markBadge}>
-                                        <Text style={[styles.markText, {
+            <View style={styles.subjectInfo}>
+              <Text style={styles.subjectName}>{sub.subject}</Text>
+              <View style={styles.markBadge}>
+                <Text style={[styles.markText, {
                   color: isPos ? ADMIN_THEME.colors.success : ADMIN_THEME.colors.danger
                 }]}>
-                                            {isPos ? '+' : ''}{diff}
-                                        </Text>
-                                        <Feather name={isPos ? 'arrow-up' : 'arrow-down'} size={12} color={isPos ? ADMIN_THEME.colors.success : ADMIN_THEME.colors.danger} />
-                                    </View>
-                                </View>
+                  {isPos ? '+' : ''}{diff}
+                </Text>
+                <Feather name={isPos ? 'arrow-up' : 'arrow-down'} size={12} color={isPos ? ADMIN_THEME.colors.success : ADMIN_THEME.colors.danger} />
+              </View>
+            </View>
 
-                                <View style={styles.barContainer}>
-                                    {/* Previous Marks Bar */}
-                                    <View style={styles.barWrapper}>
-                                        <View style={[styles.bar, {
+            <View style={styles.barContainer}>
+              {/* Previous Marks Bar */}
+              <View style={styles.barWrapper}>
+                <View style={[styles.bar, {
                   width: `${sub.prevMarks}%`,
                   backgroundColor: '#CBD5E1'
                 }]} />
-                                        <Text style={styles.barLabel}>{sub.prevMarks}</Text>
-                                    </View>
-                                    {/* Current Marks Bar */}
-                                    <View style={styles.barWrapper}>
-                                        <View style={[styles.bar, {
+                <Text style={styles.barLabel}>{sub.prevMarks}</Text>
+              </View>
+              {/* Current Marks Bar */}
+              <View style={styles.barWrapper}>
+                <View style={[styles.bar, {
                   width: `${sub.currMarks}%`,
                   backgroundColor: isPos ? ADMIN_THEME.colors.primary : ADMIN_THEME.colors.danger
                 }]} />
-                                        <Text style={[styles.barLabel, {
+                <Text style={[styles.barLabel, {
                   fontWeight: '700'
                 }]}>{sub.currMarks}</Text>
-                                    </View>
-                                </View>
-                            </View>;
+              </View>
+            </View>
+          </View>;
         })}
-                </View>
-            </Animated.View>;
+      </View>
+    </Animated.View>;
   };
   return <View style={styles.root}>
-            <LinearGradient colors={[ADMIN_THEME.colors.background.app, '#F0F4FF']} style={StyleSheet.absoluteFill} />
-            <AdminHeader title="Parent-Principal Meeting" showBackButton />
+    <LinearGradient colors={[ADMIN_THEME.colors.background.app, '#F0F4FF']} style={StyleSheet.absoluteFill} />
+    <AdminHeader title="Parent-Principal Meeting" showBackButton />
 
-            <ScrollView contentContainerStyle={styles.scroll}>
-                <View style={styles.content}>
+    <ScrollView contentContainerStyle={styles.scroll}>
+      <View style={styles.content}>
 
-                    {/* Search Input */}
-                    <Text style={styles.label}>Connect Student Profile</Text>
-                    <View style={styles.inputRow}>
-                        <View style={styles.inputWrapper}>
-                            <Ionicons name="search-outline" size={20} color="#64748B" style={{
+        {/* Search Input */}
+        <Text style={styles.label}>Connect Student Profile</Text>
+        <View style={styles.inputRow}>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="search-outline" size={20} color="#64748B" style={{
               marginRight: 8
             }} />
-                            <AppTextInput style={styles.input} placeholder="Enter Student ID (101, 102, 103)" placeholderTextColor="#94A3B8" value={studentId} onChangeText={setStudentId} />
-                        </View>
-                        <TouchableOpacity style={styles.searchBtn} onPress={handleSearch} disabled={loading}>
-                            {loading ? <LogoLoader color="#FFF" /> : <Feather name="arrow-right" size={20} color="#FFF" />}
-                        </TouchableOpacity>
-                    </View>
+            <AppTextInput style={styles.input} placeholder="Enter Student ID (101, 102, 103)" placeholderTextColor="#94A3B8" value={studentId} onChangeText={setStudentId} />
+          </View>
+          <TouchableOpacity style={styles.searchBtn} onPress={handleSearch} disabled={loading}>
+            {loading ? <LogoLoader color="#FFF" /> : <Feather name="arrow-right" size={20} color="#FFF" />}
+          </TouchableOpacity>
+        </View>
 
-                    {data && <>
-                            <View style={{
+        {data && <>
+          <View style={{
             height: 20
           }} />
-                            {renderHeader()}
-                            <View style={{
+          {renderHeader()}
+          <View style={{
             height: 24
           }} />
-                            {renderComplaints()}
-                            <View style={{
+          {renderComplaints()}
+          <View style={{
             height: 24
           }} />
-                            {renderComparison()}
-                        </>}
+          {renderComparison()}
+        </>}
 
-                </View>
-            </ScrollView>
-        </View>;
+      </View>
+    </ScrollView>
+  </View>;
 }
 const getStyles = () => StyleSheet.create({
   root: {

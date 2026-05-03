@@ -4,7 +4,8 @@ import AppTextInput from '@/src/components/AppTextInput';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, StatusBar, KeyboardAvoidingView,
-  Platform, Pressable, Dimensions} from 'react-native';
+  Platform, Pressable, Dimensions
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -390,7 +391,7 @@ export default function AddStaffScreen() {
         }
       }
     }).catch(console.error);
-    
+
     if (id) { setIsEditMode(true); loadUserData(id as string); }
     return () => { mounted = false; };
   }, [id]);
@@ -432,7 +433,7 @@ export default function AddStaffScreen() {
     try {
       const selectedDesig = designations.find(d => d.id.toString() === formData.designationId);
       const desigName = selectedDesig?.name?.toLowerCase() || '';
-      
+
       let calculatedRole = 'staff';
       if (desigName === 'principal') calculatedRole = 'principal';
       else if (desigName.includes('admin')) calculatedRole = 'admin';
@@ -440,7 +441,7 @@ export default function AddStaffScreen() {
 
       const payload: any = {
         first_name: formData.firstName, last_name: formData.lastName, middle_name: '',
-        email: formData.email, 
+        email: formData.email,
         phone: formData.phone, designation_id: parseInt(formData.designationId),
         department: '', salary: formData.salary ? parseFloat(formData.salary) : undefined,
         gender_id: parseInt(formData.genderId), staff_code: formData.staffCode,
@@ -646,7 +647,7 @@ export default function AddStaffScreen() {
 
 // ─── Root Styles ──────────────────────────────────────────────────────────────
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: isDark ? '#0A0F1E' : '#F1F5F9' },
+  container: { flex: 1, backgroundColor: 'transparent' },
   scrollContent: { padding: 18, paddingBottom: 60 },
 
   // Hero

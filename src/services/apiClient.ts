@@ -190,48 +190,15 @@ export async function apiRequest<T>(
           );
         }
 
-        // 2. TOKEN REFRESH LOGIC (Infinity Session)
-        // If it's a 401 and NOT a retry, attempt to refresh the session
+        // 2. TOKEN REFRESH — use Supabase SDK only (single source of truth)
+        // Layer A fix: Removed the separate backend /auth/refresh path to
+        // eliminate the triple-refresh race that could burn refresh tokens.
+        // The Supabase SDK's autoRefreshToken + startAutoRefresh() is the
+        // single authority for token refresh.
         if (!_isRetry) {
-          if (__DEV__) { }
+          if (__DEV__) console.log('[apiClient] 401 received — attempting Supabase refresh');
 
           try {
-            // Try backend refresh FIRST (single source of truth for session validity)
-            const storedRefreshToken = await tokenGet(REFRESH_TOKEN_KEY);
-            if (storedRefreshToken) {
-              try {
-                const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ school_id: SCHOOL_ID_PARAM, refresh_token: storedRefreshToken }),
-                });
-                if (refreshResponse.ok) {
-                  const refreshBody = await refreshResponse.json();
-                  const refreshData = refreshBody?.data ?? refreshBody;
-                  await setTokens(refreshData.token, refreshData.refresh_token);
-                  // Sync with Supabase client
-                  await supabase.auth.setSession({
-                    access_token: refreshData.token,
-                    refresh_token: refreshData.refresh_token,
-                  });
-                  if (__DEV__) { }
-                  // Retry the original request with new token
-                  return await apiRequest<T>(endpoint, {
-                    ...options,
-                    _isRetry: true,
-                    headers: {
-                      ...options.headers,
-                      'Authorization': `Bearer ${refreshData.token}`
-                    }
-                  });
-                }
-              } catch (backendRefreshErr) {
-                if (__DEV__) { }
-                // Fall through to Supabase client-side refresh
-              }
-            }
-
-            // Fallback: Use Supabase client-side refresh (single-flight)
             if (!refreshPromise) {
               refreshPromise = supabase.auth.refreshSession().finally(() => {
                 refreshPromise = null;
@@ -241,7 +208,7 @@ export async function apiRequest<T>(
             const { data, error: refreshError } = await refreshPromise;
 
             if (!refreshError && data.session) {
-              if (__DEV__) { }
+              if (__DEV__) console.log('[apiClient] Supabase refresh succeeded — retrying request');
 
               // Update local storage tokens
               await setTokens(data.session.access_token, data.session.refresh_token);
@@ -256,23 +223,20 @@ export async function apiRequest<T>(
                 }
               });
             } else {
-
-              if (!data?.session) { }
+              if (__DEV__) console.warn('[apiClient] Supabase refresh failed:', refreshError?.message);
             }
           } catch (refreshErr) {
-
+            if (__DEV__) console.warn('[apiClient] Refresh error:', refreshErr);
           }
         }
 
-        // 3. Network-aware logout decision
+        // 3. Network-aware error handling
         // CRITICAL: Do NOT logout if the device is offline
-
-        // Do a fresh active check just in case the cached state is wrong
         const netState = await NetInfo.fetch();
         const isOnline = netState.isConnected && netState.isInternetReachable !== false;
 
         if (!isOnline) {
-          if (__DEV__) { }
+          if (__DEV__) console.log('[apiClient] 401 but device is offline — suppressing');
           if (silent) return null as T;
           throw new APIError('Network unavailable. Logging suspended.', 0, undefined, requestId);
         }
@@ -282,14 +246,10 @@ export async function apiRequest<T>(
           return null as T;
         }
 
-        // Only trigger logout if we are genuinely online and the token is rejected
-        if (logoutCallback) {
-          // Small delay to ensure no inflight token writes are happening
-          setTimeout(() => {
-            logoutCallback?.();
-          }, 1000);
-        }
-
+        // Layer A fix: Do NOT fire logoutCallback here.
+        // The 401 is propagated as an error. The caller (or useAuth's
+        // handleRefresh via TOKEN_REFRESHED event) will decide whether
+        // to retry or logout based on role-specific backoff policy.
         throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
       }
 

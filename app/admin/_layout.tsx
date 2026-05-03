@@ -7,7 +7,7 @@ export default function AdminLayout() {
     useRequireRole('admin', 'principal');
 
     return (
-            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+            <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent'}, headerShown: false, animation: 'slide_from_right' }}>
                 <Stack.Screen name="dashboard" />
                 <Stack.Screen name="manage-staff" />
                 <Stack.Screen name="manage-content" />

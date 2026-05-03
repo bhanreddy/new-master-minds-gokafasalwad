@@ -193,7 +193,7 @@ const getStyles = (theme: SchoolTheme) => {
   return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: c.card,
+    backgroundColor: 'transparent',
     paddingTop: Platform.OS === 'android' ? 30 : 0
   },
   scrollContent: {

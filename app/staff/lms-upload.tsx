@@ -180,7 +180,7 @@ export default function StaffLMSUpload() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   content: {
     padding: 20

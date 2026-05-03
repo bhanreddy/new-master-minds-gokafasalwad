@@ -22,32 +22,32 @@ const OSM_STYLE = {
     }
   },
   layers: [
-  {
-    id: 'osm-tiles',
-    type: 'raster',
-    source: 'osm',
-    minzoom: 0,
-    maxzoom: 19
-  }]
+    {
+      id: 'osm-tiles',
+      type: 'raster',
+      source: 'osm',
+      minzoom: 0,
+      maxzoom: 19
+    }]
 
 };
 
 // A short static path near New Delhi matching our simulator
 const ROUTE_COORDINATES = [
-{ latitude: 28.6139, longitude: 77.2090 },
-{ latitude: 28.6145, longitude: 77.2095 },
-{ latitude: 28.6150, longitude: 77.2100 },
-{ latitude: 28.6155, longitude: 77.2105 },
-{ latitude: 28.6160, longitude: 77.2110 },
-{ latitude: 28.6165, longitude: 77.2115 },
-{ latitude: 28.6170, longitude: 77.2120 },
-{ latitude: 28.6175, longitude: 77.2125 },
-{ latitude: 28.6180, longitude: 77.2130 }];
+  { latitude: 28.6139, longitude: 77.2090 },
+  { latitude: 28.6145, longitude: 77.2095 },
+  { latitude: 28.6150, longitude: 77.2100 },
+  { latitude: 28.6155, longitude: 77.2105 },
+  { latitude: 28.6160, longitude: 77.2110 },
+  { latitude: 28.6165, longitude: 77.2115 },
+  { latitude: 28.6170, longitude: 77.2120 },
+  { latitude: 28.6175, longitude: 77.2125 },
+  { latitude: 28.6180, longitude: 77.2130 }];
 
 // Convert route to GeoJSON LineString (MapLibre uses [lng, lat])
 
 // Reference coordinates for Haversine distance
-type Coord = {latitude: number;longitude: number;};
+type Coord = { latitude: number; longitude: number; };
 
 // Helper 1: Calculate Distance (Haversine) in KM
 const calculateDistance = (coord1: Coord, coord2: Coord) => {
@@ -60,7 +60,7 @@ const calculateDistance = (coord1: Coord, coord2: Coord) => {
   const lat2 = toRadian(coord2.latitude);
 
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-  Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
@@ -97,7 +97,7 @@ const BusProfileScreen = () => {
   const { theme, isDark } = useTheme();
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { t } = useTranslation();
-  const { busId } = useLocalSearchParams<{busId?: string;}>();
+  const { busId } = useLocalSearchParams<{ busId?: string; }>();
   const { user } = useAuth();
 
   const [activeBusId, setActiveBusId] = useState<string | null>(busId || null);
@@ -106,20 +106,20 @@ const BusProfileScreen = () => {
   const [assignedStop, setAssignedStop] = useState<any>(null);
 
   const [busLocation, setBusLocation] = useState<Coord | null>(null);
-  const [etaInfo, setEtaInfo] = useState<{distance: string;time: string;} | null>(null);
+  const [etaInfo, setEtaInfo] = useState<{ distance: string; time: string; } | null>(null);
 
   const routeGeoJSON = React.useMemo<GeoJSON.FeatureCollection>(() => {
     return {
       type: 'FeatureCollection',
       features: [
-      {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates: routeCoordinates.map((c) => [c.longitude, c.latitude])
-        }
-      }]
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: routeCoordinates.map((c) => [c.longitude, c.latitude])
+          }
+        }]
 
     };
   }, [routeCoordinates]);
@@ -153,11 +153,11 @@ const BusProfileScreen = () => {
 
           if (targetStudentId) {
             const { data: stData } = await supabase.from('student_transport').
-            select('route_id, bus_id, stop_id').
-            eq('student_id', targetStudentId).
-            eq('is_active', true).
-            limit(1).
-            single();
+              select('route_id, bus_id, stop_id').
+              eq('student_id', targetStudentId).
+              eq('is_active', true).
+              limit(1).
+              single();
 
             if (stData) {
               setActiveBusId(stData.bus_id);
@@ -172,9 +172,9 @@ const BusProfileScreen = () => {
 
     const loadRouteAndStops = async (routeId: string, assignedStopId?: string) => {
       const { data: stopsData } = await supabase.from('transport_stops').
-      select('*').
-      eq('route_id', routeId).
-      order('stop_order', { ascending: true });
+        select('*').
+        eq('route_id', routeId).
+        order('stop_order', { ascending: true });
 
       if (stopsData && stopsData.length > 0) {
         const coords = stopsData.map((s) => ({ latitude: Number(s.latitude), longitude: Number(s.longitude) }));
@@ -223,11 +223,11 @@ const BusProfileScreen = () => {
 
     const fetchInitialLocation = async () => {
       const { data, error } = await supabase.
-      from('bus_locations').
-      select('latitude, longitude, speed').
-      eq('bus_id', activeBusId).
-      order('recorded_at', { ascending: false }).
-      limit(1);
+        from('bus_locations').
+        select('latitude, longitude, speed').
+        eq('bus_id', activeBusId).
+        order('recorded_at', { ascending: false }).
+        limit(1);
 
       if (!error && data && data.length > 0) {
         handleNewLocation(Number(data[0].latitude), Number(data[0].longitude), Number(data[0].speed), routeCoordinates, assignedStop);
@@ -239,23 +239,23 @@ const BusProfileScreen = () => {
     }
 
     const channel = supabase.
-    channel(`bus_tracking_${activeBusId}`).
-    on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'bus_locations',
-        filter: `bus_id=eq.${activeBusId}`
-      },
-      (payload) => {
-        const newRow = payload.new as any;
-        if (newRow && newRow.latitude && newRow.longitude) {
-          handleNewLocation(Number(newRow.latitude), Number(newRow.longitude), Number(newRow.speed), routeCoordinates, assignedStop);
+      channel(`bus_tracking_${activeBusId}`).
+      on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bus_locations',
+          filter: `bus_id=eq.${activeBusId}`
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (newRow && newRow.latitude && newRow.longitude) {
+            handleNewLocation(Number(newRow.latitude), Number(newRow.longitude), Number(newRow.speed), routeCoordinates, assignedStop);
+          }
         }
-      }
-    ).
-    subscribe();
+      ).
+      subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -276,52 +276,52 @@ const BusProfileScreen = () => {
           attribution={false}>
 
           {routeCoordinates.length > 0 ?
-          <Camera
-            bounds={[
-            Math.min(...routeCoordinates.map((c) => c.longitude)) - 0.005,
-            Math.min(...routeCoordinates.map((c) => c.latitude)) - 0.005,
-            Math.max(...routeCoordinates.map((c) => c.longitude)) + 0.005,
-            Math.max(...routeCoordinates.map((c) => c.latitude)) + 0.005]
-            } /> :
+            <Camera
+              bounds={[
+                Math.min(...routeCoordinates.map((c) => c.longitude)) - 0.005,
+                Math.min(...routeCoordinates.map((c) => c.latitude)) - 0.005,
+                Math.max(...routeCoordinates.map((c) => c.longitude)) + 0.005,
+                Math.max(...routeCoordinates.map((c) => c.latitude)) + 0.005]
+              } /> :
 
-          <Camera
-            initialViewState={{
-              center: [77.2090, 28.6139],
-              zoom: 13
-            }} />
+            <Camera
+              initialViewState={{
+                center: [77.2090, 28.6139],
+                zoom: 13
+              }} />
 
           }
 
           {/* Route Polyline */}
           {routeCoordinates.length > 1 &&
-          <GeoJSONSource id="route-source" data={routeGeoJSON}>
+            <GeoJSONSource id="route-source" data={routeGeoJSON}>
               <Layer
-              id="route-line"
-              type="line"
-              paint={{
-                "line-color": theme.colors.primary,
-                "line-width": 4
-              }}
-              layout={{
-                "line-cap": "round",
-                "line-join": "round"
-              }} />
+                id="route-line"
+                type="line"
+                paint={{
+                  "line-color": theme.colors.primary,
+                  "line-width": 4
+                }}
+                layout={{
+                  "line-cap": "round",
+                  "line-join": "round"
+                }} />
 
             </GeoJSONSource>
           }
 
           {/* Route Stops */}
           {stops.map((stop) =>
-          <Marker key={stop.id} id={`stop-${stop.id}`} lngLat={[Number(stop.longitude), Number(stop.latitude)]}>
+            <Marker key={stop.id} id={`stop-${stop.id}`} lngLat={[Number(stop.longitude), Number(stop.latitude)]}>
               <View style={[styles.stopMarker, assignedStop?.id === stop.id && styles.assignedStopMarker]} />
             </Marker>
           )}
 
           {/* Live Bus Marker */}
           {busLocation &&
-          <Marker
-            id="bus-marker"
-            lngLat={[busLocation.longitude, busLocation.latitude]}>
+            <Marker
+              id="bus-marker"
+              lngLat={[busLocation.longitude, busLocation.latitude]}>
 
               <View style={styles.busMarker}>
                 <Text style={styles.busMarkerText}>🚌</Text>
@@ -332,7 +332,7 @@ const BusProfileScreen = () => {
 
         {/* ===== ETA OVERLAY ===== */}
         {etaInfo &&
-        <View style={styles.etaOverlay}>
+          <View style={styles.etaOverlay}>
             <View style={styles.etaPill}>
               <Text style={styles.etaTimeText}>Arriving in {etaInfo.time} mins</Text>
               <Text style={styles.etaSubText}>{etaInfo.distance} km away</Text>
@@ -350,7 +350,7 @@ export default BusProfileScreen;
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: 'transparent'
   },
   busMarker: {
     backgroundColor: 'white',

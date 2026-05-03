@@ -176,7 +176,7 @@ export default function StudentDetails() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.card
+    backgroundColor: 'transparent'
   },
   header: {
     paddingTop: 50,

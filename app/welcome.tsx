@@ -346,7 +346,7 @@ function ActionCard({ icon, title, subtitle, accent, onPress, isPrimary }: Actio
 const CARD_HEIGHT = 88;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PALETTE.surfaceMain },
+  root: { flex: 1, backgroundColor: 'transparent'},
   loadWrap: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: PALETTE.surfaceMain },
 
   /* ─── HEADER ─── */

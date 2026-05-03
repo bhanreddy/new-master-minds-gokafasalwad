@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,8 +40,8 @@ export default function AdminFinanceScreen() {
     try {
       setLoading(true);
       const [dashboardStats, recentTx] = await Promise.all([
-      FeeService.getDashboardStats(),
-      FeeService.getRecentTransactions(10)]
+        FeeService.getDashboardStats(),
+        FeeService.getRecentTransactions(10)]
       );
       setStats(dashboardStats);
       setTransactions(recentTx || []);
@@ -76,16 +76,16 @@ export default function AdminFinanceScreen() {
   const handleFilterStatus = () => {
     const options = ['All', 'Success', 'Pending'];
     alertCompat('Filter by Status', 'Select transaction status', [
-    ...options.map((opt) => ({ text: opt, onPress: () => setStatusFilter(opt) })),
-    { text: 'Cancel', style: 'cancel' }]
+      ...options.map((opt) => ({ text: opt, onPress: () => setStatusFilter(opt) })),
+      { text: 'Cancel', style: 'cancel' }]
     );
   };
 
   const handleFilterMode = () => {
     const options = ['All', 'CASH', 'ONLINE', 'UPI', 'BANK_TRANSFER'];
     alertCompat('Filter by Mode', 'Select payment mode', [
-    ...options.map((opt) => ({ text: opt, onPress: () => setModeFilter(opt) })),
-    { text: 'Cancel', style: 'cancel' }]
+      ...options.map((opt) => ({ text: opt, onPress: () => setModeFilter(opt) })),
+      { text: 'Cancel', style: 'cancel' }]
     );
   };
 
@@ -107,131 +107,131 @@ export default function AdminFinanceScreen() {
 
   return (
     <View style={styles.container}>
-            <AdminHeader title="Finance & Collection" showNotification scrollY={scrollY} />
-            {loading && !refreshing ?
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <LogoLoader size={60} color={theme.colors.primary} />
-                    <Text style={{ color: theme.colors.textSecondary, marginTop: 10 }}>Loading finance data...</Text>
-                </View> :
+      <AdminHeader title="Finance & Collection" showNotification scrollY={scrollY} />
+      {loading && !refreshing ?
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <LogoLoader size={60} color={theme.colors.primary} />
+          <Text style={{ color: theme.colors.textSecondary, marginTop: 10 }}>Loading finance data...</Text>
+        </View> :
 
-      <Animated.ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
+        <Animated.ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={styles.content}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
 
-                {refreshing &&
-        <View style={{ width: '100%', alignItems: 'center', paddingVertical: 20 }}>
-                        <LogoLoader size={30} />
-                    </View>
-        }
-                    {/* Hero Stats */}
-                    <Animated.View entering={FadeInUp.delay(0).springify()} style={styles.heroCard}>
-                        <Text style={styles.heroTitle}>Today's Collection</Text>
-                        <Text style={styles.heroAmount}>{formatCurrency(stats.today_collection)}</Text>
-                        <View style={styles.heroFooter}>
-                            <View style={styles.trendBadge}>
-                                <Ionicons name="cash-outline" size={14} color="#10B981" />
-                                <Text style={styles.trendText}>Active Flow</Text>
-                            </View>
-                        </View>
-                    </Animated.View>
-                    {/* Secondary Stats */}
-                    <View style={styles.statsRow}>
-                        <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.statCard}>
-                            <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} style={styles.statIcon} />
-                            <Text style={styles.statLabel}>Total Collected</Text>
-                            <Text style={styles.statValue}>{formatCurrency(stats.collected_total || 0)}</Text>
-                        </Animated.View>
-                        <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.statCard}>
-                            <Ionicons name="stats-chart-outline" size={20} color="#10B981" style={styles.statIcon} />
-                            <Text style={styles.statLabel}>This Month</Text>
-                            <Text style={styles.statValue}>{formatCurrency(stats.monthly_collection || 0)}</Text>
-                        </Animated.View>
-                    </View>
-                    <View style={styles.statsRow}>
-                        <Animated.View entering={FadeInUp.delay(200).springify()} style={styles.statCard}>
-                            <Ionicons name="warning-outline" size={20} color="#EF4444" style={styles.statIcon} />
-                            <Text style={styles.statLabel}>Defaulters</Text>
-                            <Text style={styles.statValue}>{stats.defaulter_count || 0}</Text>
-                        </Animated.View>
-                        <Animated.View entering={FadeInUp.delay(250).springify()} style={styles.statCard}>
-                            <Ionicons name="cash-outline" size={20} color="#F59E0B" style={styles.statIcon} />
-                            <Text style={styles.statLabel}>Pending Dues</Text>
-                            <Text style={styles.statValue}>{formatCurrency(stats.pending_dues || 0)}</Text>
-                        </Animated.View>
-                    </View>
-                    {/* Filters */}
-                    <View style={styles.filterRow}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <TouchableOpacity style={styles.filterChip} onPress={handleFilterStatus}>
-                                <Text style={styles.filterChipText}>Status: {statusFilter}</Text>
-                                <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.filterChip} onPress={handleFilterMode}>
-                                <Text style={styles.filterChipText}>Mode: {modeFilter}</Text>
-                                <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.filterChip, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} onPress={handleDefaulters}>
-                                <Text style={[styles.filterChipText, { color: '#EF4444' }]}>Fee Defaulters</Text>
-                            </TouchableOpacity>
-                        </ScrollView>
-                    </View>
-                    {/* Recent Transactions */}
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Recent Transactions</Text>
-                        <TouchableOpacity onPress={() => alertCompat('Transactions', 'Navigating to full transaction history...')}>
-                            <Text style={styles.seeAllText}>See All</Text>
-                        </TouchableOpacity>
-                    </View>
-                    {filteredTransactions.length === 0 ?
-        <View style={{ padding: 20, alignItems: 'center' }}>
-                            <Text style={{ color: theme.colors.textSecondary }}>No recent transactions found.</Text>
-                        </View> :
+          {refreshing &&
+            <View style={{ width: '100%', alignItems: 'center', paddingVertical: 20 }}>
+              <LogoLoader size={30} />
+            </View>
+          }
+          {/* Hero Stats */}
+          <Animated.View entering={FadeInUp.delay(0).springify()} style={styles.heroCard}>
+            <Text style={styles.heroTitle}>Today's Collection</Text>
+            <Text style={styles.heroAmount}>{formatCurrency(stats.today_collection)}</Text>
+            <View style={styles.heroFooter}>
+              <View style={styles.trendBadge}>
+                <Ionicons name="cash-outline" size={14} color="#10B981" />
+                <Text style={styles.trendText}>Active Flow</Text>
+              </View>
+            </View>
+          </Animated.View>
+          {/* Secondary Stats */}
+          <View style={styles.statsRow}>
+            <Animated.View entering={FadeInUp.delay(100).springify()} style={styles.statCard}>
+              <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} style={styles.statIcon} />
+              <Text style={styles.statLabel}>Total Collected</Text>
+              <Text style={styles.statValue}>{formatCurrency(stats.collected_total || 0)}</Text>
+            </Animated.View>
+            <Animated.View entering={FadeInUp.delay(150).springify()} style={styles.statCard}>
+              <Ionicons name="stats-chart-outline" size={20} color="#10B981" style={styles.statIcon} />
+              <Text style={styles.statLabel}>This Month</Text>
+              <Text style={styles.statValue}>{formatCurrency(stats.monthly_collection || 0)}</Text>
+            </Animated.View>
+          </View>
+          <View style={styles.statsRow}>
+            <Animated.View entering={FadeInUp.delay(200).springify()} style={styles.statCard}>
+              <Ionicons name="warning-outline" size={20} color="#EF4444" style={styles.statIcon} />
+              <Text style={styles.statLabel}>Defaulters</Text>
+              <Text style={styles.statValue}>{stats.defaulter_count || 0}</Text>
+            </Animated.View>
+            <Animated.View entering={FadeInUp.delay(250).springify()} style={styles.statCard}>
+              <Ionicons name="cash-outline" size={20} color="#F59E0B" style={styles.statIcon} />
+              <Text style={styles.statLabel}>Pending Dues</Text>
+              <Text style={styles.statValue}>{formatCurrency(stats.pending_dues || 0)}</Text>
+            </Animated.View>
+          </View>
+          {/* Filters */}
+          <View style={styles.filterRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity style={styles.filterChip} onPress={handleFilterStatus}>
+                <Text style={styles.filterChipText}>Status: {statusFilter}</Text>
+                <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.filterChip} onPress={handleFilterMode}>
+                <Text style={styles.filterChipText}>Mode: {modeFilter}</Text>
+                <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.filterChip, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]} onPress={handleDefaulters}>
+                <Text style={[styles.filterChipText, { color: '#EF4444' }]}>Fee Defaulters</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+          {/* Recent Transactions */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+            <TouchableOpacity onPress={() => alertCompat('Transactions', 'Navigating to full transaction history...')}>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          {filteredTransactions.length === 0 ?
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <Text style={{ color: theme.colors.textSecondary }}>No recent transactions found.</Text>
+            </View> :
 
-        filteredTransactions.map((tx, index) => {
-          const isSuccess = tx.status === 'completed' || tx.status === 'success' || !tx.status; // Default to success for DB transactions if status missing
-          const statusColor = isSuccess ? '#10B981' : '#F59E0B';
+            filteredTransactions.map((tx, index) => {
+              const isSuccess = tx.status === 'completed' || tx.status === 'success' || !tx.status; // Default to success for DB transactions if status missing
+              const statusColor = isSuccess ? '#10B981' : '#F59E0B';
 
-          // Try to get student name from possible nested structures depending on your exact DB join
-          const studentName = tx.student_name || tx.student?.person?.display_name || tx.student?.first_name || 'Unknown Student';
+              // Try to get student name from possible nested structures depending on your exact DB join
+              const studentName = tx.student_name || tx.student?.person?.display_name || tx.student?.first_name || 'Unknown Student';
 
-          return (
-            <Animated.View key={tx.id || index} entering={FadeInUp.delay((index % 10 + 4) * 50).springify().damping(12)} style={styles.txCard}>
-                                    <View style={[styles.txIconContainer, { backgroundColor: statusColor + '15' }]}>
-                                        <Ionicons name={isSuccess ? "checkmark-circle" : "time"} size={24} color={statusColor} />
-                                    </View>
-                                    <View style={styles.txInfo}>
-                                        <Text style={styles.txName}>{studentName}</Text>
-                                        <Text style={styles.txTime}>{formatTime(tx.paid_at || tx.payment_date || tx.created_at)} • {tx.payment_method?.toUpperCase() || 'CASH'}</Text>
-                                    </View>
-                                    <View style={styles.txAmountContainer}>
-                                        <Text style={styles.txAmount}>+{formatCurrency(tx.amount)}</Text>
-                                        <Text style={[styles.txStatus, { color: statusColor }]}>
-                                            {isSuccess ? 'Success' : tx.status?.charAt(0).toUpperCase() + tx.status?.slice(1) || 'Pending'}
-                                        </Text>
-                                    </View>
-                                </Animated.View>);
+              return (
+                <Animated.View key={tx.id || index} entering={FadeInUp.delay((index % 10 + 4) * 50).springify().damping(12)} style={styles.txCard}>
+                  <View style={[styles.txIconContainer, { backgroundColor: statusColor + '15' }]}>
+                    <Ionicons name={isSuccess ? "checkmark-circle" : "time"} size={24} color={statusColor} />
+                  </View>
+                  <View style={styles.txInfo}>
+                    <Text style={styles.txName}>{studentName}</Text>
+                    <Text style={styles.txTime}>{formatTime(tx.paid_at || tx.payment_date || tx.created_at)} • {tx.payment_method?.toUpperCase() || 'CASH'}</Text>
+                  </View>
+                  <View style={styles.txAmountContainer}>
+                    <Text style={styles.txAmount}>+{formatCurrency(tx.amount)}</Text>
+                    <Text style={[styles.txStatus, { color: statusColor }]}>
+                      {isSuccess ? 'Success' : tx.status?.charAt(0).toUpperCase() + tx.status?.slice(1) || 'Pending'}
+                    </Text>
+                  </View>
+                </Animated.View>);
 
-        })
-        }
-                </Animated.ScrollView>
+            })
+          }
+        </Animated.ScrollView>
       }
-            {/* Floating Action Button */}
-            <TouchableOpacity
+      {/* Floating Action Button */}
+      <TouchableOpacity
         style={styles.fab}
         onPress={() => alertCompat('Export', 'Generating collection report for download...')}>
 
-                <Ionicons name="download-outline" size={24} color="#fff" />
-            </TouchableOpacity>
-        </View>);
+        <Ionicons name="download-outline" size={24} color="#fff" />
+      </TouchableOpacity>
+    </View>);
 
 }
 
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: 'transparent'
   },
   content: {
     padding: 20,

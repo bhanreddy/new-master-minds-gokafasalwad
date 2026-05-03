@@ -10,7 +10,7 @@ export { ErrorBoundary } from '../../src/components/ErrorBoundary';
 export default function ScreenSectionLayout() {
   return (
     <ErrorBoundary>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent'}, headerShown: false }} />
     </ErrorBoundary>
   );
 }

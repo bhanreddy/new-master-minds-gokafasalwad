@@ -94,6 +94,7 @@ export const AuthService = {
 
       // 5. Multitenancy gate: verify user belongs to THIS school build
       if (validatedUser.schoolId !== SCHOOL_ID) {
+        console.log('[AUTH_OUT]', 'api_401', new Date().toISOString());
         await AuthService.signOut();
         return { error: `This account does not belong to ${SCHOOL_NAME}.\nContact your school administrator.` };
       }
@@ -123,6 +124,7 @@ export const AuthService = {
         errMsg.indexOf('OUT_OF_HOURS_NO_ACCESS') !== -1;
 
       if (isOutOfHours) {
+        console.log('[AUTH_OUT]', 'api_401', new Date().toISOString());
         await AuthService.signOut();
         const outOfHoursError: any = new Error(errMsg || 'Access restricted to school hours');
         outOfHoursError.code = 'OUT_OF_HOURS_NO_ACCESS';
@@ -145,6 +147,7 @@ export const AuthService = {
         errorMsg = 'Tenant context missing. Please restart the app and try again.';
       }
 
+      console.log('[AUTH_OUT]', 'api_401', new Date().toISOString());
       await AuthService.signOut();
       return { error: errorMsg };
     }
@@ -194,6 +197,15 @@ export const AuthService = {
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
 
       if (refreshError || !refreshData.session) {
+        // Layer A fix: Don't immediately clear auth for ALL roles.
+        // If we have a prior session, preserve it — the caller (useAuth handleRefresh)
+        // will decide whether to retry or clear based on role and retry count.
+        // Only clear if there's no prior session at all (nothing to fall back to).
+        if (prior?.validatedUser) {
+          console.warn('[AUTH_REFRESH] Supabase refresh failed but prior session exists — preserving for retry');
+          return null; // Return null to signal failure without clearing storage
+        }
+        console.log('[AUTH_OUT]', 'token_expired', new Date().toISOString());
         await clearAuthState();
         return null;
       }
@@ -212,34 +224,33 @@ export const AuthService = {
         );
       } catch (err) {
         if (shouldForceSignOutOnValidateError(err)) {
+          // 403 from backend = confirmed rejection (wrong school, locked account)
+          console.log('[AUTH_OUT]', 'api_403_confirmed', new Date().toISOString());
           await AuthService.signOut();
           return null;
         }
-        if (isTransientValidationError(err) && prior?.validatedUser) {
-          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
-        }
-        if (prior?.validatedUser?.role?.code === 'student' && prior.validatedUser) {
-          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
-        }
-        await AuthService.signOut();
-        return null;
-      }
-
-      // Silent API path returns null on 401 without throwing — was crashing on .schoolId and signing out
-      if (!validatedUser) {
-        const net = await NetInfo.fetch();
-        const online = net.isConnected === true && net.isInternetReachable !== false;
-        if (!online && prior?.validatedUser) {
-          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
-        }
+        // Layer A fix: For ALL roles, preserve prior validated user on transient errors.
+        // Previously only student role got this treatment.
         if (prior?.validatedUser) {
           return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
         }
-        await AuthService.signOut();
+        // No prior session to fall back to — signal failure
+        console.log('[AUTH_OUT]', 'validation_failed_no_prior', new Date().toISOString());
+        return null;
+      }
+
+      // Silent API path returns null on 401 without throwing
+      if (!validatedUser) {
+        // Layer A fix: always use prior validated user if available, regardless of role
+        if (prior?.validatedUser) {
+          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
+        }
+        console.log('[AUTH_OUT]', 'validation_null_no_prior', new Date().toISOString());
         return null;
       }
 
       if (validatedUser.schoolId !== SCHOOL_ID) {
+        console.log('[AUTH_OUT]', 'school_mismatch', new Date().toISOString());
         await AuthService.signOut();
         return null;
       }

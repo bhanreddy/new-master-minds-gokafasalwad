@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, {
   FadeInDown, FadeIn, useSharedValue, useAnimatedStyle,
-  withSpring, 
+  withSpring,
   Easing,
 } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';

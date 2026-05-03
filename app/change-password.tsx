@@ -183,7 +183,7 @@ export default function ChangePasswordScreen() {
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: 'transparent',
     },
     header: {
         flexDirection: 'row',

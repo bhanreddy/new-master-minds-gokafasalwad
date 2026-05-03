@@ -16,41 +16,41 @@ const ExamLinksScreen = () => {
   } = useAuth();
   return <ScreenLayout>
 
-            {/* ===== HEADER ===== */}
-            <StudentHeader showBackButton={true} title="Exams" />
+    {/* ===== HEADER ===== */}
+    <StudentHeader showBackButton={true} title="Exams" />
 
-            {/* ===== CONTENT ===== */}
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+    {/* ===== CONTENT ===== */}
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
 
-                {/* TITLE */}
-                <Text style={styles.pageTitle}>Important Exam Links</Text>
+      {/* TITLE */}
+      <Text style={styles.pageTitle}>Important Exam Links</Text>
 
-                {/* STUDENT INFO CARD */}
-                <View style={styles.studentCard}>
-                    <View style={styles.avatar} />
-                    <View>
-                        <Text style={styles.infoText}>Name: {user?.name || 'Student'}</Text>
-                        <Text style={styles.infoText}>Class/sec: {user?.classId || 'N/A'}</Text>
-                        <Text style={styles.infoText}>Roll No: {user?.rollNo || 'N/A'}</Text>
-                        <Text style={styles.infoText}>Admission No: {(user as any)?.admissionNo || 'N/A'}</Text>
-                    </View>
-                </View>
+      {/* STUDENT INFO CARD */}
+      <View style={styles.studentCard}>
+        <View style={styles.avatar} />
+        <View>
+          <Text style={styles.infoText}>Name: {user?.name || 'Student'}</Text>
+          <Text style={styles.infoText}>Class/sec: {user?.classId || 'N/A'}</Text>
+          <Text style={styles.infoText}>Roll No: {user?.rollNo || 'N/A'}</Text>
+          <Text style={styles.infoText}>Admission No: {(user as any)?.admissionNo || 'N/A'}</Text>
+        </View>
+      </View>
 
-                {/* LINKS SECTION */}
-                <Text style={styles.sectionTitle}>Links</Text>
+      {/* LINKS SECTION */}
+      <Text style={styles.sectionTitle}>Links</Text>
 
-                {examLinks.map((item, index) => {
-return <TouchableOpacity key={index} style={styles.linkCard} activeOpacity={0.85} onPress={() => {
+      {examLinks.map((item, index) => {
+        return <TouchableOpacity key={index} style={styles.linkCard} activeOpacity={0.85} onPress={() => {
           // TODO: open external link
         }}>
-                        <Text style={styles.linkText}>{item}</Text>
-                        <Text style={styles.arrow}>›</Text>
-                    </TouchableOpacity>;
+          <Text style={styles.linkText}>{item}</Text>
+          <Text style={styles.arrow}>›</Text>
+        </TouchableOpacity>;
       })}
 
-            </ScrollView>
+    </ScrollView>
 
-        </ScreenLayout>;
+  </ScreenLayout>;
 };
 export default ExamLinksScreen;
 

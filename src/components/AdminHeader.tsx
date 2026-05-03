@@ -8,7 +8,6 @@ import { ADMIN_THEME } from '../constants/adminTheme';
 import { SCHOOL_NAME } from '../constants/school';
 
 import Animated, { SharedValue, useAnimatedStyle, interpolateColor, interpolate, Extrapolation } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
 
@@ -40,7 +39,6 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
 }) => {
     const router = useRouter();
     const { user } = useAuth();
-    const insets = useSafeAreaInsets();
     const { isDark } = useTheme();
     const { width: windowWidth } = useWindowDimensions();
     const isWideWeb = isWeb && windowWidth >= 768;
@@ -130,7 +128,6 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     return (
         <Animated.View style={[
             styles.container,
-            { paddingTop: insets.top },
             isAbsolute && styles.absoluteHeader,
             isWideWeb && styles.containerWide,
             isWideWeb && styles.containerWideZ,

@@ -10,8 +10,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeInDown, FadeInUp,
   useSharedValue, useAnimatedStyle,
-  withRepeat, withTiming, Easing } from
-'react-native-reanimated';
+  withRepeat, withTiming, Easing
+} from
+  'react-native-reanimated';
 import * as Haptics from '@/src/utils/haptics';
 import { api } from '../../src/services/apiClient';
 import LogoLoader from '../../src/components/LogoLoader';
@@ -52,7 +53,7 @@ interface RouteInfo {
 }
 
 /* ─── Status Colors ─── */
-const STATUS_CONFIG: Record<StopStatus, {bg: string;color: string;icon: string;label: string;}> = {
+const STATUS_CONFIG: Record<StopStatus, { bg: string; color: string; icon: string; label: string; }> = {
   pending: { bg: '#F1F5F9', color: '#94A3B8', icon: 'ellipse-outline', label: 'Pending' },
   arrived: { bg: '#FEF3C7', color: '#D97706', icon: 'location', label: 'At Stop' },
   completed: { bg: '#DCFCE7', color: '#059669', icon: 'checkmark-circle', label: 'Done' },
@@ -90,7 +91,7 @@ export default function DriverDashboard() {
 
   const displayName = user?.display_name || user?.first_name || 'Driver';
   const greeting = new Date().getHours() < 12 ? 'Good Morning' :
-  new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
+    new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening';
 
   // Pulse animation
   const pulse = useSharedValue(1);
@@ -100,7 +101,7 @@ export default function DriverDashboard() {
         withTiming(1.25, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
         -1, true
       );
-    } else {pulse.value = withTiming(1, { duration: 200 });}
+    } else { pulse.value = withTiming(1, { duration: 200 }); }
   }, [isTracking]);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
@@ -133,7 +134,7 @@ export default function DriverDashboard() {
     }
   }, []);
 
-  useEffect(() => {fetchDriverData();}, []);
+  useEffect(() => { fetchDriverData(); }, []);
 
   /* ─── Fetch route stops (pre-trip) ─── */
   const fetchRouteStops = async (routeId: string) => {
@@ -144,7 +145,7 @@ export default function DriverDashboard() {
         status: 'pending' as StopStatus, latitude: s.latitude, longitude: s.longitude,
         student_count: s.student_count || 0
       })));
-    } catch (err) {}
+    } catch (err) { }
   };
 
   /* ─── Fetch trip status (during trip) ─── */
@@ -158,7 +159,7 @@ export default function DriverDashboard() {
         student_count: Number(s.student_count) || 0,
         arrival_time: s.arrival_time, departure_time: s.departure_time
       })));
-    } catch (err) {}
+    } catch (err) { }
   };
 
   /* ─── Timer for elapsed time ─── */
@@ -168,7 +169,7 @@ export default function DriverDashboard() {
         setElapsedMin(Math.floor((Date.now() - tripStartedAt.getTime()) / 60000));
       }, 10000);
     }
-    return () => {if (timerRef.current) clearInterval(timerRef.current);};
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isTracking, tripStartedAt]);
 
   /* ─── START TRIP ─── */
@@ -186,28 +187,28 @@ export default function DriverDashboard() {
       startLocationTracking();
     } catch (err: any) {
       alertCompat('Error', err?.message || 'Failed to start trip');
-    } finally {setActionLoading(false);}
+    } finally { setActionLoading(false); }
   };
 
   /* ─── END TRIP ─── */
   const handleEndTrip = async () => {
     alertCompat('End Trip', 'Are you sure you want to end this trip?', [
-    { text: 'Cancel', style: 'cancel' },
-    {
-      text: 'End Trip', style: 'destructive', onPress: async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        setActionLoading(true);
-        try {
-          await api.post<any>(`/transport/trips/${activeTripId}/end`);
-          setIsTracking(false);
-          setActiveTripId(null);
-          stopLocationTracking();
-          await fetchDriverData();
-        } catch (err: any) {
-          alertCompat('Error', err?.message || 'Failed to end trip');
-        } finally {setActionLoading(false);}
-      }
-    }]
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'End Trip', style: 'destructive', onPress: async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setActionLoading(true);
+          try {
+            await api.post<any>(`/transport/trips/${activeTripId}/end`);
+            setIsTracking(false);
+            setActiveTripId(null);
+            stopLocationTracking();
+            await fetchDriverData();
+          } catch (err: any) {
+            alertCompat('Error', err?.message || 'Failed to end trip');
+          } finally { setActionLoading(false); }
+        }
+      }]
     );
   };
 
@@ -220,7 +221,7 @@ export default function DriverDashboard() {
       await fetchTripStatus(activeTripId!);
     } catch (err: any) {
       alertCompat('Cannot Arrive', err?.message || 'Failed');
-    } finally {setActionLoading(false);}
+    } finally { setActionLoading(false); }
   };
 
   /* ─── COMPLETE STOP ─── */
@@ -232,24 +233,23 @@ export default function DriverDashboard() {
       await fetchTripStatus(activeTripId!);
     } catch (err: any) {
       alertCompat('Cannot Complete', err?.message || 'Failed');
-    } finally {setActionLoading(false);}
+    } finally { setActionLoading(false); }
   };
 
   /* ─── SKIP STOP ─── */
   const handleSkipStop = async (stopId: string) => {
     alertCompat('Skip Stop', 'Are you sure you want to skip this stop?', [
-    { text: 'Cancel', style: 'cancel' },
-    {
-      text: 'Skip', style: 'destructive', onPress: async () => {
-        Haptics.selectionAsync();
-        setActionLoading(true);
-        try {
-          await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/skip`);
-          await fetchTripStatus(activeTripId!);
-        } catch (err: any) {alertCompat('Cannot Skip', err?.message || 'Failed');} finally
-        {setActionLoading(false);}
-      }
-    }]
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Skip', style: 'destructive', onPress: async () => {
+          Haptics.selectionAsync();
+          setActionLoading(true);
+          try {
+            await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/skip`);
+            await fetchTripStatus(activeTripId!);
+          } catch (err: any) { alertCompat('Cannot Skip', err?.message || 'Failed'); } finally { setActionLoading(false); }
+        }
+      }]
     );
   };
 
@@ -270,22 +270,22 @@ export default function DriverDashboard() {
               speed: spd, heading: loc.coords.heading,
               is_mocked: loc.mocked || false
             });
-          } catch {}
+          } catch { }
         }
       }
     );
 
     heartbeatRef.current = setInterval(async () => {
-      if (bus) try {await api.post(`/transport/buses/${bus.id}/heartbeat`);} catch {}
+      if (bus) try { await api.post(`/transport/buses/${bus.id}/heartbeat`); } catch { }
     }, HEARTBEAT_INTERVAL);
   };
 
   const stopLocationTracking = () => {
-    if (locationSubRef.current) {locationSubRef.current.remove();locationSubRef.current = null;}
-    if (heartbeatRef.current) {clearInterval(heartbeatRef.current);heartbeatRef.current = null;}
+    if (locationSubRef.current) { locationSubRef.current.remove(); locationSubRef.current = null; }
+    if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
   };
 
-  useEffect(() => () => {stopLocationTracking();if (timerRef.current) clearInterval(timerRef.current);}, []);
+  useEffect(() => () => { stopLocationTracking(); if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   /* ─── Derived state ─── */
   const currentStop = stops.find((s) => s.status === 'pending' || s.status === 'arrived');
@@ -296,233 +296,233 @@ export default function DriverDashboard() {
   if (loading) {
     return (
       <ScreenLayout>
-                <StudentHeader title="Dashboard" menuUserType="driver" />
-                <View style={s.center}><LogoLoader size={60} color={PINK} /></View>
-            </ScreenLayout>);
+        <StudentHeader title="Dashboard" menuUserType="driver" />
+        <View style={s.center}><LogoLoader size={60} color={PINK} /></View>
+      </ScreenLayout>);
 
   }
 
   return (
     <ScreenLayout>
-            <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
-            <StudentHeader title="Dashboard" menuUserType="driver" />
-            <ScrollView
+      <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
+      <StudentHeader title="Dashboard" menuUserType="driver" />
+      <ScrollView
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true);fetchDriverData();}} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDriverData(); }} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
 
-                {refreshing &&
-        <View style={{ width: '100%', alignItems: 'center', paddingVertical: 20 }}>
-                        <LogoLoader size={30} />
-                    </View>
+        {refreshing &&
+          <View style={{ width: '100%', alignItems: 'center', paddingVertical: 20 }}>
+            <LogoLoader size={30} />
+          </View>
         }
-                {/* ═══════ Hero Card ═══════ */}
-                <Animated.View entering={FadeInDown.delay(80).duration(500)} style={s.heroWrap}>
-                    <LinearGradient colors={PINK_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
-                        <View style={[s.heroDecor, { top: -30, right: -30, width: 120, height: 120 }]} />
-                        <View style={[s.heroDecor, { bottom: -15, left: -15, width: 60, height: 60 }]} />
-                        <View style={s.heroTop}>
-                            <View>
-                                <Text style={s.heroGreet}>{greeting},</Text>
-                                <Text style={s.heroName}>{displayName} 👋</Text>
-                            </View>
-                            <View style={s.heroBusPill}>
-                                <Ionicons name="bus" size={14} color="#FFF" />
-                                <Text style={s.heroBusText}>{bus?.bus_no || 'No Bus'}</Text>
-                            </View>
-                        </View>
-                        <View style={s.heroDivider} />
-                        <View style={s.heroBottom}>
-                            <View style={s.heroMini}>
-                                <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
-                                <Text style={s.heroMiniText}>{isTracking ? `${elapsedMin} min` : 'Ready'}</Text>
-                            </View>
-                            <View style={s.heroMini}>
-                                <Ionicons name="speedometer-outline" size={14} color="rgba(255,255,255,0.7)" />
-                                <Text style={s.heroMiniText}>{isTracking ? `${speed.toFixed(0)} km/h` : '—'}</Text>
-                            </View>
-                            <View style={[s.statusPill, { backgroundColor: isTracking ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.15)' }]}>
-                                <Animated.View style={[s.statusDot, { backgroundColor: isTracking ? GREEN : '#FCD34D' }, isTracking && pulseStyle]} />
-                                <Text style={s.statusPillText}>{isTracking ? 'ON TRIP' : 'IDLE'}</Text>
-                            </View>
-                        </View>
-                    </LinearGradient>
-                </Animated.View>
-                {/* ═══════ No Bus State ═══════ */}
-                {!bus &&
-        <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.emptyCard}>
-                        <View style={s.emptyIcon}><Ionicons name="bus-outline" size={36} color="#CBD5E1" /></View>
-                        <Text style={s.emptyTitle}>No Bus Assigned</Text>
-                        <Text style={s.emptySub}>Contact admin to get a bus assigned to you.</Text>
-                    </Animated.View>
+        {/* ═══════ Hero Card ═══════ */}
+        <Animated.View entering={FadeInDown.delay(80).duration(500)} style={s.heroWrap}>
+          <LinearGradient colors={PINK_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.hero}>
+            <View style={[s.heroDecor, { top: -30, right: -30, width: 120, height: 120 }]} />
+            <View style={[s.heroDecor, { bottom: -15, left: -15, width: 60, height: 60 }]} />
+            <View style={s.heroTop}>
+              <View>
+                <Text style={s.heroGreet}>{greeting},</Text>
+                <Text style={s.heroName}>{displayName} 👋</Text>
+              </View>
+              <View style={s.heroBusPill}>
+                <Ionicons name="bus" size={14} color="#FFF" />
+                <Text style={s.heroBusText}>{bus?.bus_no || 'No Bus'}</Text>
+              </View>
+            </View>
+            <View style={s.heroDivider} />
+            <View style={s.heroBottom}>
+              <View style={s.heroMini}>
+                <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
+                <Text style={s.heroMiniText}>{isTracking ? `${elapsedMin} min` : 'Ready'}</Text>
+              </View>
+              <View style={s.heroMini}>
+                <Ionicons name="speedometer-outline" size={14} color="rgba(255,255,255,0.7)" />
+                <Text style={s.heroMiniText}>{isTracking ? `${speed.toFixed(0)} km/h` : '—'}</Text>
+              </View>
+              <View style={[s.statusPill, { backgroundColor: isTracking ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.15)' }]}>
+                <Animated.View style={[s.statusDot, { backgroundColor: isTracking ? GREEN : '#FCD34D' }, isTracking && pulseStyle]} />
+                <Text style={s.statusPillText}>{isTracking ? 'ON TRIP' : 'IDLE'}</Text>
+              </View>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+        {/* ═══════ No Bus State ═══════ */}
+        {!bus &&
+          <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.emptyCard}>
+            <View style={s.emptyIcon}><Ionicons name="bus-outline" size={36} color="#CBD5E1" /></View>
+            <Text style={s.emptyTitle}>No Bus Assigned</Text>
+            <Text style={s.emptySub}>Contact admin to get a bus assigned to you.</Text>
+          </Animated.View>
         }
-                {/* ═══════ Route Selector (pre-trip) ═══════ */}
-                {bus && !isTracking && routes.length > 0 &&
-        <Animated.View entering={FadeInDown.delay(150).duration(500)}>
-                        <View style={s.secHeader}>
-                            <View style={s.secIconBox}><Ionicons name="map" size={14} color={PINK} /></View>
-                            <Text style={s.secTitle}>Select Route</Text>
-                        </View>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.routeScroll}>
-                            {routes.map((r) =>
-            <TouchableOpacity
-              key={r.id}
-              style={[s.routeChip, selectedRoute?.id === r.id && s.routeChipActive]}
-              activeOpacity={0.7}
-              onPress={() => {setSelectedRoute(r);fetchRouteStops(r.id);}}>
+        {/* ═══════ Route Selector (pre-trip) ═══════ */}
+        {bus && !isTracking && routes.length > 0 &&
+          <Animated.View entering={FadeInDown.delay(150).duration(500)}>
+            <View style={s.secHeader}>
+              <View style={s.secIconBox}><Ionicons name="map" size={14} color={PINK} /></View>
+              <Text style={s.secTitle}>Select Route</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.routeScroll}>
+              {routes.map((r) =>
+                <TouchableOpacity
+                  key={r.id}
+                  style={[s.routeChip, selectedRoute?.id === r.id && s.routeChipActive]}
+                  activeOpacity={0.7}
+                  onPress={() => { setSelectedRoute(r); fetchRouteStops(r.id); }}>
 
-                                    <Ionicons name="navigate-outline" size={14}
-              color={selectedRoute?.id === r.id ? '#FFF' : PINK} />
-                                    <Text style={[s.routeChipText, selectedRoute?.id === r.id && { color: '#FFF' }]}>
-                                        {r.name}
-                                    </Text>
-                                    <Text style={[s.routeChipDir, selectedRoute?.id === r.id && { color: 'rgba(255,255,255,0.7)' }]}>
-                                        {r.direction}
-                                    </Text>
-                                </TouchableOpacity>
-            )}
-                        </ScrollView>
-                    </Animated.View>
-        }
-                {/* ═══════ Trip Progress Bar ═══════ */}
-                {isTracking &&
-        <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.progressCard}>
-                        <View style={s.progressHeader}>
-                            <Text style={s.progressTitle}>Trip Progress</Text>
-                            <Text style={s.progressCount}>{completedCount}/{stops.length} stops</Text>
-                        </View>
-                        <View style={s.progressBarBg}>
-                            <View style={[s.progressBarFill, { width: `${progressPercent}%` }]} />
-                        </View>
-                        <Text style={s.progressRoute}>
-                            {selectedRoute?.name} • {selectedRoute?.direction}
-                        </Text>
-                    </Animated.View>
-        }
-                {/* ═══════ Stop List ═══════ */}
-                {stops.length > 0 &&
-        <Animated.View entering={FadeInUp.delay(200).duration(500)}>
-                        <View style={s.secHeader}>
-                            <View style={[s.secIconBox, { backgroundColor: '#ECFDF5' }]}>
-                                <Ionicons name="list" size={14} color={GREEN} />
-                            </View>
-                            <Text style={s.secTitle}>{isTracking ? 'Stop Execution' : 'Route Stops'}</Text>
-                        </View>
-                        {stops.map((stop, idx) => {
-            const cfg = STATUS_CONFIG[stop.status];
-            const isCurrent = currentStop?.stop_id === stop.stop_id;
-            const isLast = idx === stops.length - 1;
-
-            return (
-              <Animated.View
-                key={stop.stop_id}
-                entering={FadeInDown.delay(250 + idx * 60).duration(400)}
-                style={[s.stopCard, isCurrent && s.stopCardCurrent]}>
-
-                                    {/* Timeline connector */}
-                                    <View style={s.timeline}>
-                                        <View style={[s.timelineDot, { backgroundColor: cfg.color }]}>
-                                            <Ionicons name={cfg.icon as any} size={12} color="#FFF" />
-                                        </View>
-                                        {!isLast && <View style={[s.timelineLine, {
-                    backgroundColor: stop.status === 'completed' ? GREEN : '#E2E8F0'
-                  }]} />}
-                                    </View>
-                                    {/* Stop Info */}
-                                    <View style={s.stopContent}>
-                                        <View style={s.stopTop}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={s.stopOrder}>Stop {stop.stop_order}</Text>
-                                                <Text style={s.stopName}>{stop.stop_name}</Text>
-                                            </View>
-                                            <View style={[s.stopBadge, { backgroundColor: cfg.bg }]}>
-                                                <Text style={[s.stopBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
-                                            </View>
-                                        </View>
-                                        {stop.student_count > 0 &&
-                  <View style={s.studentRow}>
-                                                <Ionicons name="people" size={12} color="#94A3B8" />
-                                                <Text style={s.studentText}>{stop.student_count} student{stop.student_count > 1 ? 's' : ''}</Text>
-                                            </View>
-                  }
-                                        {/* Action Buttons (only during active trip, only for current stop) */}
-                                        {isTracking && isCurrent &&
-                  <View style={s.stopActions}>
-                                                {stop.status === 'pending' &&
-                    <>
-                                                        <TouchableOpacity
-                        style={[s.stopBtn, { backgroundColor: '#FEF3C7' }]}
-                        onPress={() => handleArriveStop(stop.stop_id)}
-                        disabled={actionLoading}>
-
-                                                            <Ionicons name="location" size={14} color="#D97706" />
-                                                            <Text style={[s.stopBtnText, { color: '#D97706' }]}>Arrive</Text>
-                                                        </TouchableOpacity>
-                                                        <TouchableOpacity
-                        style={[s.stopBtn, { backgroundColor: '#FEE2E2' }]}
-                        onPress={() => handleSkipStop(stop.stop_id)}
-                        disabled={actionLoading}>
-
-                                                            <Ionicons name="close-circle-outline" size={14} color={RED} />
-                                                            <Text style={[s.stopBtnText, { color: RED }]}>Skip</Text>
-                                                        </TouchableOpacity>
-                                                    </>
-                    }
-                                                {stop.status === 'arrived' &&
-                    <TouchableOpacity
-                      style={[s.stopBtn, { backgroundColor: '#DCFCE7', flex: 1 }]}
-                      onPress={() => handleCompleteStop(stop.stop_id)}
-                      disabled={actionLoading}>
-
-                                                        <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                                                        <Text style={[s.stopBtnText, { color: '#059669' }]}>Complete Stop</Text>
-                                                    </TouchableOpacity>
-                    }
-                                            </View>
-                  }
-                                    </View>
-                                </Animated.View>);
-
-          })}
-                    </Animated.View>
-        }
-                {/* ═══════ Trip Control ═══════ */}
-                {bus &&
-        <Animated.View entering={FadeInUp.delay(400).duration(500)} style={s.controlSection}>
-                        {!isTracking ?
-          <TouchableOpacity
-            style={s.startWrap}
-            onPress={handleStartTrip}
-            activeOpacity={0.8}
-            disabled={actionLoading || !selectedRoute}>
-
-                                <LinearGradient colors={PINK_GRADIENT} style={s.startGrad}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                                    {actionLoading ?
-              <LogoLoader color="#FFF" /> :
-
-              <>
-                                            <Ionicons name="play" size={22} color="#FFF" />
-                                            <Text style={s.ctrlText}>START TRIP</Text>
-                                        </>
-              }
-                                </LinearGradient>
-                            </TouchableOpacity> :
-
-          <TouchableOpacity style={s.endBtn} onPress={handleEndTrip} activeOpacity={0.8} disabled={actionLoading}>
-                                {actionLoading ? <LogoLoader color="#FFF" /> :
-            <>
-                                        <Ionicons name="stop" size={22} color="#FFF" />
-                                        <Text style={s.ctrlText}>END TRIP</Text>
-                                    </>
-            }
-                            </TouchableOpacity>
-          }
-                    </Animated.View>
-        }
-                <View style={{ height: 100 }} />
+                  <Ionicons name="navigate-outline" size={14}
+                    color={selectedRoute?.id === r.id ? '#FFF' : PINK} />
+                  <Text style={[s.routeChipText, selectedRoute?.id === r.id && { color: '#FFF' }]}>
+                    {r.name}
+                  </Text>
+                  <Text style={[s.routeChipDir, selectedRoute?.id === r.id && { color: 'rgba(255,255,255,0.7)' }]}>
+                    {r.direction}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
-        </ScreenLayout>);
+          </Animated.View>
+        }
+        {/* ═══════ Trip Progress Bar ═══════ */}
+        {isTracking &&
+          <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.progressCard}>
+            <View style={s.progressHeader}>
+              <Text style={s.progressTitle}>Trip Progress</Text>
+              <Text style={s.progressCount}>{completedCount}/{stops.length} stops</Text>
+            </View>
+            <View style={s.progressBarBg}>
+              <View style={[s.progressBarFill, { width: `${progressPercent}%` }]} />
+            </View>
+            <Text style={s.progressRoute}>
+              {selectedRoute?.name} • {selectedRoute?.direction}
+            </Text>
+          </Animated.View>
+        }
+        {/* ═══════ Stop List ═══════ */}
+        {stops.length > 0 &&
+          <Animated.View entering={FadeInUp.delay(200).duration(500)}>
+            <View style={s.secHeader}>
+              <View style={[s.secIconBox, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="list" size={14} color={GREEN} />
+              </View>
+              <Text style={s.secTitle}>{isTracking ? 'Stop Execution' : 'Route Stops'}</Text>
+            </View>
+            {stops.map((stop, idx) => {
+              const cfg = STATUS_CONFIG[stop.status];
+              const isCurrent = currentStop?.stop_id === stop.stop_id;
+              const isLast = idx === stops.length - 1;
+
+              return (
+                <Animated.View
+                  key={stop.stop_id}
+                  entering={FadeInDown.delay(250 + idx * 60).duration(400)}
+                  style={[s.stopCard, isCurrent && s.stopCardCurrent]}>
+
+                  {/* Timeline connector */}
+                  <View style={s.timeline}>
+                    <View style={[s.timelineDot, { backgroundColor: cfg.color }]}>
+                      <Ionicons name={cfg.icon as any} size={12} color="#FFF" />
+                    </View>
+                    {!isLast && <View style={[s.timelineLine, {
+                      backgroundColor: stop.status === 'completed' ? GREEN : '#E2E8F0'
+                    }]} />}
+                  </View>
+                  {/* Stop Info */}
+                  <View style={s.stopContent}>
+                    <View style={s.stopTop}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.stopOrder}>Stop {stop.stop_order}</Text>
+                        <Text style={s.stopName}>{stop.stop_name}</Text>
+                      </View>
+                      <View style={[s.stopBadge, { backgroundColor: cfg.bg }]}>
+                        <Text style={[s.stopBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
+                      </View>
+                    </View>
+                    {stop.student_count > 0 &&
+                      <View style={s.studentRow}>
+                        <Ionicons name="people" size={12} color="#94A3B8" />
+                        <Text style={s.studentText}>{stop.student_count} student{stop.student_count > 1 ? 's' : ''}</Text>
+                      </View>
+                    }
+                    {/* Action Buttons (only during active trip, only for current stop) */}
+                    {isTracking && isCurrent &&
+                      <View style={s.stopActions}>
+                        {stop.status === 'pending' &&
+                          <>
+                            <TouchableOpacity
+                              style={[s.stopBtn, { backgroundColor: '#FEF3C7' }]}
+                              onPress={() => handleArriveStop(stop.stop_id)}
+                              disabled={actionLoading}>
+
+                              <Ionicons name="location" size={14} color="#D97706" />
+                              <Text style={[s.stopBtnText, { color: '#D97706' }]}>Arrive</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[s.stopBtn, { backgroundColor: '#FEE2E2' }]}
+                              onPress={() => handleSkipStop(stop.stop_id)}
+                              disabled={actionLoading}>
+
+                              <Ionicons name="close-circle-outline" size={14} color={RED} />
+                              <Text style={[s.stopBtnText, { color: RED }]}>Skip</Text>
+                            </TouchableOpacity>
+                          </>
+                        }
+                        {stop.status === 'arrived' &&
+                          <TouchableOpacity
+                            style={[s.stopBtn, { backgroundColor: '#DCFCE7', flex: 1 }]}
+                            onPress={() => handleCompleteStop(stop.stop_id)}
+                            disabled={actionLoading}>
+
+                            <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                            <Text style={[s.stopBtnText, { color: '#059669' }]}>Complete Stop</Text>
+                          </TouchableOpacity>
+                        }
+                      </View>
+                    }
+                  </View>
+                </Animated.View>);
+
+            })}
+          </Animated.View>
+        }
+        {/* ═══════ Trip Control ═══════ */}
+        {bus &&
+          <Animated.View entering={FadeInUp.delay(400).duration(500)} style={s.controlSection}>
+            {!isTracking ?
+              <TouchableOpacity
+                style={s.startWrap}
+                onPress={handleStartTrip}
+                activeOpacity={0.8}
+                disabled={actionLoading || !selectedRoute}>
+
+                <LinearGradient colors={PINK_GRADIENT} style={s.startGrad}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                  {actionLoading ?
+                    <LogoLoader color="#FFF" /> :
+
+                    <>
+                      <Ionicons name="play" size={22} color="#FFF" />
+                      <Text style={s.ctrlText}>START TRIP</Text>
+                    </>
+                  }
+                </LinearGradient>
+              </TouchableOpacity> :
+
+              <TouchableOpacity style={s.endBtn} onPress={handleEndTrip} activeOpacity={0.8} disabled={actionLoading}>
+                {actionLoading ? <LogoLoader color="#FFF" /> :
+                  <>
+                    <Ionicons name="stop" size={22} color="#FFF" />
+                    <Text style={s.ctrlText}>END TRIP</Text>
+                  </>
+                }
+              </TouchableOpacity>
+            }
+          </Animated.View>
+        }
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </ScreenLayout>);
 
 }
 

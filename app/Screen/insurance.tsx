@@ -16,74 +16,74 @@ export default function InsuranceScreen() {
     user
   } = useAuth();
   return <ScreenLayout>
-            <StudentHeader showBackButton={true} title="Insurance" />
+    <StudentHeader showBackButton={true} title="Insurance" />
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
-                {/* INSURANCE CARD */}
-                <View style={styles.insuranceCard}>
-                    <Text style={styles.planTitle}>Active Insurance Plan</Text>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
+      {/* INSURANCE CARD */}
+      <View style={styles.insuranceCard}>
+        <Text style={styles.planTitle}>Active Insurance Plan</Text>
 
-                    <View style={styles.planRow}>
-                        <Text style={styles.label}>Student Name</Text>
-                        <Text style={styles.value}>{user?.name || 'Student'}</Text>
-                    </View>
+        <View style={styles.planRow}>
+          <Text style={styles.label}>Student Name</Text>
+          <Text style={styles.value}>{user?.name || 'Student'}</Text>
+        </View>
 
-                    <View style={styles.planRow}>
-                        <Text style={styles.label}>Policy Number</Text>
-                        <Text style={styles.value}>NX-INS-2025-001</Text>
-                    </View>
+        <View style={styles.planRow}>
+          <Text style={styles.label}>Policy Number</Text>
+          <Text style={styles.value}>NX-INS-2025-001</Text>
+        </View>
 
-                    <View style={styles.planRow}>
-                        <Text style={styles.label}>Coverage Amount</Text>
-                        <Text style={styles.coverage}>₹5,00,000</Text>
-                    </View>
+        <View style={styles.planRow}>
+          <Text style={styles.label}>Coverage Amount</Text>
+          <Text style={styles.coverage}>₹5,00,000</Text>
+        </View>
 
-                    <View style={styles.statusBadge}>
-                        <Text style={styles.statusText}>ACTIVE</Text>
-                    </View>
-                </View>
+        <View style={styles.statusBadge}>
+          <Text style={styles.statusText}>ACTIVE</Text>
+        </View>
+      </View>
 
-                {/* COVERAGE DETAILS */}
-                <Text style={styles.sectionTitle}>Coverage Includes</Text>
+      {/* COVERAGE DETAILS */}
+      <Text style={styles.sectionTitle}>Coverage Includes</Text>
 
-                <View style={styles.coverageCard}>
-                    <CoverageItem icon="medical" text="Accidental Injuries" />
-                    <CoverageItem icon="local-hospital" text="Hospitalization" />
-                    <CoverageItem icon="healing" text="Emergency Treatment" />
-                    <CoverageItem icon="directions-bus" text="School Travel Safety" />
-                </View>
+      <View style={styles.coverageCard}>
+        <CoverageItem icon="medical" text="Accidental Injuries" />
+        <CoverageItem icon="local-hospital" text="Hospitalization" />
+        <CoverageItem icon="healing" text="Emergency Treatment" />
+        <CoverageItem icon="directions-bus" text="School Travel Safety" />
+      </View>
 
-                {/* CLAIM PROCESS */}
-                <Text style={styles.sectionTitle}>How to Claim</Text>
+      {/* CLAIM PROCESS */}
+      <Text style={styles.sectionTitle}>How to Claim</Text>
 
-                <View style={styles.stepCard}>
-                    <Text style={styles.step}>1. Inform School Admin</Text>
-                    <Text style={styles.step}>2. Visit Nearest Hospital</Text>
-                    <Text style={styles.step}>3. Submit Medical Reports</Text>
-                    <Text style={styles.step}>4. Claim Processed by Insurance Team</Text>
-                </View>
+      <View style={styles.stepCard}>
+        <Text style={styles.step}>1. Inform School Admin</Text>
+        <Text style={styles.step}>2. Visit Nearest Hospital</Text>
+        <Text style={styles.step}>3. Submit Medical Reports</Text>
+        <Text style={styles.step}>4. Claim Processed by Insurance Team</Text>
+      </View>
 
-                {/* EMERGENCY */}
-                <View style={styles.emergencyCard}>
-                    <Ionicons name="call" size={24} color="#fff" />
-                    <View style={{
+      {/* EMERGENCY */}
+      <View style={styles.emergencyCard}>
+        <Ionicons name="call" size={24} color="#fff" />
+        <View style={{
           marginLeft: 12
         }}>
-                        <Text style={styles.emergencyTitle}>Emergency Helpline</Text>
-                        <Text style={styles.emergencyNumber}>1800 123 456</Text>
-                    </View>
-                </View>
+          <Text style={styles.emergencyTitle}>Emergency Helpline</Text>
+          <Text style={styles.emergencyNumber}>1800 123 456</Text>
+        </View>
+      </View>
 
-                {/* ACTION BUTTONS */}
-                <TouchableOpacity style={styles.primaryBtn}>
-                    <Text style={styles.primaryBtnText}>Download Insurance Card</Text>
-                </TouchableOpacity>
+      {/* ACTION BUTTONS */}
+      <TouchableOpacity style={styles.primaryBtn}>
+        <Text style={styles.primaryBtnText}>Download Insurance Card</Text>
+      </TouchableOpacity>
 
-                <TouchableOpacity style={styles.secondaryBtn}>
-                    <Text style={styles.secondaryBtnText}>Contact Support</Text>
-                </TouchableOpacity>
-            </ScrollView>
-        </ScreenLayout>;
+      <TouchableOpacity style={styles.secondaryBtn}>
+        <Text style={styles.secondaryBtnText}>Contact Support</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  </ScreenLayout>;
 }
 
 /* 🔹 Coverage Item Component */
@@ -97,9 +97,9 @@ const CoverageItem = ({
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   return <View style={styles.coverageItem}>
-        <MaterialIcons name={icon} size={22} color="#4F46E5" />
-        <Text style={styles.coverageText}>{text}</Text>
-    </View>;
+    <MaterialIcons name={icon} size={22} color="#4F46E5" />
+    <Text style={styles.coverageText}>{text}</Text>
+  </View>;
 };
 const getStyles = (theme: Theme) => StyleSheet.create({
   scrollContainer: {

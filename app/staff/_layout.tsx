@@ -18,16 +18,26 @@ const dashboardScreenOptions: StaffTabScreenOptions = {
 export default function StaffLayout() {
     useRequireRole('staff', 'teacher', 'admin');
 
+    /** Screens that appear in the bottom bar and can be swiped between. */
+    const SWIPEABLE_TABS = ['dashboard', 'manage-students', 'timetable', 'results'];
+
+    /** Common options for screens that should NOT be part of the swipe pager. */
+    const hiddenScreenOptions: StaffTabScreenOptions = {
+        swipeEnabled: false,
+        lazy: true,
+    };
+
     return (
         <MaterialTopTabs
             tabBarPosition="bottom"
             tabBar={(props) => <StaffFooter {...props} />}
-            screenOptions={{
-                swipeEnabled: true,
+            screenOptions={({ route }) => ({
+                swipeEnabled: SWIPEABLE_TABS.includes(route.name),
                 animationEnabled: true,
                 lazy: true,
-            }}
+            })}
         >
+            {/* ── Bottom-bar tabs (swipeable) ── */}
             <MaterialTopTabs.Screen
                 name="dashboard"
                 options={dashboardScreenOptions}
@@ -44,6 +54,17 @@ export default function StaffLayout() {
                 name="results"
                 options={{ title: "Results" }}
             />
+
+            {/* ── Non-tab screens (navigable but NOT swipeable) ── */}
+            <MaterialTopTabs.Screen name="attendance" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="complaints" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="diary" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="leaves" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="lms-upload" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="payslip" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="profile" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="settings" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="student-details" options={hiddenScreenOptions} />
         </MaterialTopTabs>
     );
 }

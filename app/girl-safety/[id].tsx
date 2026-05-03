@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/hooks/useAuth';
 
 export default function ComplaintDetailScreen() {
-  const { id } = useLocalSearchParams<{id: string;}>();
+  const { id } = useLocalSearchParams<{ id: string; }>();
   const { user } = useAuth();
   const [complaint, setComplaint] = useState<ComplaintDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +27,7 @@ export default function ComplaintDetailScreen() {
     } catch (error) {
 
     } finally {
+
       setLoading(false);
     }
   };
@@ -58,25 +59,25 @@ export default function ComplaintDetailScreen() {
   if (loading) {
     return (
       <View style={styles.centerLoading}>
-                <ActivityIndicator size="large" color="#6D28D9" />
-            </View>);
+        <ActivityIndicator size="large" color="#6D28D9" />
+      </View>);
 
   }
 
   if (!complaint) {
     return (
       <View style={styles.centerLoading}>
-                <Text>Complaint not found.</Text>
-            </View>);
+        <Text>Complaint not found.</Text>
+      </View>);
 
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':return '#F59E0B';
-      case 'in_review':return '#3B82F6';
-      case 'resolved':return '#10B981';
-      default:return '#6B7280';
+      case 'pending': return '#F59E0B';
+      case 'in_review': return '#3B82F6';
+      case 'resolved': return '#10B981';
+      default: return '#6B7280';
     }
   };
 
@@ -88,101 +89,101 @@ export default function ComplaintDetailScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
 
-            <ScrollView
+      <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
 
-                {/* Header Card */}
-                <View style={styles.headerCard}>
-                    <View style={styles.rowBetween}>
-                        <Text style={styles.ticketNo}>Ticket: {complaint.ticket_no}</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(complaint.status) + '1A' }]}>
-                            <Text style={[styles.statusText, { color: getStatusColor(complaint.status) }]}>
-                                {complaint.status.replace('_', ' ').toUpperCase()}
-                            </Text>
-                        </View>
-                    </View>
-                    <Text style={styles.category}>{complaint.category}</Text>
-                    <Text style={styles.label}>Description</Text>
-                    <Text style={styles.description}>{complaint.description}</Text>
-                    <View style={styles.metaRow}>
-                        <Ionicons name="calendar-outline" size={14} color="#64748B" />
-                        <Text style={styles.metaText}>{new Date(complaint.created_at).toLocaleString()}</Text>
-                    </View>
-                    {complaint.assigned_authority &&
-          <View style={[styles.metaRow, { marginTop: 4 }]}>
-                            <Ionicons name="person-circle-outline" size={14} color="#64748B" />
-                            <Text style={styles.metaText}>Assigned to: {complaint.assigned_authority}</Text>
-                        </View>
+        {/* Header Card */}
+        <View style={styles.headerCard}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.ticketNo}>Ticket: {complaint.ticket_no}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(complaint.status) + '1A' }]}>
+              <Text style={[styles.statusText, { color: getStatusColor(complaint.status) }]}>
+                {complaint.status.replace('_', ' ').toUpperCase()}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.category}>{complaint.category}</Text>
+          <Text style={styles.label}>Description</Text>
+          <Text style={styles.description}>{complaint.description}</Text>
+          <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={14} color="#64748B" />
+            <Text style={styles.metaText}>{new Date(complaint.created_at).toLocaleString()}</Text>
+          </View>
+          {complaint.assigned_authority &&
+            <View style={[styles.metaRow, { marginTop: 4 }]}>
+              <Ionicons name="person-circle-outline" size={14} color="#64748B" />
+              <Text style={styles.metaText}>Assigned to: {complaint.assigned_authority}</Text>
+            </View>
           }
+        </View>
+        {/* Thread */}
+        <Text style={styles.threadTitle}>Conversation</Text>
+        {complaint.threads.length === 0 ?
+          <Text style={styles.emptyThread}>No updates yet. An authority will respond here.</Text> :
+
+          complaint.threads.map((msg, index) => {
+            const isStudent = msg.sender_role === 'student';
+            // if current user is student, their messages are right, admin is left
+            // if current user is admin, their messages are right, student is left
+            const isMe = user?.role?.code === 'student' ? isStudent : !isStudent;
+
+            return (
+              <View key={msg.id || index} style={[styles.bubbleWrapper, isMe ? styles.bubbleRight : styles.bubbleLeft]}>
+                {!isMe && <View style={styles.avatarLeft}><Ionicons name={isStudent ? "person" : "shield-checkmark"} size={14} color="#FFF" /></View>}
+                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+                  <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                    {msg.message}
+                  </Text>
+                  <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
                 </View>
-                {/* Thread */}
-                <Text style={styles.threadTitle}>Conversation</Text>
-                {complaint.threads.length === 0 ?
-        <Text style={styles.emptyThread}>No updates yet. An authority will respond here.</Text> :
+              </View>);
 
-        complaint.threads.map((msg, index) => {
-          const isStudent = msg.sender_role === 'student';
-          // if current user is student, their messages are right, admin is left
-          // if current user is admin, their messages are right, student is left
-          const isMe = user?.role === 'student' ? isStudent : !isStudent;
-
-          return (
-            <View key={msg.id || index} style={[styles.bubbleWrapper, isMe ? styles.bubbleRight : styles.bubbleLeft]}>
-                                {!isMe && <View style={styles.avatarLeft}><Ionicons name={isStudent ? "person" : "shield-checkmark"} size={14} color="#FFF" /></View>}
-                                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                                    <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-                                        {msg.message}
-                                    </Text>
-                                    <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
-                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </Text>
-                                </View>
-                            </View>);
-
-        })
+          })
         }
-            </ScrollView>
-            {/* Reply Input Box */}
-            {!isResolved ?
-      <View style={styles.replyBox}>
-                    <AppTextInput
-          style={styles.replyInput}
-          placeholder="Type a message..."
-          placeholderTextColor="#94A3B8"
-          multiline
-          maxLength={500}
-          value={replyText}
-          onChangeText={setReplyText} />
+      </ScrollView>
+      {/* Reply Input Box */}
+      {!isResolved ?
+        <View style={styles.replyBox}>
+          <AppTextInput
+            style={styles.replyInput}
+            placeholder="Type a message..."
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={500}
+            value={replyText}
+            onChangeText={setReplyText} />
 
-                    <TouchableOpacity
-          style={[styles.sendButton, !replyText.trim() && styles.sendButtonDisabled]}
-          disabled={!replyText.trim() || sending}
-          onPress={handleSendReply}>
+          <TouchableOpacity
+            style={[styles.sendButton, !replyText.trim() && styles.sendButtonDisabled]}
+            disabled={!replyText.trim() || sending}
+            onPress={handleSendReply}>
 
-                        {sending ?
-          <ActivityIndicator size="small" color="#FFF" /> :
+            {sending ?
+              <ActivityIndicator size="small" color="#FFF" /> :
 
-          <Ionicons name="send" size={16} color="#FFF" />
-          }
-                    </TouchableOpacity>
-                </View> :
+              <Ionicons name="send" size={16} color="#FFF" />
+            }
+          </TouchableOpacity>
+        </View> :
 
-      <View style={styles.resolvedBox}>
-                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                    <Text style={styles.resolvedText}>This complaint has been marked as resolved.</Text>
-                </View>
+        <View style={styles.resolvedBox}>
+          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+          <Text style={styles.resolvedText}>This complaint has been marked as resolved.</Text>
+        </View>
       }
-        </KeyboardAvoidingView>);
+    </KeyboardAvoidingView>);
 
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC'
+    backgroundColor: 'transparent'
   },
   centerLoading: {
     flex: 1,

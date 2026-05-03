@@ -4,7 +4,8 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Modal, KeyboardAvoidingView,
-  Platform, ScrollView, Pressable, Dimensions} from 'react-native';
+  Platform, ScrollView, Pressable, Dimensions
+} from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -577,7 +578,7 @@ export default function AccountsExpenses() {
             <View style={styles.actionRow}>
               {selectedExpense.status === 'pending' && (
                 <>
-                  {(user?.role === 'admin' || selectedExpense.created_by !== user?.id) && (
+                  {(user?.role?.code === 'admin' || selectedExpense.created_by !== user?.id) && (
                     <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={() => handleApprove(selectedExpense)}>
                       <LinearGradient colors={['#065F46', '#10B981']} style={styles.actionGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                         <Ionicons name="checkmark" size={18} color="#fff" />
@@ -645,7 +646,7 @@ export default function AccountsExpenses() {
 
 // ─── Root Styles ──────────────────────────────────────────────────────────────
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: isDark ? '#0A0F1E' : '#F1F5F9' },
+  container: { flex: 1, backgroundColor: 'transparent' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingHorizontal: 20, paddingBottom: 110 },
 

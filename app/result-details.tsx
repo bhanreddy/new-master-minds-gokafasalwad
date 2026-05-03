@@ -313,7 +313,7 @@ export default function ResultDetails() { // OPT: Default export wraps inner scr
 const getStyles = (theme: SchoolTheme) => {
   const c = theme.colors;
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: c.card, paddingTop: Platform.OS === 'android' ? 30 : 0 },
+    container: { flex: 1, backgroundColor: 'transparent', paddingTop: Platform.OS === 'android' ? 30 : 0 },
     centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scrollContent: { padding: 20, paddingBottom: 40 },
     emptyContainer: { alignItems: 'center', marginTop: 50 },

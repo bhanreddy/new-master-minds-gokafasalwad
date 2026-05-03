@@ -34,16 +34,16 @@ const InputField = ({
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   return <View style={styles.inputGroup}>
-        <Text style={styles.label}>
-            {label} {required && <Text style={{
+    <Text style={styles.label}>
+      {label} {required && <Text style={{
         color: ADMIN_THEME.colors.danger
       }}>*</Text>}
-        </Text>
-        <View style={styles.inputWrapper}>
-            <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-            <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor={ADMIN_THEME.colors.text.muted} value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
-        </View>
-    </View>;
+    </Text>
+    <View style={styles.inputWrapper}>
+      <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
+      <AppTextInput style={styles.input} placeholder={placeholder} placeholderTextColor={ADMIN_THEME.colors.text.muted} value={value} onChangeText={onChangeText} keyboardType={keyboardType as any} secureTextEntry={secureTextEntry} />
+    </View>
+  </View>;
 };
 const SelectField = ({
   label,
@@ -63,40 +63,40 @@ const SelectField = ({
   const [modalVisible, setModalVisible] = useState(false);
   const selectedOption = options.find((opt: any) => opt.id.toString() === value?.toString());
   return <View style={styles.inputGroup}>
-        <Text style={styles.label}>
-            {label} {required && <Text style={{
+    <Text style={styles.label}>
+      {label} {required && <Text style={{
         color: ADMIN_THEME.colors.danger
       }}>*</Text>}
-        </Text>
-        <TouchableOpacity style={styles.inputWrapper} onPress={() => {
+    </Text>
+    <TouchableOpacity style={styles.inputWrapper} onPress={() => {
       Keyboard.dismiss();
       if (!loading) setModalVisible(true);
     }} disabled={loading}>
-            <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-            <Text style={[styles.input, !selectedOption && {
+      <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
+      <Text style={[styles.input, !selectedOption && {
         color: ADMIN_THEME.colors.text.muted
       }, {
         paddingTop: 12
       }]}>
-                {loading ? 'Loading...' : selectedOption ? selectedOption.name : placeholder}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={ADMIN_THEME.colors.text.muted} />
-        </TouchableOpacity>
-        <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Select {label}</Text>
-                        <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{
+        {loading ? 'Loading...' : selectedOption ? selectedOption.name : placeholder}
+      </Text>
+      <Ionicons name="chevron-down" size={20} color={ADMIN_THEME.colors.text.muted} />
+    </TouchableOpacity>
+    <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select {label}</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{
               top: 10,
               bottom: 10,
               left: 10,
               right: 10
             }}>
-                            <Ionicons name="close" size={24} color={ADMIN_THEME.colors.text.primary} />
-                        </TouchableOpacity>
-                    </View>
-                    <FlatList data={options} keyExtractor={(item) => item.id.toString()} contentContainerStyle={{
+              <Ionicons name="close" size={24} color={ADMIN_THEME.colors.text.primary} />
+            </TouchableOpacity>
+          </View>
+          <FlatList data={options} keyExtractor={(item) => item.id.toString()} contentContainerStyle={{
             paddingBottom: 50
           }} renderItem={({
             item
@@ -105,16 +105,16 @@ const SelectField = ({
               onSelect(item.id);
               setModalVisible(false);
             }}>
-                            <Text style={[styles.optionText, value?.toString() === item.id.toString() && styles.selectedOptionText]}>
-                                {item.name}
-                            </Text>
-                            {value?.toString() === item.id.toString() && <Ionicons name="checkmark" size={20} color={ADMIN_THEME.colors.primary} />}
-                        </TouchableOpacity>;
+              <Text style={[styles.optionText, value?.toString() === item.id.toString() && styles.selectedOptionText]}>
+                {item.name}
+              </Text>
+              {value?.toString() === item.id.toString() && <Ionicons name="checkmark" size={20} color={ADMIN_THEME.colors.primary} />}
+            </TouchableOpacity>;
           }} />
-                </View>
-            </View>
-        </Modal>
-    </View>;
+        </View>
+      </View>
+    </Modal>
+  </View>;
 };
 export default function AddStudentScreen() {
   const {
@@ -335,7 +335,7 @@ export default function AddStudentScreen() {
         }]);
       }
     } catch (error: any) {
-      if (__DEV__) {}
+      if (__DEV__) { }
       const msg = error.response?.data?.error || error.message || 'Failed to save student';
       alertCompat('Save Failed', msg);
     } finally {
@@ -362,224 +362,224 @@ export default function AddStudentScreen() {
   };
   if (initialLoading) {
     return <View style={styles.loadingContainer}>
-            <LogoLoader size={60} color={ADMIN_THEME.colors.primary} />
-            <Text style={styles.loadingText}>Initializing form...</Text>
-        </View>;
+      <LogoLoader size={60} color={ADMIN_THEME.colors.primary} />
+      <Text style={styles.loadingText}>Initializing form...</Text>
+    </View>;
   }
   return <View style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <AdminHeader title={isEditMode ? "Edit Student" : "Add Student"} showBackButton={true} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
+    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+    <AdminHeader title={isEditMode ? "Edit Student" : "Add Student"} showBackButton={true} />
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
       flex: 1
     }}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Header Info Card */}
-                <LinearGradient colors={[ADMIN_THEME.colors.primary, ADMIN_THEME.colors.secondary]} style={styles.headerCard} start={{
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Header Info Card */}
+        <LinearGradient colors={[ADMIN_THEME.colors.primary, ADMIN_THEME.colors.secondary]} style={styles.headerCard} start={{
           x: 0,
           y: 0
         }} end={{
           x: 1,
           y: 1
         }}>
-                    <Ionicons name="school" size={40} color="#fff" />
-                    <Text style={styles.headerTitle}>{isEditMode ? 'Update Record' : 'Enroll New Student'}</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {isEditMode ? 'Modify existing student profile' : 'Add a new student to the school database'}
-                    </Text>
-                </LinearGradient>
-                {/* Section: Personal Details */}
-                <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.section}>
-                    <Text style={styles.sectionHeader}>Personal Details</Text>
-                    <View style={styles.row}>
-                        <View style={styles.halfInput}>
-                            <InputField label="First Name" placeholder="John" value={formData.first_name} onChangeText={(t: string) => setFormData({
+          <Ionicons name="school" size={40} color="#fff" />
+          <Text style={styles.headerTitle}>{isEditMode ? 'Update Record' : 'Enroll New Student'}</Text>
+          <Text style={styles.headerSubtitle}>
+            {isEditMode ? 'Modify existing student profile' : 'Add a new student to the school database'}
+          </Text>
+        </LinearGradient>
+        {/* Section: Personal Details */}
+        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.section}>
+          <Text style={styles.sectionHeader}>Personal Details</Text>
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <InputField label="First Name" placeholder="John" value={formData.first_name} onChangeText={(t: string) => setFormData({
                 ...formData,
                 first_name: t
               })} icon="person-outline" required={true} />
-                        </View>
-                        <View style={styles.halfInput}>
-                            <InputField label="Last Name" placeholder="Doe" value={formData.last_name} onChangeText={(t: string) => setFormData({
+            </View>
+            <View style={styles.halfInput}>
+              <InputField label="Last Name" placeholder="Doe" value={formData.last_name} onChangeText={(t: string) => setFormData({
                 ...formData,
                 last_name: t
               })} icon="person-outline" required={true} />
-                        </View>
-                    </View>
-                    <InputField label="Middle Name" placeholder="Optional" value={formData.middle_name} onChangeText={(t: string) => setFormData({
+            </View>
+          </View>
+          <InputField label="Middle Name" placeholder="Optional" value={formData.middle_name} onChangeText={(t: string) => setFormData({
             ...formData,
             middle_name: t
           })} icon="person-outline" />
-                    <SelectField label="Gender" value={formData.gender_id} options={GENDERS} onSelect={(id: number) => setFormData({
+          <SelectField label="Gender" value={formData.gender_id} options={GENDERS} onSelect={(id: number) => setFormData({
             ...formData,
             gender_id: id
           })} icon="transgender-outline" required={true} />
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Date of Birth</Text>
-                        <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDobPicker(true)}>
-                            <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-                            <Text style={[styles.input, !formData.dob && {
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Date of Birth</Text>
+            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDobPicker(true)}>
+              <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
+              <Text style={[styles.input, !formData.dob && {
                 color: ADMIN_THEME.colors.text.muted
               }, {
                 paddingTop: 12
               }]}>
-                                {formData.dob || 'Select Date'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </Animated.View>
-                {/* Section: Academic Info */}
-                <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.section}>
-                    <Text style={styles.sectionHeader}>Academic Information</Text>
-                    <InputField label="Admission Number" placeholder="ADM2024001" value={formData.admission_no} onChangeText={(t: string) => setFormData({
+                {formData.dob || 'Select Date'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+        {/* Section: Academic Info */}
+        <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.section}>
+          <Text style={styles.sectionHeader}>Academic Information</Text>
+          <InputField label="Admission Number" placeholder="ADM2024001" value={formData.admission_no} onChangeText={(t: string) => setFormData({
             ...formData,
             admission_no: t
           })} icon="card-outline" required={true} />
-                    {/* 🆕 Roll Number Field */}
-                    <InputField label="Roll Number" placeholder="Auto-generated" value={(formData as any).roll_number ? String((formData as any).roll_number) : 'Auto-generated'} editable={false} icon="list-outline" />
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Admission Date</Text>
-                        <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowAdmissionDatePicker(true)}>
-                            <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-                            <Text style={[styles.input, !formData.admission_date && {
+          {/* 🆕 Roll Number Field */}
+          <InputField label="Roll Number" placeholder="Auto-generated" value={(formData as any).roll_number ? String((formData as any).roll_number) : 'Auto-generated'} editable={false} icon="list-outline" />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Admission Date</Text>
+            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowAdmissionDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
+              <Text style={[styles.input, !formData.admission_date && {
                 color: ADMIN_THEME.colors.text.muted
               }, {
                 paddingTop: 12
               }]}>
-                                {formData.admission_date || 'Select Date'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                    <SelectField label="Class" value={formData.class_id} options={classes} onSelect={(id: string) => setFormData({
+                {formData.admission_date || 'Select Date'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <SelectField label="Class" value={formData.class_id} options={classes} onSelect={(id: string) => setFormData({
             ...formData,
             class_id: id
           })} placeholder="Select Class" icon="business-outline" required={true} />
-                    <SelectField label="Section" value={formData.section_id} options={sections} onSelect={(id: string) => setFormData({
+          <SelectField label="Section" value={formData.section_id} options={sections} onSelect={(id: string) => setFormData({
             ...formData,
             section_id: id
           })} placeholder="Select Section" icon="grid-outline" required={true} />
-                    <SelectField label="Student Status" value={formData.status_id} options={STUDENT_STATUSES} onSelect={(id: number) => setFormData({
+          <SelectField label="Student Status" value={formData.status_id} options={STUDENT_STATUSES} onSelect={(id: number) => setFormData({
             ...formData,
             status_id: id
           })} icon="shield-checkmark-outline" required={true} />
-                    <SelectField label="Academic Year" value={formData.academic_year_id} options={academicYears.map((y) => ({
+          <SelectField label="Academic Year" value={formData.academic_year_id} options={academicYears.map((y) => ({
             id: y.id,
             name: y.code
           }))} onSelect={(id: string) => setFormData({
             ...formData,
             academic_year_id: id
           })} placeholder="Select Year" icon="time-outline" required={true} />
-                </Animated.View>
-                {/* Section: Parent Details */}
-                <Animated.View entering={FadeInDown.delay(150).duration(500)} style={styles.section}>
-                    <Text style={styles.sectionHeader}>Parent / Guardian Details</Text>
-                    {/* Father */}
-                    <Text style={[styles.label, {
+        </Animated.View>
+        {/* Section: Parent Details */}
+        <Animated.View entering={FadeInDown.delay(150).duration(500)} style={styles.section}>
+          <Text style={styles.sectionHeader}>Parent / Guardian Details</Text>
+          {/* Father */}
+          <Text style={[styles.label, {
             marginTop: 10,
             color: ADMIN_THEME.colors.primary
           }]}>Father's Details</Text>
-                    <View style={styles.row}>
-                        <View style={styles.halfInput}>
-                            <InputField label="First Name" placeholder="Father Name" value={father.first_name} onChangeText={(t: string) => setFather({
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <InputField label="First Name" placeholder="Father Name" value={father.first_name} onChangeText={(t: string) => setFather({
                 ...father,
                 first_name: t
               })} icon="person-outline" />
-                        </View>
-                        <View style={styles.halfInput}>
-                            <InputField label="Last Name" placeholder="Surname" value={father.last_name} onChangeText={(t: string) => setFather({
+            </View>
+            <View style={styles.halfInput}>
+              <InputField label="Last Name" placeholder="Surname" value={father.last_name} onChangeText={(t: string) => setFather({
                 ...father,
                 last_name: t
               })} icon="person-outline" />
-                        </View>
-                    </View>
-                    <InputField label="Phone" placeholder="Mobile Number" value={father.phone} onChangeText={(t: string) => setFather({
+            </View>
+          </View>
+          <InputField label="Phone" placeholder="Mobile Number" value={father.phone} onChangeText={(t: string) => setFather({
             ...father,
             phone: t
           })} keyboardType="phone-pad" icon="call-outline" />
-                    <InputField label="Occupation" placeholder="Designation" value={father.occupation} onChangeText={(t: string) => setFather({
+          <InputField label="Occupation" placeholder="Designation" value={father.occupation} onChangeText={(t: string) => setFather({
             ...father,
             occupation: t
           })} icon="briefcase-outline" />
-                    {/* Mother */}
-                    <Text style={[styles.label, {
+          {/* Mother */}
+          <Text style={[styles.label, {
             marginTop: 20,
             color: ADMIN_THEME.colors.primary
           }]}>Mother's Details</Text>
-                    <View style={styles.row}>
-                        <View style={styles.halfInput}>
-                            <InputField label="First Name" placeholder="Mother Name" value={mother.first_name} onChangeText={(t: string) => setMother({
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <InputField label="First Name" placeholder="Mother Name" value={mother.first_name} onChangeText={(t: string) => setMother({
                 ...mother,
                 first_name: t
               })} icon="person-outline" />
-                        </View>
-                        <View style={styles.halfInput}>
-                            <InputField label="Last Name" placeholder="Surname" value={mother.last_name} onChangeText={(t: string) => setMother({
+            </View>
+            <View style={styles.halfInput}>
+              <InputField label="Last Name" placeholder="Surname" value={mother.last_name} onChangeText={(t: string) => setMother({
                 ...mother,
                 last_name: t
               })} icon="person-outline" />
-                        </View>
-                    </View>
-                    <InputField label="Phone" placeholder="Mobile Number" value={mother.phone} onChangeText={(t: string) => setMother({
+            </View>
+          </View>
+          <InputField label="Phone" placeholder="Mobile Number" value={mother.phone} onChangeText={(t: string) => setMother({
             ...mother,
             phone: t
           })} keyboardType="phone-pad" icon="call-outline" />
-                    <InputField label="Occupation" placeholder="Designation" value={mother.occupation} onChangeText={(t: string) => setMother({
+          <InputField label="Occupation" placeholder="Designation" value={mother.occupation} onChangeText={(t: string) => setMother({
             ...mother,
             occupation: t
           })} icon="briefcase-outline" />
-                </Animated.View>
-                {/* Section: Additional Details */}
-                <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.section}>
-                    <Text style={styles.sectionHeader}>Additional Details</Text>
-                    <SelectField label="Category" value={formData.category_id} options={STUDENT_CATEGORIES} onSelect={(id: number) => setFormData({
+        </Animated.View>
+        {/* Section: Additional Details */}
+        <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.section}>
+          <Text style={styles.sectionHeader}>Additional Details</Text>
+          <SelectField label="Category" value={formData.category_id} options={STUDENT_CATEGORIES} onSelect={(id: number) => setFormData({
             ...formData,
             category_id: id
           })} icon="list-outline" />
-                    <SelectField label="Religion" value={formData.religion_id} options={RELIGIONS} onSelect={(id: number) => setFormData({
+          <SelectField label="Religion" value={formData.religion_id} options={RELIGIONS} onSelect={(id: number) => setFormData({
             ...formData,
             religion_id: id
           })} icon="heart-outline" />
-                    <SelectField label="Blood Group" value={formData.blood_group_id} options={BLOOD_GROUPS} onSelect={(id: number) => setFormData({
+          <SelectField label="Blood Group" value={formData.blood_group_id} options={BLOOD_GROUPS} onSelect={(id: number) => setFormData({
             ...formData,
             blood_group_id: id
           })} icon="water-outline" />
-                </Animated.View>
-                {/* Section: Contact & Login */}
-                <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.section}>
-                    <Text style={styles.sectionHeader}>Contact & Login Credentials</Text>
-                    <InputField label="Email Address (Login ID)" placeholder="student@example.com" value={formData.email} onChangeText={(t: string) => setFormData({
+        </Animated.View>
+        {/* Section: Contact & Login */}
+        <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.section}>
+          <Text style={styles.sectionHeader}>Contact & Login Credentials</Text>
+          <InputField label="Email Address (Login ID)" placeholder="student@example.com" value={formData.email} onChangeText={(t: string) => setFormData({
             ...formData,
             email: t
           })} keyboardType="email-address" icon="mail-outline" />
-                    <InputField label="Phone Number" placeholder="+91 9876543210" value={formData.phone} onChangeText={(t: string) => setFormData({
+          <InputField label="Phone Number" placeholder="+91 9876543210" value={formData.phone} onChangeText={(t: string) => setFormData({
             ...formData,
             phone: t
           })} keyboardType="phone-pad" icon="call-outline" />
-                    {!isEditMode && <InputField label="Initial Password" placeholder="Min 6 characters" value={formData.password} onChangeText={(t: string) => setFormData({
+          {!isEditMode && <InputField label="Initial Password" placeholder="Min 6 characters" value={formData.password} onChangeText={(t: string) => setFormData({
             ...formData,
             password: t
           })} icon="lock-closed-outline" required={true} secureTextEntry={true} />}
-                </Animated.View>
-                {/* Submit Button */}
-                <TouchableOpacity style={[styles.saveButton, loading && styles.saveButtonDisabled]} activeOpacity={0.8} onPress={handleSave} disabled={loading}>
-                    {loading ? <LogoLoader color="#fff" /> : <>
-                        <Text style={styles.saveButtonText}>
-                            {isEditMode ? 'Update Student' : 'Create Student Profile'}
-                        </Text>
-                        <Ionicons name="checkmark-circle" size={24} color="#fff" style={{
+        </Animated.View>
+        {/* Submit Button */}
+        <TouchableOpacity style={[styles.saveButton, loading && styles.saveButtonDisabled]} activeOpacity={0.8} onPress={handleSave} disabled={loading}>
+          {loading ? <LogoLoader color="#fff" /> : <>
+            <Text style={styles.saveButtonText}>
+              {isEditMode ? 'Update Student' : 'Create Student Profile'}
+            </Text>
+            <Ionicons name="checkmark-circle" size={24} color="#fff" style={{
               marginLeft: 8
             }} />
-                    </>}
-                </TouchableOpacity>
-                {/* Date Pickers */}
-                {showDobPicker && <DateTimePicker value={formData.dob ? new Date(formData.dob) : new Date()} mode="date" display="default" onChange={onDobChange} maximumDate={new Date()} />}
-                {showAdmissionDatePicker && <DateTimePicker value={formData.admission_date ? new Date(formData.admission_date) : new Date()} mode="date" display="default" onChange={onAdmissionDateChange} maximumDate={new Date()} />}
-            </ScrollView>
-        </KeyboardAvoidingView>
-    </View>;
+          </>}
+        </TouchableOpacity>
+        {/* Date Pickers */}
+        {showDobPicker && <DateTimePicker value={formData.dob ? new Date(formData.dob) : new Date()} mode="date" display="default" onChange={onDobChange} maximumDate={new Date()} />}
+        {showAdmissionDatePicker && <DateTimePicker value={formData.admission_date ? new Date(formData.admission_date) : new Date()} mode="date" display="default" onChange={onAdmissionDateChange} maximumDate={new Date()} />}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: ADMIN_THEME.colors.background.app
+    backgroundColor: 'transparent'
   },
   loadingContainer: {
     flex: 1,
