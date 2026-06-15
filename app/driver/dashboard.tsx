@@ -50,7 +50,15 @@ interface RouteInfo {
   name: string;
   direction: string;
   total_stops: number;
+  bus_id?: string;
 }
+
+type TripLeg = 'morning' | 'evening';
+
+const LEG_LABEL: Record<TripLeg, string> = {
+  morning: 'Morning (pickup)',
+  evening: 'Evening (drop-off)',
+};
 
 /* ─── Status Colors ─── */
 const STATUS_CONFIG: Record<StopStatus, { bg: string; color: string; icon: string; label: string; }> = {
@@ -67,9 +75,11 @@ export default function DriverDashboard() {
   const { user } = useAuth();
 
   // Data state
-  const [bus, setBus] = useState<BusInfo | null>(null);
+  const [buses, setBuses] = useState<BusInfo[]>([]);
+  const [selectedBus, setSelectedBus] = useState<BusInfo | null>(null);
   const [routes, setRoutes] = useState<RouteInfo[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<RouteInfo | null>(null);
+  const [tripLeg, setTripLeg] = useState<TripLeg>('morning');
   const [stops, setStops] = useState<TripStop[]>([]);
 
   // Trip state
@@ -105,26 +115,58 @@ export default function DriverDashboard() {
   }, [isTracking]);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
-  /* ─── Fetch driver's bus & routes ─── */
+  const inferTripLeg = (direction?: string | null): TripLeg => {
+    if (direction === 'afternoon' || direction === 'evening') return 'evening';
+    if (direction === 'morning') return 'morning';
+    return new Date().getHours() >= 12 ? 'evening' : 'morning';
+  };
+
+  const resolveTripDirectionParam = (route: RouteInfo | null, leg: TripLeg) => {
+    if (!route) return leg === 'evening' ? 'evening' : 'morning';
+    if (route.direction === 'both') return leg === 'evening' ? 'evening' : 'morning';
+    if (route.direction === 'afternoon' || route.direction === 'evening') return route.direction;
+    return route.direction || 'morning';
+  };
+
+  const routesForSelectedBus = selectedBus
+    ? routes.filter((r) => r.bus_id === selectedBus.id)
+    : routes;
+
+  /* ─── Fetch driver's buses & routes ─── */
   const fetchDriverData = useCallback(async () => {
     try {
       const data = await api.get<any>('/transport/driver/my-bus');
-      setBus(data.bus);
-      setRoutes(data.routes || []);
+      const busList: BusInfo[] = data.buses?.length ? data.buses : (data.bus ? [data.bus] : []);
+      const routeList: RouteInfo[] = data.routes || [];
+      setBuses(busList);
+      setRoutes(routeList);
 
-      if (data.activeTrip) {
-        setActiveTripId(data.activeTrip.id);
+      const activeTrips: any[] = data.activeTrips?.length
+        ? data.activeTrips
+        : (data.activeTrip ? [data.activeTrip] : []);
+
+      if (activeTrips.length > 0) {
+        const active = activeTrips[0];
+        const activeBus = busList.find((b) => b.id === active.bus_id) || busList[0] || null;
+        setSelectedBus(activeBus);
+        const activeRoute = routeList.find((r) => r.id === active.route_id) || null;
+        if (activeRoute) {
+          setSelectedRoute(activeRoute);
+          setTripLeg(active.trip_direction === 'evening' || active.trip_direction === 'afternoon' ? 'evening' : 'morning');
+        }
+        setActiveTripId(active.id);
         setIsTracking(true);
-        setTripStartedAt(new Date(data.activeTrip.started_at));
-        // Fetch trip status
-        await fetchTripStatus(data.activeTrip.id);
-        // Select the route of active trip
-        const activeRoute = (data.routes || []).find((r: any) => r.id === data.activeTrip.route_id);
-        if (activeRoute) setSelectedRoute(activeRoute);
-      } else if (data.routes?.length > 0) {
-        setSelectedRoute(data.routes[0]);
-        // Fetch stops for the first route
-        await fetchRouteStops(data.routes[0].id);
+        setTripStartedAt(new Date(active.started_at));
+        await fetchTripStatus(active.id);
+      } else if (busList.length > 0) {
+        const initialBus = busList[0];
+        setSelectedBus(initialBus);
+        const busRoutes = routeList.filter((r) => r.bus_id === initialBus.id);
+        if (busRoutes.length > 0) {
+          setSelectedRoute(busRoutes[0]);
+          setTripLeg(inferTripLeg(busRoutes[0].direction));
+          await fetchRouteStops(busRoutes[0].id, inferTripLeg(busRoutes[0].direction));
+        }
       }
     } catch (err) {
 
@@ -137,11 +179,14 @@ export default function DriverDashboard() {
   useEffect(() => { fetchDriverData(); }, []);
 
   /* ─── Fetch route stops (pre-trip) ─── */
-  const fetchRouteStops = async (routeId: string) => {
+  const fetchRouteStops = async (routeId: string, leg: TripLeg = tripLeg) => {
     try {
-      const data = await api.get<any[]>(`/transport/driver/route/${routeId}/stops`);
-      setStops(data.map((s) => ({
-        id: '', stop_id: s.id, stop_name: s.name, stop_order: s.stop_order,
+      const route = routes.find((r) => r.id === routeId) || selectedRoute;
+      const tripDirection = resolveTripDirectionParam(route, leg);
+      const data = await api.get<any[]>(`/transport/driver/route/${routeId}/stops?trip_direction=${tripDirection}`);
+      setStops(data.map((s, idx) => ({
+        id: '', stop_id: s.id, stop_name: s.name,
+        stop_order: s.exec_order ?? idx + 1,
         status: 'pending' as StopStatus, latitude: s.latitude, longitude: s.longitude,
         student_count: s.student_count || 0
       })));
@@ -174,17 +219,25 @@ export default function DriverDashboard() {
 
   /* ─── START TRIP ─── */
   const handleStartTrip = async () => {
-    if (!bus || !selectedRoute) return alertCompat('Error', 'No bus or route assigned.');
+    if (!selectedBus || !selectedRoute) return alertCompat('Error', 'Select a bus and route first.');
+    if (selectedRoute.direction === 'both' && !tripLeg) {
+      return alertCompat('Error', 'Choose Morning or Evening for this route.');
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setActionLoading(true);
     try {
-      const data = await api.post<any>('/transport/trips/start', { route_id: selectedRoute.id });
+      const tripDirection = resolveTripDirectionParam(selectedRoute, tripLeg);
+      const data = await api.post<any>('/transport/trips/start', {
+        route_id: selectedRoute.id,
+        bus_id: selectedBus.id,
+        trip_direction: tripDirection,
+      });
       setActiveTripId(data.trip.id);
       setIsTracking(true);
       setTripStartedAt(new Date());
       setElapsedMin(0);
       await fetchTripStatus(data.trip.id);
-      startLocationTracking();
+      startLocationTracking(selectedBus.id);
     } catch (err: any) {
       alertCompat('Error', err?.message || 'Failed to start trip');
     } finally { setActionLoading(false); }
@@ -254,7 +307,7 @@ export default function DriverDashboard() {
   };
 
   /* ─── GPS Tracking ─── */
-  const startLocationTracking = async () => {
+  const startLocationTracking = async (busId: string) => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return alertCompat('Permission Denied', 'GPS permission required.');
 
@@ -263,20 +316,18 @@ export default function DriverDashboard() {
       async (loc) => {
         const spd = loc.coords.speed && loc.coords.speed > 0 ? loc.coords.speed * 3.6 : 0;
         setSpeed(spd);
-        if (bus) {
-          try {
-            await api.post<any>(`/transport/buses/${bus.id}/location`, {
-              latitude: loc.coords.latitude, longitude: loc.coords.longitude,
-              speed: spd, heading: loc.coords.heading,
-              is_mocked: loc.mocked || false
-            });
-          } catch { }
-        }
+        try {
+          await api.post<any>(`/transport/buses/${busId}/location`, {
+            latitude: loc.coords.latitude, longitude: loc.coords.longitude,
+            speed: spd, heading: loc.coords.heading,
+            is_mocked: loc.mocked || false
+          });
+        } catch { }
       }
     );
 
     heartbeatRef.current = setInterval(async () => {
-      if (bus) try { await api.post(`/transport/buses/${bus.id}/heartbeat`); } catch { }
+      try { await api.post(`/transport/buses/${busId}/heartbeat`); } catch { }
     }, HEARTBEAT_INTERVAL);
   };
 
@@ -328,7 +379,7 @@ export default function DriverDashboard() {
               </View>
               <View style={s.heroBusPill}>
                 <Ionicons name="bus" size={14} color="#FFF" />
-                <Text style={s.heroBusText}>{bus?.bus_no || 'No Bus'}</Text>
+                <Text style={s.heroBusText}>{selectedBus?.bus_no || buses[0]?.bus_no || 'No Bus'}</Text>
               </View>
             </View>
             <View style={s.heroDivider} />
@@ -349,27 +400,68 @@ export default function DriverDashboard() {
           </LinearGradient>
         </Animated.View>
         {/* ═══════ No Bus State ═══════ */}
-        {!bus &&
+        {!selectedBus && buses.length === 0 &&
           <Animated.View entering={FadeInDown.delay(150).duration(500)} style={s.emptyCard}>
             <View style={s.emptyIcon}><Ionicons name="bus-outline" size={36} color="#CBD5E1" /></View>
             <Text style={s.emptyTitle}>No Bus Assigned</Text>
             <Text style={s.emptySub}>Contact admin to get a bus assigned to you.</Text>
           </Animated.View>
         }
+        {/* ═══════ Bus Selector (multi-bus drivers) ═══════ */}
+        {buses.length > 1 && !isTracking &&
+          <Animated.View entering={FadeInDown.delay(140).duration(500)}>
+            <View style={s.secHeader}>
+              <View style={s.secIconBox}><Ionicons name="bus" size={14} color={PINK} /></View>
+              <Text style={s.secTitle}>Select Bus</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.routeScroll}>
+              {buses.map((b) =>
+                <TouchableOpacity
+                  key={b.id}
+                  style={[s.routeChip, selectedBus?.id === b.id && s.routeChipActive]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setSelectedBus(b);
+                    const busRoutes = routes.filter((r) => r.bus_id === b.id);
+                    if (busRoutes.length > 0) {
+                      setSelectedRoute(busRoutes[0]);
+                      setTripLeg(inferTripLeg(busRoutes[0].direction));
+                      fetchRouteStops(busRoutes[0].id, inferTripLeg(busRoutes[0].direction));
+                    } else {
+                      setSelectedRoute(null);
+                      setStops([]);
+                    }
+                  }}>
+
+                  <Ionicons name="bus-outline" size={14}
+                    color={selectedBus?.id === b.id ? '#FFF' : PINK} />
+                  <Text style={[s.routeChipText, selectedBus?.id === b.id && { color: '#FFF' }]}>
+                    {b.bus_no}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </Animated.View>
+        }
         {/* ═══════ Route Selector (pre-trip) ═══════ */}
-        {bus && !isTracking && routes.length > 0 &&
+        {selectedBus && !isTracking && routesForSelectedBus.length > 0 &&
           <Animated.View entering={FadeInDown.delay(150).duration(500)}>
             <View style={s.secHeader}>
               <View style={s.secIconBox}><Ionicons name="map" size={14} color={PINK} /></View>
               <Text style={s.secTitle}>Select Route</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.routeScroll}>
-              {routes.map((r) =>
+              {routesForSelectedBus.map((r) =>
                 <TouchableOpacity
                   key={r.id}
                   style={[s.routeChip, selectedRoute?.id === r.id && s.routeChipActive]}
                   activeOpacity={0.7}
-                  onPress={() => { setSelectedRoute(r); fetchRouteStops(r.id); }}>
+                  onPress={() => {
+                    setSelectedRoute(r);
+                    const leg = inferTripLeg(r.direction);
+                    setTripLeg(leg);
+                    fetchRouteStops(r.id, leg);
+                  }}>
 
                   <Ionicons name="navigate-outline" size={14}
                     color={selectedRoute?.id === r.id ? '#FFF' : PINK} />
@@ -382,6 +474,24 @@ export default function DriverDashboard() {
                 </TouchableOpacity>
               )}
             </ScrollView>
+            {selectedRoute?.direction === 'both' &&
+              <View style={s.legRow}>
+                {(['morning', 'evening'] as TripLeg[]).map((leg) =>
+                  <TouchableOpacity
+                    key={leg}
+                    style={[s.legChip, tripLeg === leg && s.legChipActive]}
+                    onPress={() => {
+                      setTripLeg(leg);
+                      if (selectedRoute) fetchRouteStops(selectedRoute.id, leg);
+                    }}>
+
+                    <Text style={[s.legChipText, tripLeg === leg && { color: '#FFF' }]}>
+                      {LEG_LABEL[leg]}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
           </Animated.View>
         }
         {/* ═══════ Trip Progress Bar ═══════ */}
@@ -395,7 +505,7 @@ export default function DriverDashboard() {
               <View style={[s.progressBarFill, { width: `${progressPercent}%` }]} />
             </View>
             <Text style={s.progressRoute}>
-              {selectedRoute?.name} • {selectedRoute?.direction}
+              {selectedRoute?.name} • {isTracking ? resolveTripDirectionParam(selectedRoute, tripLeg) : selectedRoute?.direction}
             </Text>
           </Animated.View>
         }
@@ -487,7 +597,7 @@ export default function DriverDashboard() {
           </Animated.View>
         }
         {/* ═══════ Trip Control ═══════ */}
-        {bus &&
+        {selectedBus &&
           <Animated.View entering={FadeInUp.delay(400).duration(500)} style={s.controlSection}>
             {!isTracking ?
               <TouchableOpacity
@@ -591,6 +701,13 @@ const s = StyleSheet.create({
   routeChipActive: { backgroundColor: PINK, borderColor: PINK_DARK },
   routeChipText: { fontSize: 14, fontWeight: '600', color: '#374151' },
   routeChipDir: { fontSize: 11, color: '#94A3B8', fontWeight: '500', textTransform: 'capitalize' },
+  legRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  legChip: {
+    flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+    backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0',
+  },
+  legChipActive: { backgroundColor: PINK, borderColor: PINK_DARK },
+  legChipText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
 
   /* Progress */
   progressCard: {

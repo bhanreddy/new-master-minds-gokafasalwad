@@ -1,578 +1,1024 @@
-import React, { useCallback, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Dimensions, Image, Platform, StatusBar, ScrollView } from 'react-native';
-import { FontAwesome5, MaterialIcons, Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  withRepeat,
-  withDelay,
-  Easing,
-  interpolate,
-} from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import { useTranslation } from "react-i18next";
-import { useAuth } from "../src/hooks/useAuth";
-;
-import { SCHOOL_CONFIG } from "../src/constants/schoolConfig";
+import { FontAwesome5, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Dimensions,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeInLeft,
+  FadeInRight,
+  FadeInUp,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+  ZoomIn,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SCHOOL_NAME } from "../src/constants/school";
+import { SCHOOL_CONFIG, schoolColorWithAlpha } from "../src/constants/schoolConfig";
+import { useAuth } from "../src/hooks/useAuth";
+import { useTheme } from "../src/hooks/useTheme";
+import { AuthService } from "../src/services/authService";
+import { isStudentRole } from "../src/utils/roleHelpers";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
-/* ═══════════════════════════════════════════════════════
-   PREMIUM SAAS TOKENS — Vercel / Linear Aesthetic
-   ═══════════════════════════════════════════════════════ */
-const PALETTE = {
-  // Ultra-deep header void
-  voidBase: "#05050A",
-  voidDeep: "#0A0A1F",
-  voidGlow: "#130F2E",
+/* ─── Theme ──────────────────────────────────────────────────────────────── */
+const useWelcomeTheme = () => {
+  const { theme } = useTheme();
+  const p = theme.colors.primary;
+  const pD = theme.colors.primaryDark;
+  const rgba = schoolColorWithAlpha;
 
-  // Accents
-  primary: "#4F46E5", // Indigo
-  accent: "#06B6D4",  // Cyan (Deepened slightly for balance)
-  glow: "#A855F7",    // Purple
+  return {
+    p, pD,
+    c50: rgba(p, 0.04),
+    c100: rgba(p, 0.09),
+    c200: rgba(p, 0.18),
+    c500: p,
+    c600: pD,
+    c700: pD,
 
-  // Surfaces
-  surfaceMain: "#F8FAFC", // Slate 50
-  surfaceCard: "#FFFFFF",
-  surfaceInverted: "#1E293B", // Slate 800 (Lightened from 900)
+    page: theme.colors.background,
+    surface: "#FFFFFF",
 
-  // Ink
-  inkDark: "#0F172A",
-  inkMuted: "#64748B",
-  inkWhite: "#FFFFFF",
-  inkWhiteMuted: "#94A3B8",
-} as const;
+    ink: theme.colors.textStrong,
+    inkB: theme.colors.textPrimary,
+    inkC: theme.colors.textSecondary,
+    inkD: theme.colors.textMuted,
 
-const MOTION = {
-  duration: { FAST: 150, MEDIUM: 400, SLOW: 600, GLOW: 8000 },
-  entrance: {
-    BRAND: 100, HERO_BADGE: 200, HERO_TITLE: 300, HERO_SUB: 450,
-    CARDS: 600, FOOTER: 900,
-  },
-  easing: {
-    SMOOTH: Easing.bezier(0.16, 1, 0.3, 1),
-    SPRING: Easing.bezier(0.34, 1.56, 0.64, 1),
-  },
-  spring: { damping: 18, stiffness: 200, mass: 0.7 },
-} as const;
+    teal: "#0D9488",
+    tealBg: "rgba(13,148,136,0.07)",
+    tealBorder: "rgba(13,148,136,0.16)",
 
-/* ═══════════════════════════════════════════════════════
-   MASSIVE GLOW ORB — Soft focal point gradient
-   ═══════════════════════════════════════════════════════ */
-function AmbientGlow({ size, top, left, color, delay }: {
-  size: number; top: number; left: number; color: string; delay: number;
-}) {
-  const p = useSharedValue(0);
+    indigo: "#4F46E5",
+    indigoBg: "rgba(79,70,229,0.07)",
+    indigoBorder: "rgba(79,70,229,0.16)",
+
+    amber: "#B45309",
+    amberBg: "rgba(180,83,9,0.07)",
+    amberBorder: "rgba(180,83,9,0.16)",
+
+    crimson: "#BE123C",
+    crimsonBg: "rgba(190,18,60,0.07)",
+    crimsonBorder: "rgba(190,18,60,0.16)",
+
+    border: "rgba(0,0,0,0.07)",
+    borderMed: "rgba(0,0,0,0.11)",
+    accentGlow: rgba(p, 0.08),
+    accentBorder: rgba(p, 0.16),
+    accentSoft: rgba(p, 0.04),
+    secondary: theme.colors.secondary,
+  } as const;
+};
+
+type WTheme = ReturnType<typeof useWelcomeTheme>;
+
+/* ─── Live Dot ───────────────────────────────────────────────────────────── */
+const LiveDot = ({ color }: { color: string }) => {
+  const s = useSharedValue(1);
   useEffect(() => {
-    p.value = withDelay(delay,
-      withRepeat(withTiming(1, { duration: MOTION.duration.GLOW, easing: Easing.inOut(Easing.sin) }), -1, true)
+    s.value = withRepeat(
+      withSequence(
+        withTiming(2.4, { duration: 900 }),
+        withTiming(1.0, { duration: 900 }),
+      ), -1, false,
     );
   }, []);
-  const a = useAnimatedStyle(() => ({
-    transform: [
-      { scale: interpolate(p.value, [0, 1], [0.95, 1.1]) },
-      { translateX: interpolate(p.value, [0, 1], [0, size * 0.05]) },
-    ],
-    opacity: interpolate(p.value, [0, 1], [0.25, 0.55]),
+  const ring = useAnimatedStyle(() => ({
+    transform: [{ scale: s.value }],
+    opacity: interpolate(s.value, [1, 2.4], [0.55, 0]),
   }));
-  return <Animated.View style={[{ position: "absolute", top, left, width: size, height: size, borderRadius: size / 2, backgroundColor: color }, a]} />;
-}
+  return (
+    <View style={styles.liveDotWrap}>
+      <Animated.View style={[styles.liveDotRing, { borderColor: color }, ring]} />
+      <View style={[styles.liveDotCore, { backgroundColor: color }]} />
+    </View>
+  );
+};
 
-/* ═══════════════════════════════════════════════════════
-   REVEAL
-   ═══════════════════════════════════════════════════════ */
-function Reveal({ delayMs, translateY = 20, children, style }: {
-  delayMs: number; translateY?: number; children: React.ReactNode; style?: any;
-}) {
-  const opacity = useSharedValue(0);
-  const yOff = useSharedValue(translateY);
+/* ─── Premium Crest ──────────────────────────────────────────────────────── */
+const PremiumCrest = ({
+  gradStart, gradEnd, ringColor, dashedColor,
+}: {
+  gradStart: string; gradEnd: string; ringColor: string; dashedColor: string;
+}) => {
+  const pulse = useSharedValue(1);
+  const rot = useSharedValue(0);
+
   useEffect(() => {
-    opacity.value = withDelay(delayMs, withTiming(1, { duration: MOTION.duration.SLOW, easing: MOTION.easing.SMOOTH }));
-    yOff.value = withDelay(delayMs, withTiming(0, { duration: MOTION.duration.SLOW, easing: MOTION.easing.SMOOTH }));
-  }, [delayMs]);
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.045, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0.975, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+      ), -1, true,
+    );
+    rot.value = withRepeat(
+      withTiming(360, { duration: 22000, easing: Easing.linear }),
+      -1, false,
+    );
+  }, []);
 
-  const a = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateY: yOff.value }] }));
-  return <Animated.View style={[style, a]}>{children}</Animated.View>;
+  const crestAnim = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  const dashedAnim = useAnimatedStyle(() => ({ transform: [{ rotate: `${rot.value}deg` }] }));
+
+  return (
+    <View style={styles.crestStage}>
+      <Animated.View style={[styles.crestDashed, { borderColor: dashedColor }, dashedAnim]} />
+      <View style={[styles.crestMidRing, { borderColor: ringColor }]} />
+      <Animated.View style={crestAnim}>
+        <LinearGradient
+          colors={[gradStart, gradEnd]}
+          start={{ x: 0.12, y: 0 }}
+          end={{ x: 0.88, y: 1 }}
+          style={styles.crestCore}
+        >
+          <View style={styles.crestGlint} />
+          <Image source={SCHOOL_CONFIG.logo} style={styles.crestLogo} />
+        </LinearGradient>
+      </Animated.View>
+    </View>
+  );
+};
+
+/* ─── Metric Card ────────────────────────────────────────────────────────── */
+const MetricCard = ({
+  value, label, delay, accentColor, borderColor,
+}: {
+  value: string; label: string; delay: number;
+  accentColor: string; borderColor: string;
+}) => (
+  <Animated.View
+    entering={ZoomIn.delay(delay).duration(380).springify()}
+    style={[styles.metricCard, { borderColor }]}
+  >
+    <Text style={[styles.metricValue, { color: accentColor }]}>{value}</Text>
+    <Text style={styles.metricLabel}>{label}</Text>
+  </Animated.View>
+);
+
+/* ─── Portal Card (secondary roles) ─────────────────────────────────────── */
+interface PortalCardProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  accent: string;
+  accentBg: string;
+  accentBorder: string;
+  onPress: () => void;
+  index: number;
+  numLabel: string;
 }
 
+const PortalCard = ({
+  icon, title, subtitle,
+  accent, accentBg, accentBorder,
+  onPress, index, numLabel,
+}: PortalCardProps) => {
+  const pressed = useSharedValue(0);
+  const entering = index % 2 === 0 ? FadeInLeft : FadeInRight;
 
-/* ═══════════════════════════════════════════════════════
-   MAIN SCREEN
-   ═══════════════════════════════════════════════════════ */
+  const onPressIn = useCallback(() => {
+    pressed.value = withTiming(1, { duration: 80 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+  const onPressOut = useCallback(() => {
+    pressed.value = withSpring(0, { stiffness: 360, damping: 20 });
+  }, []);
+
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.972]) }],
+  }));
+
+  return (
+    <Animated.View
+      entering={entering.delay(420 + index * 65).duration(460).springify()}
+      style={[styles.portalCard, anim]}
+    >
+      <Pressable
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        style={styles.portalInner}
+      >
+        <View style={[styles.portalBar, { backgroundColor: accent }]} />
+        <Text style={[styles.portalGhost, { color: accent }]}>{numLabel}</Text>
+        <View style={[styles.portalIconBox, { backgroundColor: accentBg, borderColor: accentBorder }]}>
+          {icon}
+        </View>
+        <View style={styles.portalText}>
+          <Text style={styles.portalTitle} numberOfLines={1}>{title}</Text>
+          <Text style={styles.portalSub} numberOfLines={1}>{subtitle}</Text>
+        </View>
+        <View style={[styles.portalArrow, { backgroundColor: accentBg, borderColor: accentBorder }]}>
+          <Ionicons name="chevron-forward" size={13} color={accent} />
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+};
+
+/* ─── MAIN ───────────────────────────────────────────────────────────────── */
 export default function Index() {
   const router = useRouter();
   const { t } = useTranslation();
   const { user, loading } = useAuth();
   const insets = useSafeAreaInsets();
+  const C = useWelcomeTheme();
+
+  /* Student card press */
+  const studentPressed = useSharedValue(0);
+  const onStudentIn = useCallback(() => {
+    studentPressed.value = withTiming(1, { duration: 90 });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, []);
+  const onStudentOut = useCallback(() => {
+    studentPressed.value = withSpring(0, { stiffness: 320, damping: 18 });
+  }, []);
+  const studentAnim = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(studentPressed.value, [0, 1], [1, 0.968]) }],
+  }));
+
+  /* ── Student session persistence guard ───────────────────────── */
+  const [studentCheckDone, setStudentCheckDone] = useState(false);
+  useEffect(() => {
+    if (loading || user) return;
+    AuthService.getSession().then((storedSession) => {
+      const storedRole = storedSession?.validatedUser?.role?.code;
+      if (isStudentRole(storedRole)) {
+        if (__DEV__) console.log('[welcome] Student session found in storage — auto-navigating to student dashboard');
+        router.replace('/(tabs)/home');
+      } else {
+        setStudentCheckDone(true);
+      }
+    }).catch(() => {
+      setStudentCheckDone(true);
+    });
+  }, [loading, user]);
+
+  if (loading || user || !studentCheckDone) {
+    return <View style={{ flex: 1, backgroundColor: C.page }} />;
+  }
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+    <View style={{ flex: 1, backgroundColor: C.page }}>
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      {loading || user ? (
-        // Just return an empty void background. The _layout.tsx overlay covers this
-        // until either loading completes, or the user is redirected to the dashboard.
-        <View style={[styles.loadWrap, { backgroundColor: PALETTE.voidBase }]} />
-      ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} bounces={false} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1 }}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ═══════════════════════════════════════════════════════
+            HERO  (reduced height)
+            ═══════════════════════════════════════════════════════ */}
+        <View style={[styles.hero, { paddingTop: insets.top + 14 }]}>
 
-          {/* ══════════════════════════════════════════════════
-             HERO HEADER — Deep void + overlapping structure
-             ══════════════════════════════════════════════════ */}
-          <View style={[styles.headerBox, { paddingTop: insets.top + 20 }]}>
+          <LinearGradient
+            colors={[C.c50, "#F9FAFB", C.c100, "#FFFFFF"]}
+            locations={[0, 0.3, 0.65, 1]}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
 
-            {/* Background Base */}
-            <LinearGradient
-              colors={[PALETTE.voidBase, PALETTE.voidDeep, PALETTE.voidGlow]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0.8, y: 1 }}
-              style={StyleSheet.absoluteFill}
+          <View
+            pointerEvents="none"
+            style={[styles.haloBg, { borderColor: C.accentBorder }]}
+          />
+          <View
+            pointerEvents="none"
+            style={[styles.haloBg2, { borderColor: C.accentSoft }]}
+          />
+
+          <View style={styles.heroContent}>
+
+            {/* ── School pill ─────────────────────────────────── */}
+            <Animated.View
+              entering={FadeInDown.delay(0).duration(500)}
+              style={[styles.schoolPill, {
+                borderColor: C.accentBorder,
+                backgroundColor: "rgba(255,255,255,0.9)",
+              }]}
+            >
+              <View style={[styles.pillLogoRing, { borderColor: C.accentBorder }]}>
+                <Image source={SCHOOL_CONFIG.logo} style={styles.pillLogo} />
+              </View>
+              <Text style={[styles.pillName, { color: C.inkB }]} numberOfLines={1}>
+                {SCHOOL_CONFIG.name}
+              </Text>
+              <LiveDot color={C.c500} />
+            </Animated.View>
+
+            {/* ── Premium crest (136 px) ───────────────────────── */}
+            <Animated.View
+              entering={ZoomIn.delay(80).duration(720).springify()}
+              style={{ marginBottom: 14 }}
+            >
+              <PremiumCrest
+                gradStart={C.c500}
+                gradEnd={C.c700}
+                ringColor={C.c100}
+                dashedColor={C.accentBorder}
+              />
+            </Animated.View>
+
+            {/* ── School name ─────────────────────────────────── */}
+            <Animated.View
+              entering={FadeInDown.delay(160).duration(600)}
+              style={styles.nameBlock}
+            >
+              <Text
+                style={[styles.schoolNameText, { color: C.ink }]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {SCHOOL_NAME || SCHOOL_CONFIG.name}
+              </Text>
+
+              {SCHOOL_CONFIG.tagline ? (
+                <Animated.View
+                  entering={FadeInDown.delay(230).duration(420)}
+                  style={[styles.taglinePill, {
+                    backgroundColor: C.accentGlow,
+                    borderColor: C.accentBorder,
+                  }]}
+                >
+                  <Text style={[styles.taglineText, { color: C.c600 }]}>
+                    {SCHOOL_CONFIG.tagline}
+                  </Text>
+                </Animated.View>
+              ) : null}
+
+              {SCHOOL_CONFIG.motto ? (
+                <Animated.Text
+                  entering={FadeInDown.delay(290).duration(400)}
+                  style={[styles.mottoText, { color: C.inkC }]}
+                >
+                  &ldquo;{SCHOOL_CONFIG.motto}&rdquo;
+                </Animated.Text>
+              ) : null}
+            </Animated.View>
+
+            {/* ── Platform headline ───────────────────────────── */}
+            <Animated.View
+              entering={FadeInDown.delay(320).duration(520)}
+              style={styles.headlineBlock}
+            >
+              <View style={styles.headlineRow}>
+                <Text style={[styles.hlBold, { color: C.ink }]}>Smart </Text>
+                <Text style={[styles.hlAccent, { color: C.c500 }]}>School.</Text>
+              </View>
+              <View style={styles.headlineRow}>
+                <Text style={[styles.hlBold, { color: C.ink }]}>Every </Text>
+                <Text style={[styles.hlAccent, { color: C.c500 }]}>Portal.</Text>
+              </View>
+              <Animated.Text
+                entering={FadeInDown.delay(400).duration(440)}
+                style={[styles.heroSub, { color: C.inkC }]}
+              >
+                One unified platform for students, teachers,{"\n"}
+                administrators, finance & transport.
+              </Animated.Text>
+            </Animated.View>
+
+            {/* ── Metrics row ─────────────────────────────────── */}
+            <View style={[styles.metricsRow, { borderColor: C.accentBorder }]}>
+              <MetricCard
+                value="500+" label="Students"
+                delay={440} accentColor={C.c600}
+                borderColor={C.accentBorder}
+              />
+              <View style={[styles.metricsDivider, { backgroundColor: C.accentBorder }]} />
+              <MetricCard
+                value="50+" label="Teachers"
+                delay={510} accentColor={C.c600}
+                borderColor={C.accentBorder}
+              />
+              <View style={[styles.metricsDivider, { backgroundColor: C.accentBorder }]} />
+              <MetricCard
+                value="99%" label="Uptime"
+                delay={580} accentColor={C.c600}
+                borderColor={C.accentBorder}
+              />
+            </View>
+
+          </View>
+
+          <View style={[styles.heroCurve, { backgroundColor: C.page }]} />
+        </View>
+
+        {/* ═══════════════════════════════════════════════════════
+            BODY
+            ═══════════════════════════════════════════════════════ */}
+        <View style={styles.body}>
+
+          {/* Section eyebrow */}
+          <Animated.View
+            entering={FadeInUp.delay(340).duration(400)}
+            style={styles.eyebrow}
+          >
+            <View style={[styles.eyebrowLine, { backgroundColor: C.border }]} />
+            <Text style={styles.eyebrowLabel}>SELECT YOUR PORTAL</Text>
+            <View style={[styles.eyebrowLine, { backgroundColor: C.border }]} />
+          </Animated.View>
+
+          {/* ══ Student hero card ══════════════════════════════ */}
+          <Animated.View
+            entering={FadeInDown.delay(380).duration(560).springify()}
+            style={[styles.studentCardWrap, studentAnim]}
+          >
+            <Pressable
+              onPress={() => router.push("/login")}
+              onPressIn={onStudentIn}
+              onPressOut={onStudentOut}
+              style={{ overflow: "hidden", borderRadius: 26 }}
+            >
+              <LinearGradient
+                colors={[C.c500, C.c600, C.c700]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.studentGrad}
+              >
+                <Text style={styles.studentGhost}>01</Text>
+                <View style={styles.studentGlow} />
+                <View style={styles.studentGlow2} />
+
+                <View style={styles.studentBody}>
+                  <View style={styles.studentLeft}>
+                    <View style={styles.studentBadge}>
+                      <View style={styles.studentBadgePulse} />
+                      <Text style={styles.studentBadgeText}>✦  PRIMARY PORTAL</Text>
+                    </View>
+
+                    <Text style={styles.studentTitle}>
+                      {t("index.student_login") || "Student Portal"}
+                    </Text>
+                    <Text style={styles.studentSub}>
+                      Grades · Attendance · Timetable
+                    </Text>
+                  </View>
+
+                  <View style={styles.studentRight}>
+                    <View style={styles.studentIconWrap}>
+                      <FontAwesome5 name="user-graduate" size={26} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.studentArrowBtn}>
+                      <Ionicons name="arrow-forward" size={14} color={C.c600} />
+                    </View>
+                  </View>
+                </View>
+
+                <LinearGradient
+                  colors={["transparent", "rgba(0,0,0,0.14)"]}
+                  style={styles.studentVignette}
+                />
+              </LinearGradient>
+            </Pressable>
+          </Animated.View>
+
+          {/* ══ Secondary portal cards ════════════════════════ */}
+          <View style={styles.portalsStack}>
+
+            <PortalCard
+              index={0} numLabel="02"
+              icon={<Ionicons name="people-outline" size={20} color={C.teal} />}
+              title={t("index.staff_login") || "Staff Portal"}
+              subtitle="Classes, records & reports"
+              accent={C.teal} accentBg={C.tealBg} accentBorder={C.tealBorder}
+              onPress={() => router.push("/staff-login")}
             />
 
-            {/* Massive Ambient Glows */}
-            <AmbientGlow size={width * 1.4} top={-width * 0.5} left={-width * 0.2} color="rgba(79,70,229,0.10)" delay={0} />
-            <AmbientGlow size={width * 1.1} top={height * 0.1} left={width * 0.4} color="rgba(168,85,247,0.04)" delay={4000} />
+            <PortalCard
+              index={1} numLabel="03"
+              icon={<MaterialIcons name="admin-panel-settings" size={21} color={C.indigo} />}
+              title={t("index.admin_login") || "Admin Portal"}
+              subtitle="Administration & management"
+              accent={C.indigo} accentBg={C.indigoBg} accentBorder={C.indigoBorder}
+              onPress={() => router.push("/admin-login")}
+            />
 
-            {/* Geometric Grid — Faint and sharp */}
-            <View style={StyleSheet.absoluteFill}>
-              <View style={[styles.gridH, { top: "20%" }]} />
-              <View style={[styles.gridH, { top: "60%" }]} />
-              <View style={[styles.gridV, { left: "15%" }]} />
-              <View style={[styles.gridV, { left: "85%" }]} />
+            <PortalCard
+              index={2} numLabel="04"
+              icon={<Ionicons name="wallet-outline" size={20} color={C.amber} />}
+              title={t("index.accounts_login") || "Accounts Portal"}
+              subtitle="Finance & fee collections"
+              accent={C.amber} accentBg={C.amberBg} accentBorder={C.amberBorder}
+              onPress={() => router.push("/accounts-login")}
+            />
+
+            <PortalCard
+              index={3} numLabel="05"
+              icon={<Ionicons name="bus-outline" size={21} color={C.crimson} />}
+              title="Driver Portal"
+              subtitle="Live tracking & trip logs"
+              accent={C.crimson} accentBg={C.crimsonBg} accentBorder={C.crimsonBorder}
+              onPress={() => router.push("/driver-login")}
+            />
+
+          </View>
+
+          {/* Help row */}
+          <Animated.View entering={FadeInUp.delay(680).duration(400)} style={styles.helpRow}>
+            <View style={[styles.helpChip, { borderColor: C.border }]}>
+              <Ionicons name="help-circle-outline" size={14} color={C.inkD} />
+              <Text style={styles.helpText}>
+                Need help?{" "}
+                <Text style={[styles.helpLink, { color: C.c600 }]}>
+                  Contact your administrator
+                </Text>
+              </Text>
             </View>
+          </Animated.View>
 
-            {/* Content Container */}
-            <View style={styles.headerContent}>
+          {/* ══ Startup India Recognition (enhanced) ══════════ */}
+          <Animated.View
+            entering={FadeInUp.delay(740).duration(500).springify()}
+            style={styles.credWrap}
+          >
+            <LinearGradient
+              colors={["#FFFFFF", C.accentSoft, "#FFFFFF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.credCard, { borderColor: C.accentBorder }]}
+            >
+              {/* Indian tricolor ribbon — left edge */}
+              <View style={styles.credRibbon}>
+                <View style={[styles.credRibbonSeg, { backgroundColor: "#FF9933" }]} />
+                <View style={[
+                  styles.credRibbonSeg,
+                  {
+                    backgroundColor: "#FFFFFF",
+                    borderTopWidth: 0.5,
+                    borderBottomWidth: 0.5,
+                    borderColor: "rgba(0,0,0,0.08)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
+                ]}>
+                  <View style={styles.credAshoka} />
+                </View>
+                <View style={[styles.credRibbonSeg, { backgroundColor: "#138808" }]} />
+              </View>
 
-              {/* Brand Logo & Name (Premium Capsule) */}
-              <Reveal delayMs={MOTION.entrance.BRAND} style={styles.brandPill}>
-                {/* Inner Highlight Gradient */}
-                <LinearGradient
-                  colors={["rgba(255,255,255,0.04)", "transparent"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: 100 }]}
+              {/* Logo in elevated framed ring */}
+              <View style={[styles.credLogoRing, { borderColor: C.accentBorder }]}>
+                <Image
+                  source={require("../assets/images/startup-india.png")}
+                  style={styles.credLogo}
                 />
-                <View style={styles.logoCircle}>
-                  <Image source={SCHOOL_CONFIG.logo} style={styles.logoImage} />
+              </View>
+
+              {/* Divider */}
+              <View style={styles.credDivider} />
+
+              {/* Text block */}
+              <View style={styles.credText}>
+                <View style={styles.credEyebrowRow}>
+                  <View style={[styles.credEyebrowDot, { backgroundColor: C.c500 }]} />
+                  <Text style={styles.credEyebrow}>DPIIT RECOGNIZED</Text>
                 </View>
-                <Text style={styles.brandName}>{SCHOOL_CONFIG.name}</Text>
-              </Reveal>
-
-              {/* Eyebrow Badge */}
-              <Reveal delayMs={MOTION.entrance.HERO_BADGE}>
-                <View style={styles.eyebrowBadge}>
-                  <Text style={styles.eyebrowText}>✨  WELCOME TO THE FUTURE</Text>
+                <Text style={[styles.credTitle, { color: C.ink }]} numberOfLines={1}>
+                  Startup India
+                </Text>
+                <View style={styles.credMetaRow}>
+                  <Text style={styles.credSub}>Government of India</Text>
+                  <View style={[styles.credMetaDot, { backgroundColor: C.inkD }]} />
+                  <Ionicons name="shield-checkmark" size={11} color={C.c600} />
+                  <Text style={[styles.credVerified, { color: C.c600 }]}>Verified</Text>
                 </View>
-              </Reveal>
+              </View>
 
-              {/* Hero Typography — Massive & Editorial */}
-              <Reveal delayMs={MOTION.entrance.HERO_TITLE} translateY={10}>
-                <Text style={styles.heroTextMain}>Futuristic</Text>
-                <Text style={styles.heroTextAccent}>Next-Gen</Text>
-                <Text style={styles.heroTextMain}>Education.</Text>
-              </Reveal>
+              {/* Verified badge pill */}
+              <View style={[styles.credBadgePill, {
+                backgroundColor: C.accentGlow,
+                borderColor: C.accentBorder,
+              }]}>
+                <Ionicons name="ribbon-outline" size={13} color={C.c600} />
+              </View>
+            </LinearGradient>
+          </Animated.View>
 
-              {/* Social Proof Avatar Group / Trust */}
-              <Reveal delayMs={MOTION.entrance.HERO_SUB} translateY={10} style={styles.trustRow}>
-                <View style={styles.avatarGroup}>
-                  <View style={[styles.avatarCircle, { backgroundColor: "#3B82F6", zIndex: 3 }]} />
-                  <View style={[styles.avatarCircle, { backgroundColor: "#10B981", marginLeft: -10, zIndex: 2 }]} />
-                  <View style={[styles.avatarCircle, { backgroundColor: "#8B5CF6", marginLeft: -10, zIndex: 1 }]} />
-                </View>
-                <Text style={styles.trustText}>Trusted by many institutions.</Text>
-              </Reveal>
-
+          {/* Footer */}
+          <Animated.View entering={FadeInUp.delay(820).duration(400)} style={styles.footer}>
+            <View style={[styles.footerRule, { backgroundColor: C.border }]} />
+            <View style={styles.footerRow}>
+              <View style={[styles.footerDot, { backgroundColor: C.inkD }]} />
+              <Text style={styles.footerBrand}>POWERED BY NEXSYRUS</Text>
+              <View style={[styles.footerDot, { backgroundColor: C.inkD }]} />
             </View>
-          </View>
+            <Text style={styles.footerVersion}>v 2.0.0  ·  SchoolIMS</Text>
+          </Animated.View>
 
-          {/* ══════════════════════════════════════════════════
-             OVERLAPPING BODY — The 100x SaaS Layout Technique
-             ══════════════════════════════════════════════════ */}
-          <View style={styles.bodyContainer}>
-
-            {/* The negative margin overlap container */}
-            <View style={styles.overlapSection}>
-
-              <Reveal delayMs={MOTION.entrance.CARDS} translateY={40}>
-                <View style={styles.cardsGrid}>
-
-                  {/* PRIMARY HERO CARD (Student) — Inverted Dark Theme */}
-                  <ActionCard
-                    icon={<FontAwesome5 name="user-graduate" size={20} color="#FFFFFF" />}
-                    title={t("index.student_login")}
-                    subtitle="Grades, attendance & portal"
-                    accent={PALETTE.accent}
-                    onPress={() => router.push("/login")}
-                    isPrimary
-                  />
-
-                  {/* SECONDARY CARDS — Light Theme */}
-                  <ActionCard
-                    icon={<Ionicons name="people" size={22} color="#059669" />}
-                    title={t("index.staff_login")}
-                    subtitle="Classes, records & reports"
-                    accent="#059669"
-                    onPress={() => router.push("/staff-login")}
-                  />
-
-                  <ActionCard
-                    icon={<MaterialIcons name="admin-panel-settings" size={22} color="#7C3AED" />}
-                    title={t("index.admin_login")}
-                    subtitle="Admin & Principal portal"
-                    accent="#7C3AED"
-                    onPress={() => router.push("/admin-login")}
-                  />
-
-                  <ActionCard
-                    icon={<FontAwesome5 name="wallet" size={16} color="#D97706" />}
-                    title={t("index.accounts_login") || "Accounts Portal"}
-                    subtitle="Finance & fee tracking"
-                    accent="#D97706"
-                    onPress={() => router.push("/accounts-login")}
-                  />
-
-                  {/* Driver Portal */}
-                  <ActionCard
-                    icon={<MaterialIcons name="directions-bus" size={22} color="#EC4899" />}
-                    title="Driver Portal"
-                    subtitle="Live tracking & trip management"
-                    accent="#EC4899"
-                    onPress={() => router.push("/driver-login")}
-                  />
-
-                </View>
-              </Reveal>
-
-              {/* Minimal Footer */}
-              <Reveal delayMs={MOTION.entrance.FOOTER} style={styles.footerSection}>
-                <View style={styles.footerDivider} />
-                <Text style={styles.footerBrand}>POWERED BY NexSyrus IMS </Text>
-                <Text style={styles.footerVersion}>v 2.0.0</Text>
-              </Reveal>
-
-            </View>
-          </View>
-
-        </ScrollView>
-      )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
-
-/* ═══════════════════════════════════════════════════════
-   PREMIUM ACTION CARD Component
-   ═══════════════════════════════════════════════════════ */
-interface ActionCardProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  accent: string;
-  onPress: () => void;
-  isPrimary?: boolean;
-}
-
-function ActionCard({ icon, title, subtitle, accent, onPress, isPrimary }: ActionCardProps) {
-  const scale = useSharedValue(1);
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withTiming(0.97, { duration: MOTION.duration.FAST, easing: MOTION.easing.SMOOTH });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, MOTION.spring);
-  }, []);
-
-  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  if (isPrimary) {
-    // Inverted Dark Card for Primary Action
-    return (
-      <Animated.View style={[styles.cardBase, styles.cardInverted, aStyle, styles.cardShadowPrimary]}>
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.cardPressable}>
-          <View style={[styles.cardStrip, { backgroundColor: accent, shadowColor: accent, shadowOpacity: 0.8, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }]} />
-
-          <View style={styles.cardIconBoxInverted}>
-            {icon}
-          </View>
-
-          <View style={styles.cardTextCol}>
-            <Text style={styles.cardTitleInverted} numberOfLines={1}>{title}</Text>
-            <Text style={styles.cardSubInverted} numberOfLines={1}>{subtitle}</Text>
-          </View>
-
-          <View style={[styles.chevronBox, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
-            <Ionicons name="arrow-forward" size={16} color="#FFF" />
-          </View>
-        </Pressable>
-      </Animated.View>
-    );
-  }
-
-  // Standard Light Card
-  return (
-    <Animated.View style={[styles.cardBase, styles.cardLight, aStyle, styles.cardShadowLight]}>
-      <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.cardPressable}>
-        <View style={[styles.cardStrip, { backgroundColor: accent }]} />
-
-        <View style={[styles.cardIconBoxLight, { backgroundColor: `${accent}10` }]}>
-          {icon}
-        </View>
-
-        <View style={styles.cardTextCol}>
-          <Text style={styles.cardTitleLight} numberOfLines={1}>{title}</Text>
-          <Text style={styles.cardSubLight} numberOfLines={1}>{subtitle}</Text>
-        </View>
-
-        <View style={[styles.chevronBox, { backgroundColor: PALETTE.surfaceMain }]}>
-          <Ionicons name="chevron-forward" size={16} color={PALETTE.inkMuted} />
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════
-   STYLES
-   ═══════════════════════════════════════════════════════ */
-const CARD_HEIGHT = 88;
-
+/* ─── Styles ─────────────────────────────────────────────────────────────── */
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: 'transparent'},
-  loadWrap: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: PALETTE.surfaceMain },
 
-  /* ─── HEADER ─── */
-  headerBox: {
-    paddingBottom: 110, // Tall padding to allow overlap
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
+  /* ── Hero (reduced) ────────────────────────────────────── */
+  hero: {
+    paddingBottom: 36,        // ↓ was 60
     overflow: "hidden",
     position: "relative",
-    backgroundColor: PALETTE.voidBase,
   },
-  headerContent: {
+  heroContent: {
     paddingHorizontal: 24,
-    paddingTop: 10,
-    zIndex: 10,
-  },
-  gridH: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.02)" },
-  gridV: { position: "absolute", top: 0, bottom: 0, width: 1, backgroundColor: "rgba(255,255,255,0.02)" },
-
-  /* ─── BRAND PILL ─── */
-  brandPill: {
-    flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    marginBottom: 44,
-    paddingRight: 14,
-    paddingVertical: 4,
-    paddingLeft: 4,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)", // Purely optical border
-    overflow: "hidden", // ensures inner gradient stays inside
   },
-  logoCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-    // Add sharp shadow to make the white circle pop
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2,
-  },
-  logoImage: {
-    width: 16,
-    height: 16,
-    resizeMode: "contain",
-  },
-  brandName: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 2,
+  heroCurve: {
+    position: "absolute", bottom: -1, left: 0, right: 0,
+    height: 28,               // ↓ was 44
+    borderTopLeftRadius: 36, borderTopRightRadius: 36,
   },
 
-  /* ─── HERO SEC ─── */
-  eyebrowBadge: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 100,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginBottom: 20,
-  },
-  eyebrowText: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 2,
-  },
-  heroTextMain: {
-    fontSize: 44,
-    fontWeight: "900",
-    color: PALETTE.surfaceMain,
-    letterSpacing: -1,
-    lineHeight: 48,
-  },
-  heroTextAccent: {
-    fontSize: 44,
-    fontWeight: "900",
-    color: PALETTE.accent,
-    letterSpacing: -1,
-    lineHeight: 48,
-  },
-  trustRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 28,
-  },
-  avatarGroup: {
-    flexDirection: "row",
-    marginRight: 12,
-  },
-  avatarCircle: {
-    width: 20, height: 20, borderRadius: 10,
-    borderWidth: 1.5, borderColor: PALETTE.voidDeep,
-  },
-  trustText: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-
-  /* ─── BODY LAYOUT ─── */
-  bodyContainer: {
-    flex: 1,
-    paddingHorizontal: 24, // Matched header
-  },
-  overlapSection: {
-    marginTop: -60, // OVERLAPS THE HEADER
-    zIndex: 20,
-    paddingBottom: 40,
-  },
-  cardStripPrimary: {
-    width: 3, // Highly disciplined 3px hierarchy weight
-  },
-  cardsGrid: {
-    gap: 8, // Strict 8pt spacing
-  },
-
-  /* ─── CARDS BASE ─── */
-  cardBase: {
-    height: CARD_HEIGHT,
-    borderRadius: 20,
-    width: "100%",
-  },
-  cardPressable: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    overflow: "hidden",
-  },
-  cardStrip: {
+  /* Halo decorations */
+  haloBg: {
     position: "absolute",
-    left: 0, top: 0, bottom: 0,
-    width: 4,
+    width: 240, height: 240, borderRadius: 120,
+    borderWidth: 1,
+    top: "18%",
+    alignSelf: "center",
+    opacity: 0.6,
   },
-  cardTextCol: {
-    flex: 1,
-    paddingHorizontal: 14,
-    gap: 2,
+  haloBg2: {
+    position: "absolute",
+    width: 316, height: 316, borderRadius: 158,
+    borderWidth: 1,
+    top: "13%",
+    alignSelf: "center",
+    opacity: 0.35,
   },
-  chevronBox: {
-    width: 32, height: 32,
-    borderRadius: 16,
+
+  /* School pill */
+  schoolPill: {
+    flexDirection: "row", alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 100,
+    paddingRight: 12, paddingLeft: 4, paddingVertical: 4,
+    marginBottom: 18,         // ↓ was 26
+    gap: 8, borderWidth: 1,
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10 },
+      android: { elevation: 3 },
+    }),
+  },
+  pillLogoRing: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1,
+  },
+  pillLogo: { width: 22, height: 22, resizeMode: "contain" },
+  pillName: { fontSize: 12, fontWeight: "700", letterSpacing: 0.2, flexShrink: 1, maxWidth: width * 0.44 },
+
+  /* Live dot */
+  liveDotWrap: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
+  liveDotRing: { position: "absolute", width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
+  liveDotCore: { width: 7, height: 7, borderRadius: 4 },
+
+  /* Premium crest (136 px) */
+  crestStage: {
+    width: 136, height: 136,  // ↓ was 168
     alignItems: "center", justifyContent: "center",
   },
-
-  /* ─── INVERTED CARD (Student Hero) ─── */
-  cardInverted: {
-    backgroundColor: PALETTE.surfaceInverted,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
-    height: CARD_HEIGHT, // Height standardized
+  crestDashed: {
+    position: "absolute",
+    width: 134, height: 134, borderRadius: 67,    // ↓ was 164/82
+    borderWidth: 1, borderStyle: "dashed",
   },
-  cardShadowPrimary: {
+  crestMidRing: {
+    position: "absolute",
+    width: 108, height: 108, borderRadius: 54,    // ↓ was 130/65
+    borderWidth: 1,
+  },
+  crestCore: {
+    width: 82, height: 82, borderRadius: 41,      // ↓ was 96/48
+    alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
     ...Platform.select({
-      ios: { shadowColor: PALETTE.surfaceInverted, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 24 },
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.28, shadowRadius: 24 },
+      android: { elevation: 12 },
+    }),
+  },
+  crestGlint: {
+    position: "absolute",
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    top: -16, right: -12,
+  },
+  crestLogo: {
+    width: 40, height: 40,    // ↓ was 46
+    resizeMode: "contain",
+  },
+
+  /* School name block */
+  nameBlock: {
+    alignItems: "center", marginBottom: 12,       // ↓ was 16
+    paddingHorizontal: 10,
+  },
+  schoolNameText: {
+    fontSize: 24, fontWeight: "900",              // ↓ was 28
+    textAlign: "center", letterSpacing: -0.7,
+    lineHeight: 30, marginBottom: 8,              // ↓ was 36/10
+  },
+  taglinePill: {
+    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5,
+    borderWidth: 1, marginBottom: 6,
+  },
+  taglineText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6, textAlign: "center" },
+  mottoText: {
+    fontSize: 13, fontStyle: "italic", fontWeight: "500",
+    textAlign: "center", letterSpacing: 0.3, marginTop: 2,
+  },
+
+  /* Headline */
+  headlineBlock: { alignItems: "center", marginBottom: 14 },          // ↓ was 20
+  headlineRow: { flexDirection: "row" },
+  hlBold: { fontSize: 32, fontWeight: "900", letterSpacing: -1, lineHeight: 42 },   // ↓ was 38/50
+  hlAccent: { fontSize: 32, fontWeight: "900", letterSpacing: -1, lineHeight: 42 },
+  heroSub: {
+    fontSize: 13, fontWeight: "400",
+    lineHeight: 20, textAlign: "center", marginTop: 6,
+  },
+
+  /* Metrics */
+  metricsRow: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderRadius: 22, borderWidth: 1,
+    paddingVertical: 12, paddingHorizontal: 10,   // ↓ was 16
+    width: "100%",
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 18 },
       android: { elevation: 2 },
     }),
   },
-  cardIconBoxInverted: {
-    width: 48, height: 48,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center", justifyContent: "center",
-    marginLeft: 6,
+  metricCard: {
+    flex: 1, alignItems: "center", gap: 4,
   },
-  cardTitleInverted: {
-    fontSize: 16, fontWeight: "800", color: "#FFFFFF",
-  },
-  cardSubInverted: {
-    fontSize: 12, fontWeight: "500", color: "rgba(255,255,255,0.4)",
+  metricValue: { fontSize: 22, fontWeight: "900", letterSpacing: -0.6 },   // ↓ was 24
+  metricLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 1.4, textTransform: "uppercase", color: "#94A3B8" },
+  metricsDivider: { width: 1, height: 32, opacity: 0.5 },
+
+  /* ── Body ──────────────────────────────────────────────── */
+  body: {
+    flex: 1, paddingHorizontal: 20,
+    paddingTop: 4, paddingBottom: 44,
   },
 
-  /* ─── LIGHT CARD (Secondary) ─── */
-  cardLight: {
-    backgroundColor: PALETTE.surfaceCard,
-    borderWidth: 1, borderColor: "rgba(0,0,0,0.04)",
+  /* Eyebrow */
+  eyebrow: {
+    flexDirection: "row", alignItems: "center",
+    gap: 10, marginBottom: 16, marginTop: 2,
   },
-  cardShadowLight: {
+  eyebrowLine: { flex: 1, height: 1 },
+  eyebrowLabel: { fontSize: 9, fontWeight: "800", letterSpacing: 2.5, color: "#94A3B8" },
+
+  /* Student hero card */
+  studentCardWrap: {
+    borderRadius: 26, marginBottom: 12,
     ...Platform.select({
-      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 12 },
-      android: { elevation: 1 },
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.22, shadowRadius: 32 },
+      android: { elevation: 10 },
     }),
   },
-  cardIconBoxLight: {
-    width: 44, height: 44,
-    borderRadius: 12,
+  studentGrad: {
+    minHeight: 132, position: "relative", overflow: "hidden",
+  },
+  studentGhost: {
+    position: "absolute", right: 14, top: -6,
+    fontSize: 80, fontWeight: "900",
+    color: "rgba(255,255,255,0.07)", letterSpacing: -2,
+  },
+  studentGlow: {
+    position: "absolute",
+    width: 160, height: 160, borderRadius: 80,
+    backgroundColor: "rgba(255,255,255,0.09)",
+    top: -60, right: -30,
+  },
+  studentGlow2: {
+    position: "absolute",
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: 20, right: 80,
+  },
+  studentBody: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 22, paddingVertical: 24, gap: 14,
+  },
+  studentLeft: { flex: 1, gap: 5 },
+  studentBadge: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.22)",
+    marginBottom: 4,
+  },
+  studentBadgePulse: {
+    width: 5, height: 5, borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.75)",
+  },
+  studentBadgeText: { fontSize: 9, fontWeight: "800", letterSpacing: 1.4, color: "rgba(255,255,255,0.86)" },
+  studentTitle: {
+    fontSize: 24, fontWeight: "900", color: "#FFFFFF",
+    letterSpacing: -0.6, lineHeight: 30,
+  },
+  studentSub: {
+    fontSize: 12, fontWeight: "500",
+    color: "rgba(255,255,255,0.56)", letterSpacing: 0.2,
+  },
+  studentRight: { alignItems: "center", gap: 12 },
+  studentIconWrap: {
+    width: 62, height: 62, borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center", justifyContent: "center",
-    marginLeft: 6,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.22)",
   },
-  cardTitleLight: {
-    fontSize: 15, fontWeight: "700", color: PALETTE.inkDark,
+  studentArrowBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center", justifyContent: "center",
   },
-  cardSubLight: {
-    fontSize: 12, fontWeight: "500", color: PALETTE.inkWhiteMuted,
+  studentVignette: {
+    position: "absolute", bottom: 0, left: 0, right: 0, height: 30,
   },
 
-  /* ─── FOOTER ─── */
-  footerSection: {
+  /* Portal cards (secondary) */
+  portalsStack: { gap: 10, marginBottom: 4 },
+  portalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.07)",
+    overflow: "hidden",
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 12 },
+      android: { elevation: 2 },
+    }),
+  },
+  portalInner: {
+    flexDirection: "row", alignItems: "center",
+    paddingRight: 16, paddingVertical: 14,
+    minHeight: 76,
+  },
+  portalBar: {
+    width: 4, alignSelf: "stretch",
+    borderTopLeftRadius: 18, borderBottomLeftRadius: 18,
+    marginRight: 10,
+  },
+  portalGhost: {
+    fontSize: 11, fontWeight: "900", letterSpacing: 0.4,
+    opacity: 0.18, width: 22, marginRight: 6,
+  },
+  portalIconBox: {
+    width: 46, height: 46, borderRadius: 14,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, marginRight: 14,
+  },
+  portalText: { flex: 1, gap: 2 },
+  portalTitle: { fontSize: 15, fontWeight: "700", color: "#0F172A", letterSpacing: -0.2, lineHeight: 21 },
+  portalSub: { fontSize: 11.5, fontWeight: "400", color: "#64748B", lineHeight: 17 },
+  portalArrow: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: "center", justifyContent: "center", borderWidth: 1,
+  },
+
+  /* Help */
+  helpRow: { alignItems: "center", marginTop: 28, marginBottom: 14 },
+  helpChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(0,0,0,0.025)", borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 9, borderWidth: 1,
+  },
+  helpText: { fontSize: 12, color: "#64748B" },
+  helpLink: { fontWeight: "700" },
+
+  /* ── Startup India (enhanced) ───────────────────────────── */
+  credWrap: {
+    marginTop: 4,
+    marginBottom: 14,
+    borderRadius: 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  credCard: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 56, // 8pt rigorous containment ( increased for breathing room )
-    gap: 6,
+    gap: 14,
+    paddingVertical: 16,
+    paddingLeft: 20,          // clears the 6px tricolor ribbon
+    paddingRight: 16,
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: "hidden",
+    position: "relative",
   },
-  footerDivider: {
-    width: 32,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(0,0,0,0.08)",
-    marginBottom: 6,
+  /* Tricolor ribbon — left edge */
+  credRibbon: {
+    position: "absolute",
+    left: 0, top: 0, bottom: 0,
+    width: 6,
+    flexDirection: "column",
   },
-  footerBrand: {
-    fontSize: 9.5,
-    fontWeight: "700",
-    color: "rgba(100,116,139,0.4)", // Alpha 0.4 system text
-    letterSpacing: 3.5, // Widened tracking
+  credRibbonSeg: {
+    flex: 1,
   },
-  footerVersion: {
-    fontSize: 9.5,
-    fontWeight: "500",
-    color: "rgba(148,163,184,0.5)",
-    letterSpacing: 0.5,
-  }
+  credAshoka: {
+    width: 4, height: 4, borderRadius: 2,
+    borderWidth: 0.8,
+    borderColor: "#000080",
+  },
+  /* Logo ring */
+  credLogoRing: {
+    width: 56, height: 56, borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1,
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
+      android: { elevation: 2 },
+    }),
+  },
+  credLogo: {
+    width: 46, height: 46, resizeMode: "contain",
+  },
+  /* Thin center divider */
+  credDivider: {
+    width: 1, height: 40,
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  /* Text */
+  credText: { flex: 1, gap: 3 },
+  credEyebrowRow: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+  },
+  credEyebrowDot: {
+    width: 5, height: 5, borderRadius: 2.5,
+  },
+  credEyebrow: {
+    fontSize: 9, fontWeight: "800",
+    letterSpacing: 1.8, color: "#94A3B8",
+  },
+  credTitle: {
+    fontSize: 16, fontWeight: "900",
+    letterSpacing: -0.3, lineHeight: 21,
+  },
+  credMetaRow: {
+    flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1,
+  },
+  credSub: {
+    fontSize: 11, fontWeight: "500",
+    color: "#64748B", letterSpacing: 0.1,
+  },
+  credMetaDot: {
+    width: 2.5, height: 2.5, borderRadius: 1.25, opacity: 0.5,
+  },
+  credVerified: {
+    fontSize: 10, fontWeight: "800", letterSpacing: 0.4,
+  },
+  /* Right badge */
+  credBadgePill: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1,
+  },
+
+  /* Footer */
+  footer: { alignItems: "center", gap: 5, paddingTop: 12, paddingBottom: 4 },
+  footerRule: { width: 40, height: 1, marginBottom: 8 },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  footerDot: { width: 3, height: 3, borderRadius: 2, opacity: 0.4 },
+  footerBrand: { fontSize: 9, fontWeight: "700", letterSpacing: 2.5, color: "#94A3B8" },
+  footerVersion: { fontSize: 10, color: "#94A3B8", letterSpacing: 0.5, opacity: 0.7 },
 });

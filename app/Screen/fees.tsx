@@ -11,6 +11,9 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { FeeService } from '../../src/services/feeService';
+import { SchoolSettingsService, SchoolSettings } from '../../src/services/schoolSettingsService';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 
 const FeesScreen = () => {
   const {
@@ -28,10 +31,22 @@ const FeesScreen = () => {
   const [feeData, setFeeData] = useState<FeeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
+  const [loadingReceipts, setLoadingReceipts] = useState(false);
 
   useEffect(() => {
     loadFees();
+    loadSchoolSettings();
   }, [user?.userId]);
+
+  const loadSchoolSettings = async () => {
+    try {
+      const data = await SchoolSettingsService.getSettings();
+      setSchoolSettings(data);
+    } catch (error) {
+      // ignore
+    }
+  };
   const loadFees = async () => {
     if (!user) return;
     try {
@@ -63,12 +78,60 @@ const FeesScreen = () => {
         return '#6b7280';
     }
   };
+
+  const formatAdjustmentOption = (adj: { amount: number; created_at: string; adjustment_type?: string }) => {
+    const isAdd = adj.adjustment_type === 'add';
+    const sign = isAdd ? '+' : '−';
+    const label = isAdd ? 'Added' : 'Waived';
+    return `${label}: ${sign}₹${adj.amount.toLocaleString()} (${new Date(adj.created_at).toLocaleDateString()})`;
+  };
+
+  const handleDownloadAdjustmentReceipt = async (item: StudentFee) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setLoadingReceipts(true);
+      const res = await FeeService.getAdjustments({ student_fee_id: item.id });
+      const adjustments = res?.data || [];
+
+      if (adjustments.length === 0) {
+        alert('No adjustment records found for this fee component.');
+        return;
+      }
+
+      const generatePdf = async (adj: any) => {
+        const details = await FeeService.getAdjustment(adj.id);
+        const { generateAdjustmentPDF } = await import('../../src/utils/pdfGenerator');
+        await generateAdjustmentPDF(details, schoolSettings);
+      };
+
+      if (adjustments.length === 1) {
+        await generatePdf(adjustments[0]);
+      } else {
+        const options = adjustments.map((a: any) => ({
+          text: formatAdjustmentOption(a),
+          onPress: () => void generatePdf(a)
+        }));
+        options.push({ text: 'Cancel', style: 'cancel' } as any);
+        alertCompat(
+          'Multiple Adjustments Found',
+          'Please select which adjustment receipt to download:',
+          options
+        );
+      }
+    } catch (error) {
+      alert('Failed to download adjustment receipt.');
+    } finally {
+      setLoadingReceipts(false);
+    }
+  };
+
   const renderFeeItem = ({
     item,
     index
 
   }: { item: StudentFee; index: number; }) => {
     const color = getStatusColor(item.status);
+    const dueAmount = item.amount_due - item.discount;
     return <Animated.View entering={FadeInUp.delay(index * 100).duration(500)} style={styles.card}>
       <View style={styles.cardHeader}>
         <View>
@@ -89,7 +152,7 @@ const FeesScreen = () => {
       <View style={styles.amountRow}>
         <View>
           <Text style={styles.amountLabel}>Total Due</Text>
-          <Text style={styles.amountValue}>₹{item.amount_due.toLocaleString()}</Text>
+          <Text style={styles.amountValue}>₹{dueAmount.toLocaleString()}</Text>
         </View>
         <View style={{
           alignItems: 'flex-end'
@@ -109,6 +172,19 @@ const FeesScreen = () => {
         <Text style={styles.payButtonText}>Pay Now</Text>
         <Ionicons name="arrow-forward" size={16} color="#fff" />
       </TouchableOpacity>}
+
+      {((item.adjustment_count ?? 0) > 0 || item.discount > 0) && (
+        <View>
+          <View style={styles.divider} />
+          <TouchableOpacity 
+            style={[styles.downloadBtn, { backgroundColor: '#eef2ff', paddingVertical: 6 }]} 
+            onPress={() => handleDownloadAdjustmentReceipt(item)}
+          >
+            <Ionicons name="download-outline" size={14} color="#4F46E5" />
+            <Text style={[styles.downloadText, { color: '#4F46E5', fontSize: 12 }]}>Adjustment Receipt</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </Animated.View>;
   };
   if (loading) {
@@ -306,6 +382,19 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.background,
     fontWeight: '600',
     fontSize: 14
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 8
+  },
+  downloadText: {
+    fontSize: 14,
+    fontWeight: '600'
   },
   emptyContainer: {
     alignItems: 'center',

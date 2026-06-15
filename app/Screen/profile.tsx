@@ -11,6 +11,8 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 const {
   width
 } = Dimensions.get('window');
@@ -68,6 +70,7 @@ const ProfileScreen = () => {
   // Extract enrollment details safely
   const enrollment = student.current_enrollment || {
     class_code: 'N/A',
+    class_name: 'N/A',
     section_name: 'N/A',
     roll_number: 'N/A',
     academic_year: ''
@@ -76,42 +79,49 @@ const ProfileScreen = () => {
   // Extract primary parent/guardian safely
   const primaryParent = student.parents?.find((p) => p.is_primary) || student.parents?.[0];
   return <SafeAreaView style={styles.container}>
-    <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
+    <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
     {/* Header / Banner */}
-    <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton} hitSlop={{
-          top: 10,
-          bottom: 10,
-          left: 10,
-          right: 10
-        }}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('profile.title', 'My Profile')}</Text>
-        <View style={{
-          width: 24
-        }} />
-      </View>
-      <View style={styles.profileSummary}>
-        <View style={styles.avatarContainer}>
-          <Image source={{
-            uri: student.photo_url || `https://ui-avatars.com/api/?name=${student.first_name}+${student.last_name}&background=random&size=200`
-          }} style={styles.avatar} />
-          <View style={styles.statusBadge}>
-            <View style={[styles.statusDot, {
-              backgroundColor: student.status === 'active' ? '#10B981' : '#EF4444'
-            }]} />
+    <Animated.View entering={FadeInDown.duration(600)} style={styles.headerContainer}>
+      <LinearGradient
+        colors={isDark ? ['#312E81', '#1E1B4B'] : ['#4F46E5', '#7C3AED']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <SafeAreaView>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton} hitSlop={{
+              top: 10,
+              bottom: 10,
+              left: 10,
+              right: 10
+            }}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>{t('profile.title', 'My Profile')}</Text>
+            <View style={{ width: 40 }} />
           </View>
-        </View>
-        <Text style={styles.name}>{student.display_name}</Text>
-        <Text style={styles.rollNo}>
-          {enrollment.class_code} - {enrollment.section_name} | Roll: {enrollment.roll_number}
-        </Text>
-        <View style={styles.idChip}>
-          <Text style={styles.idText}>ID: {student.admission_no}</Text>
-        </View>
-      </View>
+          <View style={styles.profileSummary}>
+            <View style={styles.avatarContainer}>
+              <Image source={{
+                uri: student.photo_url || `https://ui-avatars.com/api/?name=${student.first_name}+${student.last_name}&background=random&size=200`
+              }} style={styles.avatar} />
+              <View style={styles.statusBadge}>
+                <View style={[styles.statusDot, {
+                  backgroundColor: student.status === 'active' ? '#10B981' : '#EF4444'
+                }]} />
+              </View>
+            </View>
+            <Text style={styles.name}>{student.display_name}</Text>
+            <Text style={styles.rollNo}>
+              {enrollment.class_name || enrollment.class_code} - {enrollment.section_name} | Roll: {enrollment.roll_number}
+            </Text>
+            <BlurView intensity={isDark ? 30 : 60} tint={isDark ? "dark" : "light"} style={styles.idChip}>
+              <Text style={styles.idText}>ID: {student.admission_no}</Text>
+            </BlurView>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
     </Animated.View>
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
       {refreshing &&
@@ -120,10 +130,12 @@ const ProfileScreen = () => {
         </View>
       }
       {/* Personal Info Card */}
-      <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.card}>
+      <Animated.View entering={FadeInUp.delay(200).duration(500).springify()} style={[styles.card, isDark && styles.cardDark]}>
         <View style={styles.cardHeader}>
-          <Ionicons name="person" size={20} color="#4F46E5" />
-          <Text style={styles.cardTitle}>{t('profile.personal_info', 'Personal Information')}</Text>
+          <View style={[styles.iconWrap, { backgroundColor: 'rgba(79, 70, 229, 0.1)' }]}>
+            <Ionicons name="person" size={20} color="#4F46E5" />
+          </View>
+          <Text style={[styles.cardTitle, isDark && { color: '#F1F5F9' }]}>{t('profile.personal_info', 'Personal Information')}</Text>
         </View>
         <View style={styles.infoRow}>
           <InfoItem label={t('profile.dob', 'Date of Birth')} value={new Date(student.dob).toLocaleDateString()} icon="calendar-outline" />
@@ -136,13 +148,15 @@ const ProfileScreen = () => {
         </View>
       </Animated.View>
       {/* Parent Info Card */}
-      {primaryParent && <Animated.View entering={FadeInUp.delay(300).duration(500)} style={styles.card}>
+      {primaryParent && <Animated.View entering={FadeInUp.delay(300).duration(500).springify()} style={[styles.card, isDark && styles.cardDark]}>
         <View style={styles.cardHeader}>
-          <Ionicons name="people" size={20} color="#F59E0B" />
-          <Text style={styles.cardTitle}>{t('profile.guardian_info', 'Guardian Details')}</Text>
+          <View style={[styles.iconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+            <Ionicons name="people" size={20} color="#F59E0B" />
+          </View>
+          <Text style={[styles.cardTitle, isDark && { color: '#F1F5F9' }]}>{t('profile.guardian_info', 'Guardian Details')}</Text>
         </View>
         <View style={styles.infoRow}>
-          <InfoItem label={t('profile.guardian_name', 'Name')} value={`${primaryParent.first_name} ${primaryParent.last_name} (${primaryParent.relation})`} icon="person-outline" />
+          <InfoItem label={t('profile.guardian_name', 'Name')} value={`${[primaryParent.first_name, primaryParent.last_name].filter(Boolean).join(' ')} (${primaryParent.relation})`} icon="person-outline" />
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
@@ -151,10 +165,12 @@ const ProfileScreen = () => {
         </View>
       </Animated.View>}
       {/* Other Details - Skeleton for future expansion */}
-      <Animated.View entering={FadeInUp.delay(400).duration(500)} style={styles.card}>
+      <Animated.View entering={FadeInUp.delay(400).duration(500).springify()} style={[styles.card, isDark && styles.cardDark]}>
         <View style={styles.cardHeader}>
-          <Ionicons name="school" size={20} color="#10B981" />
-          <Text style={styles.cardTitle}>{t('profile.academic_info', 'Academic Details')}</Text>
+          <View style={[styles.iconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+            <Ionicons name="school" size={20} color="#10B981" />
+          </View>
+          <Text style={[styles.cardTitle, isDark && { color: '#F1F5F9' }]}>{t('profile.academic_info', 'Academic Details')}</Text>
         </View>
         <View style={styles.infoRow}>
           <InfoItem label={t('profile.admission_date', 'Admission Date')} value={new Date(student.admission_date).toLocaleDateString()} icon="calendar-number-outline" />
@@ -180,10 +196,10 @@ const InfoItem = ({
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   return <View style={styles.infoItem}>
     <View style={styles.labelRow}>
-      <Ionicons name={icon} size={14} color="#6B7280" />
-      <Text style={styles.infoLabel}>{label}</Text>
+      <Ionicons name={icon} size={14} color={isDark ? "#94A3B8" : "#64748B"} />
+      <Text style={[styles.infoLabel, isDark && { color: '#94A3B8' }]}>{label}</Text>
     </View>
-    <Text style={styles.infoValue}>{value}</Text>
+    <Text style={[styles.infoValue, isDark && { color: '#F8FAFC' }]}>{value}</Text>
   </View>;
 };
 export default ProfileScreen;
@@ -219,40 +235,41 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.background,
     fontWeight: '600'
   },
-  header: {
-    backgroundColor: theme.colors.primary,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 0,
-    paddingBottom: 24,
+  headerContainer: {
     borderBottomLeftRadius: 32,
     borderBottomRightRadius: 32,
+    overflow: 'hidden',
     shadowColor: theme.colors.primary,
-    shadowOffset: {
-      width: 0,
-      height: 10
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
     elevation: 10,
-    zIndex: 10
+    zIndex: 10,
+  },
+  headerGradient: {
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 20 : 0,
+    paddingBottom: 30,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     marginBottom: 20,
-    height: 48
+    height: 56
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: theme.colors.background
   },
@@ -264,47 +281,56 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     marginBottom: 12
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     borderWidth: 4,
-    borderColor: theme.colors.background
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   statusBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
+    bottom: 2,
+    right: 6,
     backgroundColor: theme.colors.background,
-    padding: 3,
-    borderRadius: 12
+    padding: 4,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4
   },
   statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#10B981'
   },
   name: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: theme.colors.background,
-    marginBottom: 4
+    color: '#FFFFFF',
+    marginBottom: 6,
+    letterSpacing: 0.5
   },
   rollNo: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 12,
-    fontWeight: '500'
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2
   },
   idChip: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 16
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   idText: {
-    color: theme.colors.background,
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5
   },
@@ -314,28 +340,39 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   },
   card: {
     backgroundColor: theme.colors.background,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     shadowColor: theme.colors.text,
-    shadowOffset: {
-      width: 0,
-      height: 2
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)'
+  },
+  cardDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    gap: 8
+    marginBottom: 20,
+    gap: 12
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1F2937'
+    color: '#0F172A',
+    letterSpacing: 0.3
   },
   infoRow: {
     flexDirection: 'row',

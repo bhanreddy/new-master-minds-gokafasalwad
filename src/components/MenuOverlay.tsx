@@ -1,32 +1,32 @@
-import React, { useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Href, useRouter } from 'expo-router';
+import React, { useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-    View,
-    Text,
-    StyleSheet,
-    Pressable,
     Dimensions,
-    StatusBar,
     Modal,
     Platform,
+    Pressable,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
-import { useRouter, Href } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
-    useSharedValue,
+    Extrapolation,
+    interpolate,
+    runOnJS,
     useAnimatedStyle,
+    useSharedValue,
     withSpring,
     withTiming,
-    runOnJS,
-    interpolate,
-    Extrapolation,
 } from 'react-native-reanimated';
-import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
-import * as Haptics from '../utils/haptics';
-import { AuthService } from '../services/authService';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
+import { AuthService } from '../services/authService';
+import * as Haptics from '../utils/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
@@ -105,7 +105,7 @@ const MenuItemCard: React.FC<{ item: MenuItem; onPress: () => void }> = ({ item,
 const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }) => {
     const { t } = useTranslation();
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, signOut } = useAuth();
     const theme = THEMES[userType];
 
     const translateX = useSharedValue(-DRAWER_WIDTH);
@@ -115,7 +115,6 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
     const studentMenuItems: MenuItem[] = [
         { key: 'dcgd', label: 'DCGD', icon: 'ribbon-outline', link: '/Screen/dcgd', accent: '#0D9488' },
         { key: 'ai_doubt', label: 'AI Doubt Assist', icon: 'chatbubble-ellipses-outline', link: '/Screen/aiChat', accent: '#6366F1' },
-        { key: 'event_photos', label: 'Event Photos', icon: 'camera-outline', link: '/Screen/eventPhotos', accent: '#F59E0B' },
         { key: 'insurance', label: 'Insurance', icon: 'shield-checkmark-outline', link: '/Screen/insurance', accent: '#10B981' },
         { key: 'money_science', label: 'Money Science', icon: 'cash-outline', link: '/Screen/moneyScience', accent: '#8B5CF6' },
         { key: 'girl_safety', label: 'Girl Safety', icon: 'shield-checkmark-outline', link: '/girl-safety', accent: '#7C3AED' },
@@ -207,8 +206,14 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student' }
             closeDrawer();
             setTimeout(async () => {
                 try {
-                    await AuthService.signOut();
-                    router.replace(userType === 'staff' ? '/staff-login' as any : userType === 'driver' ? '/driver-login' as any : '/');
+                    // Clear the auto_login flag for the current portal
+                    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                    const autoLoginKey = userType === 'staff' ? 'staff_auto_login'
+                        : userType === 'driver' ? 'driver_auto_login'
+                        : 'student_auto_login';
+                    await AsyncStorage.removeItem(autoLoginKey);
+                    await signOut();
+                    router.replace('/welcome');
                     console.debug('[MenuOverlay] handleLogout end');
                 } catch (e) {
                     console.error('Button action failed:', e);

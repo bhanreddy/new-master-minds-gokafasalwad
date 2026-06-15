@@ -62,6 +62,7 @@ export default function RouteDetailScreen() {
   const routeTitle = params.routeName ? decodeURIComponent(String(params.routeName)) : 'Route';
 
   const [direction, setDirection] = useState<string | null>(null);
+  const [routeName, setRouteName] = useState('');
   const [stops, setStops] = useState<StopRow[]>([]);
   const [students, setStudents] = useState<StudentAssignRow[]>([]);
   const [liveTrip, setLiveTrip] = useState<LivePayload['trip'] | null>(null);
@@ -72,6 +73,14 @@ export default function RouteDetailScreen() {
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [addStopOpen, setAddStopOpen] = useState(false);
   const [newStopName, setNewStopName] = useState('');
+  const [savingStop, setSavingStop] = useState(false);
+  const [editRouteOpen, setEditRouteOpen] = useState(false);
+  const [editRouteName, setEditRouteName] = useState('');
+  const [editRouteDirection, setEditRouteDirection] = useState<'morning' | 'afternoon' | 'evening' | 'both'>('both');
+  const [editStopOpen, setEditStopOpen] = useState(false);
+  const [editStopId, setEditStopId] = useState<string | null>(null);
+  const [editStopName, setEditStopName] = useState('');
+  const [savingRoute, setSavingRoute] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignStep, setAssignStep] = useState<1 | 2>(1);
   const [searchQ, setSearchQ] = useState('');
@@ -90,12 +99,13 @@ export default function RouteDetailScreen() {
         api.get<StopRow[]>(`/transport/routes/${routeId}/stops`),
         api.get<StudentAssignRow[]>(`/transport/routes/${routeId}/students`),
         api.get<LivePayload>(`/transport/routes/${routeId}/live`).catch(() => null),
-        api.get<{ direction?: string | null }>(`/transport/routes/${routeId}`),
+        api.get<{ direction?: string | null; name?: string }>(`/transport/routes/${routeId}`),
       ]);
       setStops(Array.isArray(stopsRes) ? stopsRes : []);
       setStudents(Array.isArray(studentsRes) ? studentsRes : []);
       setLiveTrip(liveRes?.trip ?? null);
       setDirection(routeBundle?.direction ?? null);
+      setRouteName(routeBundle?.name ?? routeTitle);
     } catch {
       alertCompat('Error', 'Could not load route');
     } finally {
@@ -203,6 +213,7 @@ export default function RouteDetailScreen() {
       return;
     }
     try {
+      setSavingStop(true);
       await api.post(`/transport/routes/${routeId}/stops/auto`, {
         name,
         latitude: null,
@@ -211,8 +222,67 @@ export default function RouteDetailScreen() {
       setNewStopName('');
       setAddStopOpen(false);
       await loadAll();
+      alertCompat('Done', 'Stop added successfully');
     } catch (e: any) {
       alertCompat('Error', e?.message || 'Could not add stop');
+    } finally {
+      setSavingStop(false);
+    }
+  };
+
+  const openEditRouteModal = () => {
+    setEditRouteName(routeName || routeTitle);
+    const dir = (direction || 'both') as typeof editRouteDirection;
+    setEditRouteDirection(['morning', 'afternoon', 'evening', 'both'].includes(dir) ? dir : 'both');
+    setEditRouteOpen(true);
+  };
+
+  const saveEditRoute = async () => {
+    if (!editRouteName.trim()) {
+      alertCompat('Validation', 'Route name is required');
+      return;
+    }
+    try {
+      setSavingRoute(true);
+      await api.put(`/transport/routes/${routeId}`, {
+        name: editRouteName.trim(),
+        direction: editRouteDirection,
+      });
+      setRouteName(editRouteName.trim());
+      setDirection(editRouteDirection);
+      setEditRouteOpen(false);
+      await loadAll();
+      alertCompat('Done', 'Route updated');
+    } catch (e: any) {
+      alertCompat('Error', e?.message || 'Could not update route');
+    } finally {
+      setSavingRoute(false);
+    }
+  };
+
+  const openEditStopModal = (stop: StopRow) => {
+    setEditStopId(stop.id);
+    setEditStopName(stop.name);
+    setEditStopOpen(true);
+  };
+
+  const saveEditStop = async () => {
+    if (!editStopId || !editStopName.trim()) {
+      alertCompat('Validation', 'Stop name is required');
+      return;
+    }
+    try {
+      setSavingStop(true);
+      await api.put(`/transport/stops/${editStopId}`, {
+        name: editStopName.trim(),
+      });
+      setEditStopOpen(false);
+      await loadAll();
+      alertCompat('Done', 'Stop updated');
+    } catch (e: any) {
+      alertCompat('Error', e?.message || 'Could not update stop');
+    } finally {
+      setSavingStop(false);
     }
   };
 
@@ -332,6 +402,13 @@ export default function RouteDetailScreen() {
             <Text style={styles.stopName}>{item.name}</Text>
             <Text style={styles.stopMeta}>{studentCountAtStop(item.id)} student(s)</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => openEditStopModal(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.stopEditBtn}
+          >
+            <Ionicons name="create-outline" size={20} color="#4338CA" />
+          </TouchableOpacity>
           <Ionicons name="reorder-three" size={28} color="#94A3B8" />
         </TouchableOpacity>
       </Swipeable>
@@ -373,6 +450,10 @@ export default function RouteDetailScreen() {
         <View style={[styles.tripChip, { backgroundColor: tripChip.bg }]}>
           <Text style={[styles.tripChipTxt, { color: tripChip.fg }]}>{tripChip.label}</Text>
         </View>
+        <TouchableOpacity style={styles.routeEditLink} onPress={openEditRouteModal}>
+          <Ionicons name="create-outline" size={16} color="#4338CA" />
+          <Text style={styles.routeEditLinkTxt}>Edit route</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.driverRow}>
@@ -483,6 +564,79 @@ export default function RouteDetailScreen() {
         </Pressable>
       </Modal>
 
+      <Modal visible={editRouteOpen} transparent animationType="fade">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <Pressable style={styles.modalBackdropInner} onPress={() => !savingRoute && setEditRouteOpen(false)}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.sheetTitle}>Edit route</Text>
+              <Text style={styles.fieldLabel}>Route name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Route name"
+                value={editRouteName}
+                onChangeText={setEditRouteName}
+              />
+              <Text style={styles.fieldLabel}>Trip direction</Text>
+              <View style={styles.dirRow}>
+                {(['morning', 'afternoon', 'evening', 'both'] as const).map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.dirPick, editRouteDirection === d && styles.dirPickOn]}
+                    onPress={() => setEditRouteDirection(d)}
+                  >
+                    <Text style={[styles.dirPickTxt, editRouteDirection === d && styles.dirPickTxtOn]}>
+                      {d}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.sheetActions}>
+                <TouchableOpacity onPress={() => setEditRouteOpen(false)} disabled={savingRoute}>
+                  <Text style={savingRoute ? styles.disabledLink : undefined}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={saveEditRoute} disabled={savingRoute}>
+                  <Text style={[styles.primaryLink, savingRoute && styles.disabledLink]}>
+                    {savingRoute ? 'Saving…' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={editStopOpen} transparent animationType="fade">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <Pressable style={styles.modalBackdropInner} onPress={() => !savingStop && setEditStopOpen(false)}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.sheetTitle}>Edit stop</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Stop name"
+                value={editStopName}
+                onChangeText={setEditStopName}
+              />
+              <View style={styles.sheetActions}>
+                <TouchableOpacity onPress={() => setEditStopOpen(false)} disabled={savingStop}>
+                  <Text style={savingStop ? styles.disabledLink : undefined}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={saveEditStop} disabled={savingStop}>
+                  <Text style={[styles.primaryLink, savingStop && styles.disabledLink]}>
+                    {savingStop ? 'Saving…' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={addStopOpen} transparent animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -498,11 +652,13 @@ export default function RouteDetailScreen() {
                 onChangeText={setNewStopName}
               />
               <View style={styles.sheetActions}>
-                <TouchableOpacity onPress={() => setAddStopOpen(false)}>
-                  <Text>Cancel</Text>
+                <TouchableOpacity onPress={() => setAddStopOpen(false)} disabled={savingStop}>
+                  <Text style={savingStop ? styles.disabledLink : undefined}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={saveNewStop}>
-                  <Text style={styles.primaryLink}>Save</Text>
+                <TouchableOpacity onPress={saveNewStop} disabled={savingStop}>
+                  <Text style={[styles.primaryLink, savingStop && styles.disabledLink]}>
+                    {savingStop ? 'Saving…' : 'Save'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
@@ -604,6 +760,17 @@ const styles = StyleSheet.create({
   dirChipTxt: { fontSize: 12, fontWeight: '700', color: '#4338CA', textTransform: 'capitalize' },
   tripChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   tripChipTxt: { fontSize: 12, fontWeight: '700' },
+  routeEditLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+  },
+  routeEditLinkTxt: { color: '#4338CA', fontWeight: '700', fontSize: 12 },
   driverRow: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -648,6 +815,29 @@ const styles = StyleSheet.create({
   orderBadgeTxt: { fontWeight: '800', color: '#4338CA', fontSize: 14 },
   stopName: { fontSize: 16, fontWeight: '700', color: '#111827' },
   stopMeta: { fontSize: 13, color: '#64748B', marginTop: 2 },
+  stopEditBtn: {
+    padding: 4,
+    marginRight: 4,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  dirRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  dirPick: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dirPickOn: { backgroundColor: '#EEF2FF', borderColor: '#818CF8' },
+  dirPickTxt: { fontSize: 13, fontWeight: '700', color: '#64748B', textTransform: 'capitalize' },
+  dirPickTxtOn: { color: '#4338CA' },
   swipeDel: {
     backgroundColor: '#DC2626',
     justifyContent: 'center',
@@ -734,6 +924,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   primaryLink: { color: '#4338CA', fontWeight: '700', fontSize: 16 },
+  disabledLink: { color: '#94A3B8' },
   driverPick: {
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,

@@ -1,3 +1,14 @@
+// ── Web polyfill: react-native-web ≥0.21 removed setNativeProps, but
+// react-native-reanimated's JS fallback still calls it on animated refs
+// (including @expo/vector-icons). Provide a no-op shim to prevent crashes.
+import { Platform } from 'react-native';
+if (Platform.OS === 'web') {
+  // Patch prototype so every DOM node has a harmless setNativeProps
+  if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.setNativeProps) {
+    HTMLElement.prototype.setNativeProps = function () {};
+  }
+}
+
 import 'react-native-gesture-handler';
 import './src/services/notificationManager';
 import { notificationManager } from './src/services/notificationManager';

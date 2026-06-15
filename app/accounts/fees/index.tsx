@@ -3,7 +3,7 @@ import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Pressable, Platform
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Pressable, Platform, ActivityIndicator, RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -11,16 +11,65 @@ import AdminHeader from '../../../src/components/AdminHeader';
 import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import Animated, {
   FadeInDown, FadeIn, useAnimatedStyle,
-  useSharedValue, withSpring, withTiming, interpolate
+  useSharedValue, withSpring, interpolate
 } from 'react-native-reanimated';
 import { useAuth } from '../../../src/hooks/useAuth';
-import { FeeService } from '../../../src/services/feeService';
+import { useApiQuery } from '../../../src/hooks/useApiQuery';
+import { FeeService, FeeSummaryStatus } from '../../../src/services/feeService';
 import { useTheme } from '../../../src/hooks/useTheme';
 import LogoLoader from '../../../src/components/LogoLoader';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const FILTERS = ['All', 'Paid', 'Partial', 'Pending'] as const;
 type FilterType = typeof FILTERS[number];
+const VIEW_MODES = ['Students', 'Class Structures'] as const;
+type ViewMode = typeof VIEW_MODES[number];
+const PAGE_LIMIT = 50;
+const CACHE_TTL_MS = 60 * 1000;
+
+const EMPTY_COUNTS: Record<FilterType, number> = {
+  All: 0,
+  Paid: 0,
+  Partial: 0,
+  Pending: 0,
+};
+
+type FeeListStudent = {
+  id: string;
+  name: string;
+  admissionNo: string;
+  class: string;
+  status: FeeSummaryStatus;
+  total: number | string;
+  paid: number | string;
+  due: number | string;
+  rawId: string;
+};
+
+type SummaryStats = {
+  collectedTotal: number;
+  pendingDues: number;
+  pendingStudents: number;
+};
+
+type FeeSummaryMeta = {
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+  counts: Record<FilterType, number>;
+};
+
+type ClassFeeStructure = {
+  id: string;
+  class_name: string;
+  section_name?: string;
+  fee_type: string;
+  academic_year: string;
+  amount: number;
+  due_date?: string;
+  frequency?: string;
+};
 
 const STATUS_CONFIG = {
   Paid: { light: { bg: '#D1FAE5', text: '#065F46', dot: '#10B981' }, dark: { bg: 'rgba(16,185,129,0.15)', text: '#34D399', dot: '#10B981' } },
@@ -184,22 +233,18 @@ const cardStyles = StyleSheet.create({
 });
 
 // ─── Summary Header ───────────────────────────────────────────────────────────
-function SummaryHeader({ students, isDark }: { students: any[]; isDark: boolean }) {
-  const totalDue = students.reduce((s, x) => s + (parseFloat(x.due) || 0), 0);
-  const totalPaid = students.reduce((s, x) => s + (parseFloat(x.paid) || 0), 0);
-  const countPending = students.filter(x => x.status !== 'Paid').length;
-
+function SummaryHeader({ stats, isDark }: { stats: SummaryStats; isDark: boolean }) {
   const bg = isDark ? '#1C1F2A' : '#1E293B';
   const textSec = 'rgba(255,255,255,0.4)';
 
   return (
     <Animated.View entering={FadeIn.duration(500)} style={[sumStyles.card, { backgroundColor: bg }]}>
       <View style={sumStyles.row}>
-        <SumCell label="Total Collected" value={`₹${totalPaid.toLocaleString('en-IN')}`} color="#34D399" sec={textSec} />
+        <SumCell label="Total Collected" value={`₹${stats.collectedTotal.toLocaleString('en-IN')}`} color="#34D399" sec={textSec} />
         <View style={sumStyles.sep} />
-        <SumCell label="Total Outstanding" value={`₹${totalDue.toLocaleString('en-IN')}`} color="#F87171" sec={textSec} />
+        <SumCell label="Total Outstanding" value={`₹${stats.pendingDues.toLocaleString('en-IN')}`} color="#F87171" sec={textSec} />
         <View style={sumStyles.sep} />
-        <SumCell label="Pending Students" value={String(countPending)} color="#60A5FA" sec={textSec} />
+        <SumCell label="Pending Students" value={String(stats.pendingStudents)} color="#60A5FA" sec={textSec} />
       </View>
     </Animated.View>
   );
@@ -280,6 +325,133 @@ const pillStyles = StyleSheet.create({
   badgeText: { fontSize: 10, fontWeight: '800' },
 });
 
+const formatDueDate = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const classBadgeLabel = (className?: string) => {
+  const match = (className || '').match(/\d+/);
+  return match?.[0] || (className || '?').charAt(0).toUpperCase();
+};
+
+// ─── Class Structure Card ─────────────────────────────────────────────────────
+const ClassStructureCard = React.memo(function ClassStructureCard({
+  item, index, isDark,
+}: {
+  item: ClassFeeStructure; index: number; isDark: boolean;
+}) {
+  const cardBg = isDark ? '#1C1F2A' : '#FFFFFF';
+  const border = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
+  const textPri = isDark ? '#F9FAFB' : '#111827';
+  const textSec = isDark ? 'rgba(255,255,255,0.45)' : '#6B7280';
+  const amount = Number(item.amount) || 0;
+
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 40).duration(350).springify()}>
+      <View style={[structureStyles.card, { backgroundColor: cardBg, borderColor: border }]}>
+        <View style={structureStyles.classBadge}>
+          <Text style={structureStyles.classBadgeText}>{classBadgeLabel(item.class_name)}</Text>
+        </View>
+
+        <View style={structureStyles.infoBlock}>
+          <Text style={[structureStyles.title, { color: textPri }]} numberOfLines={1}>
+            {item.fee_type} - {item.academic_year}
+          </Text>
+          <Text style={[structureStyles.subtitle, { color: textSec }]} numberOfLines={1}>
+            {item.class_name}
+            {item.section_name ? ` · ${item.section_name}` : ''}
+            {' · Due '}{formatDueDate(item.due_date)}
+          </Text>
+        </View>
+
+        <View style={structureStyles.amountBlock}>
+          <Text style={structureStyles.amount}>₹{amount.toLocaleString('en-IN')}</Text>
+          <Text style={[structureStyles.frequency, { color: textSec }]}>
+            {(item.frequency || 'MONTHLY').toUpperCase()}
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+const structureStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  classBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(59,130,246,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  classBadgeText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#3B82F6',
+  },
+  infoBlock: { flex: 1 },
+  title: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  subtitle: { fontSize: 12, fontWeight: '600' },
+  amountBlock: { alignItems: 'flex-end' },
+  amount: { fontSize: 18, fontWeight: '800', color: '#2563EB' },
+  frequency: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4, marginTop: 2 },
+});
+
+// ─── View Mode Pill ───────────────────────────────────────────────────────────
+function ViewModePill({
+  label, active, isDark, onPress,
+}: {
+  label: ViewMode; active: boolean; isDark: boolean; onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[
+        viewModeStyles.pill,
+        active
+          ? { backgroundColor: '#3B82F6', borderColor: '#3B82F6' }
+          : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB' },
+      ]}
+      onPress={onPress}
+    >
+      <Text style={[viewModeStyles.label, { color: active ? '#fff' : (isDark ? 'rgba(255,255,255,0.5)' : '#6B7280') }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const viewModeStyles = StyleSheet.create({
+  pill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  label: { fontSize: 13, fontWeight: '800' },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AccountsFees() {
   const { user } = useAuth();
@@ -289,50 +461,181 @@ export default function AccountsFees() {
   const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeView, setActiveView] = useState<ViewMode>('Students');
   const [loading, setLoading] = useState(true);
-  const [students, setStudents] = useState<any[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [structuresLoading, setStructuresLoading] = useState(true);
+  const [students, setStudents] = useState<FeeListStudent[]>([]);
+  const [structures, setStructures] = useState<ClassFeeStructure[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [summaryStats, setSummaryStats] = useState<SummaryStats | null>(null);
+  const [meta, setMeta] = useState<FeeSummaryMeta>({
+    total: 0,
+    page: 1,
+    limit: PAGE_LIMIT,
+    total_pages: 1,
+    counts: EMPTY_COUNTS,
+  });
+  const requestIdRef = useRef(0);
 
-  useEffect(() => { loadData(); }, [user]);
+  const { data: statsPayload, refetch: refetchStats } = useApiQuery<any>(
+    '/fees/dashboard-stats',
+    'accounts-fees-stats',
+    CACHE_TTL_MS,
+    user?.id,
+    { query: { for_accounts: '1' } }
+  );
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const data = await FeeService.getStudentFeeSummaries();
-      setStudents(data.map((d: any) => ({
-        id: d.student_id,
-        name: d.student_name,
-        admissionNo: d.admission_no || '',
-        class: d.class_name,
-        status: d.status,
-        total: d.total_amount,
-        paid: d.paid_amount,
-        due: d.due_amount,
-        rawId: d.student_id,
-      })));
-    } catch { /* silent */ }
-    finally { setLoading(false); }
-  };
+  const { data: structuresPayload, loading: structuresQueryLoading, refetch: refetchStructures } = useApiQuery<any[]>(
+    '/fees/structure',
+    'accounts-fees-structures',
+    CACHE_TTL_MS,
+    user?.id
+  );
 
-  const filterCounts = useMemo(() => ({
-    All: students.length,
-    Paid: students.filter(s => s.status === 'Paid').length,
-    Partial: students.filter(s => s.status === 'Partial').length,
-    Pending: students.filter(s => s.status === 'Pending').length,
-  }), [students]);
+  const mapFeeSummary = useCallback((d: any): FeeListStudent => ({
+    id: d.student_id,
+    name: d.student_name,
+    admissionNo: d.admission_no || '',
+    class: d.class_name || '',
+    status: d.status,
+    total: d.total_amount,
+    paid: d.paid_amount,
+    due: d.due_amount,
+    rawId: `${d.student_id}_${d.class_name || ''}`,
+  }), []);
 
-  const filteredStudents = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return students.filter(s => {
-      const matchFilter = activeFilter === 'All' || s.status === activeFilter;
-      const matchSearch = !q
-        || s.name.toLowerCase().includes(q)
-        || s.admissionNo.toLowerCase().includes(q)
-        || s.class.toLowerCase().includes(q);
-      return matchFilter && matchSearch;
+  const mapStructure = useCallback((item: any): ClassFeeStructure => ({
+    id: String(item.id),
+    class_name: item.class_name || '—',
+    section_name: item.section_name || undefined,
+    fee_type: item.fee_type || 'Fee',
+    academic_year: item.academic_year || '—',
+    amount: Number(item.amount) || 0,
+    due_date: item.due_date,
+    frequency: item.frequency,
+  }), []);
+
+  useEffect(() => {
+    if (!statsPayload) return;
+    const stats = statsPayload.stats || statsPayload;
+    setSummaryStats({
+      collectedTotal: Number(stats.collected_total || 0),
+      pendingDues: Number(stats.pending_dues || 0),
+      pendingStudents: Number(stats.defaulter_count || 0),
     });
-  }, [students, searchQuery, activeFilter]);
+  }, [statsPayload]);
+
+  useEffect(() => {
+    if (!structuresPayload) return;
+    const payload = structuresPayload as any;
+    const rows = Array.isArray(payload)
+      ? payload
+      : payload?.structures ?? payload?.data ?? [];
+    setStructures((Array.isArray(rows) ? rows : []).map(mapStructure));
+    setStructuresLoading(false);
+  }, [mapStructure, structuresPayload]);
+
+  useEffect(() => {
+    if (structuresQueryLoading && !structuresPayload) setStructuresLoading(true);
+  }, [structuresQueryLoading, structuresPayload]);
+
+  const loadData = useCallback(async ({
+    nextPage = 1,
+    append = false,
+    isRefreshing = false,
+  }: {
+    nextPage?: number;
+    append?: boolean;
+    isRefreshing?: boolean;
+  } = {}) => {
+    if (!user) return;
+
+    const requestId = ++requestIdRef.current;
+    if (append) setLoadingMore(true);
+    else if (isRefreshing) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const response = await FeeService.getStudentFeeSummaries({
+        page: nextPage,
+        limit: PAGE_LIMIT,
+        search: debouncedSearch || undefined,
+        status: activeFilter === 'All' ? undefined : activeFilter,
+      });
+
+      if (requestId !== requestIdRef.current) return;
+
+      const mapped = response.data.map(mapFeeSummary);
+      setStudents((prev) => {
+        if (!append) return mapped;
+        const seen = new Set(prev.map((student) => student.rawId));
+        return [...prev, ...mapped.filter((student) => !seen.has(student.rawId))];
+      });
+      setMeta({
+        total: response.meta?.total ?? mapped.length,
+        page: response.meta?.page ?? nextPage,
+        limit: response.meta?.limit ?? PAGE_LIMIT,
+        total_pages: response.meta?.total_pages ?? 1,
+        counts: { ...EMPTY_COUNTS, ...(response.meta?.counts || {}) },
+      });
+    } catch {
+      if (requestId === requestIdRef.current && !append) {
+        setStudents([]);
+        setMeta({
+          total: 0,
+          page: 1,
+          limit: PAGE_LIMIT,
+          total_pages: 1,
+          counts: EMPTY_COUNTS,
+        });
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
+    }
+  }, [activeFilter, debouncedSearch, mapFeeSummary, user]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const query = searchQuery.trim();
+      setDebouncedSearch(query.length >= 2 ? query : '');
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    if (activeView === 'Students') {
+      loadData({ nextPage: 1 });
+    }
+  }, [activeView, loadData, user]);
+
+  const filterCounts = meta.counts;
+
+  const filteredStructures = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return structures;
+    return structures.filter((item) => {
+      const haystack = [
+        item.class_name,
+        item.section_name,
+        item.fee_type,
+        item.academic_year,
+        item.frequency,
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [searchQuery, structures]);
 
   const handleViewLedger = useCallback((student: any) => {
     router.push({
@@ -341,7 +644,29 @@ export default function AccountsFees() {
     });
   }, [router]);
 
-  const renderItem = useCallback(({ item, index }: { item: any; index: number }) => (
+  const handleFilterChange = useCallback((filter: FilterType) => {
+    setActiveFilter(filter);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    void refetchStats();
+    void refetchStructures();
+    if (activeView === 'Students') {
+      loadData({ nextPage: 1, isRefreshing: true });
+    } else {
+      setRefreshing(true);
+      setTimeout(() => setRefreshing(false), 400);
+    }
+  }, [activeView, loadData, refetchStats, refetchStructures]);
+
+  const hasMore = meta.page < meta.total_pages;
+
+  const handleEndReached = useCallback(() => {
+    if (loading || loadingMore || refreshing || !hasMore) return;
+    loadData({ nextPage: meta.page + 1, append: true });
+  }, [hasMore, loadData, loading, loadingMore, meta.page, refreshing]);
+
+  const renderStudentItem = useCallback(({ item, index }: { item: any; index: number }) => (
     <StudentCard
       item={item}
       index={index}
@@ -350,37 +675,110 @@ export default function AccountsFees() {
     />
   ), [isDark, handleViewLedger]);
 
+  const renderStructureItem = useCallback(({ item, index }: { item: ClassFeeStructure; index: number }) => (
+    <ClassStructureCard item={item} index={index} isDark={isDark} />
+  ), [isDark]);
+
   const ListHeader = useMemo(() => (
     <>
-      {!loading && students.length > 0 && (
-        <SummaryHeader students={students} isDark={isDark} />
+      {!loading && summaryStats && (
+        <SummaryHeader stats={summaryStats} isDark={isDark} />
       )}
 
-      {/* Filter pills */}
-      <View style={styles.filterRow}>
-        {FILTERS.map(f => (
-          <FilterPill
-            key={f}
-            label={f}
-            active={activeFilter === f}
-            count={filterCounts[f]}
+      <View style={styles.viewModeRow}>
+        {VIEW_MODES.map((mode) => (
+          <ViewModePill
+            key={mode}
+            label={mode}
+            active={activeView === mode}
             isDark={isDark}
-            onPress={() => setActiveFilter(f)}
+            onPress={() => setActiveView(mode)}
           />
         ))}
       </View>
 
-      {/* Results count */}
-      {!loading && (
-        <Animated.View entering={FadeIn.duration(300)}>
-          <Text style={styles.resultsCount}>
-            {filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}
-            {activeFilter !== 'All' ? ` · ${activeFilter}` : ''}
-          </Text>
-        </Animated.View>
+      {activeView === 'Students' ? (
+        <>
+          <View style={styles.filterRow}>
+            {FILTERS.map(f => (
+              <FilterPill
+                key={f}
+                label={f}
+                active={activeFilter === f}
+                count={filterCounts[f]}
+                isDark={isDark}
+                onPress={() => handleFilterChange(f)}
+              />
+            ))}
+          </View>
+
+          {!loading && (
+            <Animated.View entering={FadeIn.duration(300)}>
+              <Text style={styles.resultsCount}>
+                {meta.total} student{meta.total !== 1 ? 's' : ''}
+                {activeFilter !== 'All' ? ` · ${activeFilter}` : ''}
+                {debouncedSearch ? ` · "${debouncedSearch}"` : ''}
+              </Text>
+            </Animated.View>
+          )}
+        </>
+      ) : (
+        !structuresLoading && (
+          <Animated.View entering={FadeIn.duration(300)}>
+            <Text style={styles.resultsCount}>
+              {filteredStructures.length} class fee structure{filteredStructures.length !== 1 ? 's' : ''}
+              {searchQuery.trim() ? ` · "${searchQuery.trim()}"` : ''}
+            </Text>
+          </Animated.View>
+        )
       )}
     </>
-  ), [loading, students, isDark, activeFilter, filterCounts, filteredStudents.length]);
+  ), [activeFilter, activeView, debouncedSearch, filterCounts, filteredStructures.length, handleFilterChange, isDark, loading, meta.total, searchQuery, structuresLoading, styles.filterRow, styles.resultsCount, styles.viewModeRow, summaryStats]);
+
+  const ListFooter = useMemo(() => (
+    loadingMore ? (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator color="#3B82F6" />
+      </View>
+    ) : null
+  ), [loadingMore, styles.footerLoader]);
+
+  const EmptyState = useMemo(() => {
+    if (activeView === 'Class Structures') {
+      const hasQuery = searchQuery.trim().length > 0;
+      return (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyTitle}>
+            {hasQuery ? 'No class fee structures found' : 'No class fee structures yet'}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {hasQuery
+              ? 'Try a different class, fee type, or academic year'
+              : 'Ask an admin to configure class fees under Admin → Fee Setup'}
+          </Text>
+        </View>
+      );
+    }
+
+    const hasQuery = debouncedSearch.length > 0;
+    const hasFilter = activeFilter !== 'All';
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyIcon}>🔍</Text>
+        <Text style={styles.emptyTitle}>
+          {hasQuery || hasFilter ? 'No students found' : 'No fee records yet'}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {hasQuery || hasFilter
+            ? 'Try a different name, ID, class, or filter'
+            : 'Assigned student fees will appear here'}
+        </Text>
+      </View>
+    );
+  }, [activeFilter, activeView, debouncedSearch.length, searchQuery, styles.emptyIcon, styles.emptySubtitle, styles.emptyTitle, styles.emptyWrap]);
+
+  const isListLoading = activeView === 'Students' ? loading : structuresLoading;
 
   return (
     <View style={styles.container}>
@@ -402,7 +800,9 @@ export default function AccountsFees() {
         />
         <AppTextInput
           style={[ds.inputInChrome, styles.searchInput]}
-          placeholder="Search by name, ID or class…"
+          placeholder={activeView === 'Students'
+            ? 'Search by name, ID or class…'
+            : 'Search by class, fee type or year…'}
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -416,27 +816,53 @@ export default function AccountsFees() {
         )}
       </Animated.View>
 
-      {loading ? (
+      {isListLoading ? (
         <View style={styles.loadingWrap}>
           <LogoLoader size={52} color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading fee data…</Text>
+          <Text style={styles.loadingText}>
+            {activeView === 'Students' ? 'Loading fee data…' : 'Loading class fee structures…'}
+          </Text>
         </View>
-      ) : (
+      ) : activeView === 'Students' ? (
         <FlatList
-          data={filteredStudents}
+          data={students}
           keyExtractor={(item) => `${item.id}_${item.rawId}`}
-          renderItem={renderItem}
+          renderItem={renderStudentItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={ListHeader}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyIcon}>🔍</Text>
-              <Text style={styles.emptyTitle}>No students found</Text>
-              <Text style={styles.emptySubtitle}>
-                Try a different name, ID or filter
-              </Text>
-            </View>
+          ListFooterComponent={ListFooter}
+          ListEmptyComponent={EmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#3B82F6"
+              colors={['#3B82F6']}
+            />
+          }
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.45}
+          removeClippedSubviews
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+        />
+      ) : (
+        <FlatList
+          data={filteredStructures}
+          keyExtractor={(item) => item.id}
+          renderItem={renderStructureItem}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={ListHeader}
+          ListEmptyComponent={EmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#3B82F6"
+              colors={['#3B82F6']}
+            />
           }
           removeClippedSubviews
           initialNumToRender={12}
@@ -489,6 +915,14 @@ const getStyles = (theme: any, isDark: boolean) => StyleSheet.create({
     color: isDark ? '#F9FAFB' : '#111827',
   },
 
+  viewModeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+
   // Filters
   filterRow: {
     flexDirection: 'row',
@@ -510,6 +944,10 @@ const getStyles = (theme: any, isDark: boolean) => StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 30,
+  },
+  footerLoader: {
+    paddingVertical: 18,
+    alignItems: 'center',
   },
 
   // Loading

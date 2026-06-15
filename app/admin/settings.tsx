@@ -8,6 +8,7 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { AuthService } from '../../src/services/authService';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -108,7 +109,7 @@ export default function AdminSettings() {
     const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
     const { i18n } = useTranslation();
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, signOut } = useAuth();
     const [updating, setUpdating] = useState(false);
     const { isBiometricAvailable, isBiometricEnabled, isLoading: biometricLoading, toggleBiometric } = useBiometric();
 
@@ -292,7 +293,10 @@ export default function AdminSettings() {
                                 {
                                     text: 'Logout', style: 'destructive',
                                     onPress: async () => {
-                                        await AuthService.signOut();
+                                        // Clear auto_login so login page won't auto re-login
+                                        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                                        await AsyncStorage.removeItem('admin_auto_login');
+                                        await signOut();
                                         router.replace('/welcome');
                                     }
                                 }
@@ -309,7 +313,7 @@ export default function AdminSettings() {
                 {/* ── Version footer ── */}
                 <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
                     <View style={styles.footerDot} />
-                    <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+                    <Text style={styles.footerText}>Nexsyrus SchoolIMS · v{Constants.expoConfig?.version || '1.0.0'}</Text>
                     <View style={styles.footerDot} />
                 </Animated.View>
 

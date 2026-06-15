@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import StaffHeader from '../../src/components/StaffHeader';
@@ -189,9 +189,14 @@ export default function ManageStudents() {
     }
   }, [user]);
 
-  useEffect(() => {
-    loadStudents();
-  }, [loadStudents]);
+  // Reload every time the Attendance tab regains focus so that class-teacher /
+  // timetable edits made in the admin timetable manager are reflected here without
+  // requiring an app restart.
+  useFocusEffect(
+    useCallback(() => {
+      loadStudents();
+    }, [loadStudents])
+  );
 
   const handleStatusChange = useCallback((id: string, newStatus: StudentUI['status']) => {
     setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s)));

@@ -8,12 +8,39 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from '@/src/utils/haptics';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useAuth } from '../../src/hooks/useAuth';
-import { AuthService } from '../../src/services/authService';
-import { StaffService } from '../../src/services/staffService';
+import { StaffService, StaffMyProfile } from '../../src/services/staffService';
 import LogoLoader from '../../src/components/LogoLoader';
 
 const DRIVER_PINK = '#EC4899';
 const DRIVER_GRADIENT: [string, string] = ['#EC4899', '#BE185D'];
+const EMPTY = '—';
+
+function displayOrEmpty(value?: string | null): string {
+  if (value == null) return EMPTY;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : EMPTY;
+}
+
+function formatDob(dob?: string | null): string {
+  if (!dob) return EMPTY;
+  const parsed = new Date(dob);
+  if (Number.isNaN(parsed.getTime())) return dob;
+  return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function routeSummary(routes?: StaffMyProfile['routes']): string {
+  if (!routes?.length) return EMPTY;
+  return routes.map((route) => route.name).filter(Boolean).join(', ');
+}
+
+/** Returns the first human-readable ID (not a UUID) from the user object */
+function getHumanId(user: any): string {
+  const candidates = [user?.staff_code, user?.admission_no];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return 'N/A';
+}
 
 interface Payslip {
   id: string;
@@ -27,74 +54,96 @@ interface Payslip {
 /* ─── Reusable Info Row ─── */
 const InfoRow = ({ icon, label, value, iconBg, iconColor, isLink, onPress
 
-}: {icon: any;label: string;value: string;iconBg?: string;iconColor?: string;isLink?: boolean;onPress?: () => void;}) =>
-<TouchableOpacity
-  style={styles.infoRow}
-  activeOpacity={isLink ? 0.7 : 1}
-  onPress={isLink ? onPress : undefined}
-  disabled={!isLink}>
+}: { icon: any; label: string; value: string; iconBg?: string; iconColor?: string; isLink?: boolean; onPress?: () => void; }) =>
+  <TouchableOpacity
+    style={styles.infoRow}
+    activeOpacity={isLink ? 0.7 : 1}
+    onPress={isLink ? onPress : undefined}
+    disabled={!isLink}>
 
-        <View style={[styles.iconBox, iconBg ? { backgroundColor: iconBg } : {}]}>
-            <Ionicons name={icon} size={18} color={iconColor || DRIVER_PINK} />
-        </View>
-        <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>{label}</Text>
-            <Text style={[styles.infoValue, isLink && styles.linkText]}>{value}</Text>
-        </View>
-        {isLink && <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />}
-    </TouchableOpacity>;
+    <View style={[styles.iconBox, iconBg ? { backgroundColor: iconBg } : {}]}>
+      <Ionicons name={icon} size={18} color={iconColor || DRIVER_PINK} />
+    </View>
+    <View style={styles.infoContent}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, isLink && styles.linkText]}>{value}</Text>
+    </View>
+    {isLink && <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />}
+  </TouchableOpacity>;
 
 /* ─── Payslip Card ─── */
-const PayslipCard = ({ item, index, onDownload }: {item: Payslip;index: number;onDownload: (id: string) => void;}) =>
-<Animated.View entering={FadeInDown.delay(500 + index * 80).duration(500)} style={styles.payslipCard}>
-        <View style={styles.payslipHeader}>
-            <View style={styles.payslipMonthRow}>
-                <View style={styles.payslipIcon}>
-                    <Ionicons name="calendar" size={16} color={DRIVER_PINK} />
-                </View>
-                <Text style={styles.payslipMonth}>{item.month}</Text>
-            </View>
-            <View style={[styles.payslipBadge,
-    item.status === 'Paid' ? styles.paidBadge : styles.pendingBadge]
-    }>
-                <Text style={[styles.payslipBadgeText,
-      item.status === 'Paid' ? styles.paidText : styles.pendingText]
-      }>{item.status}</Text>
-            </View>
+const PayslipCard = ({ item, index, onDownload }: { item: Payslip; index: number; onDownload: (id: string) => void; }) =>
+  <Animated.View entering={FadeInDown.delay(500 + index * 80).duration(500)} style={styles.payslipCard}>
+    <View style={styles.payslipHeader}>
+      <View style={styles.payslipMonthRow}>
+        <View style={styles.payslipIcon}>
+          <Ionicons name="calendar" size={16} color={DRIVER_PINK} />
         </View>
-        <View style={styles.payslipDivider} />
-        <View style={styles.payslipGrid}>
-            <View style={styles.payslipStat}>
-                <Text style={styles.payslipStatLabel}>Earnings</Text>
-                <Text style={[styles.payslipStatValue, { color: '#10B981' }]}>{item.earnings}</Text>
-            </View>
-            <View style={styles.payslipStat}>
-                <Text style={styles.payslipStatLabel}>Deductions</Text>
-                <Text style={[styles.payslipStatValue, { color: '#EF4444' }]}>{item.deductions}</Text>
-            </View>
-            <View style={[styles.payslipStat, { alignItems: 'flex-end' }]}>
-                <Text style={styles.payslipStatLabel}>Net Pay</Text>
-                <Text style={[styles.payslipStatValue, { color: '#0F172A', fontWeight: '800' }]}>{item.net}</Text>
-            </View>
-        </View>
-        <TouchableOpacity style={styles.downloadBtn} onPress={() => onDownload(item.id)} activeOpacity={0.7}>
-            <Ionicons name="download-outline" size={16} color={DRIVER_PINK} />
-            <Text style={styles.downloadBtnText}>Download PDF</Text>
-        </TouchableOpacity>
-    </Animated.View>;
+        <Text style={styles.payslipMonth}>{item.month}</Text>
+      </View>
+      <View style={[styles.payslipBadge,
+      item.status === 'Paid' ? styles.paidBadge : styles.pendingBadge]
+      }>
+        <Text style={[styles.payslipBadgeText,
+        item.status === 'Paid' ? styles.paidText : styles.pendingText]
+        }>{item.status}</Text>
+      </View>
+    </View>
+    <View style={styles.payslipDivider} />
+    <View style={styles.payslipGrid}>
+      <View style={styles.payslipStat}>
+        <Text style={styles.payslipStatLabel}>Earnings</Text>
+        <Text style={[styles.payslipStatValue, { color: '#10B981' }]}>{item.earnings}</Text>
+      </View>
+      <View style={styles.payslipStat}>
+        <Text style={styles.payslipStatLabel}>Deductions</Text>
+        <Text style={[styles.payslipStatValue, { color: '#EF4444' }]}>{item.deductions}</Text>
+      </View>
+      <View style={[styles.payslipStat, { alignItems: 'flex-end' }]}>
+        <Text style={styles.payslipStatLabel}>Net Pay</Text>
+        <Text style={[styles.payslipStatValue, { color: '#0F172A', fontWeight: '800' }]}>{item.net}</Text>
+      </View>
+    </View>
+    <TouchableOpacity style={styles.downloadBtn} onPress={() => onDownload(item.id)} activeOpacity={0.7}>
+      <Ionicons name="download-outline" size={16} color={DRIVER_PINK} />
+      <Text style={styles.downloadBtnText}>Download PDF</Text>
+    </TouchableOpacity>
+  </Animated.View>;
 
 /* ════════════════════════════════════════════════════════════
    ████  DRIVER PROFILE SCREEN  ████
    ════════════════════════════════════════════════════════════ */
 export default function DriverProfile() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const [profile, setProfile] = useState<StaffMyProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [payslips, setPayslips] = useState<Payslip[]>([]);
   const [loadingPayslips, setLoadingPayslips] = useState(true);
 
-  const displayName = user?.displayName || (user as any)?.first_name || 'Driver';
+  const displayName = profile?.display_name || user?.displayName || (user as any)?.first_name || 'Driver';
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-  const email = (user as any)?.email || 'N/A';
+  const email = displayOrEmpty(profile?.email || (user as any)?.email);
+  const phone = displayOrEmpty(profile?.phone || (user as any)?.phone);
+  const dob = formatDob(profile?.dob);
+  const address = displayOrEmpty(profile?.address);
+  const busNo = displayOrEmpty(profile?.bus?.bus_no);
+  const routeName = routeSummary(profile?.routes);
+  const vehicleRegNo = displayOrEmpty(profile?.bus?.registration_no);
+  const staffCode = profile?.staff_code || getHumanId(user);
+
+  useEffect(() => {
+    if (!user) {
+      setLoadingProfile(false);
+      setLoadingPayslips(false);
+      return;
+    }
+    setLoadingProfile(true);
+    StaffService.getMyProfile()
+      .then((data) => setProfile(data))
+      .catch(() => setProfile(null))
+      .finally(() => setLoadingProfile(false));
+  }, [user?.userId]);
 
   useEffect(() => {
     if (!user) {
@@ -104,7 +153,7 @@ export default function DriverProfile() {
     setLoadingPayslips(true);
     StaffService.getMyPayslips()
       .then((data) => setPayslips(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingPayslips(false));
   }, [user?.userId]);
 
@@ -117,183 +166,198 @@ export default function DriverProfile() {
     return `₹${total.toLocaleString('en-IN')}`;
   }, [payslips]);
 
-  const handleEmail = (addr: string) => {Haptics.selectionAsync();Linking.openURL(`mailto:${addr}`);};
-  const handleDownload = () => {alertCompat('Coming Soon', 'PDF download will be available soon.');};
+  const handleEmail = (addr: string) => {
+    if (addr === EMPTY || addr === 'N/A') return;
+    Haptics.selectionAsync();
+    Linking.openURL(`mailto:${addr}`);
+  };
+  const handleDownload = () => { alertCompat('Coming Soon', 'PDF download will be available soon.'); };
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await AuthService.signOut();
-    router.replace('/driver-login' as any);
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.removeItem('driver_auto_login');
+    await signOut();
+    router.replace('/welcome');
   };
 
   return (
     <View style={styles.screen}>
-            <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
-            <StudentHeader title="My Profile" menuUserType="driver" />
-            <ScrollView
+      <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
+      <StudentHeader title="My Profile" menuUserType="driver" />
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-                {/* ═══════ Profile Hero Card ═══════ */}
-                <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.heroCard}>
-                    <LinearGradient
+        {loadingProfile ?
+          <View style={styles.loadingBox}>
+            <LogoLoader size={36} color={DRIVER_PINK} />
+            <Text style={styles.loadingText}>Loading profile…</Text>
+          </View> :
+          <>
+        {/* ═══════ Profile Hero Card ═══════ */}
+        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.heroCard}>
+          <LinearGradient
             colors={DRIVER_GRADIENT}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.heroBg} />
 
-                    {/* Decorative circles */}
-                    <View style={[styles.decorCircle, { top: -20, right: -20, width: 100, height: 100 }]} />
-                    <View style={[styles.decorCircle, { bottom: -15, left: -15, width: 60, height: 60 }]} />
-                    <View style={styles.heroContent}>
-                        <View style={styles.avatarWrapper}>
-                            <View style={styles.avatarRing}>
-                                <View style={styles.avatarInner}>
-                                    <Text style={styles.avatarText}>{initials}</Text>
-                                </View>
-                            </View>
-                            <View style={styles.onlineBadge}>
-                                <View style={styles.onlineDot} />
-                                <Text style={styles.onlineText}>Active</Text>
-                            </View>
-                        </View>
-                        <Text style={styles.heroName}>{displayName}</Text>
-                        <View style={styles.rolePill}>
-                            <Ionicons name="bus" size={12} color="#FFF" />
-                            <Text style={styles.rolePillText}>Driver</Text>
-                        </View>
-                        <Text style={styles.heroId}>ID: {(user as any)?.staff_id || user?.userId?.slice(0, 8) || 'N/A'}</Text>
-                        {/* Quick Stats */}
-                        <View style={styles.quickStats}>
-                            <View style={styles.qStat}>
-                                <Text style={styles.qStatValue}>—</Text>
-                                <Text style={styles.qStatLabel}>Bus No.</Text>
-                            </View>
-                            <View style={styles.qStatDivider} />
-                            <View style={styles.qStat}>
-                                <Text style={styles.qStatValue}>—</Text>
-                                <Text style={styles.qStatLabel}>Route</Text>
-                            </View>
-                            <View style={styles.qStatDivider} />
-                            <View style={styles.qStat}>
-                                <Text style={styles.qStatValue}>—</Text>
-                                <Text style={styles.qStatLabel}>License</Text>
-                            </View>
-                        </View>
-                    </View>
-                </Animated.View>
-                {/* ═══════ Personal Information ═══════ */}
-                <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <View style={styles.sectionIconBox}>
-                            <Ionicons name="person" size={14} color={DRIVER_PINK} />
-                        </View>
-                        <Text style={styles.sectionTitle}>Personal Information</Text>
-                    </View>
-                    <View style={styles.card}>
-                        <InfoRow icon="mail-outline" label="Email Address" value={email}
-            iconBg="#FDF2F8" isLink onPress={() => handleEmail(email)} />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="call-outline" label="Phone Number" value="N/A"
-            iconBg="#ECFDF5" iconColor="#10B981" />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="calendar-outline" label="Date of Birth" value="—"
-            iconBg="#EEF2FF" iconColor="#6366F1" />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="water-outline" label="Blood Group" value="—"
-            iconBg="#FEF3C7" iconColor="#F59E0B" />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="location-outline" label="Address" value="—"
-            iconBg="#F0FDF4" iconColor="#22C55E" />
-                    </View>
-                </Animated.View>
-                {/* ═══════ Vehicle & Route ═══════ */}
-                <Animated.View entering={FadeInUp.delay(300).duration(600)} style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <View style={[styles.sectionIconBox, { backgroundColor: '#EEF2FF' }]}>
-                            <Ionicons name="bus" size={14} color="#6366F1" />
-                        </View>
-                        <Text style={styles.sectionTitle}>Vehicle & Route</Text>
-                    </View>
-                    <View style={styles.card}>
-                        <InfoRow icon="car-outline" label="Assigned Bus" value="—"
-            iconBg="#EEF2FF" iconColor="#6366F1" />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="navigate-outline" label="Route Name" value="—"
-            iconBg="#FDF2F8" iconColor={DRIVER_PINK} />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="card-outline" label="License Number" value="—"
-            iconBg="#FEF3C7" iconColor="#F59E0B" />
-                        <View style={styles.rowDivider} />
-                        <InfoRow icon="shield-checkmark-outline" label="License Expiry" value="—"
-            iconBg="#ECFDF5" iconColor="#10B981" />
-                    </View>
-                </Animated.View>
-                {/* ═══════ Payslips Section ═══════ */}
-                <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <View style={[styles.sectionIconBox, { backgroundColor: '#ECFDF5' }]}>
-                            <FontAwesome5 name="coins" size={12} color="#10B981" />
-                        </View>
-                        <Text style={styles.sectionTitle}>My Payslips</Text>
-                    </View>
-                    {/* Earnings Summary */}
-                    <Animated.View entering={FadeInDown.delay(450).duration(500)} style={styles.earningsCard}>
-                        <LinearGradient
+          {/* Decorative circles */}
+          <View style={[styles.decorCircle, { top: -20, right: -20, width: 100, height: 100 }]} />
+          <View style={[styles.decorCircle, { bottom: -15, left: -15, width: 60, height: 60 }]} />
+          <View style={styles.heroContent}>
+            <View style={styles.avatarWrapper}>
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarInner}>
+                  <Text style={styles.avatarText}>{initials}</Text>
+                </View>
+              </View>
+              <View style={styles.onlineBadge}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>Active</Text>
+              </View>
+            </View>
+            <Text style={styles.heroName}>{displayName}</Text>
+            <View style={styles.rolePill}>
+              <Ionicons name="bus" size={12} color="#FFF" />
+              <Text style={styles.rolePillText}>Driver</Text>
+            </View>
+            <Text style={styles.heroId}>ID: {staffCode}</Text>
+            {/* Quick Stats */}
+            <View style={styles.quickStats}>
+              <View style={styles.qStat}>
+                <Text style={styles.qStatValue}>{busNo}</Text>
+                <Text style={styles.qStatLabel}>Bus No.</Text>
+              </View>
+              <View style={styles.qStatDivider} />
+              <View style={styles.qStat}>
+                <Text style={styles.qStatValue}>{routeName}</Text>
+                <Text style={styles.qStatLabel}>Route</Text>
+              </View>
+              <View style={styles.qStatDivider} />
+              <View style={styles.qStat}>
+                <Text style={styles.qStatValue}>{vehicleRegNo}</Text>
+                <Text style={styles.qStatLabel}>Reg. No.</Text>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+        {/* ═══════ Personal Information ═══════ */}
+        <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconBox}>
+              <Ionicons name="person" size={14} color={DRIVER_PINK} />
+            </View>
+            <Text style={styles.sectionTitle}>Personal Information</Text>
+          </View>
+          <View style={styles.card}>
+            <InfoRow icon="mail-outline" label="Email Address" value={email}
+              iconBg="#FDF2F8" isLink={email !== EMPTY && email !== 'N/A'}
+              onPress={() => handleEmail(email)} />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="call-outline" label="Phone Number" value={phone}
+              iconBg="#ECFDF5" iconColor="#10B981" />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="calendar-outline" label="Date of Birth" value={dob}
+              iconBg="#EEF2FF" iconColor="#6366F1" />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="water-outline" label="Blood Group" value={EMPTY}
+              iconBg="#FEF3C7" iconColor="#F59E0B" />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="location-outline" label="Address" value={address}
+              iconBg="#F0FDF4" iconColor="#22C55E" />
+          </View>
+        </Animated.View>
+        {/* ═══════ Vehicle & Route ═══════ */}
+        <Animated.View entering={FadeInUp.delay(300).duration(600)} style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconBox, { backgroundColor: '#EEF2FF' }]}>
+              <Ionicons name="bus" size={14} color="#6366F1" />
+            </View>
+            <Text style={styles.sectionTitle}>Vehicle & Route</Text>
+          </View>
+          <View style={styles.card}>
+            <InfoRow icon="car-outline" label="Assigned Bus" value={busNo}
+              iconBg="#EEF2FF" iconColor="#6366F1" />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="navigate-outline" label="Route Name" value={routeName}
+              iconBg="#FDF2F8" iconColor={DRIVER_PINK} />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="card-outline" label="License Number" value={EMPTY}
+              iconBg="#FEF3C7" iconColor="#F59E0B" />
+            <View style={styles.rowDivider} />
+            <InfoRow icon="shield-checkmark-outline" label="License Expiry" value={EMPTY}
+              iconBg="#ECFDF5" iconColor="#10B981" />
+          </View>
+        </Animated.View>
+        {/* ═══════ Payslips Section ═══════ */}
+        <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconBox, { backgroundColor: '#ECFDF5' }]}>
+              <FontAwesome5 name="coins" size={12} color="#10B981" />
+            </View>
+            <Text style={styles.sectionTitle}>My Payslips</Text>
+          </View>
+          {/* Earnings Summary */}
+          <Animated.View entering={FadeInDown.delay(450).duration(500)} style={styles.earningsCard}>
+            <LinearGradient
               colors={DRIVER_GRADIENT}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.earningsGradient}>
 
-                            <View>
-                                <Text style={styles.earningsLabel}>Total Earnings (YTD)</Text>
-                                <Text style={styles.earningsValue}>{totalEarnings}</Text>
-                            </View>
-                            <View style={styles.earningsIconBox}>
-                                <FontAwesome5 name="coins" size={22} color="#FFF" />
-                            </View>
-                        </LinearGradient>
-                    </Animated.View>
-                    {/* Payslip Cards */}
-                    {loadingPayslips ?
-          <View style={styles.loadingBox}>
-                            <LogoLoader size={30} color={DRIVER_PINK} />
-                            <Text style={styles.loadingText}>Loading payslips…</Text>
-                        </View> :
-          payslips.length === 0 ?
-          <View style={styles.emptyBox}>
-                            <View style={styles.emptyIcon}>
-                                <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
-                            </View>
-                            <Text style={styles.emptyTitle}>No Payslips Yet</Text>
-                            <Text style={styles.emptySubtitle}>Your payslips will appear here once processed.</Text>
-                        </View> :
+              <View>
+                <Text style={styles.earningsLabel}>Total Earnings (YTD)</Text>
+                <Text style={styles.earningsValue}>{totalEarnings}</Text>
+              </View>
+              <View style={styles.earningsIconBox}>
+                <FontAwesome5 name="coins" size={22} color="#FFF" />
+              </View>
+            </LinearGradient>
+          </Animated.View>
+          {/* Payslip Cards */}
+          {loadingPayslips ?
+            <View style={styles.loadingBox}>
+              <LogoLoader size={30} color={DRIVER_PINK} />
+              <Text style={styles.loadingText}>Loading payslips…</Text>
+            </View> :
+            payslips.length === 0 ?
+              <View style={styles.emptyBox}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
+                </View>
+                <Text style={styles.emptyTitle}>No Payslips Yet</Text>
+                <Text style={styles.emptySubtitle}>Your payslips will appear here once processed.</Text>
+              </View> :
 
-          <View style={styles.payslipList}>
-                            {payslips.map((item, index) =>
-            <PayslipCard key={item.id} item={item} index={index} onDownload={handleDownload} />
-            )}
-                        </View>
+              <View style={styles.payslipList}>
+                {payslips.map((item, index) =>
+                  <PayslipCard key={item.id} item={item} index={index} onDownload={handleDownload} />
+                )}
+              </View>
           }
-                </Animated.View>
-                {/* ═══════ Logout Button ═══════ */}
-                <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.section}>
-                    <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
-                        <View style={styles.logoutIconBox}>
-                            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
-                        </View>
-                        <Text style={styles.logoutText}>Logout</Text>
-                        <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-                    </TouchableOpacity>
-                </Animated.View>
-                <View style={{ height: 40 }} />
-            </ScrollView>
-        </View>);
+        </Animated.View>
+        {/* ═══════ Logout Button ═══════ */}
+        <Animated.View entering={FadeInUp.delay(500).duration(600)} style={styles.section}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
+            <View style={styles.logoutIconBox}>
+              <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+            </View>
+            <Text style={styles.logoutText}>Logout</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+        </Animated.View>
+        <View style={{ height: 40 }} />
+          </>
+        }
+      </ScrollView>
+    </View>);
 
 }
 
 /* ════════════════════════════ STYLES ════════════════════════════ */
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: 'transparent'},
+  screen: { flex: 1, backgroundColor: 'transparent' },
   scrollContent: { padding: 20 },
 
   /* ── Hero Card ── */

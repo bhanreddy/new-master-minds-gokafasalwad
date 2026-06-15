@@ -1,10 +1,13 @@
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Platform } from 'react-native';
-import { supabase } from './supabaseConfig';
 import NetInfo from '@react-native-community/netinfo';
-import { API_URL, SCHOOL_ID } from '../constants/school';
+import * as SecureStore from 'expo-secure-store';
+import { Alert, Platform } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { showAlert } from '../components/CustomAlert';
+import { API_URL, SCHOOL_ID } from '../constants/school';
+import { isStudentRole } from '../utils/roleHelpers';
+import { SessionPolicy } from './sessionPolicyService';
+import { supabase } from './supabaseConfig';
 
 /**
  * Cross-platform alert helper.
@@ -93,6 +96,9 @@ export const registerLogoutCallback = (fn: () => Promise<void>) => {
 // Single-flight refresh promise to prevent parallel redundant refreshes
 let refreshPromise: Promise<any> | null = null;
 
+// In-flight GET deduplication — identical concurrent GETs share one network call
+const inflightGets = new Map<string, Promise<unknown>>();
+
 // API Error class
 export class APIError extends Error {
   constructor(
@@ -115,14 +121,50 @@ export class APIError extends Error {
 export interface APIOptions extends RequestInit {
   silent?: boolean;
   _isRetry?: boolean;
-  _retryCount?: number; // tracks 503 retry attempts
+  _retryCount?: number; // tracks 503 / 429 retry attempts
+  _multipart?: boolean;
+  /** Request timeout in ms (default 60000). Use longer values for bulk uploads. */
+  timeoutMs?: number;
+}
+
+function buildGetDedupeKey(endpoint: string, method: string): string | null {
+  if (method !== 'GET') return null;
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
+  return `GET:${API_BASE_URL}${finalEndpoint}`;
 }
 
 export async function apiRequest<T>(
   endpoint: string,
   options: APIOptions = {})
   : Promise<T> {
-  const { silent, _isRetry, _retryCount = 0, ...fetchOptions } = options;
+  const method = (options.method || 'GET').toUpperCase();
+  const retryCount = options._retryCount ?? 0;
+  const dedupeKey = !options._isRetry && retryCount === 0
+    ? buildGetDedupeKey(endpoint, method)
+    : null;
+
+  if (dedupeKey) {
+    const existing = inflightGets.get(dedupeKey);
+    if (existing) return existing as Promise<T>;
+  }
+
+  const promise = apiRequestInner<T>(endpoint, options);
+  if (dedupeKey) {
+    inflightGets.set(dedupeKey, promise);
+    promise.finally(() => {
+      if (inflightGets.get(dedupeKey) === promise) inflightGets.delete(dedupeKey);
+    });
+  }
+  return promise;
+}
+
+async function apiRequestInner<T>(
+  endpoint: string,
+  options: APIOptions = {})
+  : Promise<T> {
+  const { silent, _isRetry, _retryCount = 0, _multipart, timeoutMs = 60000, ...fetchOptions } = options;
+  const isMultipart = _multipart === true;
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? null;
 
@@ -130,14 +172,15 @@ export async function apiRequest<T>(
     console.log(`[apiClient] ${fetchOptions.method || 'GET'} ${endpoint} — session: ${session ? 'YES' : 'NULL'}, token: ${token ? token.substring(0, 15) + '...' : 'NULL'}`);
   }
 
-  // Add a 60-second timeout to prevent fetch from hanging indefinitely on Android but allow Render backend to wake up
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(fetchOptions.headers as Record<string, string>)
+    ...(fetchOptions.headers as Record<string, string>),
   };
+  if (!isMultipart) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -152,6 +195,13 @@ export async function apiRequest<T>(
   if (method === 'GET' || method === 'DELETE') {
     const sep = endpoint.includes('?') ? '&' : '?';
     finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
+  } else if (isMultipart) {
+    const sep = endpoint.includes('?') ? '&' : '?';
+    finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
+    if (fetchOptions.body instanceof FormData) {
+      fetchOptions.body.append('school_id', SCHOOL_ID_PARAM);
+    }
+    finalBody = fetchOptions.body;
   } else if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
     const parsed = fetchOptions.body ? JSON.parse(fetchOptions.body as string) : {};
     finalBody = JSON.stringify({ school_id: SCHOOL_ID_PARAM, ...parsed });
@@ -246,10 +296,25 @@ export async function apiRequest<T>(
           return null as T;
         }
 
-        // Layer A fix: Do NOT fire logoutCallback here.
-        // The 401 is propagated as an error. The caller (or useAuth's
-        // handleRefresh via TOKEN_REFRESHED event) will decide whether
-        // to retry or logout based on role-specific backoff policy.
+        // ── Student 401 guard ──────────────────────────────────────────
+        // Student sessions NEVER expire. A 401 for a student means a
+        // server/network issue, NOT an auth issue. Show a retry toast
+        // and reject without triggering any logout flow.
+        const storedRole = await SessionPolicy.getStoredRole();
+        if (isStudentRole(storedRole)) {
+          if (__DEV__) console.log('[apiClient] 401 for student — suppressing logout, showing retry toast');
+          Toast.show({
+            type: 'error',
+            text1: 'Connection issue',
+            text2: 'Please try again.',
+            visibilityTime: 3000,
+          });
+          throw new APIError('Connection issue. Please try again.', 401, undefined, requestId);
+        }
+
+        // Non-student roles: propagate 401 as session-expired error.
+        // The caller (or useAuth's handleRefresh via TOKEN_REFRESHED event)
+        // will decide whether to retry or logout.
         throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
       }
 
@@ -258,7 +323,7 @@ export async function apiRequest<T>(
         if (_retryCount < 2) {
           if (__DEV__) { }
           await new Promise((r) => setTimeout(r, 1500));
-          return await apiRequest<T>(endpoint, {
+          return await apiRequestInner<T>(endpoint, {
             ...options,
             _retryCount: _retryCount + 1
           });
@@ -285,11 +350,23 @@ export async function apiRequest<T>(
         );
       }
 
-      // Handle Rate Limit (429)
+      // Handle Rate Limit (429) — retry with Retry-After backoff before alerting
       if (response.status === 429) {
+        if (_retryCount < 2) {
+          const retryAfterHeader = response.headers.get('Retry-After');
+          const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+          const delayMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+            ? retryAfterSec * 1000
+            : (_retryCount + 1) * 1000;
+          await new Promise((r) => setTimeout(r, delayMs));
+          return await apiRequest<T>(endpoint, {
+            ...options,
+            silent: true,
+            _retryCount: _retryCount + 1,
+          });
+        }
         const message = errorData.error || errorData.message || 'Rate limit exceeded. Please try again later.';
         if (!silent) alertFn('Too Many Requests', message);
-
         throw new APIError(message, 429, undefined, requestId);
       }
 
@@ -332,6 +409,7 @@ export async function apiRequest<T>(
 
     return json as T;
   } catch (error: any) {
+    clearTimeout(timeoutId);
     if (error instanceof APIError) {
       throw error;
     }
@@ -345,6 +423,43 @@ export async function apiRequest<T>(
     if (!silent) alertFn('Network Error', 'Please check your internet connection.');
     throw new APIError('Network error. Please check your connection.');
   }
+}
+
+/** Download a binary file (e.g. Excel) using the same Supabase auth as apiRequest. */
+export async function downloadFile(endpoint: string, filename: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? null;
+
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
+  const url = `${API_BASE_URL}${finalEndpoint}`;
+
+  const response = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new APIError(err.error || err.message || 'Download failed', response.status);
+  }
+
+  if (Platform.OS === 'web') {
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(objectUrl);
+    return;
+  }
+
+  const blob = await response.blob();
+  const reader = new FileReader();
+  reader.onload = () => {
+    console.log('Download ready', reader.result);
+  };
+  reader.readAsDataURL(blob);
 }
 
 // Helper methods for common HTTP verbs
@@ -386,5 +501,18 @@ export const api = {
 
   delete: <T,>(endpoint: string, options?: APIOptions): Promise<T> => {
     return apiRequest<T>(endpoint, { method: 'DELETE', ...options });
-  }
+  },
+
+  uploadFormData: <T,>(endpoint: string, formData: FormData, options?: APIOptions): Promise<T> => {
+    return apiRequest<T>(endpoint, {
+      method: 'POST',
+      body: formData,
+      _multipart: true,
+      ...options,
+    });
+  },
+
+  downloadFile: (endpoint: string, filename: string): Promise<void> => {
+    return downloadFile(endpoint, filename);
+  },
 };

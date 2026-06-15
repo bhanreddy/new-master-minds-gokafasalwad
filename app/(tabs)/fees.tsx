@@ -16,6 +16,7 @@ import { SchoolSettingsService, SchoolSettings } from '../../src/services/school
 import LogoLoader from '../../src/components/LogoLoader';
 import { useTranslation } from 'react-i18next';
 import { t_field } from '../../src/utils/lang';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 export default function FeesScreen() {
   const {
     theme,
@@ -175,6 +176,10 @@ export default function FeesScreen() {
                 <div class="value">${receipt.student_name || 'Student'}</div>
                 <div class="label">Admission No</div>
                 <div class="value">${receipt.admission_no || 'N/A'}</div>
+                ${receipt.class_name || receipt.section_name ? `
+                <div class="label">Class &amp; Section</div>
+                <div class="value">${[receipt.class_name, receipt.section_name].filter(Boolean).join(' — ') || 'N/A'}</div>
+                ` : ''}
               </div>
             </div>
 
@@ -225,6 +230,53 @@ export default function FeesScreen() {
       alert('Failed to generate receipt');
     }
   };
+
+  const formatAdjustmentOption = (adj: { amount: number; created_at: string; adjustment_type?: string }) => {
+    const isAdd = adj.adjustment_type === 'add';
+    const sign = isAdd ? '+' : '−';
+    const label = isAdd ? 'Added' : 'Waived';
+    return `${label}: ${sign}₹${adj.amount.toLocaleString()} (${new Date(adj.created_at).toLocaleDateString()})`;
+  };
+
+  const handleDownloadAdjustmentReceipt = async (item: StudentFee) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setLoadingReceipts(true);
+      const res = await FeeService.getAdjustments({ student_fee_id: item.id });
+      const adjustments = res?.data || [];
+
+      if (adjustments.length === 0) {
+        alert('No adjustment records found for this fee component.');
+        return;
+      }
+
+      const generatePdf = async (adj: any) => {
+        const details = await FeeService.getAdjustment(adj.id);
+        const { generateAdjustmentPDF } = await import('../../src/utils/pdfGenerator');
+        await generateAdjustmentPDF(details, schoolSettings);
+      };
+
+      if (adjustments.length === 1) {
+        await generatePdf(adjustments[0]);
+      } else {
+        const options = adjustments.map((a: any) => ({
+          text: formatAdjustmentOption(a),
+          onPress: () => void generatePdf(a)
+        }));
+        options.push({ text: 'Cancel', style: 'cancel' } as any);
+        alertCompat(
+          'Multiple Adjustments Found',
+          'Please select which adjustment receipt to download:',
+          options
+        );
+      }
+    } catch (error) {
+      alert('Failed to download adjustment receipt.');
+    } finally {
+      setLoadingReceipts(false);
+    }
+  };
+
   const renderFeeItem = ({
     item
 
@@ -245,14 +297,27 @@ export default function FeesScreen() {
       </View>
 
       <View style={styles.feeFooter}>
-        <Text style={styles.paidText}>Paid: ₹{item.amount_paid.toLocaleString()}</Text>
-        <Text style={styles.dueText}>Due: ₹{(dueAmount - item.amount_paid).toLocaleString()}</Text>
+        <Text style={styles.paidText}>{t('paidAmount', { defaultValue: 'Paid: ₹{{amount}}', amount: item.amount_paid.toLocaleString() })}</Text>
+        <Text style={styles.dueText}>{t('dueAmount', { defaultValue: 'Due: ₹{{amount}}', amount: (dueAmount - item.amount_paid).toLocaleString() })}</Text>
       </View>
       <Text style={[styles.statusText, {
         color: item.status === 'paid' ? '#22c55e' : '#f59e0b'
       }]}>
-        {item.status.toUpperCase()}
+        {t(item.status.toLowerCase(), item.status.toUpperCase())}
       </Text>
+
+      {((item.adjustment_count ?? 0) > 0 || item.discount > 0) && (
+        <View>
+          <View style={[styles.divider, { marginVertical: 10, backgroundColor: isDark ? '#334155' : '#e2e8f0' }]} />
+          <TouchableOpacity 
+            style={[styles.downloadBtn, { backgroundColor: '#eef2ff', paddingVertical: 6 }]} 
+            onPress={() => handleDownloadAdjustmentReceipt(item)}
+          >
+            <Ionicons name="download-outline" size={14} color="#4F46E5" />
+            <Text style={[styles.downloadText, { color: '#4F46E5', fontSize: 12 }]}>Adjustment Receipt</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>;
   };
   if (loading) {
@@ -280,11 +345,11 @@ export default function FeesScreen() {
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <View>
-            <Text style={styles.summaryLabel}>Total Due</Text>
+            <Text style={styles.summaryLabel}>{t('totalDue', 'Total Due')}</Text>
             <Text style={styles.summaryValue}>₹{summary.balance.toLocaleString()}</Text>
           </View>
           {summary.balance > 0 && <View style={styles.payBtnMock}>
-            <Text style={styles.payBtnText}>Pay Now</Text>
+            <Text style={styles.payBtnText}>{t('payNow', 'Pay Now')}</Text>
           </View>}
         </View>
 
@@ -292,12 +357,12 @@ export default function FeesScreen() {
 
         <View style={styles.statsRow}>
           <View>
-            <Text style={styles.statLabel}>Total Fee</Text>
+            <Text style={styles.statLabel}>{t('totalFee', 'Total Fee')}</Text>
             <Text style={styles.statValue}>₹{summary.total_due.toLocaleString()}</Text>
           </View>
           <View style={styles.verticalDivider} />
           <View>
-            <Text style={styles.statLabel}>Paid</Text>
+            <Text style={styles.statLabel}>{t('paid', 'Paid')}</Text>
             <Text style={styles.statValueSuccess}>₹{summary.total_paid.toLocaleString()}</Text>
           </View>
         </View>
@@ -307,7 +372,7 @@ export default function FeesScreen() {
       <View style={styles.tabContainer}>
         <TouchableOpacity style={[styles.tab, activeTab === 'breakdown' && styles.activeTab]} onPress={() => setActiveTab('breakdown')}>
           <Text style={[styles.tabText, activeTab === 'breakdown' && styles.activeTabText]}>
-            Breakdown
+            {t('breakdown', 'Breakdown')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tab, activeTab === 'history' && styles.activeTab]} onPress={() => {
@@ -315,19 +380,19 @@ export default function FeesScreen() {
           if (receipts.length === 0) loadReceipts();
         }}>
           <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>
-            Receipts
+            {t('receipts', 'Receipts')}
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* CONTENT */}
       <View style={styles.contentSection}>
-        {activeTab === 'breakdown' ? fees.length === 0 ? <Text style={styles.emptyText}>No fee records found.</Text> : fees.map((item) => <View key={item.id}>{renderFeeItem({
+        {activeTab === 'breakdown' ? fees.length === 0 ? <Text style={styles.emptyText}>{t('noFeeRecordsFound', 'No fee records found.')}</Text> : fees.map((item) => <View key={item.id}>{renderFeeItem({
             item
           })}</View>) : (/* RECEIPTS LIST */
         loadingReceipts ? <LogoLoader size={30} color="#4F46E5" style={{
           marginTop: 20
-        }} /> : receipts.length === 0 ? <Text style={styles.emptyText}>No receipts found.</Text> : receipts.map((receipt) => {
+        }} /> : receipts.length === 0 ? <Text style={styles.emptyText}>{t('noReceiptsFound', 'No receipts found.')}</Text> : receipts.map((receipt) => {
           return <View key={receipt.id} style={styles.receiptCard}>
               <View style={styles.receiptHeader}>
                 <View>
@@ -339,7 +404,7 @@ export default function FeesScreen() {
               <View style={styles.divider} />
               <TouchableOpacity style={styles.downloadBtn} onPress={() => handleDownloadReceipt(receipt)}>
                 <Ionicons name="download-outline" size={16} color="#4F46E5" />
-                <Text style={styles.downloadText}>Download Receipt</Text>
+                <Text style={styles.downloadText}>{t('downloadReceipt', 'Download Receipt')}</Text>
               </TouchableOpacity>
             </View>;
         }))}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
+import AppDatePicker from '@/src/components/AppDatePicker';
 
 import {
   View, Text, StyleSheet, ScrollView,
@@ -25,6 +26,12 @@ import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContex
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import {
+  STAFF_ADD_LOGIN_ROLE_OPTIONS,
+  dedupeDesignationsByName,
+  resolveRoleFromDesignation,
+  type StaffAddLoginRoleCode,
+} from '../../src/utils/roleHelpers';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -269,6 +276,65 @@ const genSt = StyleSheet.create({
   pillText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.1 },
 });
 
+// ─── Login role selector (deduplicated portal roles) ─────────────────────────
+const LoginRoleSelector = ({ value, onChange, isDark }: {
+  value: StaffAddLoginRoleCode;
+  onChange: (code: StaffAddLoginRoleCode) => void;
+  isDark: boolean;
+}) => (
+  <View style={loginRoleSt.group}>
+    <Text style={[loginRoleSt.label, { color: isDark ? '#64748B' : '#64748B' }]}>
+      Account Login Role <Text style={{ color: '#EF4444' }}>*</Text>
+    </Text>
+    <View style={loginRoleSt.grid}>
+      {STAFF_ADD_LOGIN_ROLE_OPTIONS.map((opt) => {
+        const active = value === opt.code;
+        return (
+          <Pressable
+            key={opt.code}
+            style={({ pressed }) => [
+              loginRoleSt.card,
+              { backgroundColor: isDark ? '#1E293B' : '#F8FAFC' },
+              {
+                borderColor: active ? '#F59E0B' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
+                borderWidth: active ? 2 : 1,
+              },
+              pressed && { opacity: 0.85 },
+            ]}
+            onPress={() => onChange(opt.code)}
+          >
+            <Text style={[
+              loginRoleSt.cardText,
+              { color: active ? '#F59E0B' : (isDark ? '#64748B' : '#94A3B8') },
+              active && { fontWeight: '800' },
+            ]}>
+              {opt.label}
+            </Text>
+            <Text style={[loginRoleSt.portalHint, { color: active ? '#D97706' : (isDark ? '#475569' : '#CBD5E1') }]}>
+              {opt.portal === 'staff' ? 'Staff portal' : `${opt.portal} portal`}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  </View>
+);
+const loginRoleSt = StyleSheet.create({
+  group: { marginBottom: 14 },
+  label: { fontSize: 12, fontWeight: '700', marginBottom: 10, letterSpacing: 0.1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  card: {
+    width: (SW - 36 - 8 - 9) / 2,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  portalHint: { fontSize: 10, fontWeight: '600', textTransform: 'capitalize' },
+});
+
 // ─── Section Card wrapper ─────────────────────────────────────────────────────
 const SectionCard = ({
   title, icon, colorKey, delay, children,
@@ -377,6 +443,7 @@ export default function AddStaffScreen() {
     firstName: '', lastName: '', email: '', password: '',
     phone: '', designationId: '', salary: '', genderId: '1',
     staffCode: '', dob: '', joiningDate: new Date().toISOString().split('T')[0],
+    loginRole: 'staff' as StaffAddLoginRoleCode,
   });
 
   const update = (key: string, val: string) => setFormData(p => ({ ...p, [key]: val }));
@@ -385,9 +452,12 @@ export default function AddStaffScreen() {
     let mounted = true;
     ReferenceDataService.getStaffDesignations().then(data => {
       if (mounted) {
-        setDesignations(data);
-        if (!formData.designationId && data.length > 0) {
-          update('designationId', data[0].id.toString());
+        const unique = dedupeDesignationsByName(data);
+        setDesignations(unique);
+        if (!formData.designationId && unique.length > 0) {
+          const firstId = unique[0].id.toString();
+          update('designationId', firstId);
+          update('loginRole', resolveRoleFromDesignation(unique[0].name));
         }
       }
     }).catch(console.error);
@@ -410,6 +480,7 @@ export default function AddStaffScreen() {
           genderId: data.gender === 'Female' ? '2' : data.gender === 'Other' ? '3' : '1',
           staffCode: data.staff_code || '', dob: data.dob || '',
           joiningDate: data.joining_date || '',
+          loginRole: resolveRoleFromDesignation(data.designation || data.designation_name),
         });
         // Store originals for auth change detection
         setOriginalEmail(loadedEmail);
@@ -434,10 +505,7 @@ export default function AddStaffScreen() {
       const selectedDesig = designations.find(d => d.id.toString() === formData.designationId);
       const desigName = selectedDesig?.name?.toLowerCase() || '';
 
-      let calculatedRole = 'staff';
-      if (desigName === 'principal') calculatedRole = 'principal';
-      else if (desigName.includes('admin')) calculatedRole = 'admin';
-      else if (desigName === 'driver') calculatedRole = 'driver';
+      let calculatedRole = resolveRoleFromDesignation(desigName);
 
       const payload: any = {
         first_name: formData.firstName, last_name: formData.lastName, middle_name: '',
@@ -446,7 +514,7 @@ export default function AddStaffScreen() {
         department: '', salary: formData.salary ? parseFloat(formData.salary) : undefined,
         gender_id: parseInt(formData.genderId), staff_code: formData.staffCode,
         joining_date: formData.joiningDate, dob: formData.dob || undefined,
-        role_code: calculatedRole,
+        role_code: formData.loginRole || calculatedRole,
       };
 
       // Include password: always for create, only if typed for edit
@@ -554,9 +622,15 @@ export default function AddStaffScreen() {
 
             <GenderToggle value={formData.genderId} onChange={(v: string) => update('genderId', v)} isDark={isDark} />
 
-            <InputField label="Date of Birth" placeholder="YYYY-MM-DD" value={formData.dob}
-              onChangeText={(t: string) => update('dob', t)} icon="calendar-outline"
-              accentColor={SECTION_COLORS.personal.accent} isDark={isDark} />
+            <AppDatePicker
+              label="Date of Birth"
+              value={formData.dob}
+              onChange={(d) => update('dob', d)}
+              maximumDate={new Date()}
+              accentColor={SECTION_COLORS.personal.accent}
+              isDark={isDark}
+              containerStyle={{ marginBottom: 0 }}
+            />
           </SectionCard>
 
           {/* ── SECTION 2: EMPLOYMENT ── */}
@@ -568,16 +642,26 @@ export default function AddStaffScreen() {
                   required accentColor={SECTION_COLORS.employment.accent} isDark={isDark} />
               </View>
               <View style={styles.half}>
-                <InputField label="Joining Date" placeholder="YYYY-MM-DD" value={formData.joiningDate}
-                  onChangeText={(t: string) => update('joiningDate', t)} icon="calendar-outline"
-                  required accentColor={SECTION_COLORS.employment.accent} isDark={isDark} />
+                <AppDatePicker
+                  label="Joining Date"
+                  value={formData.joiningDate}
+                  onChange={(d) => update('joiningDate', d)}
+                  required
+                  accentColor={SECTION_COLORS.employment.accent}
+                  isDark={isDark}
+                  containerStyle={{ flex: 1, marginBottom: 0 }}
+                />
               </View>
             </View>
 
             <DesignationSelector
               value={formData.designationId}
               options={designations}
-              onChange={(v: string) => update('designationId', v)}
+              onChange={(v: string) => {
+                update('designationId', v);
+                const desig = designations.find(d => d.id.toString() === v);
+                update('loginRole', resolveRoleFromDesignation(desig?.name));
+              }}
               isDark={isDark}
             />
 
@@ -591,6 +675,11 @@ export default function AddStaffScreen() {
 
           {/* ── SECTION 3: CONTACT ── */}
           <SectionCard title="Contact & Login" icon="lock-closed-outline" colorKey="contact" delay={300}>
+            <LoginRoleSelector
+              value={formData.loginRole}
+              onChange={(code) => update('loginRole', code)}
+              isDark={isDark}
+            />
             <InputField label="Email Address" placeholder="staff@school.edu" value={formData.email}
               onChangeText={(t: string) => update('email', t)} keyboardType="email-address"
               icon="mail-outline" accentColor={SECTION_COLORS.contact.accent} isDark={isDark} />

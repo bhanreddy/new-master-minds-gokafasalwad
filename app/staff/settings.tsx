@@ -5,10 +5,20 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { ThemeColors } from '../../src/theme/themes';
+
+/** Returns the first human-readable ID (not a UUID) from the user object */
+function getHumanId(user: any): string {
+  const candidates = [user?.staff_code, user?.admission_no];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return 'N/A';
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,7 +145,12 @@ export default function StaffSettings() {
     const handleLogout = () =>
         alertCompat('Log Out', 'Are you sure you want to log out?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Log Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/welcome'); } },
+            { text: 'Log Out', style: 'destructive', onPress: async () => {
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                await AsyncStorage.removeItem('staff_auto_login');
+                await signOut();
+                router.replace('/welcome');
+            } },
         ]);
 
     const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
@@ -171,7 +186,7 @@ export default function StaffSettings() {
                             <View style={styles.roleRow}>
                                 <FontAwesome5 name="id-badge" size={10} color="#6366F1" />
                                 <Text style={styles.roleText}>
-                                    {(user as any)?.staff_code || (user as any)?.staff_id || 'N/A'}
+                                    {getHumanId(user)}
                                 </Text>
                             </View>
                         </View>
@@ -289,7 +304,7 @@ export default function StaffSettings() {
                 {/* ── Version footer ── */}
                 <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
                     <View style={styles.footerDot} />
-                    <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+                    <Text style={styles.footerText}>Nexsyrus SchoolIMS · v{Constants.expoConfig?.version || '1.0.0'}</Text>
                     <View style={styles.footerDot} />
                 </Animated.View>
 

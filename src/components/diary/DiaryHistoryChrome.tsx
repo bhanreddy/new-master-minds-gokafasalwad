@@ -10,7 +10,9 @@ import {
   Modal,
   TouchableWithoutFeedback,
   Pressable,
+  Platform,
 } from 'react-native';
+import AppDatePicker from '@/src/components/AppDatePicker';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
@@ -391,12 +393,33 @@ export function DiaryHistoryTabSwitcher({
 export function DiaryHistoryDateSelectorButton({
   selectedYmd,
   onPress,
+  onSelect,
 }: {
   selectedYmd: string;
   onPress: () => void;
+  onSelect?: (ymd: string) => void;
 }) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => chromeStyles(theme), [theme]);
+
+  if (Platform.OS === 'web' && onSelect) {
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(300).springify()}
+        layout={Layout.springify()}
+        style={styles.dateSelectorWrap}
+      >
+        <AppDatePicker
+          label="Pick a date"
+          value={selectedYmd}
+          onChange={onSelect}
+          maximumDate={new Date()}
+          isDark={isDark}
+          containerStyle={{ marginBottom: 0 }}
+        />
+      </Animated.View>
+    );
+  }
 
   const today = new Date();
   const yesterday = new Date(today);

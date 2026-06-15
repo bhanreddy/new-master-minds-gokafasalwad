@@ -42,54 +42,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultLightTheme,
     colors: {
       ...defaultLightTheme.colors,
-      // Primary brand color – Deep Purple (from logo outer ring)
-      primary: '#4B1A6B',
-      primaryLight: '#7B4FA2',
-      primaryDark: '#3A1155',
-      // Secondary color – Lavender (from logo lower arc)
-      secondary: '#9B8DB8',
-      // Accent color – Cerulean Blue (from logo globe & hands)
-      accent: '#0D8ECF',
-      // Backgrounds – subtle purple-tinted neutrals
-      background: '#F9F7FC',
+      // Primary brand color – Royal purple
+      primary: '#5D3FD3',
+      primaryLight: '#7B5FE7',
+      primaryDark: '#4A2FB8',
+      // Secondary color – Orchid purple
+      secondary: '#BF40BF',
+      // Accent color – Bright magenta-purple
+      accent: '#BF40BF',
+      // Backgrounds – cool lavender neutrals
+      background: '#F8F5FD',
       surface: '#FFFFFF',
       card: '#FFFFFF',
       // Text colors – deep purple-slate palette
-      textPrimary: '#2D2440',
-      textStrong: '#1A0E2E',
-      textSecondary: '#6B5F80',
-      textMuted: '#9B91AB',
-      text: '#2D2440',
-      textTertiary: '#9B91AB',
+      textPrimary: '#2D1B4E',
+      textStrong: '#1A0E33',
+      textSecondary: '#5C4780',
+      textMuted: '#8E7BAF',
+      text: '#2D1B4E',
+      textTertiary: '#8E7BAF',
       // Borders – purple-tinted
-      border: '#E4DFF0',
-      borderLight: '#F0ECF6',
+      border: '#E0D6F0',
+      borderLight: '#EDE7F6',
       // Semantic colors
-      danger: '#EF4444',
+      danger: '#D32F2F',
       success: '#10B981',
       warning: '#F59E0B',
-      info: '#0D8ECF',
-      notification: '#EF4444',
+      info: '#5D3FD3',
+      notification: '#BF40BF',
       // Navigation – purple pill tints
-      navPill: '#F0EBF7',
-      navIconActive: '#4B1A6B',
-      navIconInactive: '#9B91AB',
+      navPill: '#EDE7F6',
+      navIconActive: '#5D3FD3',
+      navIconInactive: '#8E7BAF',
       // Header/Footer backgrounds (with transparency for glass effect)
-      headerBg: 'rgba(249,247,252, 0.88)',
+      headerBg: 'rgba(248,245,253, 0.88)',
       footerBg: 'rgba(255,255,255, 0.92)',
       // Alert colors
-      alertBg: '#FEFCE8',
-      alertBorder: '#FEF08A',
-      alertIcon: '#EAB308',
-      alertText: '#854D0E',
+      alertBg: '#F3EDFF',
+      alertBorder: '#D4C4F7',
+      alertIcon: '#5D3FD3',
+      alertText: '#4A2FB8',
       alertBgDanger: '#FEF2F2',
       alertBorderDanger: '#FECACA',
-      alertIconDanger: '#EF4444',
+      alertIconDanger: '#D32F2F',
       alertTextDanger: '#991B1B',
-      alertBgInfo: '#EDF7FC',
-      alertBorderInfo: '#B3DFEF',
-      alertIconInfo: '#0D8ECF',
-      alertTextInfo: '#0A5F8A',
+      alertBgInfo: '#F3EDFF',
+      alertBorderInfo: '#D4C4F7',
+      alertIconInfo: '#5D3FD3',
+      alertTextInfo: '#4A2FB8',
     },
     typography: {
       fontFamily: 'System',
@@ -154,53 +154,53 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     colors: {
       ...defaultDarkTheme.colors,
       // Primary – lighter purple for dark mode legibility
-      primary: '#B48FD9',
-      primaryLight: '#CDB3E8',
-      primaryDark: '#9A6CC4',
-      // Secondary – light lavender
-      secondary: '#C4B8D8',
-      // Accent – brighter cerulean blue
-      accent: '#3DB5E8',
+      primary: '#9B7EF7',
+      primaryLight: '#B39DFF',
+      primaryDark: '#7B5FE7',
+      // Secondary – lighter orchid purple
+      secondary: '#D86FD8',
+      // Accent – brighter magenta-purple for dark backgrounds
+      accent: '#D86FD8',
       // Dark backgrounds – deep purple-ink tones
-      background: '#0D0A14',
-      surface: '#1A1526',
-      card: '#1A1526',
+      background: '#120E1F',
+      surface: '#1E1833',
+      card: '#1E1833',
       // Light text for dark backgrounds
-      textPrimary: '#E4DFF0',
-      textStrong: '#F3F0F8',
-      textSecondary: '#9B91AB',
-      textMuted: '#6B5F80',
-      text: '#E4DFF0',
-      textTertiary: '#6B5F80',
+      textPrimary: '#EDE7F6',
+      textStrong: '#F8F5FD',
+      textSecondary: '#C4B5E0',
+      textMuted: '#7E6BA8',
+      text: '#EDE7F6',
+      textTertiary: '#7E6BA8',
       // Darker borders – purple-ink
-      border: '#2A2240',
-      borderLight: '#3D3358',
+      border: '#2D2345',
+      borderLight: '#3A2D55',
       // Lighter semantic colors for dark mode
       danger: '#F87171',
       success: '#34D399',
       warning: '#FBBF24',
-      info: '#3DB5E8',
-      notification: '#F87171',
+      info: '#9B7EF7',
+      notification: '#D86FD8',
       // Navigation – purple tint
-      navPill: 'rgba(180,143,217, 0.15)',
-      navIconActive: '#B48FD9',
-      navIconInactive: '#4A3F62',
+      navPill: 'rgba(93,63,211, 0.15)',
+      navIconActive: '#9B7EF7',
+      navIconInactive: '#5C4780',
       // Header/Footer with dark purple glass effect
-      headerBg: 'rgba(13,10,20, 0.88)',
-      footerBg: 'rgba(26,21,38, 0.92)',
+      headerBg: 'rgba(18,14,31, 0.88)',
+      footerBg: 'rgba(30,24,51, 0.92)',
       // Alert colors (dark mode)
-      alertBg: 'rgba(234,179,8, 0.1)',
-      alertBorder: 'rgba(234,179,8, 0.2)',
-      alertIcon: '#FBBF24',
-      alertText: '#FEF08A',
-      alertBgDanger: 'rgba(239,68,68, 0.1)',
-      alertBorderDanger: 'rgba(239,68,68, 0.2)',
+      alertBg: 'rgba(93,63,211, 0.1)',
+      alertBorder: 'rgba(93,63,211, 0.2)',
+      alertIcon: '#B39DFF',
+      alertText: '#D4C4F7',
+      alertBgDanger: 'rgba(248,113,113, 0.1)',
+      alertBorderDanger: 'rgba(248,113,113, 0.2)',
       alertIconDanger: '#F87171',
       alertTextDanger: '#FECACA',
-      alertBgInfo: 'rgba(13,142,207, 0.12)',
-      alertBorderInfo: 'rgba(13,142,207, 0.25)',
-      alertIconInfo: '#3DB5E8',
-      alertTextInfo: '#B3DFEF',
+      alertBgInfo: 'rgba(93,63,211, 0.12)',
+      alertBorderInfo: 'rgba(93,63,211, 0.25)',
+      alertIconInfo: '#9B7EF7',
+      alertTextInfo: '#D4C4F7',
     },
     typography: {
       fontFamily: 'System',
@@ -264,26 +264,26 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
 
 export const SCHOOL_CONFIG = {
   // The official name of the school displayed in headers and reports
-  name: "Default School",
+  name: "Vikas Model School Balampet",
 
   // Short line under the school name on the header ribbon (gold text)
-  tagline: "You can LEARN something new Everyday,  if you LISTEN",
+  tagline: "Arise Awake Stop Not till you reach the Goal",
 
   // Motto / core values shown in the first info column of the ribbon (letterhead)
-  motto: "You believe us... We will prove it",
+  motto: "Wisdom, Knowledge and Victory",
 
   // The school logo used in headers and reports
   // Ensure the image exists in assets/images/
   logo: require('../../assets/images/icon-v2.png'),
 
   // Optional: School Address for reports
-  address: "SLATE SCHOOL ,KOSGI.,Hakeempet-Polepally Road.,Dist Narayanpet., Telangana-509339",
+  address: "Vikas Model School ,Balampet, Mandal Doulathabad, Dist Vikarabad, Telangana-509336",
 
   // Optional: Contact info for reports
-  contact: "9347556547",
+  contact: "9848981191",
 
   // Optional: School email for letterhead / reports
-  email: "slateschoolkosgi@gmail.com",
+  email: "vmsbalampet@gmail.com",
 
   // Website or Email
   website: "www.nexsyrus.com",
@@ -292,17 +292,19 @@ export const SCHOOL_CONFIG = {
   cbseAffiliationNo: "NA",
 
   // School Code (if applicable)
-  schoolCode: "NA",
+  schoolCode: "VMS",
 
   /**
    * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
-   * Adjust `ribbonGradient` stops for your brand; `accent` drives gold trim and taglines.
+   * Extracted from the VMS crest: gold shield, brown interior, red VMS lettering.
    */
   theme: {
-    /** Stripes, tagline text, soft dividers – cerulean blue from logo globe */
-    accent: '#0D8ECF',
-    /** Four-stop diagonal ribbon – deep purple to lavender (logo ring) */
-    ribbonGradient: ['#3A1155', '#4B1A6B', '#6A3D8F', '#9B8DB8'] as const,
+    /** Purple stripes, dividers, and trim (ribbon accents) */
+    accent: '#BF40BF',
+    /** Tagline text – orchid purple */
+    ribbonTagline: '#E8B4F8',
+    /** Four-stop diagonal ribbon – deep royal purple to orchid (purple gradient) */
+    ribbonGradient: ['#3A1F8C', '#5D3FD3', '#9B4DCA', '#BF40BF'] as const,
     /** Optional stops for expo-linear-gradient (length must match ribbonGradient) */
     ribbonGradientLocations: [0, 0.30, 0.65, 1] as const,
     /** Main title on the ribbon */

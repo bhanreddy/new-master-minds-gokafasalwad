@@ -6,9 +6,23 @@ import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StudentHeader from '../../src/components/StudentHeader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useTheme } from '../../src/hooks/useTheme';
 import { ThemeColors } from '../../src/theme/themes';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+/** Returns the first human-readable ID (not a UUID) from the user object */
+function getHumanId(user: any): string {
+  const candidates = [
+    user?.admission_no,
+    user?.staff_code,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return 'N/A';
+}
 
 // ─── SettingRow ───────────────────────────────────────────────────────────────
 
@@ -110,6 +124,7 @@ export default function Settings() {
         alertCompat(item, 'This feature will be available in the next update.');
 
     const handleLogout = async () => {
+        await AsyncStorage.removeItem('student_auto_login');
         await signOut();
         router.replace('/welcome');
     };
@@ -149,7 +164,7 @@ export default function Settings() {
                             <View style={styles.idBadge}>
                                 <FontAwesome5 name="id-card" size={9} color="#10B981" />
                                 <Text style={styles.idText}>
-                                    {(user as any)?.admission_no || user?.userId || 'N/A'}
+                                    {getHumanId(user)}
                                 </Text>
                             </View>
                         </View>
@@ -275,7 +290,7 @@ export default function Settings() {
                 {/* ── Version footer ── */}
                 <Animated.View entering={FadeInDown.delay(460).duration(400)} style={styles.footer}>
                     <View style={styles.footerDot} />
-                    <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+                    <Text style={styles.footerText}>Nexsyrus SchoolIMS · v{Constants.expoConfig?.version || '1.0.0'}</Text>
                     <View style={styles.footerDot} />
                 </Animated.View>
 

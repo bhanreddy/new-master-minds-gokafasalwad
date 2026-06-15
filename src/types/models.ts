@@ -86,6 +86,8 @@ export interface Parent {
 export interface Student {
     readonly id: string;
     readonly admission_no: string;
+    readonly pen_number?: string;
+    readonly apar_number?: string | null;
     readonly admission_date: string;
     readonly first_name: string;
     readonly middle_name?: string;
@@ -152,9 +154,22 @@ export interface FeeSummary {
     readonly balance: number;
 }
 
+/** Per fee-type balance line on a fee receipt */
+export interface StudentFeeDueLine {
+    readonly student_fee_id?: string;
+    readonly fee_type: string;
+    readonly academic_year?: string;
+    readonly amount_due: number;
+    readonly amount_paid: number;
+    readonly discount?: number;
+    readonly balance_due: number;
+    readonly status?: string;
+}
+
 export interface FeeTransaction {
     readonly id: string;
     readonly student_fee_id: string;
+    readonly student_id?: string;
     readonly amount: number;
     readonly paid_at: string;
     readonly payment_method: 'cash' | 'card' | 'upi' | 'bank_transfer' | 'cheque' | 'online';
@@ -163,18 +178,52 @@ export interface FeeTransaction {
     readonly received_by?: string;
     readonly student_name?: string;
     readonly admission_no?: string;
+    readonly class_name?: string;
+    readonly section_name?: string;
     readonly fee_type?: string;
     readonly academic_year?: string;
+    /** Total fee amount before discount (from student_fees.amount_due) */
+    readonly amount_due?: number;
+    /** Cumulative amount paid on this fee line after this transaction */
+    readonly total_paid?: number;
+    /** Discount applied on this fee line */
+    readonly discount?: number;
+    /** Remaining balance on this fee line after this transaction */
+    readonly balance_due?: number;
+    /** All assigned fee types and balances for this student */
+    readonly fee_dues?: readonly StudentFeeDueLine[];
 }
 
 export interface FeeStructure {
     readonly id: string;
     readonly academic_year_id: string;
     readonly class_id: string;
+    readonly class_name?: string;
+    readonly section_id?: string | null;
+    readonly section_name?: string | null;
     readonly fee_type_id: string;
+    readonly fee_type?: string;
     readonly amount: number;
     readonly due_date?: string;
     readonly frequency: string;
+    readonly academic_year?: string;
+}
+
+export type FeeMode = 'per_class' | 'per_section';
+
+export interface FeeStructureListResponse {
+    fee_mode: FeeMode;
+    structures: FeeStructure[];
+    missing_sections?: Array<{
+        class_id: string;
+        class_name: string;
+        section_id: string;
+        section_name: string;
+        academic_year_id: string;
+        academic_year: string;
+        fee_type_id: string;
+        fee_type: string;
+    }>;
 }
 
 export interface FeeType {
@@ -198,7 +247,10 @@ export interface StudentFee {
     readonly fee_code?: string;
     readonly period_month?: number;
     readonly period_year?: number;
+    readonly adjustment_count?: number;
 }
+
+export type FeeAdjustmentType = 'waive' | 'add';
 
 export interface FeeReceipt {
     readonly id: string;
@@ -208,6 +260,8 @@ export interface FeeReceipt {
     readonly issued_by_name?: string;
     readonly student_name: string;
     readonly admission_no: string;
+    readonly class_name?: string;
+    readonly section_name?: string;
     readonly items: {
         readonly amount: number;
         readonly fee_type: string;
@@ -224,10 +278,42 @@ export interface AccountsDashboardStats {
     readonly pending_dues: number;
     readonly defaulter_count: number;
     readonly recent_transactions: FeeTransaction[];
+    readonly config?: Record<string, boolean>;
+    readonly stats?: {
+        readonly collected_total?: number;
+        readonly defaulter_count?: number;
+        readonly recent_transactions?: any[];
+        readonly total_collection_month?: number;
+        readonly todays_collection?: number;
+        readonly pending_dues?: number;
+        readonly revenue_trend?: {
+            readonly trend: any[];
+            readonly total_invoiced: number;
+            readonly total_collected: number;
+            readonly outstanding_dues: number;
+        };
+        readonly collection_efficiency?: number;
+        readonly avg_attendance?: {
+            readonly avg_attendance: number;
+            readonly total_present_days: number;
+            readonly total_working_days: number;
+        };
+        readonly academic_score?: {
+            readonly avg_score: number;
+            readonly exams_conducted: number;
+        };
+        readonly system_insights?: any[];
+    };
 }
 
 export interface FeeResponse {
-    readonly student: { readonly id: string; readonly admission_no: string; readonly display_name: string };
+    readonly student: {
+        readonly id: string;
+        readonly admission_no: string;
+        readonly display_name: string;
+        readonly class_name?: string;
+        readonly section_name?: string;
+    };
     readonly summary: FeeSummary;
     readonly fees: StudentFee[];
 }
@@ -279,6 +365,7 @@ export interface AdminDashboardStats {
     readonly complaints: number;
     readonly collection: number;
     readonly todayCollection?: number;
+    readonly diaryEntriesToday?: number;
 }
 
 export interface AdminUser {

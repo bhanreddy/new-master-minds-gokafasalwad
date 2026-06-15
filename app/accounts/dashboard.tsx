@@ -19,14 +19,16 @@ import AdminHeader from '../../src/components/AdminHeader';
 import DashboardMenuOverlay from '../../src/components/DashboardMenuOverlay';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
-import { FeeService as FeesService } from '../../src/services/feeService';
-import { AnalyticsService, AnalyticsData } from '../../src/services/analyticsService';
+import { useApiQuery } from '../../src/hooks/useApiQuery';
+import { AnalyticsData } from '../../src/services/analyticsService';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import LogoLoader from '../../src/components/LogoLoader';
 import { LineChart } from "react-native-gifted-charts";
+import PaymentDueBanner from '../../src/components/PaymentDueBanner';
 
 const IS_WEB = Platform.OS === 'web';
+const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 const AVATAR_PALETTE = ['#818CF8', '#22D3A0', '#F5C842', '#63B3ED', '#F2546A', '#A78BFA', '#34D399'];
 
 // ─── Format Helpers ───────────────────────────────────────────────────────────
@@ -240,7 +242,8 @@ const MobileGridItem = ({ item, index, router, styles, isDark, GRID_ITEM_W }: an
 };
 
 // ─── Web Analytics ────────────────────────────────────────────────────────────
-const WebAnalyticsSection = ({ data, loading, isDark, theme, contentW }: any) => {
+// ─── Web Analytics ────────────────────────────────────────────────────────────
+const WebAnalyticsSection = ({ data, loading, isDark, theme, contentW, config = {} }: any) => {
   if (loading) {
     return (
       <View style={{ flexDirection: 'row', gap: 16, marginBottom: 28 }}>
@@ -276,104 +279,124 @@ const WebAnalyticsSection = ({ data, loading, isDark, theme, contentW }: any) =>
   const att = getMetricState(data.attendance.avg_attendance, true, `${data.attendance.total_present_days || 0} of ${data.attendance.total_working_days || 0} student-days present`);
   const acad = getMetricState(data.academics.avg_score, true, `${data.academics.exams_conducted || 0} exams conducted`);
 
-  const metrics = [
-    { icon: 'trending-up', color: '#6366F1', bg: 'rgba(99,102,241,0.12)', label: 'Collection Efficiency', value: coll.value, subLabel: coll.subLabel },
-    { icon: 'people', color: '#10B981', bg: 'rgba(16,185,129,0.12)', label: 'Avg Attendance', value: att.value, subLabel: att.subLabel },
-    { icon: 'school', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Academic Score', value: acad.value, subLabel: acad.subLabel },
-  ];
+  const metrics = [];
+  if (config.collection_efficiency !== false) {
+    metrics.push({ icon: 'trending-up', color: '#6366F1', bg: 'rgba(99,102,241,0.12)', label: 'Collection Efficiency', value: coll.value, subLabel: coll.subLabel });
+  }
+  if (config.avg_attendance !== false) {
+    metrics.push({ icon: 'people', color: '#10B981', bg: 'rgba(16,185,129,0.12)', label: 'Avg Attendance', value: att.value, subLabel: att.subLabel });
+  }
+  if (config.academic_score !== false) {
+    metrics.push({ icon: 'school', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Academic Score', value: acad.value, subLabel: acad.subLabel });
+  }
+
+  const showChart = config.revenue_trend !== false;
+  const showAnyMetric = metrics.length > 0;
+  const showInsights = config.system_insights !== false && data.insights?.length > 0;
+
+  if (!showChart && !showAnyMetric && !showInsights) return null;
 
   return (
     <Animated.View entering={FadeInDown.delay(100).duration(500)} style={{ marginBottom: 28 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-        <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#8B5CF6', shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 5 }} />
-        <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3 }}>Financial Performance</Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 16 }}>
-        {/* Chart */}
-        <View style={{ flex: 1.6, backgroundColor: isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.95)', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)', overflow: 'hidden', shadowColor: isDark ? '#6366F1' : '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: isDark ? 0.15 : 0.05, shadowRadius: 16, elevation: 6 }}>
-          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: '#6366F1', borderTopLeftRadius: 20, borderTopRightRadius: 20, opacity: 0.75 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text, opacity: 0.85 }}>Revenue Trend</Text>
-            <View style={{ backgroundColor: 'rgba(99,102,241,0.18)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.30)' }}>
-              <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#818CF8' : '#4F46E5', letterSpacing: 0.8, textTransform: 'uppercase' }}>6 Months</Text>
-            </View>
+      {(showChart || showAnyMetric) && (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+            <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#8B5CF6', shadowColor: '#8B5CF6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 5 }} />
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.text, letterSpacing: -0.3 }}>Financial Performance</Text>
           </View>
-          
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20, paddingHorizontal: 4 }}>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)' }}>
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Total Expected</Text>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.text }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
-            </View>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)' }}>
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Total Collected</Text>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#10B981' }}>{formatCurrencyShort(data.financials.total_collected)}</Text>
-            </View>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}>
-              <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Pending</Text>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: '#EF4444' }}>{formatCurrencyShort(data.financials.outstanding_dues)}</Text>
-            </View>
-          </View>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            {/* Chart */}
+            {showChart && (
+              <View style={{ flex: 1.6, backgroundColor: isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.95)', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)', overflow: 'hidden', shadowColor: isDark ? '#6366F1' : '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: isDark ? 0.15 : 0.05, shadowRadius: 16, elevation: 6 }}>
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: '#6366F1', borderTopLeftRadius: 20, borderTopRightRadius: 20, opacity: 0.75 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text, opacity: 0.85 }}>Revenue Trend</Text>
+                  <View style={{ backgroundColor: 'rgba(99,102,241,0.18)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.30)' }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: isDark ? '#818CF8' : '#4F46E5', letterSpacing: 0.8, textTransform: 'uppercase' }}>6 Months</Text>
+                  </View>
+                </View>
+                
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20, paddingHorizontal: 4 }}>
+                  <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)' }}>
+                    <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Total Expected</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.text }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)' }}>
+                    <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Total Collected</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#10B981' }}>{formatCurrencyShort(data.financials.total_collected)}</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}>
+                    <Text style={{ fontSize: 9.5, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.2 }}>Pending</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#EF4444' }}>{formatCurrencyShort(data.financials.outstanding_dues)}</Text>
+                  </View>
+                </View>
 
-          <View style={{ marginLeft: -10, minHeight: 180, justifyContent: 'center' }}>
-            {hasChartData ? (
-              <LineChart data={lineData} height={160} width={contentW * 0.51} initialSpacing={30} spacing={55}
-                color="#6366F1" thickness={2.5} hideRules={false} hideYAxisText={false} yAxisColor="transparent" xAxisColor="transparent"
-                rulesColor={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
-                yAxisTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
-                xAxisLabelTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
-                formatYLabel={(label: string) => formatCurrencyShort(Number(label))}
-                dataPointsColor="#6366F1" areaChart startFillColor="rgba(99,102,241,0.22)" endFillColor="rgba(99,102,241,0.01)"
-                curved animateOnDataChange animationDuration={800}
-                pointerConfig={{
-                  pointerStripHeight: 160,
-                  pointerStripColor: 'rgba(99,102,241,0.4)',
-                  pointerStripWidth: 2,
-                  pointerColor: '#6366F1',
-                  radius: 5,
-                  pointerLabelWidth: 80,
-                  pointerLabelHeight: 40,
-                  activatePointersOnLongPress: true,
-                  autoAdjustPointerLabelPosition: true,
-                  pointerLabelComponent: (items: any) => {
-                    return (
-                      <View style={{ backgroundColor: isDark ? '#374151' : '#fff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }}>
-                        <Text style={{ color: isDark ? '#fff' : '#000', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>{items[0].dataPointText}</Text>
-                        <Text style={{ color: theme.colors.textSecondary, fontSize: 9, textAlign: 'center', marginTop: 2 }}>{items[0].label}</Text>
-                      </View>
-                    );
-                  },
-                }}
-              />
-            ) : (
-              <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 160, opacity: 0.5 }}>
-                <Ionicons name="bar-chart-outline" size={40} color={theme.colors.textSecondary} style={{ marginBottom: 12 }} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>Not enough data yet</Text>
-                <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 }}>Revenue trend appears after 2+ months of data</Text>
+                <View style={{ marginLeft: -10, minHeight: 180, justifyContent: 'center' }}>
+                  {hasChartData ? (
+                    <LineChart data={lineData} height={160} width={contentW * (showAnyMetric ? 0.51 : 0.82)} initialSpacing={30} spacing={55}
+                      color="#6366F1" thickness={2.5} hideRules={false} hideYAxisText={false} yAxisColor="transparent" xAxisColor="transparent"
+                      rulesColor={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
+                      yAxisTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
+                      xAxisLabelTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
+                      formatYLabel={(label: string) => formatCurrencyShort(Number(label))}
+                      dataPointsColor="#6366F1" areaChart startFillColor="rgba(99,102,241,0.22)" endFillColor="rgba(99,102,241,0.01)"
+                      curved animateOnDataChange animationDuration={800}
+                      pointerConfig={{
+                        pointerStripHeight: 160,
+                        pointerStripColor: 'rgba(99,102,241,0.4)',
+                        pointerStripWidth: 2,
+                        pointerColor: '#6366F1',
+                        radius: 5,
+                        pointerLabelWidth: 80,
+                        pointerLabelHeight: 40,
+                        activatePointersOnLongPress: true,
+                        autoAdjustPointerLabelPosition: true,
+                        pointerLabelComponent: (items: any) => {
+                          return (
+                            <View style={{ backgroundColor: isDark ? '#374151' : '#fff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }}>
+                              <Text style={{ color: isDark ? '#fff' : '#000', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>{items[0].dataPointText}</Text>
+                              <Text style={{ color: theme.colors.textSecondary, fontSize: 9, textAlign: 'center', marginTop: 2 }}>{items[0].label}</Text>
+                            </View>
+                          );
+                        },
+                      }}
+                    />
+                  ) : (
+                    <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 160, opacity: 0.5 }}>
+                      <Ionicons name="bar-chart-outline" size={40} color={theme.colors.textSecondary} style={{ marginBottom: 12 }} />
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>Not enough data yet</Text>
+                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 }}>Revenue trend appears after 2+ months of data</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+            
+            {showChart && showAnyMetric && <View style={{ width: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginVertical: 10 }} />}
+
+            {/* Metrics */}
+            {showAnyMetric && (
+              <View style={{ flex: 1, flexDirection: showChart ? 'column' : 'row', gap: 10 }}>
+                {metrics.map(m => (
+                  <View key={m.label} style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', gap: 10, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: isDark ? 0.18 : 0.04, shadowRadius: 8, elevation: 3 }}>
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2.5, backgroundColor: m.color, borderTopLeftRadius: 16, borderTopRightRadius: 16, opacity: 0.8 }} />
+                    <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: m.bg, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name={m.icon as any} size={17} color={m.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3, color: theme.colors.textSecondary, textTransform: 'uppercase', marginBottom: 3 }}>{m.label}</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '800', color: m.value === 'No data' ? theme.colors.textSecondary : m.color }}>{m.value}</Text>
+                      <Text style={{ fontSize: 9, fontWeight: '600', color: theme.colors.textSecondary, marginTop: 2, opacity: 0.8 }} numberOfLines={1}>{m.subLabel}</Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             )}
           </View>
-        </View>
+        </>
+      )}
 
-        <View style={{ width: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginVertical: 10 }} />
-
-        {/* Metrics */}
-        <View style={{ flex: 1, gap: 10 }}>
-          {metrics.map(m => (
-            <View key={m.label} style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)', flexDirection: 'row', alignItems: 'center', gap: 10, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: isDark ? 0.18 : 0.04, shadowRadius: 8, elevation: 3 }}>
-              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2.5, backgroundColor: m.color, borderTopLeftRadius: 16, borderTopRightRadius: 16, opacity: 0.8 }} />
-              <View style={{ width: 36, height: 36, borderRadius: 11, backgroundColor: m.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={m.icon as any} size={17} color={m.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3, color: theme.colors.textSecondary, textTransform: 'uppercase', marginBottom: 3 }}>{m.label}</Text>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: m.value === 'No data' ? theme.colors.textSecondary : m.color }}>{m.value}</Text>
-                <Text style={{ fontSize: 9, fontWeight: '600', color: theme.colors.textSecondary, marginTop: 2, opacity: 0.8 }} numberOfLines={1}>{m.subLabel}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-      {data.insights?.length > 0 && (
+      {showInsights && (
         <View style={{ marginTop: 14, gap: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <View style={{ width: 4, height: 18, borderRadius: 2, backgroundColor: '#F59E0B' }} />
@@ -467,7 +490,7 @@ const WebTransactionsSection = ({ transactions, loading, isDark, theme, router }
 );
 
 // ─── Mobile Analytics ─────────────────────────────────────────────────────────
-const MobileAnalyticsSection = ({ data, loading, styles, isDark, contentW }: any) => {
+const MobileAnalyticsSection = ({ data, loading, styles, isDark, contentW, config = {} }: any) => {
   const { theme } = useTheme();
   if (loading) {
     return (
@@ -494,97 +517,113 @@ const MobileAnalyticsSection = ({ data, loading, styles, isDark, contentW }: any
   const att = getMetricState(data.attendance.avg_attendance, true, `${data.attendance.total_present_days || 0} / ${data.attendance.total_working_days || 0} days`);
   const acad = getMetricState(data.academics.avg_score, true, `${data.academics.exams_conducted || 0} exams`);
 
-  const metrics = [
-    { icon: 'trending-up', color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', label: 'Efficiency', value: coll.value, subLabel: coll.subLabel },
-    { icon: 'people', color: '#10B981', bg: 'rgba(16,185,129,0.12)', label: 'Attendance', value: att.value, subLabel: att.subLabel },
-    { icon: 'school', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Academic', value: acad.value, subLabel: acad.subLabel },
-  ];
+  const metrics = [];
+  if (config.collection_efficiency !== false) {
+    metrics.push({ icon: 'trending-up', color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', label: 'Efficiency', value: coll.value, subLabel: coll.subLabel });
+  }
+  if (config.avg_attendance !== false) {
+    metrics.push({ icon: 'people', color: '#10B981', bg: 'rgba(16,185,129,0.12)', label: 'Attendance', value: att.value, subLabel: att.subLabel });
+  }
+  if (config.academic_score !== false) {
+    metrics.push({ icon: 'school', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', label: 'Academic', value: acad.value, subLabel: acad.subLabel });
+  }
+
+  const showChart = config.revenue_trend !== false;
+  const showAnyMetric = metrics.length > 0;
+
+  if (!showChart && !showAnyMetric) return null;
 
   return (
     <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.analyticsContainer}>
-      <View style={[styles.sectionHeader, { marginBottom: 12, paddingHorizontal: 0 }]}>
-        <View style={styles.sectionTitleRow}>
-          <View style={[styles.sectionAccentBar, { backgroundColor: '#8B5CF6' }]} />
-          <Text style={styles.sectionTitle}>Financial Performance</Text>
-        </View>
-      </View>
-      <View style={styles.chartCard}>
-        <View style={styles.chartTopGlow} />
-        <View style={styles.chartHeader}>
-          <Text style={styles.chartTitle}>Revenue Trend</Text>
-          <View style={[styles.chartBadge, { backgroundColor: 'rgba(99,102,241,0.18)', borderColor: 'rgba(99,102,241,0.30)' }]}><Text style={[styles.chartBadgeText, { color: isDark ? '#818CF8' : '#4F46E5' }]}>6 Months</Text></View>
-        </View>
-        
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, marginTop: 12 }}>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)' }}>
-              <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Total Expected</Text>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.textPrimary }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
-            </View>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)' }}>
-              <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Collected</Text>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#10B981' }}>{formatCurrencyShort(data.financials.total_collected)}</Text>
-            </View>
-            <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}>
-              <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Pending</Text>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>{formatCurrencyShort(data.financials.outstanding_dues)}</Text>
-            </View>
-        </View>
-
-        <View style={{ marginLeft: -14, minHeight: 180, justifyContent: 'center' }}>
-          {hasChartData ? (
-            <LineChart data={lineData} height={150} width={contentW - 65} initialSpacing={35} spacing={55}
-              color="#6366F1" thickness={3} hideRules={false} hideYAxisText={false} yAxisColor="transparent" xAxisColor="transparent"
-              rulesColor={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
-              yAxisTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
-              xAxisLabelTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
-              formatYLabel={(label: string) => formatCurrencyShort(Number(label))}
-              dataPointsColor="#6366F1" focusedDataPointColor="#4F46E5" areaChart
-              startFillColor="rgba(99,102,241,0.28)" endFillColor="rgba(99,102,241,0.01)"
-              curved animateOnDataChange animationDuration={1000}
-              pointerConfig={{
-                pointerStripHeight: 150,
-                pointerStripColor: 'rgba(99,102,241,0.4)',
-                pointerStripWidth: 2,
-                pointerColor: '#6366F1',
-                radius: 5,
-                pointerLabelWidth: 80,
-                pointerLabelHeight: 40,
-                activatePointersOnLongPress: true,
-                autoAdjustPointerLabelPosition: true,
-                pointerLabelComponent: (items: any) => {
-                  return (
-                    <View style={{ backgroundColor: isDark ? '#374151' : '#fff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }}>
-                      <Text style={{ color: isDark ? '#fff' : '#000', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>{items[0].dataPointText}</Text>
-                      <Text style={{ color: theme.colors.textSecondary, fontSize: 9, textAlign: 'center', marginTop: 2 }}>{items[0].label}</Text>
-                    </View>
-                  );
-                },
-              }}
-            />
-          ) : (
-            <View style={{ alignItems: 'center', justifyContent: 'center', height: 160, opacity: 0.5 }}>
-              <Ionicons name="bar-chart-outline" size={40} color={theme.colors.textSecondary} style={{ marginBottom: 12 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>Not enough data yet</Text>
-              <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 }}>Revenue trend appears after 2+ months</Text>
-            </View>
-          )}
-        </View>
-      </View>
-      <View style={styles.analyticsStatsRow}>
-        {metrics.map(({ icon, color, bg, label, value, subLabel }) => (
-          <View key={label} style={styles.miniStatCard}>
-            <View style={[styles.miniStatTopLine, { backgroundColor: color }]} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, width: '100%' }}>
-              <View style={[styles.miniStatIcon, { backgroundColor: bg }]}><Ionicons name={icon as any} size={16} color={color} /></View>
-              <Text style={styles.miniStatLabel}>{label}</Text>
-            </View>
-            <View style={{ width: '100%' }}>
-              <Text style={[styles.miniStatValue, { color: value === 'No data' ? theme.colors.textSecondary : color, fontSize: value === 'No data' ? 12 : 16 }]}>{value}</Text>
-              <Text style={{ fontSize: 8.5, color: theme.colors.textSecondary, marginTop: 3, opacity: 0.8 }} numberOfLines={2}>{subLabel}</Text>
+      {showChart && (
+        <>
+          <View style={[styles.sectionHeader, { marginBottom: 12, paddingHorizontal: 0 }]}>
+            <View style={styles.sectionTitleRow}>
+              <View style={[styles.sectionAccentBar, { backgroundColor: '#8B5CF6' }]} />
+              <Text style={styles.sectionTitle}>Financial Performance</Text>
             </View>
           </View>
-        ))}
-      </View>
+          <View style={styles.chartCard}>
+            <View style={styles.chartTopGlow} />
+            <View style={styles.chartHeader}>
+              <Text style={styles.chartTitle}>Revenue Trend</Text>
+              <View style={[styles.chartBadge, { backgroundColor: 'rgba(99,102,241,0.18)', borderColor: 'rgba(99,102,241,0.30)' }]}><Text style={[styles.chartBadgeText, { color: isDark ? '#818CF8' : '#4F46E5' }]}>6 Months</Text></View>
+            </View>
+            
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16, marginTop: 12 }}>
+                <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)' }}>
+                  <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Total Expected</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.textPrimary }}>{formatCurrencyShort(data.financials.total_invoiced)}</Text>
+                </View>
+                <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)' }}>
+                  <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Collected</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#10B981' }}>{formatCurrencyShort(data.financials.total_collected)}</Text>
+                </View>
+                <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.04)', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}>
+                  <Text style={{ fontSize: 8, fontWeight: '700', color: theme.colors.textSecondary, marginBottom: 2, textTransform: 'uppercase' }}>Pending</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>{formatCurrencyShort(data.financials.outstanding_dues)}</Text>
+                </View>
+            </View>
+
+            <View style={{ marginLeft: -14, minHeight: 180, justifyContent: 'center' }}>
+              {hasChartData ? (
+                <LineChart data={lineData} height={150} width={contentW - 65} initialSpacing={35} spacing={55}
+                  color="#6366F1" thickness={3} hideRules={false} hideYAxisText={false} yAxisColor="transparent" xAxisColor="transparent"
+                  rulesColor={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"}
+                  yAxisTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
+                  xAxisLabelTextStyle={{ color: theme.colors.textSecondary, fontSize: 10, opacity: 0.7 }}
+                  formatYLabel={(label: string) => formatCurrencyShort(Number(label))}
+                  dataPointsColor="#6366F1" focusedDataPointColor="#4F46E5" areaChart
+                  startFillColor="rgba(99,102,241,0.28)" endFillColor="rgba(99,102,241,0.01)"
+                  curved animateOnDataChange animationDuration={1000}
+                  pointerConfig={{
+                    pointerStripHeight: 150,
+                    pointerStripColor: 'rgba(99,102,241,0.4)',
+                    pointerStripWidth: 2,
+                    pointerColor: '#6366F1',
+                    radius: 5,
+                    pointerLabelWidth: 80,
+                    pointerLabelHeight: 40,
+                    activatePointersOnLongPress: true,
+                    autoAdjustPointerLabelPosition: true,
+                    pointerLabelComponent: (items: any) => {
+                      return (
+                        <View style={{ backgroundColor: isDark ? '#374151' : '#fff', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 }}>
+                          <Text style={{ color: isDark ? '#fff' : '#000', fontSize: 11, fontWeight: '800', textAlign: 'center' }}>{items[0].dataPointText}</Text>
+                          <Text style={{ color: theme.colors.textSecondary, fontSize: 9, textAlign: 'center', marginTop: 2 }}>{items[0].label}</Text>
+                        </View>
+                      );
+                    },
+                  }}
+                />
+              ) : (
+                <View style={{ alignItems: 'center', justifyContent: 'center', height: 160, opacity: 0.5 }}>
+                  <Ionicons name="bar-chart-outline" size={40} color={theme.colors.textSecondary} style={{ marginBottom: 12 }} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>Not enough data yet</Text>
+                  <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 4 }}>Revenue trend appears after 2+ months</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </>
+      )}
+      {showAnyMetric && (
+        <View style={styles.analyticsStatsRow}>
+          {metrics.map(({ icon, color, bg, label, value, subLabel }) => (
+            <View key={label} style={styles.miniStatCard}>
+              <View style={[styles.miniStatTopLine, { backgroundColor: color }]} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, width: '100%' }}>
+                <View style={[styles.miniStatIcon, { backgroundColor: bg }]}><Ionicons name={icon as any} size={16} color={color} /></View>
+                <Text style={styles.miniStatLabel}>{label}</Text>
+              </View>
+              <View style={{ width: '100%' }}>
+                <Text style={[styles.miniStatValue, { color: value === 'No data' ? theme.colors.textSecondary : color, fontSize: value === 'No data' ? 12 : 16 }]}>{value}</Text>
+                <Text style={{ fontSize: 8.5, color: theme.colors.textSecondary, marginTop: 3, opacity: 0.8 }} numberOfLines={2}>{subLabel}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
     </Animated.View>
   );
 };
@@ -601,6 +640,7 @@ export default function AccountsDashboard() {
   const styles = useMemo(() => createStyles(theme, isDark, GRID_ITEM_W), [theme, isDark, GRID_ITEM_W]);
 
   const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<Record<string, boolean>>({});
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
@@ -611,30 +651,90 @@ export default function AccountsDashboard() {
   const carouselRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { if (user) fetchDashboardData(); }, [user]);
+  const { data: statsData, loading: statsLoading } = useApiQuery<any>(
+    '/fees/dashboard-stats',
+    'accounts-dashboard-stats',
+    DASHBOARD_CACHE_TTL_MS,
+    user?.id,
+    { query: { for_accounts: '1' } }
+  );
 
-  const fetchDashboardData = async () => {
-    if (!user) return;
-    setLoading(true); setAnalyticsLoading(true);
-    try {
-      const [statsData, txData] = await Promise.all([FeesService.getDashboardStats(), FeesService.getRecentTransactions(5)]);
-      setStats({ totalCollection: `₹${statsData.monthly_collection.toLocaleString()}`, todaysCollection: `₹${statsData.today_collection.toLocaleString()}`, pendingDues: `₹${statsData.pending_dues.toLocaleString()}` });
-      setTransactions(txData.map((tx: any) => ({ id: tx.id, name: tx.student_name, class: tx.class_name || tx.payment_method?.toUpperCase() || 'CASH', type: tx.fee_type || 'Fee', amount: `+₹${tx.amount.toLocaleString()}`, time: new Date(tx.collected_at || tx.payment_date || tx.paid_at || tx.created_at || Date.now()).toLocaleDateString() })));
-    } catch (e) { console.error('Dashboard stats error:', e); }
-    finally { setLoading(false); }
-    try { setAnalytics(await AnalyticsService.getAnalytics('month')); }
-    catch (e) { console.error('Analytics error:', e); }
-    finally { setAnalyticsLoading(false); }
-  };
+  const { data: txData, loading: txLoading } = useApiQuery<any[]>(
+    '/fees/transactions',
+    'accounts-dashboard-transactions',
+    DASHBOARD_CACHE_TTL_MS,
+    user?.id,
+    { query: { limit: 5 } }
+  );
 
-  const carouselCards = useMemo(() => [
-    { id: 'monthly', label: t('accounts_dashboard.total_collection_month'), value: loading ? '—' : stats?.totalCollection || '₹0', icon: 'wallet', grad: ['#1D4ED8', '#6366F1'] as [string, string], shadowColor: '#4338CA', showLive: true, watermark: 'chart-bar', tag: 'THIS MONTH' },
-    { id: 'today', label: t('accounts_dashboard.todays_collection'), value: loading ? '—' : stats?.todaysCollection || '₹0', icon: 'wallet', grad: ['#047857', '#10B981'] as [string, string], shadowColor: '#059669', showLive: false, watermark: 'arrow-circle-up', tag: 'TODAY' },
-    { id: 'pending', label: t('accounts_dashboard.pending_dues'), value: loading ? '—' : stats?.pendingDues || '₹0', icon: 'file-invoice-dollar', grad: ['#991B1B', '#EF4444'] as [string, string], shadowColor: '#DC2626', showLive: false, watermark: 'exclamation-circle', tag: 'OVERDUE' },
-  ], [loading, stats, t]);
+  useEffect(() => {
+    setLoading(statsLoading || txLoading);
+    setAnalyticsLoading(statsLoading);
+    if (!statsData) return;
+
+    const resolvedConfig = statsData.config || {};
+    setConfig(resolvedConfig);
+
+    const rawStats = statsData.stats || {};
+    setStats({
+      totalCollection: rawStats.total_collection_month !== undefined ? `₹${rawStats.total_collection_month.toLocaleString()}` : null,
+      todaysCollection: rawStats.todays_collection !== undefined ? `₹${rawStats.todays_collection.toLocaleString()}` : null,
+      pendingDues: rawStats.pending_dues !== undefined ? `₹${rawStats.pending_dues.toLocaleString()}` : null
+    });
+
+    const reconstructedAnalytics: any = {
+      generated_at: new Date().toISOString(),
+      financials: {
+        trend: rawStats.revenue_trend?.trend || [],
+        total_invoiced: rawStats.revenue_trend?.total_invoiced || 0,
+        total_collected: rawStats.revenue_trend?.total_collected || 0,
+        outstanding_dues: rawStats.revenue_trend?.outstanding_dues || 0,
+        collection_efficiency: rawStats.collection_efficiency !== undefined ? rawStats.collection_efficiency : null,
+      },
+      attendance: {
+        avg_attendance: rawStats.avg_attendance?.avg_attendance !== undefined ? rawStats.avg_attendance.avg_attendance : null,
+        total_present_days: rawStats.avg_attendance?.total_present_days || 0,
+        total_working_days: rawStats.avg_attendance?.total_working_days || 0,
+      },
+      academics: {
+        avg_score: rawStats.academic_score?.avg_score !== undefined ? rawStats.academic_score.avg_score : null,
+        exams_conducted: rawStats.academic_score?.exams_conducted || 0,
+      },
+      insights: rawStats.system_insights || [],
+    };
+    setAnalytics(reconstructedAnalytics);
+  }, [statsData, statsLoading, txLoading]);
+
+  useEffect(() => {
+    if (!txData) return;
+    const transactionsArray = Array.isArray(txData) ? txData : (txData as any)?.data || [];
+    setTransactions(transactionsArray.map((tx: any) => ({
+      id: tx.id,
+      name: tx.student_name,
+      class: tx.class_name || tx.payment_method?.toUpperCase() || 'CASH',
+      type: tx.fee_type || 'Fee',
+      amount: `+₹${tx.amount.toLocaleString()}`,
+      time: new Date(tx.collected_at || tx.payment_date || tx.paid_at || tx.created_at || Date.now()).toLocaleDateString()
+    })));
+  }, [txData]);
+
+  const carouselCards = useMemo(() => {
+    const cards = [];
+    if (config.total_collection_month !== false) {
+      cards.push({ id: 'monthly', label: t('accounts_dashboard.total_collection_month'), value: loading ? '—' : stats?.totalCollection || '₹0', icon: 'wallet', grad: ['#1D4ED8', '#6366F1'] as [string, string], shadowColor: '#4338CA', showLive: true, watermark: 'chart-bar', tag: 'THIS MONTH' });
+    }
+    if (config.todays_collection !== false) {
+      cards.push({ id: 'today', label: t('accounts_dashboard.todays_collection'), value: loading ? '—' : stats?.todaysCollection || '₹0', icon: 'wallet', grad: ['#047857', '#10B981'] as [string, string], shadowColor: '#059669', showLive: false, watermark: 'arrow-circle-up', tag: 'TODAY' });
+    }
+    if (config.pending_dues !== false) {
+      cards.push({ id: 'pending', label: t('accounts_dashboard.pending_dues'), value: loading ? '—' : stats?.pendingDues || '₹0', icon: 'file-invoice-dollar', grad: ['#991B1B', '#EF4444'] as [string, string], shadowColor: '#DC2626', showLive: false, watermark: 'exclamation-circle', tag: 'OVERDUE' });
+    }
+    return cards;
+  }, [loading, stats, t, config]);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (carouselCards.length === 0) return;
     timerRef.current = setInterval(() => {
       setActiveIndex(prev => { const next = (prev + 1) % carouselCards.length; carouselRef.current?.scrollTo({ x: next * winW, animated: true }); return next; });
     }, 5000);
@@ -652,6 +752,8 @@ export default function AccountsDashboard() {
     { id: 'staff', title: 'Add Staff', description: 'Register new employees', icon: 'person-add', color: ['#6D28D9', '#8B5CF6'] as [string, string], route: '/accounts/addStaff', library: Ionicons },
     { id: 'student', title: 'Add Student', description: 'Enroll new students', icon: 'school', color: ['#BE185D', '#F43F5E'] as [string, string], route: '/accounts/addStudent', library: Ionicons },
     { id: 'pending_enrollments', title: 'Pending Enrolments', description: 'Review new applications', icon: 'person-add-outline', color: ['#7C3AED', '#A78BFA'] as [string, string], route: '/accounts/pending-enrollments', library: Ionicons },
+    { id: 'defaulters', title: 'Defaulters', description: 'Previous-year pending fees', icon: 'alert-circle', color: ['#B91C1C', '#EF4444'] as [string, string], route: '/accounts/defaulters', library: Ionicons },
+    { id: 'transport_fees', title: 'Transport Fees', description: 'Stop-based bus fee management', icon: 'bus', color: ['#0E7490', '#06B6D4'] as [string, string], route: '/accounts/transport-fees', library: Ionicons },
   ];
 
   // ── WEB LAYOUT ──────────────────────────────────────────────────────────────
@@ -659,6 +761,7 @@ export default function AccountsDashboard() {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 28, paddingBottom: 48 }} overScrollMode="never">
+          <PaymentDueBanner />
 
           {/* Page header */}
           <Animated.View entering={FadeInDown.duration(350)} style={{ marginBottom: 24 }}>
@@ -676,7 +779,7 @@ export default function AccountsDashboard() {
           </Animated.View>
 
           {/* Analytics */}
-          <WebAnalyticsSection data={analytics} loading={analyticsLoading} isDark={isDark} theme={theme} contentW={contentW} />
+          <WebAnalyticsSection data={analytics} loading={analyticsLoading} isDark={isDark} theme={theme} contentW={contentW} config={config} />
 
           {/* Quick Actions */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -721,6 +824,10 @@ export default function AccountsDashboard() {
         activeRoute="/accounts/dashboard" />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} overScrollMode="never" bounces>
+        <View style={styles.bannerPad}>
+          <PaymentDueBanner />
+        </View>
+
         {/* Greeting */}
         <Animated.View entering={FadeInDown.duration(480)} style={styles.greetingContainer}>
           <View style={styles.datePill}>
@@ -732,45 +839,47 @@ export default function AccountsDashboard() {
         </Animated.View>
 
         {/* Carousel */}
-        <Animated.View entering={FadeInDown.delay(80).springify()}>
-          <ScrollView ref={carouselRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => { const i = Math.round(e.nativeEvent.contentOffset.x / winW); setActiveIndex(i); startTimer(); }}
-            onScrollBeginDrag={stopTimer} onScrollEndDrag={startTimer}
-            decelerationRate="fast" bounces={false} overScrollMode="never" style={styles.carouselScroll}>
-            {carouselCards.map((card) => (
-              <View key={card.id} style={[styles.carouselSlide, { width: winW }]}>
-                <View style={[styles.cardShadowBloom, { backgroundColor: card.shadowColor }]} />
-                <LinearGradient colors={card.grad} style={styles.carouselCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                  <DotGrid />
-                  <View style={styles.cardBlob1} /><View style={styles.cardBlob2} /><View style={styles.cardBlob3} />
-                  <View style={styles.cardWatermark}><FontAwesome5 name={card.watermark as any} size={80} color="rgba(255,255,255,0.06)" /></View>
-                  <View style={styles.cardTopHighlight} />
-                  <View style={styles.cardContent}>
-                    <View style={styles.cardIconWrap}><FontAwesome5 name={card.icon as any} size={20} color="#fff" /></View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.cardTagBadge}><Text style={styles.cardTagText}>{card.tag}</Text></View>
-                      <Text style={styles.cardLabel}>{card.label}</Text>
-                      {loading ? <ShimmerBar width={120} height={26} borderRadius={5} style={{ marginTop: 2 }} /> : <Text style={styles.cardValue}>{card.value}</Text>}
-                      {card.showLive && !loading && (
-                        <View style={styles.liveBadge}><PulsingLiveDot /><Text style={styles.liveText}>LIVE</Text></View>
-                      )}
+        {carouselCards.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(80).springify()}>
+            <ScrollView ref={carouselRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) => { const i = Math.round(e.nativeEvent.contentOffset.x / winW); setActiveIndex(i); startTimer(); }}
+              onScrollBeginDrag={stopTimer} onScrollEndDrag={startTimer}
+              decelerationRate="fast" bounces={false} overScrollMode="never" style={styles.carouselScroll}>
+              {carouselCards.map((card) => (
+                <View key={card.id} style={[styles.carouselSlide, { width: winW }]}>
+                  <View style={[styles.cardShadowBloom, { backgroundColor: card.shadowColor }]} />
+                  <LinearGradient colors={card.grad} style={styles.carouselCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                    <DotGrid />
+                    <View style={styles.cardBlob1} /><View style={styles.cardBlob2} /><View style={styles.cardBlob3} />
+                    <View style={styles.cardWatermark}><FontAwesome5 name={card.watermark as any} size={80} color="rgba(255,255,255,0.06)" /></View>
+                    <View style={styles.cardTopHighlight} />
+                    <View style={styles.cardContent}>
+                      <View style={styles.cardIconWrap}><FontAwesome5 name={card.icon as any} size={20} color="#fff" /></View>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.cardTagBadge}><Text style={styles.cardTagText}>{card.tag}</Text></View>
+                        <Text style={styles.cardLabel}>{card.label}</Text>
+                        {loading ? <ShimmerBar width={120} height={26} borderRadius={5} style={{ marginTop: 2 }} /> : <Text style={styles.cardValue}>{card.value}</Text>}
+                        {card.showLive && !loading && (
+                          <View style={styles.liveBadge}><PulsingLiveDot /><Text style={styles.liveText}>LIVE</Text></View>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                </LinearGradient>
-              </View>
-            ))}
-          </ScrollView>
-          <View style={styles.dotsRow}>
-            {carouselCards.map((card, i) => (
-              <Pressable key={i} onPress={() => { carouselRef.current?.scrollTo({ x: i * winW, animated: true }); setActiveIndex(i); startTimer(); }}>
-                <View style={[styles.dot, i === activeIndex && [styles.dotActive, { shadowColor: card.shadowColor }]]} />
-              </Pressable>
-            ))}
-          </View>
-        </Animated.View>
+                  </LinearGradient>
+                </View>
+              ))}
+            </ScrollView>
+            <View style={styles.dotsRow}>
+              {carouselCards.map((card, i) => (
+                <Pressable key={i} onPress={() => { carouselRef.current?.scrollTo({ x: i * winW, animated: true }); setActiveIndex(i); startTimer(); }}>
+                  <View style={[styles.dot, i === activeIndex && [styles.dotActive, { shadowColor: card.shadowColor }]]} />
+                </Pressable>
+              ))}
+            </View>
+          </Animated.View>
+        )}
 
         {/* Analytics */}
-        <MobileAnalyticsSection data={analytics} loading={analyticsLoading} styles={styles} isDark={isDark} contentW={winW} />
+        <MobileAnalyticsSection data={analytics} loading={analyticsLoading} styles={styles} isDark={isDark} contentW={winW} config={config} />
 
         {/* Quick Actions */}
         <View style={styles.sectionHeader}>
@@ -839,6 +948,7 @@ export default function AccountsDashboard() {
 const createStyles = (theme: any, isDark: boolean, GRID_ITEM_W: number) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scroll: { paddingTop: 8, paddingBottom: 52 },
+  bannerPad: { paddingHorizontal: 20, marginTop: 14 },
   analyticsContainer: { paddingHorizontal: 20, marginBottom: 24 },
   chartCard: { backgroundColor: isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.92)', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.055)', marginBottom: 16, overflow: 'hidden', shadowColor: isDark ? '#6366F1' : '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: isDark ? 0.18 : 0.06, shadowRadius: 20, elevation: 8 },
   chartTopGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: '#6366F1', borderTopLeftRadius: 24, borderTopRightRadius: 24, opacity: 0.7 },

@@ -28,6 +28,21 @@ export interface AdminDashboardStats {
     // Add other relevant stats
 }
 
+export interface AdminFinanceStats {
+    today_collection: number;
+    monthly_collection: number;
+    collected_total: number;
+    pending_dues: number;
+    defaulter_count: number;
+    recent_transactions?: Array<{
+        id: string;
+        amount: number;
+        payment_method?: string;
+        paid_at?: string;
+        student_name?: string;
+    }>;
+}
+
 // --- Mock Data (Temporary until Backend Endpoints are ready) ---
 
 
@@ -38,6 +53,13 @@ export const AdminService = {
      */
     getDashboardStats: async (options?: any): Promise<AdminDashboardStats> => {
         return api.get<AdminDashboardStats>('/admin/dashboard-stats', undefined, options);
+    },
+
+    /**
+     * Finance summary for /admin/finance — always returns full stats (not visibility-gated).
+     */
+    getFinanceStats: async (): Promise<AdminFinanceStats> => {
+        return api.get<AdminFinanceStats>('/admin/finance-stats');
     },
 
     /**
@@ -59,5 +81,19 @@ export const AdminService = {
      */
     generateTalkingPoints: async (studentId: string): Promise<string[]> => {
         return api.get<string[]>(`/analytics/talking-points/${studentId}`);
+    },
+
+    /**
+     * Get accounts dashboard visibility config
+     */
+    getAccountsDashboardConfig: async (): Promise<{ config: Record<string, boolean> }> => {
+        return api.get<{ config: Record<string, boolean> }>('/admin/accounts-dashboard-config');
+    },
+
+    /**
+     * Update accounts dashboard visibility config
+     */
+    updateAccountsDashboardConfig: async (config: Record<string, boolean>): Promise<{ config: Record<string, boolean> }> => {
+        return api.put<{ config: Record<string, boolean> }>('/admin/accounts-dashboard-config', { config });
     }
 };

@@ -11,6 +11,13 @@ module.exports = function (api) {
             ],
         ],
         plugins: [
+            ['module-resolver', {
+                root: ['.'],
+                alias: {
+                    '@': '.'
+                },
+                extensions: ['.ios.js', '.android.js', '.js', '.jsx', '.ts', '.tsx', '.json'],
+            }],
             '@babel/plugin-transform-flow-strip-types',
             ['@babel/plugin-proposal-decorators', { legacy: true }],
             ['@babel/plugin-transform-class-properties', { loose: true }],

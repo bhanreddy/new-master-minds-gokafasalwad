@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator
+    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator, Modal
 } from 'react-native';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import QRCode from 'react-native-qrcode-svg';
 import AdminHeader from '../../../src/components/AdminHeader';
 import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService as FeesService } from '../../../src/services/feeService';
+import { DefaulterService, DefaulterYearBreakdown } from '../../../src/services/defaulterService';
 import { UpiSettingsService } from '../../../src/services/upiSettingsService';
 import { APIError } from '../../../src/services/apiClient';
 import { useTheme } from '../../../src/hooks/useTheme';
@@ -134,9 +135,25 @@ export default function CollectFeesScreen() {
     const [schoolUpiId, setSchoolUpiId] = useState('');
     const [schoolPayeeName, setSchoolPayeeName] = useState('');
 
+    // ── Previous-year arrears (defaulter_dues) ──
+    const arrearsStyles = useMemo(() => createArrearsStyles(isDark), [isDark]);
+    const [arrears, setArrears] = useState<DefaulterYearBreakdown[]>([]);
+    const [arrearsLoading, setArrearsLoading] = useState(true);
+    const [arrearsError, setArrearsError] = useState<string | null>(null);
+    const [selectedArrear, setSelectedArrear] = useState<DefaulterYearBreakdown | null>(null);
+    const [arrearsModalVisible, setArrearsModalVisible] = useState(false);
+    const [arrearsAmount, setArrearsAmount] = useState('');
+    const [arrearsMode, setArrearsMode] = useState('Cash');
+    const [arrearsRemarks, setArrearsRemarks] = useState('');
+    const [arrearsSubmitting, setArrearsSubmitting] = useState(false);
+    const [arrearsModalError, setArrearsModalError] = useState<string | null>(null);
+
     const feeId = params.feeId as string;
+    const studentId = params.studentId as string | undefined;
     const studentName = params.name as string;
     const admissionNo = params.admissionNo as string;
+    const className = params.className as string | undefined;
+    const sectionName = params.sectionName as string | undefined;
     const feeType = params.feeType as string;
     const dueAmount = params.due as string;
 
@@ -178,6 +195,76 @@ export default function CollectFeesScreen() {
         };
     }, [mode, upiFetchTick]);
 
+    const loadArrears = useCallback(async () => {
+        if (!studentId) {
+            setArrears([]);
+            setArrearsLoading(false);
+            return;
+        }
+        setArrearsLoading(true);
+        setArrearsError(null);
+        try {
+            const rows = await DefaulterService.listForStudent(studentId);
+            setArrears(rows);
+        } catch (e) {
+            setArrearsError(e instanceof APIError ? e.message : 'Could not load previous dues.');
+        } finally {
+            setArrearsLoading(false);
+        }
+    }, [studentId]);
+
+    useEffect(() => {
+        loadArrears();
+    }, [loadArrears]);
+
+    const openArrearsCollect = (due: DefaulterYearBreakdown) => {
+        setSelectedArrear(due);
+        setArrearsAmount(String(due.balance));
+        setArrearsMode('Cash');
+        setArrearsRemarks('');
+        setArrearsModalError(null);
+        setArrearsModalVisible(true);
+    };
+
+    const handleCollectArrears = async () => {
+        if (!selectedArrear) return;
+        const amt = parseFloat(arrearsAmount) || 0;
+        const balance = Number(selectedArrear.balance);
+        if (amt <= 0) {
+            setArrearsModalError('Enter an amount greater than zero.');
+            return;
+        }
+        if (amt > balance) {
+            setArrearsModalError(`Amount cannot exceed the balance of ₹${balance.toLocaleString('en-IN')}.`);
+            return;
+        }
+        setArrearsModalError(null);
+        setArrearsSubmitting(true);
+        try {
+            const result = await DefaulterService.collect(selectedArrear.id, {
+                amount: amt,
+                payment_method: arrearsMode.toLowerCase() as 'cash' | 'upi' | 'cheque',
+                transaction_ref: generateUUID(),
+                remarks: arrearsRemarks.trim() || undefined,
+            });
+            setArrearsModalVisible(false);
+            setSelectedArrear(null);
+            await loadArrears();
+            alertCompat(
+                'Arrears collected — Receipt generated',
+                `Receipt ${result.receipt.receipt_no} created for ₹${amt.toLocaleString('en-IN')}.`
+            );
+        } catch (e) {
+            setArrearsModalError(e instanceof APIError ? e.message : 'Collection failed. Please try again.');
+        } finally {
+            setArrearsSubmitting(false);
+        }
+    };
+
+    const arrearsAmountNum = parseFloat(arrearsAmount) || 0;
+    const arrearsBalance = Number(selectedArrear?.balance || 0);
+    const arrearsOverpay = arrearsAmountNum > arrearsBalance;
+
     const dueNum = parseFloat(dueAmount) || 0;
     const amountNum = parseFloat(amount) || 0;
     const remaining = Math.max(0, dueNum - amountNum);
@@ -209,11 +296,18 @@ export default function CollectFeesScreen() {
                         onPress: async () => {
                             await generateReceiptPDF({
                                 ...result,
+                                student_id: result.student_id || studentId,
                                 student_name: studentName,
                                 admission_no: admissionNo,
+                                class_name: result.class_name || className,
+                                section_name: result.section_name || sectionName,
                                 fee_type: feeType,
                                 academic_year: result.academic_year || (result as any).academicYear,
                                 paid_at: new Date().toISOString(),
+                                balance_due: result.balance_due ?? remaining,
+                                amount_due: result.amount_due,
+                                total_paid: result.total_paid,
+                                discount: result.discount,
                             });
                         },
                     },
@@ -232,11 +326,18 @@ export default function CollectFeesScreen() {
                     onPress: async () => {
                         await generateReceiptPDF({
                             ...result,
+                            student_id: result.student_id || studentId,
                             student_name: studentName,
                             admission_no: admissionNo,
+                            class_name: result.class_name || className,
+                            section_name: result.section_name || sectionName,
                             fee_type: feeType,
                             academic_year: result.academic_year || (result as any).academicYear,
                             paid_at: new Date().toISOString(),
+                            balance_due: result.balance_due ?? remaining,
+                            amount_due: result.amount_due,
+                            total_paid: result.total_paid,
+                            discount: result.discount,
                         });
                         router.back();
                     },
@@ -510,6 +611,80 @@ export default function CollectFeesScreen() {
                     />
                 </Animated.View>
 
+                {/* ── Previous Year Pending Fees ── */}
+                <View style={arrearsStyles.section}>
+                    <View style={arrearsStyles.headerRow}>
+                        <Text style={arrearsStyles.headerTitle}>Previous Year Pending Fees</Text>
+                    </View>
+
+                    {arrearsLoading ? (
+                        <>
+                            <View style={arrearsStyles.skeletonRow} />
+                            <View style={arrearsStyles.skeletonRow} />
+                        </>
+                    ) : arrearsError ? (
+                        <TouchableOpacity style={arrearsStyles.errorRow} onPress={loadArrears} activeOpacity={0.7}>
+                            <Text style={arrearsStyles.errorText}>Could not load previous dues. Tap to retry.</Text>
+                        </TouchableOpacity>
+                    ) : arrears.length === 0 ? (
+                        <View style={arrearsStyles.emptyRow}>
+                            <Text style={arrearsStyles.emptyCheck}>✓</Text>
+                            <Text style={arrearsStyles.emptyText}>No previous year dues</Text>
+                        </View>
+                    ) : (
+                        arrears.map((due) => {
+                            const isPartial = due.status === 'partially_paid';
+                            const balanceColor = isPartial ? '#D97706' : '#DC2626';
+                            return (
+                                <View key={due.id} style={arrearsStyles.dueRow}>
+                                    <View style={arrearsStyles.dueTopRow}>
+                                        <View style={arrearsStyles.yearBadge}>
+                                            <Text style={arrearsStyles.yearBadgeText}>{due.due_academic_year}</Text>
+                                        </View>
+                                        <View style={[
+                                            arrearsStyles.statusBadge,
+                                            { backgroundColor: isPartial ? '#FEF3C7' : '#FEE2E2' },
+                                        ]}>
+                                            <Text style={[arrearsStyles.statusBadgeText, { color: balanceColor }]}>
+                                                {isPartial ? 'PARTIAL' : 'UNPAID'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={arrearsStyles.amountGrid}>
+                                        <View style={arrearsStyles.amountCell}>
+                                            <Text style={arrearsStyles.amountLabel}>Total Due</Text>
+                                            <Text style={arrearsStyles.amountValue}>
+                                                ₹{Number(due.original_amount).toLocaleString('en-IN')}
+                                            </Text>
+                                        </View>
+                                        <View style={arrearsStyles.amountCell}>
+                                            <Text style={arrearsStyles.amountLabel}>Paid</Text>
+                                            <Text style={arrearsStyles.amountValue}>
+                                                ₹{Number(due.paid_amount).toLocaleString('en-IN')}
+                                            </Text>
+                                        </View>
+                                        <View style={arrearsStyles.amountCell}>
+                                            <Text style={arrearsStyles.amountLabel}>Balance</Text>
+                                            <Text style={[arrearsStyles.balanceValue, { color: balanceColor }]}>
+                                                ₹{Number(due.balance).toLocaleString('en-IN')}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={arrearsStyles.collectBtn}
+                                        onPress={() => openArrearsCollect(due)}
+                                        activeOpacity={0.85}
+                                    >
+                                        <Text style={arrearsStyles.collectBtnText}>Collect ▶</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            );
+                        })
+                    )}
+                </View>
+
                 {/* ── Summary + CTA ── */}
                 <Animated.View style={[
                     {
@@ -627,6 +802,93 @@ export default function CollectFeesScreen() {
 
                 <View style={{ height: 32 }} />
             </ScrollView>
+
+            {/* ── Arrears Collection Modal ── */}
+            <Modal
+                visible={arrearsModalVisible}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setArrearsModalVisible(false)}
+            >
+                <Pressable
+                    style={arrearsStyles.modalBackdrop}
+                    onPress={() => !arrearsSubmitting && setArrearsModalVisible(false)}
+                >
+                    <Pressable style={arrearsStyles.modalSheet} onPress={(e) => e.stopPropagation()}>
+                        <View style={arrearsStyles.modalHandle} />
+                        <Text style={arrearsStyles.modalTitle}>Collect Arrears</Text>
+                        {selectedArrear ? (
+                            <Text style={arrearsStyles.modalSubtitle}>
+                                {studentName || 'Student'} · {selectedArrear.due_academic_year} · Balance ₹
+                                {arrearsBalance.toLocaleString('en-IN')}
+                            </Text>
+                        ) : null}
+
+                        <Text style={arrearsStyles.modalLabel}>Amount (max ₹{arrearsBalance.toLocaleString('en-IN')})</Text>
+                        <View style={[arrearsStyles.modalAmountBox, arrearsOverpay && arrearsStyles.modalAmountBoxError]}>
+                            <Text style={arrearsStyles.modalRupee}>₹</Text>
+                            <AppTextInput
+                                style={[ds.inputInChrome, arrearsStyles.modalAmountInput]}
+                                keyboardType="numeric"
+                                value={arrearsAmount}
+                                onChangeText={(t) => { setArrearsModalError(null); setArrearsAmount(t); }}
+                                placeholder="0"
+                            />
+                        </View>
+                        {arrearsOverpay ? (
+                            <Text style={arrearsStyles.modalErrorHint}>
+                                ⚠ Exceeds balance by ₹{(arrearsAmountNum - arrearsBalance).toLocaleString('en-IN')}
+                            </Text>
+                        ) : null}
+
+                        <Text style={arrearsStyles.modalLabel}>Payment Mode</Text>
+                        <View style={arrearsStyles.modalModeRow}>
+                            {PAYMENT_MODES.map((m) => (
+                                <ModeButton
+                                    key={m.id}
+                                    item={m}
+                                    selected={arrearsMode === m.id}
+                                    onPress={() => { setArrearsModalError(null); setArrearsMode(m.id); }}
+                                    theme={theme}
+                                    isDark={isDark}
+                                />
+                            ))}
+                        </View>
+
+                        <Text style={arrearsStyles.modalLabel}>Remarks (optional)</Text>
+                        <AppTextInput
+                            style={arrearsStyles.modalRemarks}
+                            multiline
+                            value={arrearsRemarks}
+                            onChangeText={setArrearsRemarks}
+                            placeholder="e.g. Cleared 2023-24 dues"
+                        />
+
+                        {arrearsModalError ? (
+                            <View style={arrearsStyles.modalErrorBanner}>
+                                <Text style={arrearsStyles.modalErrorBannerText}>{arrearsModalError}</Text>
+                            </View>
+                        ) : null}
+
+                        <TouchableOpacity
+                            style={[
+                                arrearsStyles.modalSubmit,
+                                (arrearsSubmitting || arrearsOverpay || arrearsAmountNum <= 0) && arrearsStyles.modalSubmitDisabled,
+                            ]}
+                            onPress={handleCollectArrears}
+                            disabled={arrearsSubmitting || arrearsOverpay || arrearsAmountNum <= 0}
+                            activeOpacity={0.85}
+                        >
+                            {arrearsSubmitting ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <Text style={arrearsStyles.modalSubmitText}>Collect & generate receipt</Text>
+                            )}
+                        </TouchableOpacity>
+                    </Pressable>
+                </Pressable>
+            </Modal>
         </View>
     );
 }
@@ -646,6 +908,117 @@ const summaryStyles = StyleSheet.create({
     value: { fontSize: 13, color: '#374151', fontWeight: '600' },
     highlight: { color: '#10B981', fontSize: 15, fontWeight: '700' },
 });
+
+// ─── Previous Year Pending Fees Styles ────────────────────────────────────────
+const createArrearsStyles = (isDark: boolean) => {
+    const cardBg = isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF';
+    const border = isDark ? 'rgba(255,255,255,0.10)' : '#F1F5F9';
+    const labelColor = isDark ? 'rgba(255,255,255,0.5)' : '#6B7280';
+    const valueColor = isDark ? 'rgba(255,255,255,0.85)' : '#374151';
+    return StyleSheet.create({
+        section: {
+            marginTop: 18,
+            backgroundColor: cardBg,
+            borderRadius: 16,
+            borderLeftWidth: 4,
+            borderLeftColor: '#F59E0B',
+            borderWidth: 1,
+            borderColor: border,
+            padding: 16,
+        },
+        headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+        headerTitle: { fontSize: 15, fontWeight: '800', color: isDark ? '#FCD34D' : '#B45309', letterSpacing: 0.2 },
+        skeletonRow: {
+            height: 92,
+            borderRadius: 12,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+            marginBottom: 10,
+        },
+        emptyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+        emptyCheck: { fontSize: 14, color: isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF', fontWeight: '700' },
+        emptyText: { fontSize: 13, color: isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' },
+        errorRow: {
+            paddingVertical: 14,
+            paddingHorizontal: 12,
+            borderRadius: 12,
+            backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2',
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(248,113,113,0.4)' : '#FECACA',
+        },
+        errorText: { fontSize: 13, color: isDark ? '#FECACA' : '#991B1B', fontWeight: '600', textAlign: 'center' },
+        dueRow: {
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: border,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FAFBFF',
+            padding: 12,
+            marginBottom: 10,
+        },
+        dueTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+        yearBadge: {
+            backgroundColor: isDark ? 'rgba(59,130,246,0.18)' : '#EFF6FF',
+            paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+        },
+        yearBadgeText: { fontSize: 13, fontWeight: '800', color: '#3B82F6' },
+        statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+        statusBadgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+        amountGrid: { flexDirection: 'row', marginBottom: 12 },
+        amountCell: { flex: 1 },
+        amountLabel: { fontSize: 11, color: labelColor, marginBottom: 2, fontWeight: '500' },
+        amountValue: { fontSize: 14, color: valueColor, fontWeight: '700' },
+        balanceValue: { fontSize: 14, fontWeight: '800' },
+        collectBtn: {
+            backgroundColor: '#F59E0B',
+            borderRadius: 10,
+            paddingVertical: 11,
+            alignItems: 'center',
+        },
+        collectBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13, letterSpacing: 0.3 },
+        // Modal
+        modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+        modalSheet: {
+            backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 20,
+            paddingBottom: 32,
+        },
+        modalHandle: {
+            width: 40, height: 4, borderRadius: 2, alignSelf: 'center',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : '#E5E7EB', marginBottom: 14,
+        },
+        modalTitle: { fontSize: 18, fontWeight: '800', color: isDark ? '#FFFFFF' : '#0F172A' },
+        modalSubtitle: { fontSize: 13, color: labelColor, marginTop: 4, marginBottom: 8 },
+        modalLabel: { fontSize: 13, fontWeight: '600', color: valueColor, marginTop: 14, marginBottom: 6 },
+        modalAmountBox: {
+            flexDirection: 'row', alignItems: 'center',
+            borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB',
+            borderRadius: 12, paddingHorizontal: 12,
+        },
+        modalAmountBoxError: { borderColor: '#DC2626' },
+        modalRupee: { fontSize: 18, fontWeight: '700', color: labelColor, marginRight: 6 },
+        modalAmountInput: { flex: 1, fontSize: 18, fontWeight: '700', paddingVertical: 12, color: valueColor },
+        modalErrorHint: { fontSize: 12, color: '#DC2626', marginTop: 6, fontWeight: '600' },
+        modalModeRow: { flexDirection: 'row', gap: 10 },
+        modalRemarks: {
+            borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB',
+            borderRadius: 12, padding: 12, minHeight: 60, textAlignVertical: 'top',
+            color: valueColor,
+        },
+        modalErrorBanner: {
+            marginTop: 14, padding: 12, borderRadius: 10,
+            backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2',
+            borderWidth: 1, borderColor: isDark ? 'rgba(248,113,113,0.4)' : '#FECACA',
+        },
+        modalErrorBannerText: { fontSize: 13, color: isDark ? '#FECACA' : '#991B1B', fontWeight: '600' },
+        modalSubmit: {
+            marginTop: 18, backgroundColor: '#F59E0B', borderRadius: 14,
+            paddingVertical: 16, alignItems: 'center',
+        },
+        modalSubmitDisabled: { opacity: 0.5 },
+        modalSubmitText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
+    });
+};
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({

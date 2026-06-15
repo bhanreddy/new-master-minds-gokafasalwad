@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
 import { StudentService } from '../../src/services/studentService';
 import { StaffService } from '../../src/services/staffService';
+import { APIError } from '../../src/services/apiClient';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
@@ -116,14 +117,13 @@ export default function ManageUsersScreen() {
           if (activeTab === 'student') {
             await StudentService.delete(targetUser.id);
           } else {
-            // await Functions.deleteStaff(targetUser.id);
-            alertCompat("Restricted", "Staff deletion restricted via app.");
-            return;
+            await StaffService.delete(targetUser.id);
           }
-          loadUsers(); // Refresh
+          loadUsers();
           alertCompat("Success", "User deleted.");
         } catch (e) {
-          alertCompat("Error", "Failed to delete user");
+          const message = e instanceof APIError ? e.message : 'Failed to delete user';
+          alertCompat("Error", message);
         }
       }
     }]);

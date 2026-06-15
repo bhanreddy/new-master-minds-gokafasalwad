@@ -3,7 +3,13 @@ import { View, Text, StyleSheet, ScrollView, Dimensions, Platform, RefreshContro
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { TimetableService, TimetableSlot } from '../../src/services/timetableService';
+import {
+  TimetableService,
+  TimetableSlot,
+  DayOfWeek,
+  TIMETABLE_DAYS,
+  TIMETABLE_DAY_LABELS,
+} from '../../src/services/timetableService';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useStudentQuery } from '../../src/hooks/useStudentQuery';
 import type { Student } from '../../src/types/models';
@@ -88,6 +94,22 @@ const TimeTableScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
+    const idx = new Date().getDay(); // 0=Sun..6=Sat
+    return idx >= 1 && idx <= 6 ? TIMETABLE_DAYS[idx - 1] : 'monday';
+  });
+
+  // Per-day school if the fetched slots span more than one weekday.
+  const isPerDay = useMemo(() => {
+    const days = new Set(slots.map((s) => s.day_of_week).filter(Boolean));
+    return days.size > 1;
+  }, [slots]);
+
+  // Slots to render: a single weekday in per-day schools, the whole template otherwise.
+  const visibleSlots = useMemo(() => {
+    if (!isPerDay) return slots;
+    return slots.filter((s) => (s.day_of_week || 'monday') === selectedDay);
+  }, [slots, isPerDay, selectedDay]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 30000);
@@ -123,8 +145,8 @@ const TimeTableScreen = () => {
 
   // Process slots: sort + insert gap breaks
   const processedItems: ProcessedItem[] = useMemo(() => {
-    if (!slots.length) return [];
-    const sorted = [...slots].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    if (!visibleSlots.length) return [];
+    const sorted = [...visibleSlots].sort((a, b) => a.start_time.localeCompare(b.start_time));
     const items: ProcessedItem[] = [];
 
     sorted.forEach((slot, i) => {
@@ -159,7 +181,7 @@ const TimeTableScreen = () => {
     });
 
     return items;
-  }, [slots, i18n.language]);
+  }, [visibleSlots, i18n.language]);
 
   // Check if a time range is currently active
   const isActive = (startRaw: string, endRaw: string): boolean => {
@@ -224,6 +246,35 @@ const TimeTableScreen = () => {
             <Text style={styles.statLabel}>Current</Text>
           </View>
         </Animated.View>
+
+        {/* Day selector — only shown for per-day schools */}
+        {isPerDay && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dayTabs}
+            contentContainerStyle={{ paddingHorizontal: 4 }}
+          >
+            {TIMETABLE_DAYS.map((d) => {
+              const activeDay = selectedDay === d;
+              return (
+                <Text
+                  key={d}
+                  onPress={() => setSelectedDay(d)}
+                  style={[
+                    styles.dayTab,
+                    {
+                      backgroundColor: activeDay ? '#6366F1' : (isDark ? '#1F2937' : '#EEF2FF'),
+                      color: activeDay ? '#FFFFFF' : '#6366F1',
+                    },
+                  ]}
+                >
+                  {TIMETABLE_DAY_LABELS[d]}
+                </Text>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Timeline */}
         {loading ?
@@ -363,6 +414,20 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
     marginBottom: 20
+  },
+  dayTabs: {
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    flexGrow: 0,
+  },
+  dayTab: {
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9,
+    marginHorizontal: 4,
+    overflow: 'hidden',
   },
   statCard: {
     flex: 1,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { useRequireRole } from '../../src/hooks/useRequireRole';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 
 export default function AdminLayout() {
     useRequireRole('admin', 'principal');
@@ -17,6 +17,7 @@ export default function AdminLayout() {
                 <Stack.Screen name="leaves" />
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="upi-settings" />
+                <Stack.Screen name="academic-year-upgrade" />
             </Stack>
     );
 }

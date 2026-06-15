@@ -4,6 +4,7 @@ import { supabase } from './supabaseConfig';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { api, APIError } from './apiClient';
 import { SCHOOL_NAME, SCHOOL_ID } from '../constants/school';
+import { isStudentRole, normalizeLoginEmail } from '../utils/roleHelpers';
 
 /** Single-flight refresh so TOKEN_REFRESHED storms don't stack validate calls */
 let refreshSessionInFlight: Promise<AuthSession | null> | null = null;
@@ -67,9 +68,11 @@ export const AuthService = {
     // 1. clearAuthState() — always clear before new login
     await clearAuthState();
 
+    const canonicalEmail = normalizeLoginEmail(email);
+
     // 2. supabase.auth.signInWithPassword({ email, password })
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
+      email: canonicalEmail,
       password,
     });
 
@@ -168,8 +171,16 @@ export const AuthService = {
 
     try {
       const session = JSON.parse(sessionStr) as AuthSession;
-      // If token expired → call refreshSession()
+      // If token expired → check role first
       if (Date.now() >= session.tokenExpiresAt) {
+        // Students: NEVER enforce expiry — return cached session as-is.
+        // Supabase auto-refresh handles token renewal in the background.
+        const roleCode = session.validatedUser?.role?.code;
+        if (isStudentRole(roleCode)) {
+          if (__DEV__) console.log('[AuthService] Student session expired but returning cached session (no expiry enforcement)');
+          return session;
+        }
+        // Non-students: attempt refresh
         return await AuthService.refreshSession();
       }
       return session;
@@ -271,7 +282,7 @@ export const AuthService = {
   isStaff: async (): Promise<boolean> => {
     const session = await AuthService.getSession();
     const c = session?.validatedUser?.role?.code;
-    return c === 'staff' || c === 'teacher';
+    return c === 'staff' || c === 'teacher' || c === 'principal';
   },
   isStudent: async (): Promise<boolean> => {
     const session = await AuthService.getSession();

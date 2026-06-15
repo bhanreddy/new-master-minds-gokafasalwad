@@ -24,10 +24,12 @@ export interface StudentDashboardResponse {
 export interface CreateStudentRequest {
     first_name: string;
     middle_name?: string;
-    last_name: string;
+    last_name?: string | null;
     dob?: string;
     gender_id: number;
     admission_no: string;
+    pen_number?: string;
+    apar_number?: string | null;
     admission_date: string;
     status_id: number;
     category_id: number;
@@ -45,10 +47,26 @@ export interface CreateStudentRequest {
 
 export interface UpdateStudentRequest {
     first_name?: string;
-    last_name?: string;
+    middle_name?: string;
+    last_name?: string | null;
+    dob?: string;
+    gender_id?: number;
+    admission_no?: string;
+    pen_number?: string;
+    apar_number?: string | null;
+    admission_date?: string;
+    status_id?: number;
+    category_id?: number;
+    religion_id?: number;
+    blood_group_id?: number;
     phone?: string;
     email?: string;
     password?: string;
+    role_code?: string;
+    class_id?: string;
+    section_id?: string;
+    academic_year_id?: string;
+    parents?: Parent[];
 }
 
 export const StudentService = {
@@ -86,10 +104,59 @@ export const StudentService = {
     },
 
     /**
+     * Resolve a student from a name, admission number, or UUID.
+     * Returns null when ambiguous (multiple partial matches).
+     */
+    resolveByQuery: async (query: string): Promise<Student | null> => {
+        const resolution = await StudentService.resolveSearchQuery(query);
+        return resolution.status === 'found' ? resolution.student : null;
+    },
+
+    /**
+     * Resolve a search query, distinguishing exact matches from ambiguous ones.
+     */
+    resolveSearchQuery: async (
+        query: string,
+    ): Promise<
+        | { status: 'found'; student: Student }
+        | { status: 'ambiguous'; students: Student[] }
+        | { status: 'not_found' }
+    > => {
+        const trimmed = query.trim();
+        if (!trimmed) return { status: 'not_found' };
+
+        const results = await StudentService.search(trimmed);
+        if (results.length > 0) {
+            const normalized = trimmed.toLowerCase();
+            const exactAdmission = results.find((s) => s.admission_no === trimmed);
+            if (exactAdmission) return { status: 'found', student: exactAdmission };
+
+            const exactName = results.find((s) => {
+                const displayName = s.display_name?.toLowerCase() ?? '';
+                const fullName = [s.first_name, s.last_name].filter(Boolean).join(' ').trim().toLowerCase();
+                return displayName === normalized || fullName === normalized;
+            });
+            if (exactName) return { status: 'found', student: exactName };
+
+            if (results.length === 1) return { status: 'found', student: results[0] };
+
+            return { status: 'ambiguous', students: results };
+        }
+
+        try {
+            const student = await StudentService.getById(trimmed);
+            return { status: 'found', student };
+        } catch {
+            return { status: 'not_found' };
+        }
+    },
+
+    /**
      * Get single student with full details
      */
-    getById: async (id: string): Promise<Student> => {
-        return api.get<Student>(`/students/${id}`);
+    /** Get single student with full details (silent for certificate flows). */
+    getById: async (id: string, options?: { silent?: boolean }): Promise<Student> => {
+        return api.get<Student>(`/students/${id}`, undefined, options);
     },
 
     /**
@@ -113,15 +180,19 @@ export const StudentService = {
     /**
      * Update student
      */
-    update: async (id: string, data: UpdateStudentRequest): Promise<Student> => {
-        return api.put<Student>(`/students/${id}`, data);
+    update: async (id: string, data: UpdateStudentRequest): Promise<{ message?: string; student?: Student; success?: boolean }> => {
+        return api.put<{ message?: string; student?: Student; success?: boolean }>(`/students/${id}`, data);
     },
 
     /**
      * Get student enrollments
      */
-    getEnrollments: async (id: string): Promise<StudentEnrollment[]> => {
-        return api.get<StudentEnrollment[]>(`/students/${id}/enrollments`);
+    getEnrollments: async (id: string, options?: { silent?: boolean }): Promise<StudentEnrollment[]> => {
+        return api.get<StudentEnrollment[]>(`/students/${id}/enrollments`, undefined, options);
+    },
+
+    getParents: async (id: string, options?: { silent?: boolean }): Promise<Parent[]> => {
+        return api.get<Parent[]>(`/students/${id}/parents`, undefined, options);
     },
 
     /**

@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { TimetableService, TimetableSlot } from '../../src/services/timetableService';
+import {
+  TimetableService,
+  TimetableSlot,
+  DayOfWeek,
+  TIMETABLE_DAYS,
+  TIMETABLE_DAY_LABELS,
+} from '../../src/services/timetableService';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import { useRouter } from 'expo-router';
@@ -32,10 +38,25 @@ export default function TimetableScreen() {
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
+    const idx = new Date().getDay(); // 0=Sun..6=Sat
+    return idx >= 1 && idx <= 6 ? TIMETABLE_DAYS[idx - 1] : 'monday';
+  });
   const router = useRouter();
   useEffect(() => {
     fetchTimetable();
   }, []);
+
+  // Per-day school if slots span more than one weekday.
+  const isPerDay = React.useMemo(() => {
+    const days = new Set(slots.map((s) => s.day_of_week).filter(Boolean));
+    return days.size > 1;
+  }, [slots]);
+
+  const visibleSlots = React.useMemo(() => {
+    if (!isPerDay) return slots;
+    return slots.filter((s) => (s.day_of_week || 'monday') === selectedDay);
+  }, [slots, isPerDay, selectedDay]);
   const fetchTimetable = async () => {
     try {
       const data = await TimetableService.getTeacherTimetable();
@@ -64,7 +85,7 @@ export default function TimetableScreen() {
     return (
       <View style={styles.timetableContainer}>
         {PERIODS.map((periodNum) => {
-          const slot = slots.find((s) => s.period_number === periodNum); // Find any slot for this period
+          const slot = visibleSlots.find((s) => s.period_number === periodNum); // Slot for this period on the selected day
           return (
             <View key={`period-${periodNum}`} style={styles.periodCard as any}>
               <View style={styles.timeColumn}>
@@ -101,6 +122,35 @@ export default function TimetableScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Daily Timetable</Text>
       </View>
+
+      {isPerDay && !loading && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.dayTabs}
+          contentContainerStyle={{ paddingHorizontal: Spacing.md }}
+        >
+          {TIMETABLE_DAYS.map((d) => {
+            const activeDay = selectedDay === d;
+            return (
+              <Text
+                key={d}
+                onPress={() => setSelectedDay(d)}
+                style={[
+                  styles.dayTab,
+                  {
+                    backgroundColor: activeDay ? theme.colors.primary : theme.colors.card,
+                    color: activeDay ? '#FFFFFF' : theme.colors.primary,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                {TIMETABLE_DAY_LABELS[d]}
+              </Text>
+            );
+          })}
+        </ScrollView>
+      )}
 
       <ScrollView
         style={styles.content}
@@ -144,6 +194,20 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: theme.colors.text
+  },
+  dayTabs: {
+    flexGrow: 0,
+    paddingVertical: Spacing.sm,
+  },
+  dayTab: {
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Radii.md,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   content: {
     flex: 1

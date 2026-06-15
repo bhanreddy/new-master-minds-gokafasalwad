@@ -39,6 +39,7 @@ import { sync } from '../../src/database/sync';
 import { useTheme, SchoolTheme } from '../../src/hooks/useTheme';
 import { IconBadgeColors, IconBadgeColorsDark } from '../../src/theme/themes';
 import { t_field } from '../../src/utils/lang';
+import AppDatePicker from '@/src/components/AppDatePicker';
 import LogoLoader from '../../src/components/LogoLoader';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -399,12 +400,33 @@ function TabSwitcher({ active, onChange }: { active: TabId; onChange: (t: TabId)
 function DateSelectorButton({
   selectedYmd,
   onPress,
+  onSelect,
 }: {
   selectedYmd: string;
   onPress: () => void;
+  onSelect?: (ymd: string) => void;
 }) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+
+  if (Platform.OS === 'web' && onSelect) {
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(300).springify()}
+        layout={Layout.springify()}
+        style={styles.dateSelectorWrap}
+      >
+        <AppDatePicker
+          label="Pick a date"
+          value={selectedYmd}
+          onChange={onSelect}
+          maximumDate={new Date()}
+          isDark={isDark}
+          containerStyle={{ marginBottom: 0 }}
+        />
+      </Animated.View>
+    );
+  }
 
   const today = new Date();
   const yesterday = new Date(today);
@@ -706,6 +728,7 @@ export default function DiaryScreen() {
             <DateSelectorButton
               selectedYmd={historyDate}
               onPress={() => setPickerVisible(true)}
+              onSelect={setHistoryDate}
             />
           ) : null}
 

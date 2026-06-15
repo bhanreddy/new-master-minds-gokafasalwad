@@ -4,10 +4,10 @@ import { View, StyleSheet } from 'react-native';
 import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRequireRole } from '../../src/hooks/useRequireRole';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+import { useRequireRole } from '@/src/hooks/useRequireRole';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../src/hooks/useAuth';
+import { useAuth } from '@/src/hooks/useAuth';
 
 export default function TabLayout() {
     const insets = useSafeAreaInsets();

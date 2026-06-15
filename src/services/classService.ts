@@ -4,6 +4,7 @@ export interface ClassInfo {
     id: string;
     name: string;
     code?: string;
+    sort_order?: number;
 }
 
 export interface Section {
@@ -50,15 +51,26 @@ export const ClassService = {
     },
 
     getCurrentAcademicYear: async (): Promise<AcademicYear | null> => {
-        const years = await api.get<AcademicYear[]>('/academics/academic-years');
+        const years = await api.get<(AcademicYear & { is_current?: boolean })[]>('/academics/academic-years');
+        // Prefer the backend-computed is_current flag (avoids client/server timezone mismatches)
+        const current = years.find(y => y.is_current);
+        if (current) return current;
+        // Fallback: client-side check
         const now = new Date();
-        return years.find(y =>
+        const clientMatch = years.find(y =>
             new Date(y.start_date) <= now && new Date(y.end_date) >= now
-        ) || null;
+        );
+        if (clientMatch) return clientMatch;
+        // Last resort: return the most recent year (first in the DESC-ordered list)
+        return years.length > 0 ? years[0] : null;
     },
 
     createClass: async (data: { name: string, code?: string }): Promise<ClassInfo> => {
         return api.post<ClassInfo>('/academics/classes', data);
+    },
+
+    reorderClasses: async (classIds: string[]): Promise<ClassInfo[]> => {
+        return api.put<ClassInfo[]>('/academics/classes/reorder', { class_ids: classIds });
     },
 
     createSection: async (data: { name: string, code?: string }): Promise<Section> => {

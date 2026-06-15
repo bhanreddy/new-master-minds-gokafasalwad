@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AppDatePicker from '@/src/components/AppDatePicker';
 import Animated, {
   FadeInDown, FadeIn,
   useAnimatedStyle, useSharedValue,
@@ -22,12 +22,15 @@ import AdminHeader from '../../src/components/AdminHeader';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
 import { StudentService, CreateStudentRequest } from '../../src/services/studentService';
+import { APIError } from '../../src/services/apiClient';
 import { ClassService, ClassInfo, Section, AcademicYear } from '../../src/services/classService';
 import { GENDERS, BLOOD_GROUPS, RELIGIONS, STUDENT_CATEGORIES, STUDENT_STATUSES } from '../../src/constants/references';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
+import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -222,7 +225,7 @@ const SelectField = ({
               ListEmptyComponent={
                 <View style={styles.modalEmpty}>
                   <Ionicons name="search-outline" size={28} color={isDark ? '#374151' : '#CBD5E1'} />
-                  <Text style={styles.modalEmptyText}>No results for "{searchQuery}"</Text>
+                  <Text style={styles.modalEmptyText}>{`No results for "${searchQuery}"`}</Text>
                 </View>
               }
             />
@@ -339,37 +342,6 @@ const avatarStyles = StyleSheet.create({
   statusDot: { position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: '#fff' },
 });
 
-// ─── DateField ────────────────────────────────────────────────────────────────
-const DateField = ({ label, value, onPress, required = false, accentColor = '#3B82F6', isDark }: any) => {
-  const { theme } = useTheme();
-  const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-  const hasVal = !!value;
-  return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>{label}{required && <Text style={{ color: '#EF4444' }}> *</Text>}</Text>
-      <Pressable
-        style={({ pressed }) => [
-          styles.inputWrapper,
-          { borderColor: hasVal ? accentColor : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)') },
-          { borderWidth: hasVal ? 1.5 : 1 },
-          pressed && { opacity: 0.8 },
-        ]}
-        onPress={onPress}
-      >
-        <Ionicons name="calendar-outline" size={18} color={hasVal ? accentColor : (isDark ? '#64748B' : '#94A3B8')} style={{ marginRight: 10 }} />
-        <Text style={[styles.input, !hasVal && { color: isDark ? '#374151' : '#CBD5E1' }]}>
-          {value || 'Select date'}
-        </Text>
-        {hasVal && (
-          <View style={[styles.selectedBadge, { backgroundColor: accentColor + '20' }]}>
-            <Ionicons name="checkmark" size={12} color={accentColor} />
-          </View>
-        )}
-      </Pressable>
-    </View>
-  );
-};
-
 // ─── Sub-section label (Father / Mother / Guardian) ──────────────────────────
 const SubSectionLabel = ({ label, accentColor }: { label: string; accentColor: string }) => (
   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 4 }}>
@@ -390,11 +362,12 @@ export default function AddStudentScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
+  const [enrolledForm, setEnrolledForm] = useState<AdmissionFormData | null>(null);
 
   const [formData, setFormData] = useState<CreateStudentRequest>({
     first_name: '', middle_name: '', last_name: '',
     dob: '', gender_id: 1,
-    admission_no: '', admission_date: new Date().toISOString().split('T')[0],
+    admission_no: '', pen_number: '', apar_number: '', admission_date: new Date().toISOString().split('T')[0],
     status_id: 1, category_id: 1, religion_id: 1, blood_group_id: 1,
     email: '', phone: '', password: '', role_code: 'student',
     class_id: '', section_id: '', academic_year_id: '',
@@ -403,8 +376,6 @@ export default function AddStudentScreen() {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [showDobPicker, setShowDobPicker] = useState(false);
-  const [showAdmissionDatePicker, setShowAdmissionDatePicker] = useState(false);
 
   const [father, setFather] = useState({ first_name: '', last_name: '', phone: '', occupation: '' });
   const [mother, setMother] = useState({ first_name: '', last_name: '', phone: '', occupation: '' });
@@ -412,7 +383,7 @@ export default function AddStudentScreen() {
 
   // Update progress step based on filled sections
   useEffect(() => {
-    const p = formData.first_name && formData.last_name ? 1 : 0;
+    const p = formData.first_name ? 1 : 0;
     const a = formData.class_id && formData.section_id ? 2 : p;
     const par = father.first_name || mother.first_name ? 3 : a;
     const det = formData.category_id ? 4 : par;
@@ -447,6 +418,8 @@ export default function AddStudentScreen() {
           first_name: data.first_name || '', middle_name: data.middle_name || '',
           last_name: data.last_name || '', dob: data.dob || '',
           gender_id: data.gender_id || 1, admission_no: data.admission_no || '',
+          pen_number: data.pen_number || '',
+          apar_number: data.apar_number || '',
           admission_date: data.admission_date || '', status_id: data.status_id || 1,
           category_id: data.category_id || 1, religion_id: data.religion_id || 1,
           blood_group_id: data.blood_group_id || 1, email: data.email || '',
@@ -461,7 +434,7 @@ export default function AddStudentScreen() {
   };
 
   const handleSave = async () => {
-    if (!formData.first_name || !formData.last_name || !formData.admission_no || !formData.class_id || !formData.section_id) {
+    if (!formData.first_name || !formData.admission_no || !formData.class_id || !formData.section_id) {
       alertCompat('Required Fields', 'Please fill all mandatory fields marked with *.'); return;
     }
     if (!isEditMode && !formData.password) {
@@ -479,6 +452,12 @@ export default function AddStudentScreen() {
     if (formData.dob && new Date(formData.dob) > new Date()) {
       alertCompat('Invalid DOB', 'Date of birth cannot be in the future.'); return;
     }
+    if (formData.pen_number?.trim()) {
+      const pen = formData.pen_number.trim();
+      if (pen.length > 30 || !/^[A-Za-z0-9]+$/.test(pen)) {
+        alertCompat('Invalid PEN Number', 'PEN must be alphanumeric and at most 30 characters.'); return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -489,14 +468,32 @@ export default function AddStudentScreen() {
 
       const payload = { ...formData, parents };
       if (isEditMode) {
-        await StudentService.update(id as string, payload as any);
-        alertCompat('Updated!', 'Student record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        const updatePayload = { ...payload };
+        if (!updatePayload.password) {
+          delete updatePayload.password;
+        }
+        const result = await StudentService.update(id as string, updatePayload as any);
+        if ((result as any)?.authError) {
+          alertCompat(
+            'Partial Update',
+            `Profile saved, but login credentials failed to update: ${(result as any).authError}`,
+          );
+        } else {
+          alertCompat('Updated!', 'Student record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+        }
       } else {
         await StudentService.create(payload);
-        alertCompat('Enrolled!', 'New student has been added to the system.', [{ text: 'OK', onPress: () => router.back() }]);
+        setEnrolledForm(
+          buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears }),
+        );
       }
-    } catch (error: any) {
-      alertCompat('Save Failed', error.response?.data?.error || error.message || 'An unexpected error occurred.');
+    } catch (error: unknown) {
+      const message = error instanceof APIError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred.';
+      alertCompat('Save Failed', message);
     } finally { setLoading(false); }
   };
 
@@ -586,9 +583,9 @@ export default function AddStudentScreen() {
                   required accentColor={SECTION_COLORS.personal.accent} />
               </View>
               <View style={styles.halfInput}>
-                <InputField label="Last Name" placeholder="Doe" value={formData.last_name}
+                <InputField label="Last Name" placeholder="Last Name (optional)" value={formData.last_name}
                   onChangeText={(t: string) => update('last_name', t)} icon="person-outline"
-                  required accentColor={SECTION_COLORS.personal.accent} />
+                  accentColor={SECTION_COLORS.personal.accent} />
               </View>
             </View>
             <InputField label="Middle Name" placeholder="Optional" value={formData.middle_name}
@@ -597,8 +594,16 @@ export default function AddStudentScreen() {
             <SelectField label="Gender" value={formData.gender_id} options={GENDERS}
               onSelect={(v: number) => update('gender_id', v)} icon="transgender-outline"
               required accentColor={SECTION_COLORS.personal.accent} />
-            <DateField label="Date of Birth" value={formData.dob}
-              onPress={() => setShowDobPicker(true)} accentColor={SECTION_COLORS.personal.accent} isDark={isDark} />
+            <AppDatePicker
+              label="Date of Birth"
+              value={formData.dob || ''}
+              onChange={(d) => update('dob', d)}
+              maximumDate={new Date()}
+              accentColor={SECTION_COLORS.personal.accent}
+              isDark={isDark}
+              showSelectedBadge
+              containerStyle={styles.inputGroup}
+            />
           </SectionCard>
 
           {/* ── SECTION 2: ACADEMIC ── */}
@@ -606,12 +611,26 @@ export default function AddStudentScreen() {
             <InputField label="Admission Number" placeholder="ADM2024001" value={formData.admission_no}
               onChangeText={(t: string) => update('admission_no', t)} icon="card-outline"
               required accentColor={SECTION_COLORS.academic.accent} />
+            <InputField label="APAR Number" placeholder="Enter APAR number (optional)" value={formData.apar_number || ''}
+              onChangeText={(t: string) => update('apar_number', t)} icon="document-text-outline"
+              accentColor={SECTION_COLORS.academic.accent} />
+            <InputField label="PEN Number" placeholder="PEN2025001 (optional)" value={formData.pen_number || ''}
+              onChangeText={(t: string) => update('pen_number', t)} icon="id-card-outline"
+              autoCapitalize="characters" accentColor={SECTION_COLORS.academic.accent} />
             <InputField label="Roll Number" placeholder="Auto-generated"
               value={(formData as any).roll_number ? String((formData as any).roll_number) : ''}
               editable={false} icon="list-outline" accentColor={SECTION_COLORS.academic.accent} />
-            <DateField label="Admission Date" value={formData.admission_date}
-              onPress={() => setShowAdmissionDatePicker(true)} required
-              accentColor={SECTION_COLORS.academic.accent} isDark={isDark} />
+            <AppDatePicker
+              label="Admission Date"
+              value={formData.admission_date || ''}
+              onChange={(d) => update('admission_date', d)}
+              maximumDate={new Date()}
+              required
+              accentColor={SECTION_COLORS.academic.accent}
+              isDark={isDark}
+              showSelectedBadge
+              containerStyle={styles.inputGroup}
+            />
             <View style={styles.row}>
               <View style={styles.halfInput}>
                 <SelectField label="Class" value={formData.class_id} options={classes}
@@ -758,24 +777,14 @@ export default function AddStudentScreen() {
             </Pressable>
           </Animated.View>
 
-          {/* Date pickers */}
-          {showDobPicker && (
-            <DateTimePicker
-              value={formData.dob ? new Date(formData.dob) : new Date()}
-              mode="date" display="default" maximumDate={new Date()}
-              onChange={(_, d) => { setShowDobPicker(false); if (d) update('dob', d.toISOString().split('T')[0]); }}
-            />
-          )}
-          {showAdmissionDatePicker && (
-            <DateTimePicker
-              value={formData.admission_date ? new Date(formData.admission_date) : new Date()}
-              mode="date" display="default" maximumDate={new Date()}
-              onChange={(_, d) => { setShowAdmissionDatePicker(false); if (d) update('admission_date', d.toISOString().split('T')[0]); }}
-            />
-          )}
-
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <AdmissionSuccessModal
+        visible={!!enrolledForm}
+        data={enrolledForm}
+        onClose={() => { setEnrolledForm(null); router.back(); }}
+      />
     </View>
   );
 }

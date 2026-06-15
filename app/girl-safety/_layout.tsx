@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import React from 'react';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { useRequireRole } from '../../src/hooks/useRequireRole';
 
 export default function GirlSafetyLayout() {

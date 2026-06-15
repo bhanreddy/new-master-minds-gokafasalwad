@@ -303,7 +303,7 @@ export default function AdminComplaints() {
                 {searchResults.map((student) => (
                   <TouchableOpacity key={student.id} style={styles.searchItem} onPress={() => {
                     setNewComplaint((prev) => ({ ...prev, raised_for_student_id: student.id }));
-                    setStudentSearch(`${student.first_name} ${student.last_name} (${student.admission_no})`);
+                    setStudentSearch(`${[student.first_name, student.last_name].filter(Boolean).join(' ')} (${student.admission_no})`);
                     setSearchResults([]);
                   }}>
                     <Text style={styles.searchItemText}>{student.first_name} {student.last_name}</Text>

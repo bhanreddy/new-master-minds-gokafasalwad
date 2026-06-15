@@ -1,4 +1,4 @@
-import { api } from './apiClient';
+import { api, APIOptions } from './apiClient';
 import { Notice, NoticeAudience, Complaint } from '../types/models';
 import { StorageService } from './storageService';
 import { supabase } from './supabaseConfig';
@@ -148,8 +148,8 @@ export interface CreateLeaveRequest {
 }
 
 export const LeaveService = {
-    getAll: async (params?: { status?: string; page?: number; limit?: number; leave_type?: string; from_date?: string; to_date?: string }): Promise<LeaveApplication[]> => {
-        return api.get<LeaveApplication[]>('/leaves', params);
+    getAll: async (params?: { status?: string; page?: number; limit?: number; leave_type?: string; from_date?: string; to_date?: string }, options?: APIOptions): Promise<LeaveApplication[]> => {
+        return api.get<LeaveApplication[]>('/leaves', params, options);
     },
 
     getById: async (id: string): Promise<LeaveApplication> => {
@@ -266,6 +266,17 @@ export interface BusItem {
 export const TransportService = {
     getAllBuses: async (): Promise<BusItem[]> => {
         return api.get<BusItem[]>('/transport/buses');
+    },
+
+    updateBus: async (
+        id: string,
+        data: { bus_no?: string; registration_no?: string; capacity?: number; is_active?: boolean },
+    ): Promise<void> => {
+        await api.put(`/transport/buses/${id}`, data);
+    },
+
+    deleteBus: async (id: string): Promise<void> => {
+        return api.delete<void>(`/transport/buses/${id}`);
     },
 };
 

@@ -3,6 +3,17 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
+// Block macOS resource fork files (._*) from being bundled
+if (config.resolver.blockList) {
+  if (Array.isArray(config.resolver.blockList)) {
+    config.resolver.blockList.push(/\._[^/]+$/);
+  } else {
+    config.resolver.blockList = [config.resolver.blockList, /\._[^/]+$/];
+  }
+} else {
+  config.resolver.blockList = [/\._[^/]+$/];
+}
+
 // Enable inline requires for smaller and faster JS bundle
 config.transformer = {
     ...config.transformer,

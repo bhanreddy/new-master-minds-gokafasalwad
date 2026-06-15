@@ -42,12 +42,12 @@ export default function StudentDetails() {
 
       const parent = data.parents?.[0];
       const enrollment = data.current_enrollment;
-      const classInfo = enrollment ? `${enrollment.class_code}-${enrollment.section_name}` : 'N/A';
+      const classInfo = enrollment ? `${enrollment.class_name || enrollment.class_code}-${enrollment.section_name}` : 'N/A';
       setFormData({
         name: data.display_name || `${data.first_name} ${data.last_name}`,
         grade: classInfo,
         rollNo: data.admission_no,
-        parentName: parent ? `${parent.first_name} ${parent.last_name}` : 'N/A',
+        parentName: parent ? [parent.first_name, parent.last_name].filter(Boolean).join(' ') : 'N/A',
         contact: parent?.phone || 'Not available',
         remarks: ''
       });

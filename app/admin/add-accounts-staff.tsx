@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
+import React, { useState } from 'react';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
-import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AppDatePicker from '@/src/components/AppDatePicker';
 import { LinearGradient } from 'expo-linear-gradient';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useRouter } from 'expo-router';
+import { Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AdminHeader from '../../src/components/AdminHeader';
-import { ADMIN_THEME } from '../../src/constants/adminTheme';
-import { StaffService } from '../../src/services/staffService';
-import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import { ADMIN_THEME } from '../../src/constants/adminTheme';
+import { useTheme } from '../../src/hooks/useTheme';
+import { StaffService } from '../../src/services/staffService';
+import { Theme } from '../../src/theme/themes';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 interface FormData {
   first_name: string;
   middle_name: string;
@@ -20,7 +20,7 @@ interface FormData {
   email: string;
   phone: string;
   password: string;
-  dob: Date | null;
+  dob: string;
   gender_id: number;
   salary?: string;
 }
@@ -32,7 +32,6 @@ export default function AddAccountsStaff() {
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [formData, setFormData] = useState<FormData & {
     staff_code: string;
   }>({
@@ -42,7 +41,7 @@ export default function AddAccountsStaff() {
     email: '',
     phone: '',
     password: '',
-    dob: null,
+    dob: '',
     gender_id: 1,
     // Default to Male
     staff_code: '',
@@ -101,14 +100,14 @@ export default function AddAccountsStaff() {
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         password: formData.password,
-        dob: formData.dob ? formData.dob.toISOString().split('T')[0] : undefined,
+        dob: formData.dob || undefined,
         gender_id: formData.gender_id,
         staff_code: formData.staff_code.trim(),
         joining_date: new Date().toISOString().split('T')[0],
         // Default to today
         status_id: 1,
         // Active
-        role_code: 'accounts',
+        role_code: 'accountant',
         salary: formData.salary ? parseFloat(formData.salary) : undefined
       });
       alertCompat('Success', `Accounts staff ${formData.first_name} ${formData.last_name} has been created successfully!`, [{
@@ -120,12 +119,6 @@ export default function AddAccountsStaff() {
       alertCompat('Error', error.message || 'Failed to create accounts staff user');
     } finally {
       setLoading(false);
-    }
-  };
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      updateField('dob', selectedDate);
     }
   };
   return <View style={styles.container}>
@@ -193,19 +186,13 @@ export default function AddAccountsStaff() {
             <AppTextInput style={styles.input} placeholder="Enter mobile number" value={formData.phone} onChangeText={(text) => updateField('phone', text)} keyboardType="phone-pad" maxLength={15} />
           </View>
         </View>
-        {/* Date of Birth */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Date of Birth</Text>
-          <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}>
-            <Ionicons name="calendar-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
-            <Text style={[styles.input, {
-              paddingTop: 12
-            }]}>
-              {formData.dob ? formData.dob.toLocaleDateString() : 'Select date of birth'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {showDatePicker && <DateTimePicker value={formData.dob || new Date()} mode="date" display="default" onChange={onDateChange} maximumDate={new Date()} />}
+        <AppDatePicker
+          label="Date of Birth"
+          value={formData.dob}
+          onChange={(d) => updateField('dob', d)}
+          maximumDate={new Date()}
+          containerStyle={styles.inputGroup}
+        />
         {/* Gender */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>

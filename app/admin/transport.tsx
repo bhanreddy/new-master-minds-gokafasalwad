@@ -75,6 +75,18 @@ export default function AdminTransport() {
   const [newBusReg, setNewBusReg] = useState('');
   const [newBusCap, setNewBusCap] = useState('40');
 
+  const [editBusOpen, setEditBusOpen] = useState(false);
+  const [editBusId, setEditBusId] = useState<string | null>(null);
+  const [editBusNo, setEditBusNo] = useState('');
+  const [editBusReg, setEditBusReg] = useState('');
+  const [editBusCap, setEditBusCap] = useState('');
+  const [editBusActive, setEditBusActive] = useState(true);
+
+  const [editRouteOpen, setEditRouteOpen] = useState(false);
+  const [editRouteId, setEditRouteId] = useState<string | null>(null);
+  const [editRouteName, setEditRouteName] = useState('');
+  const [editRouteDirection, setEditRouteDirection] = useState<'morning' | 'afternoon' | 'evening' | 'both'>('morning');
+
   // Bus Assignment State
   const [assignBusOpen, setAssignBusOpen] = useState(false);
   const [assignBusId, setAssignBusId] = useState<string | null>(null);
@@ -178,6 +190,67 @@ export default function AdminTransport() {
     }
   };
 
+  const openEditBusModal = (bus: BusItem) => {
+    setEditBusId(bus.id);
+    setEditBusNo(bus.bus_no || '');
+    setEditBusReg(bus.registration_no || '');
+    setEditBusCap(String(bus.capacity ?? 40));
+    setEditBusActive(bus.is_active !== false);
+    setEditBusOpen(true);
+  };
+
+  const saveEditBus = async () => {
+    if (!editBusId || !editBusNo.trim() || !editBusReg.trim() || !editBusCap) {
+      alertCompat('Validation', 'Please fill all bus details');
+      return;
+    }
+    try {
+      setCreating(true);
+      await TransportService.updateBus(editBusId, {
+        bus_no: editBusNo.trim(),
+        registration_no: editBusReg.trim(),
+        capacity: parseInt(editBusCap, 10),
+        is_active: editBusActive,
+      });
+      setEditBusOpen(false);
+      await fetchTransportData();
+      alertCompat('Done', 'Bus updated');
+    } catch (e: any) {
+      alertCompat('Error', e?.message || 'Could not update bus');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const openEditRouteModal = (route: RouteRow) => {
+    setEditRouteId(route.id);
+    setEditRouteName(route.name || '');
+    const dir = (route.direction || 'morning') as typeof editRouteDirection;
+    setEditRouteDirection(['morning', 'afternoon', 'evening', 'both'].includes(dir) ? dir : 'morning');
+    setEditRouteOpen(true);
+  };
+
+  const saveEditRoute = async () => {
+    if (!editRouteId || !editRouteName.trim()) {
+      alertCompat('Validation', 'Route name is required');
+      return;
+    }
+    try {
+      setCreating(true);
+      await api.put(`/transport/routes/${editRouteId}`, {
+        name: editRouteName.trim(),
+        direction: editRouteDirection,
+      });
+      setEditRouteOpen(false);
+      await fetchRoutes();
+      alertCompat('Done', 'Route updated');
+    } catch (e: any) {
+      alertCompat('Error', e?.message || 'Could not update route');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const openAssignModal = async (bus: BusItem) => {
     setAssignBusId(bus.id);
     setAssignDriverId(null);
@@ -192,6 +265,33 @@ export default function AdminTransport() {
     } catch {
       alertCompat('Error', 'Could not fetch assignment dependencies');
     }
+  };
+
+  const handleDeleteBus = (bus: BusItem) => {
+    const label = bus.bus_no || bus.registration_no || 'this bus';
+    alertCompat(
+      'Delete Bus',
+      `Delete "${label}"? It will be removed from any assigned routes.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setCreating(true);
+              await TransportService.deleteBus(bus.id);
+              await fetchTransportData();
+              alertCompat('Done', 'Bus deleted');
+            } catch (e: any) {
+              alertCompat('Error', e?.message || 'Could not delete bus');
+            } finally {
+              setCreating(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const confirmBusAssignment = async () => {
@@ -231,7 +331,7 @@ export default function AdminTransport() {
 
   const renderBusItem = ({ item, index }: { item: BusItem; index: number }) => (
     <Animated.View entering={FadeInDown.delay(index * 60).duration(400).springify()}>
-      <TouchableOpacity style={styles.card} activeOpacity={0.9}>
+      <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.routeContainer}>
             <LinearGradient
@@ -267,15 +367,34 @@ export default function AdminTransport() {
           </View>
         </View>
         
-        <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-          <TouchableOpacity 
-             style={[styles.trackButton, { marginTop: 0, paddingVertical: 8 }]} 
-             onPress={() => openAssignModal(item)}
+        <TouchableOpacity
+          style={styles.trackButton}
+          onPress={() => openAssignModal(item)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.trackButtonText}>Assign Route & Driver</Text>
+        </TouchableOpacity>
+        <View style={styles.busActionsRow}>
+          <TouchableOpacity
+            style={[styles.editActionBtn, styles.busActionBtn]}
+            onPress={() => openEditBusModal(item)}
+            disabled={creating}
+            activeOpacity={0.8}
           >
-             <Text style={styles.trackButtonText}>Assign Route & Driver</Text>
+            <Ionicons name="create-outline" size={16} color="#4338CA" />
+            <Text style={styles.editActionText}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.deleteActionBtn, styles.busActionBtn]}
+            onPress={() => handleDeleteBus(item)}
+            disabled={creating}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="trash-outline" size={16} color="#DC2626" />
+            <Text style={styles.deleteActionText}>Delete</Text>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 
@@ -285,51 +404,60 @@ export default function AdminTransport() {
     const dir = item.direction || 'morning';
     return (
       <Animated.View entering={FadeInDown.delay(index * 60).duration(400).springify()}>
-        <TouchableOpacity
-          style={styles.card}
-          activeOpacity={0.85}
-          onPress={() =>
-            router.push({
-              pathname: '/admin/routeDetail',
-              params: {
-                routeId: item.id,
-                routeName: encodeURIComponent(item.name),
-              },
-            })
-          }
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.routeContainer}>
-              <LinearGradient
-                colors={['#059669', '#10B981']}
-                style={styles.iconBox}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="map" size={22} color="#fff" />
-              </LinearGradient>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.routeTitle}>{item.name}</Text>
-                <Text style={styles.vehicleText}>
-                  {stops} stops · {studs} students
+        <View style={styles.card}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: '/admin/routeDetail',
+                params: {
+                  routeId: item.id,
+                  routeName: encodeURIComponent(item.name),
+                },
+              })
+            }
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.routeContainer}>
+                <LinearGradient
+                  colors={['#059669', '#10B981']}
+                  style={styles.iconBox}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="map" size={22} color="#fff" />
+                </LinearGradient>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.routeTitle}>{item.name}</Text>
+                  <Text style={styles.vehicleText}>
+                    {stops} stops · {studs} students
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={22} color="#CBD5E1" />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.routeFooter}>
+              <View style={[styles.dirBadge, dirChipStyle(dir)]}>
+                <Text style={styles.dirBadgeTxt}>{DIR_LABEL[dir] || dir}</Text>
+              </View>
+              <View style={styles.driverInfo}>
+                <Ionicons name="person-circle-outline" size={16} color="#CBD5E1" />
+                <Text style={styles.driverHint} numberOfLines={1}>
+                  {item.route_driver_name ? item.route_driver_name : 'No driver assigned'}
                 </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={22} color="#CBD5E1" />
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.routeFooter}>
-            <View style={[styles.dirBadge, dirChipStyle(dir)]}>
-              <Text style={styles.dirBadgeTxt}>{DIR_LABEL[dir] || dir}</Text>
-            </View>
-            <View style={styles.driverInfo}>
-              <Ionicons name="person-circle-outline" size={16} color="#CBD5E1" />
-              <Text style={styles.driverHint} numberOfLines={1}>
-                {item.route_driver_name ? item.route_driver_name : 'No driver assigned'}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.routeEditBtn}
+            onPress={() => openEditRouteModal(item)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="create-outline" size={16} color="#4338CA" />
+            <Text style={styles.editActionText}>Edit Route</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
     );
   };
@@ -409,7 +537,14 @@ export default function AdminTransport() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F3F4F6" />
-      <AdminHeader title="Transport Management" showBackButton={true} />
+      <AdminHeader
+        title="Transport Management"
+        showBackButton={true}
+        rightAction={{
+          icon: 'cloud-upload-outline',
+          onPress: () => router.push('/admin/transport-import'),
+        }}
+      />
 
       <FlatList
         data={(tab === 'buses' ? transportData : tab === 'routes' ? routeRows : liveRows) as any[]}
@@ -582,6 +717,105 @@ export default function AdminTransport() {
                   ) : (
                     <LinearGradient colors={['#4F46E5', '#6366F1']} style={styles.submitBtnBg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                       <Text style={styles.submitBtnTxt}>Create Bus</Text>
+                    </LinearGradient>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* EDIT BUS MODAL */}
+      <Modal visible={editBusOpen} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => !creating && setEditBusOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxWidth: 500 }}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.sheetTitle}>Edit Bus</Text>
+
+              <Text style={styles.inputLabel}>Bus Number / Name</Text>
+              <TextInput style={styles.input} placeholder="e.g. Bus 01" placeholderTextColor="#9CA3AF" value={editBusNo} onChangeText={setEditBusNo} />
+
+              <Text style={styles.inputLabel}>Registration Number</Text>
+              <TextInput style={styles.input} placeholder="e.g. IND-1234" placeholderTextColor="#9CA3AF" value={editBusReg} onChangeText={setEditBusReg} />
+
+              <Text style={styles.inputLabel}>Capacity</Text>
+              <TextInput style={styles.input} placeholder="e.g. 40" placeholderTextColor="#9CA3AF" keyboardType="numeric" value={editBusCap} onChangeText={setEditBusCap} />
+
+              <Text style={styles.inputLabel}>Status</Text>
+              <View style={styles.segRow}>
+                <TouchableOpacity
+                  style={[styles.segChip, editBusActive && styles.segChipOn]}
+                  onPress={() => setEditBusActive(true)}
+                >
+                  <Text style={[styles.segChipTxt, editBusActive && styles.segChipTxtOn]}>Active</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.segChip, !editBusActive && styles.segChipOn]}
+                  onPress={() => setEditBusActive(false)}
+                >
+                  <Text style={[styles.segChipTxt, !editBusActive && styles.segChipTxtOn]}>Inactive</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.sheetActions}>
+                <TouchableOpacity style={styles.cancelBtn} disabled={creating} onPress={() => setEditBusOpen(false)}>
+                  <Text style={styles.cancelBtnTxt}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} disabled={creating} onPress={saveEditBus}>
+                  {creating ? (
+                    <Text style={styles.submitBtnTxt}>Saving...</Text>
+                  ) : (
+                    <LinearGradient colors={['#4F46E5', '#6366F1']} style={styles.submitBtnBg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                      <Text style={styles.submitBtnTxt}>Save Changes</Text>
+                    </LinearGradient>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      {/* EDIT ROUTE MODAL */}
+      <Modal visible={editRouteOpen} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => !creating && setEditRouteOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', maxWidth: 500 }}>
+            <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.sheetTitle}>Edit Route</Text>
+              <Text style={styles.inputLabel}>Route Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Anthwar Route"
+                placeholderTextColor="#9CA3AF"
+                value={editRouteName}
+                onChangeText={setEditRouteName}
+              />
+              <Text style={styles.inputLabel}>Trip Direction</Text>
+              <View style={styles.segRow}>
+                {(['morning', 'afternoon', 'evening', 'both'] as const).map((d) => (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.segChip, editRouteDirection === d && styles.segChipOn]}
+                    onPress={() => setEditRouteDirection(d)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.segChipTxt, editRouteDirection === d && styles.segChipTxtOn]}>
+                      {DIR_LABEL[d]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.sheetActions}>
+                <TouchableOpacity style={styles.cancelBtn} disabled={creating} onPress={() => setEditRouteOpen(false)}>
+                  <Text style={styles.cancelBtnTxt}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} disabled={creating} onPress={saveEditRoute}>
+                  {creating ? (
+                    <Text style={styles.submitBtnTxt}>Saving...</Text>
+                  ) : (
+                    <LinearGradient colors={['#059669', '#10B981']} style={styles.submitBtnBg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                      <Text style={styles.submitBtnTxt}>Save Changes</Text>
                     </LinearGradient>
                   )}
                 </TouchableOpacity>
@@ -864,6 +1098,42 @@ const getStyles = (theme: Theme) =>
       justifyContent: 'flex-end',
     },
     driverHint: { fontSize: 13, color: '#64748B', fontWeight: '500' },
+    busActionsRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 10,
+    },
+    busActionBtn: {
+      flex: 1,
+      paddingVertical: 8,
+    },
+    editActionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#EEF2FF',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#C7D2FE',
+      gap: 6,
+    },
+    editActionText: {
+      color: '#4338CA',
+      fontWeight: '700',
+      fontSize: 13,
+    },
+    routeEditBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: '#EEF2FF',
+      borderWidth: 1,
+      borderColor: '#C7D2FE',
+    },
     trackButton: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -874,6 +1144,21 @@ const getStyles = (theme: Theme) =>
       marginTop: 16,
       borderWidth: 1,
       borderColor: '#BAE6FD',
+    },
+    deleteActionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#FEF2F2',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#FECACA',
+      gap: 6,
+    },
+    deleteActionText: {
+      color: '#DC2626',
+      fontWeight: '700',
+      fontSize: 13,
     },
     trackButtonText: {
       color: '#0284C7',

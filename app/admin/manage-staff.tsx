@@ -295,8 +295,8 @@ export default function ManageStaff() {
         first_name: item.first_name || '',
         last_name: item.last_name || '',
         display_name: item.display_name || `${item.first_name || ''} ${item.last_name || ''}`.trim(),
-        designation: item.designation_name || 'Staff',
-        status: item.status_name || 'Present',
+        designation: item.designation_name || item.designation || 'Staff',
+        status: item.status_name || item.status || 'Present',
         photo_url: item.photo_url || null,
         phone: item.phone || '',
       }));

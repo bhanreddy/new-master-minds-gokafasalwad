@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { CustomAlertProvider, ensurePortalRoot } from '../src/components/CustomAlert';
-export { ErrorBoundary } from '../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { validateBuildConfig } from '../src/constants/school';
 import '../src/i18n';
 import { AuthService } from '../src/services/authService';
@@ -10,7 +10,7 @@ import { ThemeProvider, ThemeContext } from '../src/context/ThemeContext';
 import { ThemeProvider as NavThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Platform, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, Platform, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Toast from 'react-native-toast-message';
 import { toastConfig } from '../src/components/CustomToast';
@@ -33,6 +33,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppSplash from '../src/components/AppSplash';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import ForceUpdateScreen from '../src/components/ForceUpdateScreen';
+import { useVersionCheck } from '../src/hooks/useVersionCheck';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -45,6 +47,7 @@ export default function Layout() {
   const [appReady, setAppReady] = useState(false);
   const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [buildConfigError, setBuildConfigError] = useState<string | null>(null);
+  const { updateRequired, checking } = useVersionCheck();
 
   // Inject portal root for web (must happen before any alert can fire)
   useEffect(() => {
@@ -106,6 +109,19 @@ export default function Layout() {
 
   if (!appReady) {
     return null;
+  }
+
+  if (checking) {
+    return (
+      <View style={styles.versionLoader}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={styles.versionLoaderText}>Checking app version...</Text>
+      </View>
+    );
+  }
+
+  if (updateRequired) {
+    return <ForceUpdateScreen />;
   }
 
   if (buildConfigError && __DEV__) {
@@ -189,6 +205,18 @@ function ThemeSyncWrapper() {
 const styles = StyleSheet.create({
   gestureRoot: { flex: 1 },
   stackShell: { flex: 1 },
+  versionLoader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    gap: 12,
+  },
+  versionLoaderText: {
+    color: '#475569',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 /**

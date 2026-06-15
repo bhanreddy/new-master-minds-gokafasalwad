@@ -9,12 +9,22 @@ import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { Theme } from '../../src/theme/themes';
 import { useTranslation } from 'react-i18next';
+
+/** Returns the first human-readable ID (not a UUID) from the user object */
+function getHumanId(user: any): string {
+  const candidates = [user?.staff_code, user?.admission_no];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return 'N/A';
+}
 
 // ─── SettingRow ───────────────────────────────────────────────────────────────
 
@@ -148,7 +158,7 @@ export default function AccountsSettings() {
               <View style={styles.idBadge}>
                 <FontAwesome5 name="id-badge" size={9} color="#F59E0B" />
                 <Text style={styles.idText}>
-                  {user?.userId?.substring(0, 8).toUpperCase() || 'N/A'}
+                  {getHumanId(user)}
                 </Text>
               </View>
             </View>
@@ -283,6 +293,8 @@ export default function AccountsSettings() {
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Logout', style: 'destructive', onPress: async () => {
+                    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                    await AsyncStorage.removeItem('accounts_auto_login');
                     await signOut();
                     router.replace('/welcome');
                   }
@@ -300,7 +312,7 @@ export default function AccountsSettings() {
         {/* ── Version footer ── */}
         <Animated.View entering={FadeInDown.delay(520).duration(400)} style={styles.footer}>
           <View style={styles.footerDot} />
-          <Text style={styles.footerText}>SchoolIMS · v2.4.1</Text>
+          <Text style={styles.footerText}>Nexsyrus SchoolIMS · v{Constants.expoConfig?.version || '1.0.0'}</Text>
           <View style={styles.footerDot} />
         </Animated.View>
 

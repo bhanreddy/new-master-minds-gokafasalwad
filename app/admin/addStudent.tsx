@@ -5,17 +5,58 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Keyboa
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AppDatePicker, { toYMD } from '@/src/components/AppDatePicker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
-import { StudentService, CreateStudentRequest } from '../../src/services/studentService';
+import { StudentService, CreateStudentRequest, UpdateStudentRequest } from '../../src/services/studentService';
 import { ClassService, ClassInfo, Section, AcademicYear } from '../../src/services/classService';
 import { GENDERS, BLOOD_GROUPS, RELIGIONS, STUDENT_CATEGORIES, STUDENT_STATUSES } from '../../src/constants/references';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
+import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
+
+type ParentFormState = {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  occupation: string;
+};
+
+const emptyParentState = (): ParentFormState => ({
+  first_name: '',
+  last_name: '',
+  phone: '',
+  occupation: ''
+});
+
+function normalizeDateInput(value?: string | null): string {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return toYMD(parsed);
+}
+
+function mapParentByRelation(
+  parents: Array<{ relation?: string; relationship?: string; first_name?: string; last_name?: string; phone?: string; occupation?: string }> | null | undefined,
+  relation: string
+): ParentFormState {
+  const match = (parents || []).find((parent) => {
+    const label = parent.relation || parent.relationship || '';
+    return label.toLowerCase() === relation.toLowerCase();
+  });
+  if (!match) return emptyParentState();
+  return {
+    first_name: match.first_name || '',
+    last_name: match.last_name || '',
+    phone: match.phone || '',
+    occupation: match.occupation || ''
+  };
+}
 
 // Reusable Components
 const InputField = ({
@@ -129,6 +170,7 @@ export default function AddStudentScreen() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [enrolledForm, setEnrolledForm] = useState<AdmissionFormData | null>(null);
 
   // Form State
   const [formData, setFormData] = useState<CreateStudentRequest>({
@@ -139,6 +181,8 @@ export default function AddStudentScreen() {
     gender_id: 1,
     // Default: Male
     admission_no: '',
+    pen_number: '',
+    apar_number: '',
     admission_date: new Date().toISOString().split('T')[0],
     status_id: 1,
     // Default: Active
@@ -163,8 +207,6 @@ export default function AddStudentScreen() {
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
 
   // Date Picker State
-  const [showDobPicker, setShowDobPicker] = useState(false);
-  const [showAdmissionDatePicker, setShowAdmissionDatePicker] = useState(false);
 
   // Parent State
   const [father, setFather] = useState({
@@ -227,10 +269,12 @@ export default function AddStudentScreen() {
           first_name: data.first_name || '',
           middle_name: data.middle_name || '',
           last_name: data.last_name || '',
-          dob: data.dob || '',
+          dob: normalizeDateInput(data.dob),
           gender_id: data.gender_id || 1,
           admission_no: data.admission_no || '',
-          admission_date: data.admission_date || '',
+          pen_number: data.pen_number || '',
+          apar_number: data.apar_number || '',
+          admission_date: normalizeDateInput(data.admission_date),
           status_id: data.status_id || 1,
           category_id: data.category_id || 1,
           religion_id: data.religion_id || 1,
@@ -242,9 +286,14 @@ export default function AddStudentScreen() {
           role_code: 'student',
           class_id: data.current_enrollment?.class_id || '',
           section_id: data.current_enrollment?.section_id || '',
-          // 🆕 Roll Number
           roll_number: data.current_enrollment?.roll_number
         } as any);
+        setFather(mapParentByRelation(data.parents, 'Father'));
+        setMother(mapParentByRelation(data.parents, 'Mother'));
+        setGuardian({
+          ...mapParentByRelation(data.parents, 'Guardian'),
+          relation: 'Guardian'
+        });
       }
     } catch (error) {
 
@@ -253,8 +302,8 @@ export default function AddStudentScreen() {
   };
   const handleSave = async () => {
     // Validation
-    if (!formData.first_name || !formData.last_name || !formData.admission_no || !formData.admission_date || !formData.class_id || !formData.section_id) {
-      alertCompat('Required Fields', 'Please fill all mandatory fields (Name, Admission No, Class, Section)');
+    if (!formData.first_name || !formData.admission_no || !formData.admission_date || !formData.class_id || !formData.section_id) {
+      alertCompat('Required Fields', 'Please fill all mandatory fields (First Name, Admission No, Class, Section)');
       return;
     }
     if (!isEditMode && !formData.password) {
@@ -294,6 +343,15 @@ export default function AddStudentScreen() {
         return;
       }
     }
+
+    if (formData.pen_number?.trim()) {
+      const pen = formData.pen_number.trim();
+      if (pen.length > 30 || !/^[A-Za-z0-9]+$/.test(pen)) {
+        alertCompat('Invalid PEN Number', 'PEN must be alphanumeric and at most 30 characters.');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const parents: NonNullable<CreateStudentRequest['parents']> = [];
@@ -322,42 +380,48 @@ export default function AddStudentScreen() {
         parents
       };
       if (isEditMode) {
-        await StudentService.update(id as string, payload as any);
-        alertCompat('Success', 'Student updated successfully!', [{
+        const updatePayload: UpdateStudentRequest = {
+          first_name: formData.first_name,
+          middle_name: formData.middle_name,
+          last_name: formData.last_name,
+          dob: formData.dob,
+          gender_id: formData.gender_id,
+          admission_no: formData.admission_no,
+          ...(formData.pen_number?.trim() ? { pen_number: formData.pen_number.trim() } : {}),
+          apar_number: formData.apar_number || null,
+          admission_date: formData.admission_date,
+          status_id: formData.status_id,
+          category_id: formData.category_id,
+          religion_id: formData.religion_id,
+          blood_group_id: formData.blood_group_id,
+          email: formData.email,
+          phone: formData.phone,
+          class_id: formData.class_id,
+          section_id: formData.section_id,
+          academic_year_id: formData.academic_year_id,
+          parents,
+          ...(formData.password ? { password: formData.password } : {}),
+        };
+        const result = await StudentService.update(id as string, updatePayload);
+        if (result && typeof result === 'object' && (result as { success?: boolean }).success === false) {
+          alertCompat('Save Failed', (result as { message?: string }).message || 'Failed to update student');
+          return;
+        }
+        alertCompat('Success', result?.message || 'Student updated successfully!', [{
           text: 'OK',
           onPress: () => router.back()
         }]);
       } else {
         await StudentService.create(payload);
-        alertCompat('Success', 'Student created successfully!', [{
-          text: 'OK',
-          onPress: () => router.back()
-        }]);
+        setEnrolledForm(
+          buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears }),
+        );
       }
     } catch (error: any) {
-      if (__DEV__) { }
-      const msg = error.response?.data?.error || error.message || 'Failed to save student';
+      const msg = error?.message || error.response?.data?.error || 'Failed to save student';
       alertCompat('Save Failed', msg);
     } finally {
       setLoading(false);
-    }
-  };
-  const onDobChange = (event: any, selectedDate?: Date) => {
-    setShowDobPicker(false);
-    if (selectedDate) {
-      setFormData({
-        ...formData,
-        dob: selectedDate.toISOString().split('T')[0]
-      });
-    }
-  };
-  const onAdmissionDateChange = (event: any, selectedDate?: Date) => {
-    setShowAdmissionDatePicker(false);
-    if (selectedDate) {
-      setFormData({
-        ...formData,
-        admission_date: selectedDate.toISOString().split('T')[0]
-      });
     }
   };
   if (initialLoading) {
@@ -398,10 +462,10 @@ export default function AddStudentScreen() {
               })} icon="person-outline" required={true} />
             </View>
             <View style={styles.halfInput}>
-              <InputField label="Last Name" placeholder="Doe" value={formData.last_name} onChangeText={(t: string) => setFormData({
+              <InputField label="Last Name" placeholder="Last Name (optional)" value={formData.last_name} onChangeText={(t: string) => setFormData({
                 ...formData,
                 last_name: t
-              })} icon="person-outline" required={true} />
+              })} icon="person-outline" />
             </View>
           </View>
           <InputField label="Middle Name" placeholder="Optional" value={formData.middle_name} onChangeText={(t: string) => setFormData({
@@ -412,19 +476,13 @@ export default function AddStudentScreen() {
             ...formData,
             gender_id: id
           })} icon="transgender-outline" required={true} />
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Date of Birth</Text>
-            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDobPicker(true)}>
-              <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-              <Text style={[styles.input, !formData.dob && {
-                color: ADMIN_THEME.colors.text.muted
-              }, {
-                paddingTop: 12
-              }]}>
-                {formData.dob || 'Select Date'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <AppDatePicker
+            label="Date of Birth"
+            value={formData.dob || ''}
+            onChange={(d) => setFormData({ ...formData, dob: d })}
+            maximumDate={new Date()}
+            containerStyle={styles.inputGroup}
+          />
         </Animated.View>
         {/* Section: Academic Info */}
         <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.section}>
@@ -433,21 +491,23 @@ export default function AddStudentScreen() {
             ...formData,
             admission_no: t
           })} icon="card-outline" required={true} />
+          <InputField label="APAR Number" placeholder="Enter APAR number (optional)" value={formData.apar_number || ''} onChangeText={(t: string) => setFormData({
+            ...formData,
+            apar_number: t
+          })} icon="document-text-outline" />
+          <InputField label="PEN Number" placeholder="PEN2025001 (optional)" value={formData.pen_number || ''} onChangeText={(t: string) => setFormData({
+            ...formData,
+            pen_number: t
+          })} icon="id-card-outline" autoCapitalize="characters" />
           {/* 🆕 Roll Number Field */}
           <InputField label="Roll Number" placeholder="Auto-generated" value={(formData as any).roll_number ? String((formData as any).roll_number) : 'Auto-generated'} editable={false} icon="list-outline" />
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Admission Date</Text>
-            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowAdmissionDatePicker(true)}>
-              <Ionicons name="calendar-outline" size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-              <Text style={[styles.input, !formData.admission_date && {
-                color: ADMIN_THEME.colors.text.muted
-              }, {
-                paddingTop: 12
-              }]}>
-                {formData.admission_date || 'Select Date'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <AppDatePicker
+            label="Admission Date"
+            value={formData.admission_date || ''}
+            onChange={(d) => setFormData({ ...formData, admission_date: d })}
+            maximumDate={new Date()}
+            containerStyle={styles.inputGroup}
+          />
           <SelectField label="Class" value={formData.class_id} options={classes} onSelect={(id: string) => setFormData({
             ...formData,
             class_id: id
@@ -570,10 +630,13 @@ export default function AddStudentScreen() {
           </>}
         </TouchableOpacity>
         {/* Date Pickers */}
-        {showDobPicker && <DateTimePicker value={formData.dob ? new Date(formData.dob) : new Date()} mode="date" display="default" onChange={onDobChange} maximumDate={new Date()} />}
-        {showAdmissionDatePicker && <DateTimePicker value={formData.admission_date ? new Date(formData.admission_date) : new Date()} mode="date" display="default" onChange={onAdmissionDateChange} maximumDate={new Date()} />}
       </ScrollView>
     </KeyboardAvoidingView>
+    <AdmissionSuccessModal
+      visible={!!enrolledForm}
+      data={enrolledForm}
+      onClose={() => { setEnrolledForm(null); router.back(); }}
+    />
   </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({

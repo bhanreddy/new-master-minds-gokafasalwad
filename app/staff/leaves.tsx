@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AppDatePicker from '@/src/components/AppDatePicker';
 
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform, Dimensions } from 'react-native';
@@ -130,142 +130,6 @@ const chipStyles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     marginLeft: 2
-  }
-});
-
-function toYMD(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function parseYMD(s: string): Date {
-  if (!s) return new Date();
-  const parts = s.split('-').map(Number);
-  const [y, m, d] = parts;
-  if (!y || !m || !d) return new Date();
-  return new Date(y, m - 1, d);
-}
-
-// ─── Styled Date Input ─────────────────────────────────────────────
-const DateField = ({
-  label, value, onChange, isDark, placeholder
-}: {label: string;value: string;onChange: (v: string) => void;isDark: boolean;placeholder: string;}) => {
-  const [focused, setFocused] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
-  const pickerValue = useMemo(() => parseYMD(value), [value]);
-
-  const onNativePickerChange = (_event: unknown, date?: Date) => {
-    setShowPicker(false);
-    if (date) onChange(toYMD(date));
-  };
-
-  const webInputStyle: React.CSSProperties = {
-    border: 'none',
-    background: 'transparent',
-    outline: 'none',
-    width: '100%',
-    flex: 1,
-    minWidth: 0,
-    fontSize: 13,
-    fontWeight: 600,
-    letterSpacing: -0.2,
-    color: isDark ? '#EEF2FF' : '#0F172A',
-    fontFamily: FONT,
-    padding: 0,
-    margin: 0,
-    cursor: 'pointer',
-    boxSizing: 'border-box'
-  };
-
-  return (
-    <View style={dfStyles.wrap}>
-      <Text style={[dfStyles.label, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>{label}</Text>
-      <View style={[
-      dfStyles.inputWrap,
-      {
-        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-        borderColor: focused ?
-        isDark ? 'rgba(99,102,241,0.60)' : 'rgba(79,70,229,0.50)' :
-        isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.09)'
-      }]
-      }>
-        <Ionicons name="calendar-outline" size={15}
-        color={focused ? isDark ? '#818CF8' : '#4F46E5' : isDark ? '#334155' : '#CBD5E1'} />
-
-        {Platform.OS === 'web' ?
-        React.createElement('input', {
-          type: 'date',
-          value: value || '',
-          onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value),
-          onFocus: () => setFocused(true),
-          onBlur: () => setFocused(false),
-          style: webInputStyle
-        }) :
-
-        <>
-            <TouchableOpacity
-            style={dfStyles.nativeTap}
-            onPress={() => setShowPicker(true)}
-            activeOpacity={0.75}>
-
-              <Text
-              style={[
-              dfStyles.input,
-              {
-                color: value ? isDark ? '#EEF2FF' : '#0F172A' : isDark ? '#2A3444' : '#C4CDD9',
-                fontFamily: FONT
-              }]
-              }>
-
-                {value || placeholder}
-              </Text>
-            </TouchableOpacity>
-            {showPicker &&
-          <DateTimePicker
-            value={pickerValue}
-            mode="date"
-            display="default"
-            onChange={onNativePickerChange} />
-
-          }
-          </>
-        }
-
-      </View>
-    </View>);
-
-};
-
-const dfStyles = StyleSheet.create({
-  wrap: { flex: 1 },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 13,
-    paddingVertical: 13,
-    borderRadius: 14,
-    borderWidth: 1
-  },
-  input: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: -0.2
-  },
-  nativeTap: {
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 20
   }
 });
 
@@ -697,9 +561,9 @@ export default function ApplyLeave() {
 
               {/* Date Row */}
               <View style={mainStyles.dateRow}>
-                <DateField label="From Date" value={fromDate} onChange={setFromDate} isDark={isDark} placeholder="YYYY-MM-DD" />
+                <AppDatePicker label="From Date" value={fromDate} onChange={setFromDate} isDark={isDark} placeholder="YYYY-MM-DD" variant="compact" />
                 <View style={{ width: 10 }} />
-                <DateField label="To Date" value={toDate} onChange={setToDate} isDark={isDark} placeholder="YYYY-MM-DD" />
+                <AppDatePicker label="To Date" value={toDate} onChange={setToDate} isDark={isDark} placeholder="YYYY-MM-DD" variant="compact" minimumDate={fromDate || undefined} />
               </View>
 
               {/* Reason */}

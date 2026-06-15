@@ -8,6 +8,16 @@ import StaffHeader from '../../src/components/StaffHeader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
+
+/** Returns the first human-readable ID (not a UUID) from the user object */
+function getHumanId(user: any): string {
+  const candidates = [user?.staff_code, user?.admission_no];
+  for (const c of candidates) {
+    if (c && typeof c === 'string' && c.trim().length > 0) return c;
+  }
+  return 'N/A';
+}
+
 const StaffProfileScreen = () => {
   const {
     theme,
@@ -78,7 +88,7 @@ const StaffProfileScreen = () => {
 
           <Text style={styles.name}>{user?.name || 'Staff Member'}</Text>
           <Text style={styles.designation}>{user?.role ? user?.role.name.charAt(0).toUpperCase() + user?.role.name.slice(1) : 'Staff'}</Text>
-          <Text style={styles.staffId}>Staff ID: {user?.staff_code || user?.staff_id || 'N/A'}</Text>
+          <Text style={styles.staffId}>Staff ID: {getHumanId(user)}</Text>
 
           <View style={styles.quickStatsRow}>
             <View style={styles.quickStat}>

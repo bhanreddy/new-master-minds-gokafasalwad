@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
+import AppDatePicker from '@/src/components/AppDatePicker';
 
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, FlatList, Modal } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
@@ -150,6 +151,24 @@ export default function AcademicManagement() {
       </ScrollView>
     </View>;
   };
+  const [reordering, setReordering] = useState(false);
+
+  const handleMoveClass = async (index: number, direction: 'up' | 'down') => {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= classes.length) return;
+    const reordered = [...classes];
+    [reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]];
+    setReordering(true);
+    try {
+      const updated = await ClassService.reorderClasses(reordered.map((c) => c.id));
+      setClasses(updated);
+    } catch (error: any) {
+      alertCompat('Error', error.message || 'Failed to update class order');
+    } finally {
+      setReordering(false);
+    }
+  };
+
   const handleDelete = async (id: string, name: string) => {
     alertCompat('Confirm Delete', `Are you sure you want to delete ${activeTab.slice(0, -1)} "${name}"? This action cannot be undone and will fail if there are linked dependencies.`, [{
       text: 'Cancel',
@@ -179,13 +198,40 @@ export default function AcademicManagement() {
 
   }: { item: any; index: number; }) => {
     const itemName = item.class_name ? `${item.class_name} - ${item.section_name}` : item.name || item.code;
+    const isClassesTab = activeTab === 'classes';
     return <Animated.View entering={FadeInDown.delay(index * 50)} style={styles.itemCard}>
+      {isClassesTab && (
+        <View style={styles.orderBadge}>
+          <Text style={styles.orderBadgeText}>{item.sort_order ?? index + 1}</Text>
+        </View>
+      )}
       <View style={styles.itemInfo}>
         <Text style={styles.itemTitle}>{itemName}</Text>
         {item.code && item.name && <Text style={styles.itemSub}>{item.code}</Text>}
+        {isClassesTab && index === classes.length - 1 && (
+          <Text style={styles.graduatingHint}>Highest class — students graduate after this</Text>
+        )}
         {activeTab === 'mappings' && <Text style={styles.itemSub}>{item.academic_year}</Text>}
         {activeTab === 'years' && <Text style={styles.itemSub}>{item.start_date} to {item.end_date}</Text>}
       </View>
+      {isClassesTab && (
+        <View style={styles.orderControls}>
+          <TouchableOpacity
+            style={[styles.orderBtn, (index === 0 || reordering) && styles.orderBtnDisabled]}
+            onPress={() => handleMoveClass(index, 'up')}
+            disabled={index === 0 || reordering}
+          >
+            <Ionicons name="chevron-up" size={20} color={index === 0 || reordering ? '#CBD5E1' : '#6366F1'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.orderBtn, (index === classes.length - 1 || reordering) && styles.orderBtnDisabled]}
+            onPress={() => handleMoveClass(index, 'down')}
+            disabled={index === classes.length - 1 || reordering}
+          >
+            <Ionicons name="chevron-down" size={20} color={index === classes.length - 1 || reordering ? '#CBD5E1' : '#6366F1'} />
+          </TouchableOpacity>
+        </View>
+      )}
       <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id, itemName)}>
         <Ionicons name="trash-outline" size={20} color="#EF4444" />
       </TouchableOpacity>
@@ -225,6 +271,11 @@ export default function AcademicManagement() {
     <AdminHeader title="Academic Structure" showBackButton />
     {renderHeader()}
     <View style={styles.content}>
+      {activeTab === 'classes' && !loading && classes.length > 0 && (
+        <Text style={styles.orderHint}>
+          Order classes from lowest to highest. The bottom class is where students graduate on year upgrade.
+        </Text>
+      )}
       {loading ? <LogoLoader size={60} color={ADMIN_THEME.colors.primary} style={{
         marginTop: 50
       }} /> : <FlatList data={activeTab === 'classes' ? classes : activeTab === 'sections' ? sections : activeTab === 'years' ? years : activeTab === 'subjects' ? subjects : mappings} keyExtractor={(item) => item.id} renderItem={renderItem} contentContainerStyle={{
@@ -244,8 +295,8 @@ export default function AcademicManagement() {
           {activeTab === 'subjects' && <AppTextInput style={styles.input} placeholder="Telugu Name (optional)" value={newItemNameTe} onChangeText={setNewItemNameTe} />}
           {activeTab !== 'mappings' && <AppTextInput style={styles.input} placeholder={activeTab === 'years' ? "Code (e.g. 2023-24)" : "Code (optional)"} value={newItemCode} onChangeText={setNewItemCode} />}
           {activeTab === 'years' && <>
-            <AppTextInput style={styles.input} placeholder="Start Date (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
-            <AppTextInput style={styles.input} placeholder="End Date (YYYY-MM-DD)" value={endDate} onChangeText={setEndDate} />
+            <AppDatePicker label="Start Date" value={startDate} onChange={setStartDate} containerStyle={{ marginBottom: 12 }} />
+            <AppDatePicker label="End Date" value={endDate} onChange={setEndDate} minimumDate={startDate || undefined} containerStyle={{ marginBottom: 12 }} />
           </>}
           {activeTab === 'mappings' && <>
             <Text style={{
@@ -377,6 +428,41 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   },
   deleteButton: {
     padding: 8
+  },
+  orderHint: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 12,
+    lineHeight: 18
+  },
+  orderBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12
+  },
+  orderBadgeText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4F46E5'
+  },
+  orderControls: {
+    marginRight: 4
+  },
+  orderBtn: {
+    padding: 4
+  },
+  orderBtnDisabled: {
+    opacity: 0.4
+  },
+  graduatingHint: {
+    fontSize: 11,
+    color: '#F59E0B',
+    marginTop: 4,
+    fontWeight: '600'
   },
   emptyText: {
     textAlign: 'center',

@@ -4,7 +4,7 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Modal, KeyboardAvoidingView,
-  Platform, ScrollView, Pressable, Dimensions
+  Platform, ScrollView, Pressable
 } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
@@ -13,19 +13,14 @@ import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContex
 import Animated, {
   FadeInDown, FadeIn, Layout,
   useAnimatedStyle, useSharedValue,
-  withTiming, withSpring, interpolate, Extrapolation,
+  withTiming, withSpring,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useExpenses } from '../../src/hooks/useExpenses';
-import { useAuth } from '../../src/hooks/useAuth';
-import { CreateExpenseRequest, Expense } from '../../src/types/expenses';
-import { PolicyService } from '../../src/services/policyService';
-import NetBalanceTab from '../../src/components/NetBalanceTab';
+import { Expense } from '../../src/types/expenses';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
-
-const { width: SW } = Dimensions.get('window');
 
 // ─── Category config ──────────────────────────────────────────────────────────
 const CATEGORY_CONFIG: Record<string, { icon: string; color: string; grad: [string, string] }> = {
@@ -52,45 +47,6 @@ const fmtDate = (d: string) => {
   try { return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }); }
   catch { return d; }
 };
-
-// ─── Animated Tab Bar ─────────────────────────────────────────────────────────
-const TabBar = ({ active, onChange, isDark }: { active: 'list' | 'balance'; onChange: (t: any) => void; isDark: boolean }) => {
-  const tabs = [
-    { key: 'list', label: 'Expenses', icon: 'receipt-outline' },
-    { key: 'balance', label: 'Net Balance', icon: 'stats-chart-outline' },
-  ];
-  const offset = useSharedValue(active === 'list' ? 0 : 1);
-  useEffect(() => { offset.value = withSpring(active === 'list' ? 0 : 1, { damping: 16, stiffness: 220 }); }, [active]);
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: interpolate(offset.value, [0, 1], [0, (SW - 40) / 2], Extrapolation.CLAMP) }],
-  }));
-
-  return (
-    <View style={[tabSt.wrap, { backgroundColor: isDark ? '#111827' : '#F1F5F9', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-      <Animated.View style={[tabSt.indicator, { width: (SW - 40) / 2 }, indicatorStyle]}>
-        <LinearGradient colors={['#4F46E5', '#6366F1']} style={tabSt.indicatorGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} />
-      </Animated.View>
-      {tabs.map(tab => {
-        const isActive = active === tab.key;
-        return (
-          <Pressable key={tab.key} style={tabSt.tab} onPress={() => onChange(tab.key)}>
-            <Ionicons name={tab.icon as any} size={16} color={isActive ? '#fff' : (isDark ? '#475569' : '#94A3B8')} />
-            <Text style={[tabSt.label, { color: isActive ? '#fff' : (isDark ? '#475569' : '#94A3B8') }]}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-};
-const tabSt = StyleSheet.create({
-  wrap: { flexDirection: 'row', marginHorizontal: 20, marginTop: 14, marginBottom: 4, borderRadius: 16, padding: 4, borderWidth: 1, position: 'relative', overflow: 'hidden' },
-  indicator: { position: 'absolute', top: 4, left: 4, bottom: 4, borderRadius: 13, overflow: 'hidden', zIndex: 0 },
-  indicatorGrad: { flex: 1, borderRadius: 13 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, zIndex: 1 },
-  label: { fontSize: 13, fontWeight: '700', letterSpacing: 0.1 },
-});
 
 // ─── Search Bar ───────────────────────────────────────────────────────────────
 const SearchBar = ({ value, onChange, isDark }: any) => {
@@ -366,16 +322,11 @@ export default function AccountsExpenses() {
   const { theme, isDark } = useTheme();
   const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-  const { expenses, loading, fetchExpenses, createExpense, updateStatus } = useExpenses();
-  const { user } = useAuth();
+  const { expenses, loading, fetchExpenses, createExpense } = useExpenses();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'list' | 'balance'>('list');
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-  const [deleteReason, setDeleteReason] = useState('');
-  const [deleting, setDeleting] = useState(false);
 
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState(CATEGORIES[0]);
@@ -384,8 +335,8 @@ export default function AccountsExpenses() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (activeTab === 'list') fetchExpenses(searchQuery);
-  }, [searchQuery, activeTab]);
+    fetchExpenses(searchQuery, { accountsScope: true });
+  }, [searchQuery]);
 
   const handleAddExpense = async () => {
     if (!newTitle || !newAmount) { alertCompat('Required', 'Title and Amount are required.'); return; }
@@ -402,29 +353,6 @@ export default function AccountsExpenses() {
 
   const resetForm = () => { setNewTitle(''); setNewCategory(CATEGORIES[0]); setNewAmount(''); setNewDescription(''); };
 
-  const handleApprove = (expense: Expense) => {
-    alertCompat('Confirm Approve', `Are you sure you want to approve this expense?\n\n"${expense.title}" · ${fmtINR(expense.amount)}`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Approve', onPress: async () => { const ok = await updateStatus(expense.id, 'approved'); if (ok) setSelectedExpense(null); } },
-    ]);
-  };
-  const handlePay = (expense: Expense) => {
-    alertCompat('Mark as Paid', `Confirm payment of ${fmtINR(expense.amount)}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Mark Paid', onPress: async () => { const ok = await updateStatus(expense.id, 'paid'); if (ok) setSelectedExpense(null); } },
-    ]);
-  };
-  const confirmDelete = async () => {
-    if (!selectedExpense || !deleteReason.trim()) { alertCompat('Required', 'Please state a reason.'); return; }
-    setDeleting(true);
-    try {
-      await PolicyService.deleteWithReason('expenses', selectedExpense.id, deleteReason);
-      setIsDeleteModalVisible(false); setSelectedExpense(null); setDeleteReason('');
-      fetchExpenses(searchQuery);
-    } catch { alertCompat('Error', 'Failed to delete expense.'); }
-    finally { setDeleting(false); }
-  };
-
   const renderItem = ({ item, index }: { item: Expense; index: number }) => (
     <ExpenseCard item={item} index={index} onPress={() => setSelectedExpense(item)} isDark={isDark} />
   );
@@ -436,12 +364,7 @@ export default function AccountsExpenses() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#0A0F1E' : '#F1F5F9'} />
       {!shellActive && <AdminHeader title="Expense Tracker" showBackButton />}
 
-      {/* Tab bar */}
-      <TabBar active={activeTab} onChange={setActiveTab} isDark={isDark} />
-
-      {activeTab === 'list' ? (
-        <>
-          <SearchBar value={searchQuery} onChange={setSearchQuery} isDark={isDark} />
+      <SearchBar value={searchQuery} onChange={setSearchQuery} isDark={isDark} />
 
           {/* Summary strip */}
           {!loading && expenses.length > 0 && (
@@ -460,7 +383,7 @@ export default function AccountsExpenses() {
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               refreshing={loading}
-              onRefresh={() => fetchExpenses(searchQuery)}
+              onRefresh={() => fetchExpenses(searchQuery, { accountsScope: true })}
               ListEmptyComponent={
                 <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
                   <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? '#1E293B' : '#EEF2FF' }]}>
@@ -483,8 +406,6 @@ export default function AccountsExpenses() {
               <Ionicons name="add" size={28} color="#fff" />
             </LinearGradient>
           </Pressable>
-        </>
-      ) : <NetBalanceTab />}
 
       {/* ── ADD EXPENSE SHEET ── */}
       <BottomSheet
@@ -573,71 +494,8 @@ export default function AccountsExpenses() {
                 <Text style={[styles.descBoxText, { color: isDark ? '#94A3B8' : '#475569' }]}>{selectedExpense.description}</Text>
               </View>
             )}
-
-            {/* Action buttons */}
-            <View style={styles.actionRow}>
-              {selectedExpense.status === 'pending' && (
-                <>
-                  {(user?.role?.code === 'admin' || selectedExpense.created_by !== user?.id) && (
-                    <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={() => handleApprove(selectedExpense)}>
-                      <LinearGradient colors={['#065F46', '#10B981']} style={styles.actionGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                        <Text style={styles.actionTxt}>Approve</Text>
-                      </LinearGradient>
-                    </Pressable>
-                  )}
-                  <Pressable style={({ pressed }) => [styles.actionBtn, pressed && { opacity: 0.85 }]} onPress={() => setIsDeleteModalVisible(true)}>
-                    <LinearGradient colors={['#991B1B', '#EF4444']} style={styles.actionGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                      <Ionicons name="trash-outline" size={18} color="#fff" />
-                      <Text style={styles.actionTxt}>Delete</Text>
-                    </LinearGradient>
-                  </Pressable>
-                </>
-              )}
-              {selectedExpense.status === 'approved' && (
-                <Pressable style={[styles.actionBtn, { flex: 1 }]} onPress={() => handlePay(selectedExpense)}>
-                  <LinearGradient colors={['#1D4ED8', '#3B82F6']} style={styles.actionGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                    <Ionicons name="card-outline" size={18} color="#fff" />
-                    <Text style={styles.actionTxt}>Mark as Paid</Text>
-                  </LinearGradient>
-                </Pressable>
-              )}
-            </View>
           </>
         )}
-      </BottomSheet>
-
-      {/* ── DELETE CONFIRM SHEET ── */}
-      <BottomSheet
-        visible={isDeleteModalVisible}
-        onClose={() => setIsDeleteModalVisible(false)}
-        isDark={isDark}
-        title="Delete Expense"
-        subtitle="This action is permanent and logged in the audit trail."
-      >
-        {/* Warning banner */}
-        <View style={[styles.warnBanner, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2', borderColor: '#EF4444' }]}>
-          <Ionicons name="warning-outline" size={18} color="#EF4444" />
-          <Text style={[styles.warnText, { color: '#EF4444' }]}>Reason is required for compliance</Text>
-        </View>
-        <FormInput label="Reason" value={deleteReason} onChange={setDeleteReason}
-          placeholder="e.g. Duplicate entry, Data error…" multiline isDark={isDark} required />
-        <View style={styles.deleteActions}>
-          <Pressable style={[styles.cancelBtn, { borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)' }]} onPress={() => setIsDeleteModalVisible(false)}>
-            <Text style={[styles.cancelTxt, { color: isDark ? '#94A3B8' : '#64748B' }]}>Cancel</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.85 }]} onPress={confirmDelete} disabled={deleting}>
-            <LinearGradient colors={['#991B1B', '#EF4444']} style={styles.deleteBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-              {deleting
-                ? <LogoLoader color="#fff" size={22} />
-                : <>
-                  <Ionicons name="trash-outline" size={18} color="#fff" />
-                  <Text style={styles.deleteTxt}>Delete Permanently</Text>
-                </>
-              }
-            </LinearGradient>
-          </Pressable>
-        </View>
       </BottomSheet>
 
     </View>

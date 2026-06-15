@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platfo
 import AppTextInput from '@/src/components/AppTextInput';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import AppDatePicker, { parseYMD } from '@/src/components/AppDatePicker';
 import { format, parseISO } from 'date-fns';
 import * as Haptics from 'expo-haptics';
 import StaffHeader from '../../src/components/StaffHeader';
@@ -36,7 +36,6 @@ export default function StaffDiary() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [assignments, setAssignments] = useState<TeacherClassAssignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<TeacherClassAssignment | null>(null);
   const [existingEntry, setExistingEntry] = useState<DiaryEntry | null>(null);
@@ -264,12 +263,6 @@ export default function StaffDiary() {
       setSubmitting(false);
     }
   };
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDueDate(selectedDate);
-    }
-  };
   if (loading && assignments.length === 0) {
     return <View style={[styles.container, {
       justifyContent: 'center',
@@ -375,54 +368,14 @@ export default function StaffDiary() {
             }]} placeholder="Details about the homework..." placeholderTextColor="#94A3B8" multiline numberOfLines={4} value={description} onChangeText={setDescription} textAlignVertical="top" />
           </View>
           <View style={styles.row}>
-            <View style={[styles.inputGroup, {
-              flex: 1
-            }]}>
-              <Text style={[styles.label, {
-                color: theme.colors.textSecondary
-              }]}>Due Date</Text>
-              <View style={[fieldStyles.input, styles.dateInput, {
-                backgroundColor: isDark ? theme.colors.background : '#F9FAFB',
-                borderColor: theme.colors.border,
-                padding: Platform.OS === 'web' ? 0 : undefined,
-                overflow: 'hidden'
-              }]}>
-                {Platform.OS !== 'web' && <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />}
-                {Platform.OS === 'web' ? (
-                  React.createElement('input', {
-                    type: 'date',
-                    value: format(dueDate, 'yyyy-MM-dd'),
-                    min: format(new Date(), 'yyyy-MM-dd'),
-                    onChange: (e: any) => {
-                      if (e.target.value) {
-                        const [y, m, d] = e.target.value.split('-');
-                        setDueDate(new Date(Number(y), Number(m) - 1, Number(d)));
-                      }
-                    },
-                    style: {
-                      border: 'none',
-                      background: 'transparent',
-                      width: '100%',
-                      height: '100%',
-                      outline: 'none',
-                      color: theme.colors.text,
-                      fontSize: '14px',
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      paddingLeft: '16px',
-                      paddingRight: '16px'
-                    }
-                  })
-                ) : (
-                  <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }} onPress={() => setShowDatePicker(true)}>
-                    <Text style={[styles.dateValue, {
-                      color: theme.colors.text
-                    }]}>{format(dueDate, 'PPP')}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-            {Platform.OS !== 'web' && showDatePicker && <DateTimePicker value={dueDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={onDateChange} minimumDate={new Date()} />}
+            <AppDatePicker
+              label="Due Date"
+              value={format(dueDate, 'yyyy-MM-dd')}
+              onChange={(ymd) => setDueDate(parseYMD(ymd))}
+              minimumDate={new Date()}
+              isDark={isDark}
+              containerStyle={{ flex: 1, marginBottom: 0 }}
+            />
           </View>
           <TouchableOpacity style={[styles.postButton, {
             backgroundColor: theme.colors.primary,
@@ -442,6 +395,7 @@ export default function StaffDiary() {
         <DiaryHistoryDateSelectorButton
           selectedYmd={historyDate}
           onPress={() => setPickerVisible(true)}
+          onSelect={setHistoryDate}
         />
       ) : null}
 

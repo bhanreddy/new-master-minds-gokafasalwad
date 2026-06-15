@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Platform, Pressable } from 'react-native';
-import { TimetableService, TimetableSlot } from '../../src/services/timetableService';
+import {
+  TimetableService,
+  TimetableSlot,
+  DayOfWeek,
+  TIMETABLE_DAYS,
+  TIMETABLE_DAY_LABELS,
+} from '../../src/services/timetableService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -685,6 +691,21 @@ const TimeTableScreen = () => {
   const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
+    const idx = new Date().getDay(); // 0=Sun..6=Sat
+    return idx >= 1 && idx <= 6 ? TIMETABLE_DAYS[idx - 1] : 'monday';
+  });
+
+  // Per-day school if the teacher's slots span more than one weekday.
+  const isPerDay = useMemo(() => {
+    const days = new Set(slots.map((s) => s.day_of_week).filter(Boolean));
+    return days.size > 1;
+  }, [slots]);
+
+  const visibleSlots = useMemo(() => {
+    if (!isPerDay) return slots;
+    return slots.filter((s) => (s.day_of_week || 'monday') === selectedDay);
+  }, [slots, isPerDay, selectedDay]);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -801,21 +822,50 @@ const TimeTableScreen = () => {
           }
         </Animated.View>
 
+        {/* ── Day selector (per-day schools only) ── */}
+        {isPerDay && !loading && (
+          <Animated.ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dayTabs}
+            contentContainerStyle={{ paddingHorizontal: 12 }}
+          >
+            {TIMETABLE_DAYS.map((d) => {
+              const activeDay = selectedDay === d;
+              return (
+                <Text
+                  key={d}
+                  onPress={() => setSelectedDay(d)}
+                  style={[
+                    styles.dayTab,
+                    {
+                      backgroundColor: activeDay ? (isDark ? '#818CF8' : '#4338CA') : (isDark ? '#1F2937' : '#EEF2FF'),
+                      color: activeDay ? '#FFFFFF' : (isDark ? '#818CF8' : '#4338CA'),
+                    },
+                  ]}
+                >
+                  {TIMETABLE_DAY_LABELS[d]}
+                </Text>
+              );
+            })}
+          </Animated.ScrollView>
+        )}
+
         {/* ── Content ── */}
         {loading ?
         <View style={styles.center}>
             <LogoLoader size={60} color={isDark ? '#818CF8' : '#4338CA'} />
           </View> :
-        slots.length > 0 ?
+        visibleSlots.length > 0 ?
         <View style={styles.timelineWrapper}>
-            {slots.map((slot, index) =>
+            {visibleSlots.map((slot, index) =>
           <SlotItem
             key={slot.id || `slot-${index}`}
             item={slot}
             index={index}
             currentTime={currentTime}
             isDark={isDark}
-            totalSlots={slots.length} />
+            totalSlots={visibleSlots.length} />
 
           )}
           </View> :
@@ -901,6 +951,19 @@ const styles = StyleSheet.create({
   },
 
   // ── Timeline Layout ──────────────────────────────────────────────
+  dayTabs: {
+    flexGrow: 0,
+    marginBottom: 14,
+  },
+  dayTab: {
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9,
+    marginHorizontal: 4,
+    overflow: 'hidden',
+  },
   timelineWrapper: {
     paddingHorizontal: 18,
     paddingTop: 4

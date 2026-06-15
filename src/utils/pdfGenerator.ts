@@ -4,8 +4,9 @@ import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { Invoice } from '../types/invoices';
-import { FeeTransaction } from '../types/models';
-import { SCHOOL_CONFIG } from '../constants/schoolConfig';
+import { FeeTransaction, StudentFeeDueLine } from '../types/models';
+import { SCHOOL_CONFIG, SCHOOL_RECOGNITION_LINE } from '../constants/schoolConfig';
+import { printElementToWindow } from './exportCertificate';
 
 /**
  * expo-print `printToFileAsync` / `printAsync` on web only call `window.print()` on the main
@@ -66,8 +67,53 @@ export function printHtmlOnWeb(fullHtml: string): Promise<void> {
   });
 }
 
+async function mountReceiptHtmlForCapture(fullHtml: string): Promise<{ element: HTMLElement; cleanup: () => void }> {
+  if (typeof document === 'undefined') {
+    throw new Error('Receipt export is only available in a browser context.');
+  }
+
+  const parsed = new DOMParser().parseFromString(fullHtml, 'text/html');
+  const container = document.createElement('div');
+  container.setAttribute('aria-hidden', 'true');
+  container.style.cssText = [
+    'position:fixed',
+    'left:-10000px',
+    'top:0',
+    'width:794px',
+    'min-height:561px',
+    'overflow:visible',
+    'background:#ffffff',
+    'z-index:-1',
+  ].join(';');
+  container.innerHTML = `<style>${BASE_CSS}</style>${parsed.body.innerHTML}`;
+  document.body.appendChild(container);
+
+  if ('fonts' in document) {
+    try {
+      await (document as any).fonts.ready;
+    } catch {
+      /* ignore font readiness failures */
+    }
+  }
+
+  const element = container.querySelector('.page') as HTMLElement | null;
+  if (!element) {
+    container.remove();
+    throw new Error('Receipt preview not found.');
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  return {
+    element,
+    cleanup: () => {
+      try { container.remove(); } catch { /* noop */ }
+    },
+  };
+}
+
 // ─── Logo Loader ───────────────────────────────────────────────────────────────
-const loadLogoAsBase64 = async (imageAsset: any): Promise<string | null> => {
+export const loadLogoAsBase64 = async (imageAsset: any): Promise<string | null> => {
   try {
     // If it's a remote URL already, return as is
     if (typeof imageAsset === 'string' && imageAsset.startsWith('http')) {
@@ -193,6 +239,10 @@ const amountInWords = (amount: number): string => {
 const BASE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Force every fill/colour to survive print in Chromium/Tauri webviews.
+     Without this, child backgrounds (indigo header, gradient banner, due bar)
+     silently drop to white on some print paths. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { margin: 0; size: A4 portrait; }
   html, body { height: auto; margin: 0; padding: 0; }
   body {
@@ -210,16 +260,43 @@ const BASE_CSS = `
     max-width: 700px;
     margin: 0 auto;
     overflow: hidden;
+    background: #ffffff;
+  }
+  .page.receipt-page {
+    width: 794px;
+    min-height: 561px;
+    max-width: none;
+    padding: 20px;
+    margin: 0;
   }
 
-  /* ── Watermark (absolute inside .page, NOT fixed) ── */
+  /* ── Watermark (straight, faint, forced BEHIND content) ──
+     Straight + centred means it sits directly under the body text, so it MUST
+     be far fainter than the old sloped version or it wrecks legibility. */
   .watermark {
     position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%) rotate(-35deg);
-    font-size: 56px; font-weight: 800;
-    opacity: 0.04; color: #4F46E5;
+    transform: translate(-50%, -50%);
+    font-size: 72px; font-weight: 800;
+    opacity: 0.05; color: #4F46E5;
     pointer-events: none; z-index: 0;
-    white-space: nowrap; letter-spacing: 8px;
+    white-space: nowrap; letter-spacing: 14px;
+    text-transform: uppercase;
+  }
+  .watermark-logo {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px; height: 360px;
+    object-fit: contain;
+    opacity: 0.045;
+    pointer-events: none; z-index: 0;
+    filter: grayscale(100%);
+  }
+  /* Lift every real section above the watermark in one rule — no markup change.
+     Without this, a straight z-index:0 watermark paints OVER non-positioned
+     content (table, totals). Covers both receipt and invoice pages. */
+  .page > *:not(.watermark):not(.watermark-logo) {
+    position: relative;
+    z-index: 1;
   }
 
   /* ── Header ── */
@@ -229,12 +306,31 @@ const BASE_CSS = `
     padding-bottom: 6px;
     border-bottom: 3px solid #4F46E5;
   }
-  .school-logo { width: 36px; height: 36px; object-fit: contain; margin-bottom: 2px; }
-  .school-name { font-size: 13px; font-weight: 800; color: #111827; }
-  .school-sub { font-size: 8px; color: #6B7280; margin-top: 1px; max-width: 260px; line-height: 1.2; }
+  .school-brand {
+    display: flex; align-items: center; gap: 12px;
+    flex: 1; min-width: 0;
+  }
+  .school-info { min-width: 0; flex: 1; }
+  .school-logo {
+    width: 56px; height: 56px; flex-shrink: 0;
+    object-fit: contain; margin: 0;
+  }
+  .school-logo-fallback {
+    width: 56px; height: 56px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; color: #374151;
+    background: #F3F4F6; border-radius: 10px;
+    border: 1px solid #E5E7EB;
+  }
+  .school-name {
+    font-size: 17px; font-weight: 800; color: #111827;
+    line-height: 1.2;
+  }
+  .school-sub { font-size: 8px; color: #6B7280; margin-top: 2px; max-width: 320px; line-height: 1.25; }
+  .school-reg { font-size: 8px; font-weight: 700; color: #374151; margin-top: 2px; letter-spacing: 0.2px; }
 
-  .doc-title-block { text-align: right; }
-  .doc-title { font-size: 20px; font-weight: 800; letter-spacing: -1px; color: #4F46E5; }
+  .doc-title-block { text-align: right; flex-shrink: 0; }
+  .doc-title { font-size: 14px; font-weight: 800; letter-spacing: 0.5px; color: #4F46E5; }
   .doc-no { font-size: 9px; color: #6B7280; margin-top: 1px; font-weight: 600; }
 
   /* ── Info grid ── */
@@ -254,29 +350,38 @@ const BASE_CSS = `
   .info-value { font-size: 10px; font-weight: 700; color: #111827; }
   .info-sub { font-size: 8px; color: #6B7280; margin-top: 0; }
 
-  /* ── Table ── */
+  /* ── Table ──
+     Header is now a quiet light fill with dark indigo text, so the receipt
+     banner stays the single loudest element (one hero). A light-fill/dark-text
+     header also stays readable in grayscale print, unlike white-on-indigo. */
   table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  thead tr { background: #4F46E5; }
+  thead tr { background: #F3F4FF; }
   thead th {
-    padding: 4px 7px; text-align: left;
+    padding: 5px 8px; text-align: left;
     font-size: 8px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.6px; color: #fff;
+    letter-spacing: 0.6px; color: #4338CA;
+    border-bottom: 1.5px solid #C7D2FE;
   }
   thead th:last-child { text-align: right; }
   tbody tr:nth-child(even) { background: #F9FAFB; }
   tbody td { padding: 4px 7px; font-size: 10px; border-bottom: 1px solid #F3F4F6; }
-  tbody td:last-child { text-align: right; font-weight: 600; }
+  tbody td:last-child {
+    text-align: right;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
   .td-desc-main { font-weight: 600; color: #111827; }
   .td-desc-sub { font-size: 8px; color: #9CA3AF; margin-top: 0; }
 
   /* ── Totals ── */
   .totals-section { display: flex; justify-content: flex-end; margin-bottom: 6px; }
-  .totals-box { width: 190px; }
+  .totals-box { width: 210px; }
   .totals-row {
     display: flex; justify-content: space-between;
     padding: 2px 0; font-size: 10px; color: #4B5563;
     border-bottom: 1px dashed #E5E7EB;
   }
+  .totals-row span:last-child { font-variant-numeric: tabular-nums; }
   .totals-row:last-child { border-bottom: none; }
   .totals-row.grand {
     font-size: 11px; font-weight: 800;
@@ -286,6 +391,39 @@ const BASE_CSS = `
   .totals-row.paid-row { color: #059669; font-weight: 600; }
   .totals-row.due-row  { color: #DC2626; font-weight: 700; }
 
+  /* ── Due amount footer bar ── */
+  .due-amount-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;
+    border: 1px solid transparent;
+  }
+  .due-amount-bar.pending {
+    background: #FEF2F2; border-color: #FECACA;
+  }
+  .due-amount-bar.clear {
+    background: #ECFDF5; border-color: #A7F3D0;
+  }
+  .due-amount-left { display: flex; flex-direction: column; gap: 1px; }
+  .due-amount-label {
+    font-size: 7px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .due-amount-bar.pending .due-amount-label { color: #991B1B; }
+  .due-amount-bar.clear .due-amount-label { color: #065F46; }
+  .due-amount-sub { font-size: 8px; color: #6B7280; }
+  .due-amount-value {
+    font-size: 14px; font-weight: 800; letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .due-amount-bar.pending .due-amount-value { color: #DC2626; }
+  .due-amount-bar.clear .due-amount-value { color: #059669; }
+  .due-status-badge {
+    font-size: 8px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .due-status-badge.pending { background: #FEE2E2; color: #991B1B; }
+  .due-status-badge.clear { background: #D1FAE5; color: #065F46; }
+
   /* ── Amount in words ── */
   .amount-words {
     background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 5px;
@@ -293,6 +431,120 @@ const BASE_CSS = `
     color: #065F46; font-weight: 500;
   }
   .amount-words strong { font-weight: 700; }
+
+  /* ── All fee dues summary ── */
+  .dues-section {
+    margin: 10px 0 8px;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .dues-section-title {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    background: #F3F4F6;
+    border-bottom: 1px solid #E5E7EB;
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.7px; color: #374151;
+  }
+  .dues-section-title span {
+    font-size: 8px; font-weight: 500; text-transform: none;
+    letter-spacing: 0; color: #6B7280;
+  }
+  .dues-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-bottom: 0;
+    background: #fff;
+  }
+  .dues-table thead tr { background: #F9FAFB; }
+  .dues-table thead th {
+    padding: 6px 8px;
+    font-size: 7.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #4B5563;
+    border-bottom: 1px solid #E5E7EB;
+    text-align: left;
+  }
+  .dues-table thead th.col-num { text-align: right; }
+  .dues-table thead th.col-year { text-align: center; width: 18%; }
+  .dues-table thead th.col-fee { width: 32%; }
+  .dues-table tbody tr { border-bottom: 1px solid #F3F4F6; }
+  .dues-table tbody tr:nth-child(even) { background: #F9FAFB; }
+  .dues-table tbody tr:last-child { border-bottom: none; }
+  .dues-table tbody td {
+    padding: 7px 8px;
+    font-size: 9.5px;
+    color: #374151;
+    vertical-align: middle;
+    font-weight: 500;
+  }
+  .dues-table tbody td.col-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #111827;
+  }
+  .dues-table tbody td.col-year {
+    text-align: center;
+    color: #6B7280;
+    font-size: 9px;
+  }
+  .dues-table tbody td.col-fee { font-weight: 600; color: #111827; }
+  .dues-table tbody td.col-due {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: #DC2626;
+  }
+  .dues-table tbody tr.dues-paid td.col-due { color: #059669; }
+  .dues-table tbody tr.dues-paid td.col-num-paid { color: #059669; }
+  .dues-table tbody tr.dues-highlight {
+    background: #fff !important;
+    box-shadow: inset 3px 0 0 #9CA3AF;
+  }
+  .dues-table tbody tr.dues-highlight td.col-fee { color: #111827; }
+  .dues-payment-tag {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    color: #4B5563;
+    background: #E5E7EB;
+    border: 1px solid #D1D5DB;
+    vertical-align: middle;
+  }
+  .dues-table tfoot tr { background: #F9FAFB; }
+  .dues-table tfoot td {
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 800;
+    color: #111827;
+    border-top: 2px solid #D1D5DB;
+    vertical-align: middle;
+  }
+  .dues-table tfoot td.col-label {
+    text-align: left;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-size: 8px;
+  }
+  .dues-table tfoot td.col-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .dues-table tfoot td.col-due-total {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #DC2626;
+    font-size: 10px;
+  }
 
   /* ── Status badge ── */
   .badge {
@@ -330,6 +582,18 @@ const BASE_CSS = `
     justify-content: center; font-size: 7px; color: #9CA3AF;
     text-align: center; padding: 2px; line-height: 1.2;
   }
+  .stamp-block { text-align: center; }
+  .stamp-label {
+    font-size: 8px; color: #9CA3AF; margin-bottom: 3px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .stamp-placeholder {
+    width: 52px; height: 52px; border: 2px dashed #D1D5DB;
+    border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 7px; font-weight: 600;
+    color: #9CA3AF; text-align: center; padding: 4px;
+    line-height: 1.15; background: rgba(243,244,246,0.5);
+  }
 
   /* ── Footer ── */
   .doc-footer {
@@ -352,7 +616,10 @@ const BASE_CSS = `
     font-size: 8px; color: rgba(255,255,255,0.7);
     font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
   }
-  .receipt-banner-amount { font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+  .receipt-banner-amount {
+    font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
+  }
   .receipt-banner-right { text-align: right; }
   .receipt-banner-date { font-size: 8px; color: rgba(255,255,255,0.8); margin-top: 1px; }
 
@@ -364,10 +631,82 @@ const BASE_CSS = `
 `;
 
 // ─── Receipt PDF ───────────────────────────────────────────────────────────────
+function normalizeFeeDueLine(raw: Record<string, unknown>): StudentFeeDueLine {
+  const amountDue = Number(raw.amount_due ?? 0);
+  const amountPaid = Number(raw.amount_paid ?? 0);
+  const discount = Number(raw.discount ?? 0);
+  const balanceDue = Number(
+    raw.balance_due ?? Math.max(0, amountDue - discount - amountPaid),
+  );
+  return {
+    student_fee_id: raw.student_fee_id as string | undefined,
+    fee_type: String(raw.fee_type ?? 'Fee'),
+    academic_year: raw.academic_year ? String(raw.academic_year) : undefined,
+    amount_due: amountDue,
+    amount_paid: amountPaid,
+    discount,
+    balance_due: balanceDue,
+    status: raw.status ? String(raw.status) : undefined,
+  };
+}
+
+async function resolveStudentFeeDues(transaction: FeeTransaction): Promise<StudentFeeDueLine[]> {
+  const embedded = (transaction as FeeTransaction & { fee_dues?: unknown[] }).fee_dues;
+  if (Array.isArray(embedded) && embedded.length > 0) {
+    return embedded.map((row) =>
+      normalizeFeeDueLine(row as unknown as Record<string, unknown>),
+    );
+  }
+  const studentId =
+    transaction.student_id ||
+    (transaction as { studentId?: string }).studentId;
+  if (!studentId) return [];
+  try {
+    const { FeeService } = await import('../services/feeService');
+    const data = await FeeService.getStudentFees(studentId);
+    return (data.fees || []).map((f) =>
+      normalizeFeeDueLine({
+        student_fee_id: f.id,
+        fee_type: f.fee_type,
+        academic_year: (f as { academic_year?: string }).academic_year,
+        amount_due: f.amount_due,
+        amount_paid: f.amount_paid,
+        discount: f.discount,
+        status: f.status,
+      }),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatClassSection(transaction: FeeTransaction): string | null {
+  const className =
+    transaction.class_name ||
+    (transaction as { class?: string }).class;
+  const sectionName =
+    transaction.section_name ||
+    (transaction as { section?: string }).section;
+  if (className && sectionName) return `${className} — ${sectionName}`;
+  if (className) return className;
+  if (sectionName) return `Section ${sectionName}`;
+  return null;
+}
+
 export const generateReceiptPDF = async (transaction: FeeTransaction) => {
   try {
+    const feeDues = await resolveStudentFeeDues(transaction);
     const studentName = transaction.student_name || 'Student';
     const admissionNo = transaction.admission_no || 'N/A';
+    const classSectionText = formatClassSection(transaction);
     const paidAtStr = transaction.paid_at || new Date().toISOString();
     const dateObj = new Date(paidAtStr);
     const dateFull = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -382,11 +721,112 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
       (transaction as any).academicYear ||
       `${dateObj.getFullYear()}–${dateObj.getFullYear() + 1}`;
     const words = amountInWords(amountNum);
+    const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+    const totalFeeDue = Number(
+      transaction.amount_due != null
+        ? transaction.amount_due - (transaction.discount ?? 0)
+        : amountNum,
+    );
+    const totalPaidOnFee = Number(transaction.total_paid ?? amountNum);
+    const balanceDue = Math.max(
+      0,
+      Number(
+        transaction.balance_due ??
+        (transaction as any).remaining_balance ??
+        totalFeeDue - totalPaidOnFee,
+      ),
+    );
+    const totalFeeFmt = fmtINR(totalFeeDue);
+    const totalPaidFmt = fmtINR(totalPaidOnFee);
+    const balanceDueFmt = fmtINR(balanceDue);
+    const totalOutstandingAll = feeDues.reduce((sum, line) => sum + line.balance_due, 0);
+    const totalAssignedDue = feeDues.reduce(
+      (sum, line) => sum + Math.max(0, line.amount_due - (line.discount ?? 0)),
+      0,
+    );
+    const totalPaidAll = feeDues.reduce((sum, line) => sum + line.amount_paid, 0);
+    const useAllFeesSummary = feeDues.length > 0;
+    const displayOutstanding = useAllFeesSummary ? totalOutstandingAll : balanceDue;
+    const isFullyPaid = displayOutstanding <= 0;
+
+    const feeDuesRowsHtml = feeDues
+      .map((line) => {
+        const netDue = Math.max(0, line.amount_due - (line.discount ?? 0));
+        const isPaid = line.balance_due <= 0;
+        const isThisPayment =
+          line.student_fee_id != null &&
+          line.student_fee_id === transaction.student_fee_id;
+        const rowClass = [
+          isThisPayment ? 'dues-highlight' : '',
+          isPaid ? 'dues-paid' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const paymentTag = isThisPayment
+          ? '<span class="dues-payment-tag">This payment</span>'
+          : '';
+        return `
+                <tr class="${rowClass}">
+                  <td class="col-fee">${escapeHtml(line.fee_type)}${paymentTag}</td>
+                  <td class="col-year">${escapeHtml(line.academic_year || '—')}</td>
+                  <td class="col-num">₹${fmtINR(netDue)}</td>
+                  <td class="col-num col-num-paid">₹${fmtINR(line.amount_paid)}</td>
+                  <td class="col-due">₹${fmtINR(line.balance_due)}</td>
+                </tr>`;
+      })
+      .join('');
+
+    const allFeeDuesSectionHtml =
+      feeDues.length > 0
+        ? `
+            <div class="dues-section">
+              <div class="dues-section-title">
+                All Assigned Fee Dues
+                <span>${feeDues.length} fee type${feeDues.length === 1 ? '' : 's'}</span>
+              </div>
+              <table class="dues-table">
+                <thead>
+                  <tr>
+                    <th class="col-fee">Fee Type</th>
+                    <th class="col-year">Academic Year</th>
+                    <th class="col-num">Total</th>
+                    <th class="col-num">Paid</th>
+                    <th class="col-num">Balance Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${feeDuesRowsHtml}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td class="col-label" colspan="2">Total (all fee types)</td>
+                    <td class="col-num">₹${fmtINR(totalAssignedDue)}</td>
+                    <td class="col-num">₹${fmtINR(totalPaidAll)}</td>
+                    <td class="col-due-total">₹${fmtINR(totalOutstandingAll)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          `
+        : '';
 
     const logoBase64 = await loadLogoAsBase64(SCHOOL_CONFIG.logo);
     const logoHtml = logoBase64
-      ? `<img src="${logoBase64}" class="school-logo" />`
-      : `<div style="font-size:20px;font-weight:800;color:#4F46E5;">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
+      ? `<img src="${logoBase64}" class="school-logo" alt="" />`
+      : `<div class="school-logo-fallback">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
+    const schoolBrandHtml = `
+              <div class="school-brand">
+                ${logoHtml}
+                <div class="school-info">
+                  <div class="school-name">${SCHOOL_CONFIG.name}</div>
+                  <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
+                  ${SCHOOL_RECOGNITION_LINE ? `<div class="school-reg">${SCHOOL_RECOGNITION_LINE}</div>` : ''}
+                </div>
+              </div>`;
+    const watermarkHtml = logoBase64
+      ? `<img src="${logoBase64}" class="watermark-logo" alt="" />`
+      : `<div class="watermark">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
 
     const html = `
       <html>
@@ -395,16 +835,12 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
           <style>${BASE_CSS}</style>
         </head>
         <body>
-          <div class="page">
-            <div class="watermark">RECEIPT</div>
+          <div class="page receipt-page">
+            ${watermarkHtml}
 
             <!-- Header -->
             <div class="doc-header">
-              <div>
-                ${logoHtml}
-                <div class="school-name">${SCHOOL_CONFIG.name}</div>
-                <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
-              </div>
+              ${schoolBrandHtml}
               <div class="doc-title-block">
                 <div class="doc-title">RECEIPT</div>
                 <div class="doc-no">${receiptNo}</div>
@@ -432,6 +868,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
                 <div class="info-label">Received From</div>
                 <div class="info-value">${studentName}</div>
                 <div class="info-sub">Admission No: ${admissionNo}</div>
+                ${classSectionText ? `<div class="info-sub">Class &amp; Section: ${classSectionText}</div>` : ''}
               </div>
               <div class="info-box">
                 <div class="info-label">Payment Details</div>
@@ -473,21 +910,35 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
               </tbody>
             </table>
 
-            <!-- Totals -->
+            <!-- Totals
+                 The standalone "Balance Due" row is intentionally suppressed when the
+                 All Assigned Fee Dues table renders (useAllFeesSummary), because the
+                 dues-table footer and the due-amount bar below both already state the
+                 outstanding figure. One number, one place per context. -->
             <div class="totals-section">
               <div class="totals-box">
                 <div class="totals-row">
-                  <span>Sub Total</span>
-                  <span>₹${amountFmt}</span>
+                  <span>Total Fee</span>
+                  <span>₹${totalFeeFmt}</span>
                 </div>
-                <div class="totals-row">
+                ${(transaction.discount ?? 0) > 0 ? `
+                <div class="totals-row" style="color:#059669;">
                   <span>Discount</span>
-                  <span>₹0.00</span>
-                </div>
+                  <span>− ₹${fmtINR(transaction.discount ?? 0)}</span>
+                </div>` : ''}
                 <div class="totals-row grand">
                   <span>Total Received</span>
                   <span>₹${amountFmt}</span>
                 </div>
+                <div class="totals-row paid-row">
+                  <span>Total Paid (Fee)</span>
+                  <span>₹${totalPaidFmt}</span>
+                </div>
+                ${useAllFeesSummary ? '' : `
+                <div class="totals-row due-row">
+                  <span>Balance Due</span>
+                  <span>₹${balanceDueFmt}</span>
+                </div>`}
               </div>
             </div>
 
@@ -496,11 +947,35 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
               <strong>Amount in Words:</strong> ${words}
             </div>
 
+            ${allFeeDuesSectionHtml}
+
+            <!-- Due Amount Highlight -->
+            <div class="due-amount-bar ${isFullyPaid ? 'clear' : 'pending'}">
+              <div class="due-amount-left">
+                <div class="due-amount-label">${isFullyPaid ? 'Fee Status' : 'Outstanding Due Amount'}</div>
+                <div class="due-amount-sub">
+                  ${isFullyPaid
+                    ? useAllFeesSummary
+                      ? 'All assigned fee types are fully paid'
+                      : 'All dues cleared for this fee type'
+                    : useAllFeesSummary
+                      ? `Total outstanding across ${feeDues.length} assigned fee type${feeDues.length === 1 ? '' : 's'}`
+                      : `Remaining balance after this payment · ${feeName}`}
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div class="due-amount-value">${isFullyPaid ? '₹0.00' : `₹${fmtINR(displayOutstanding)}`}</div>
+                <span class="due-status-badge ${isFullyPaid ? 'clear' : 'pending'}">
+                  ${isFullyPaid ? '✓ Fully Paid' : 'Due Pending'}
+                </span>
+              </div>
+            </div>
+
             <!-- Signature -->
             <div class="signature-row">
-              <div>
-                <div style="font-size:8px; color:#9CA3AF; margin-bottom:2px;">SCAN TO VERIFY</div>
-                <div class="qr-placeholder">QR<br/>Verify</div>
+              <div class="stamp-block">
+                <div class="stamp-label">Official Stamp</div>
+                <div class="stamp-placeholder">School<br/>Stamp</div>
               </div>
               <div class="sig-block">
                 <div class="sig-line">Authorized Signatory</div>
@@ -526,7 +1001,12 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
     `;
 
     if (Platform.OS === 'web') {
-      await printHtmlOnWeb(html);
+      const mounted = await mountReceiptHtmlForCapture(html);
+      try {
+        await printElementToWindow(mounted.element, 'RECEIPT', { title: 'Fee Receipt' });
+      } finally {
+        mounted.cleanup();
+      }
       return;
     }
     const { uri } = await Print.printToFileAsync({ html });
@@ -567,8 +1047,20 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
 
     const logoBase64 = await loadLogoAsBase64(SCHOOL_CONFIG.logo);
     const logoHtml = logoBase64
-      ? `<img src="${logoBase64}" class="school-logo" />`
-      : `<div style="font-size:20px;font-weight:800;color:#4F46E5;">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
+      ? `<img src="${logoBase64}" class="school-logo" alt="" />`
+      : `<div class="school-logo-fallback">${SCHOOL_CONFIG.name.slice(0, 2).toUpperCase()}</div>`;
+    const schoolBrandHtml = `
+              <div class="school-brand">
+                ${logoHtml}
+                <div class="school-info">
+                  <div class="school-name">${SCHOOL_CONFIG.name}</div>
+                  <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
+                  ${SCHOOL_RECOGNITION_LINE ? `<div class="school-reg">${SCHOOL_RECOGNITION_LINE}</div>` : ''}
+                </div>
+              </div>`;
+    const watermarkHtml = logoBase64
+      ? `<img src="${logoBase64}" class="watermark-logo" alt="" />`
+      : `<div class="watermark">${statusLabel}</div>`;
 
     const academicYearText =
       (invoice as any).academic_year ||
@@ -584,15 +1076,11 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
         </head>
         <body>
           <div class="page">
-            <div class="watermark">${statusLabel}</div>
+            ${watermarkHtml}
 
             <!-- Header -->
             <div class="doc-header">
-              <div>
-                ${logoHtml}
-                <div class="school-name">${SCHOOL_CONFIG.name}</div>
-                <div class="school-sub">${SCHOOL_CONFIG.address || ''}</div>
-              </div>
+              ${schoolBrandHtml}
               <div class="doc-title-block">
                 <div class="doc-title">INVOICE</div>
                 <div class="doc-no"># ${invoiceNo}</div>
@@ -714,6 +1202,189 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
               <p style="margin-top:3px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
             </div>
 
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (Platform.OS === 'web') {
+      await printHtmlOnWeb(html);
+      return;
+    }
+    const { uri } = await Print.printToFileAsync({ html });
+    await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+  } catch (error) {
+    throw error;
+  }
+};
+
+export interface AdjustmentPdfData {
+  receipt_no: string;
+  amount: number;
+  reason: string;
+  fee_component: string;
+  created_at: string;
+  adjusted_by_name: string;
+  student_name: string;
+  admission_no: string;
+  class_name?: string;
+  section_name?: string;
+  adjustment_type?: 'waive' | 'add';
+}
+
+export const generateAdjustmentPDF = async (adjustment: AdjustmentPdfData, schoolSettings: any) => {
+  try {
+    const isAdd = adjustment.adjustment_type === 'add';
+    const studentName = adjustment.student_name || 'Student';
+    const admissionNo = adjustment.admission_no || 'N/A';
+    const classSectionText = [adjustment.class_name, adjustment.section_name].filter(Boolean).join(' — ') || 'N/A';
+    const dateObj = new Date(adjustment.created_at || new Date());
+    const dateFull = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const amountNum = Number(adjustment.amount || 0);
+    const amountFmt = amountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const receiptNo = adjustment.receipt_no || 'N/A';
+    const words = amountInWords(amountNum);
+    const schoolName = schoolSettings?.school_name || 'School';
+    const schoolAddress = schoolSettings?.school_address || '';
+    const schoolPhone = schoolSettings?.school_phone || '';
+    const schoolWebsite = schoolSettings?.school_website || '';
+
+    const typeLabel = isAdd ? 'Fee Addition' : 'Fee Waiver';
+    const voucherTitle = isAdd ? 'Fee Addition Voucher' : 'Fee Waiver Voucher';
+    const bannerLabel = isAdd ? 'Fee Amount Added' : 'Waiver Amount Applied';
+    const amountSign = isAdd ? '+' : '−';
+    const badgeLabel = isAdd ? 'Fee Addition' : 'Discount / Waiver';
+    const primaryColor = isAdd ? '#D97706' : '#DC2626';
+    const primaryDark = isAdd ? '#B45309' : '#B91C1C';
+    const bannerGradient = isAdd
+      ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+      : 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)';
+    const highlightBg = isAdd ? '#FFFBEB' : '#FEF2F2';
+    const highlightBorder = isAdd ? '#FCD34D' : '#FCA5A5';
+    const wordsBg = isAdd ? '#FFFBEB' : '#FEF2F2';
+    const wordsBorder = isAdd ? '#FCD34D' : '#FCA5A5';
+    const wordsColor = isAdd ? '#92400E' : '#991B1B';
+    const badgeBg = isAdd ? '#FFEDD5' : '#FEE2E2';
+    const badgeColor = isAdd ? '#9A3412' : '#991B1B';
+
+    const html = `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+          <style>
+            ${BASE_CSS}
+            .adjustment-badge {
+              background-color: ${badgeBg};
+              color: ${badgeColor};
+              font-size: 8px;
+              font-weight: 700;
+              padding: 3px 8px;
+              border-radius: 20px;
+              text-transform: uppercase;
+              letter-spacing: 0.4px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page receipt-page">
+            <!-- Header -->
+            <div class="doc-header">
+              <div class="school-brand">
+                <div class="school-info">
+                  <div class="school-name">${escapeHtml(schoolName)}</div>
+                  ${schoolAddress ? `<div class="school-sub">${escapeHtml(schoolAddress)}</div>` : ''}
+                  ${SCHOOL_RECOGNITION_LINE ? `<div class="school-reg">${SCHOOL_RECOGNITION_LINE}</div>` : ''}
+                  ${schoolPhone || schoolWebsite ? `
+                    <div class="school-sub">
+                      ${schoolPhone ? `Phone: ${escapeHtml(schoolPhone)}` : ''}
+                      ${schoolPhone && schoolWebsite ? ' &nbsp;|&nbsp; ' : ''}
+                      ${schoolWebsite ? `Web: ${escapeHtml(schoolWebsite)}` : ''}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+              <div class="doc-title-block">
+                <div class="doc-title" style="color: ${primaryColor};">${escapeHtml(voucherTitle)}</div>
+                <div class="doc-no">Voucher No: ${escapeHtml(receiptNo)}</div>
+              </div>
+            </div>
+
+            <!-- Info grid -->
+            <div class="info-grid">
+              <div class="info-box">
+                <div class="info-label">Student Details</div>
+                <div class="info-value">${escapeHtml(studentName)}</div>
+                <div class="info-sub">Adm No: ${escapeHtml(admissionNo)} | Class: ${escapeHtml(classSectionText)}</div>
+              </div>
+              <div class="info-box highlight" style="background: ${highlightBg}; border-color: ${highlightBorder};">
+                <div class="info-label" style="color: ${primaryDark};">Voucher Details</div>
+                <div class="info-value">Date: ${escapeHtml(dateFull)}</div>
+                <div class="info-sub">Adjustment Type: ${escapeHtml(typeLabel)}</div>
+                <div class="info-sub">Status: Approved by Higher Authority</div>
+              </div>
+            </div>
+
+            <!-- Receipt Banner -->
+            <div class="receipt-banner" style="background: ${bannerGradient};">
+              <div>
+                <div class="receipt-banner-label">${escapeHtml(bannerLabel)}</div>
+                <div class="receipt-banner-amount">${amountSign} ₹${amountFmt}</div>
+              </div>
+              <div class="receipt-banner-right">
+                <div class="receipt-banner-label">Authorized by</div>
+                <div class="receipt-banner-date" style="font-weight: 700;">Admin: ${escapeHtml(adjustment.adjusted_by_name)}</div>
+              </div>
+            </div>
+
+            <!-- Amount in words -->
+            <div class="amount-words" style="background: ${wordsBg}; border: 1px solid ${wordsBorder}; color: ${wordsColor};">
+              <strong>Adjustment Amount in Words:</strong> Rupees ${words}
+            </div>
+
+            <!-- Table of adjusted items -->
+            <table style="margin-top: 15px;">
+              <thead>
+                <tr>
+                  <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Fee Component</th>
+                  <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Adjustment Type</th>
+                  <th style="text-align: right; color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Amount Adjusted</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="td-desc-main">${escapeHtml(adjustment.fee_component)}</td>
+                  <td><span class="adjustment-badge">${escapeHtml(badgeLabel)}</span></td>
+                  <td style="text-align: right; color: ${primaryColor};">${amountSign} ₹${amountFmt}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; margin-top: 15px; margin-bottom: 20px;">
+              <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #4B5563; margin-bottom: 4px;">Reason for Adjustment</div>
+              <div style="font-size: 11px; color: #1F2937; line-height: 1.5; font-style: italic;">
+                "${escapeHtml(adjustment.reason)}"
+              </div>
+            </div>
+
+            <!-- Signature row -->
+            <div class="signature-row" style="margin-top: 25px;">
+              <div>
+                <div style="font-size: 9px; color: #9CA3AF; margin-bottom: 4px;">SCAN TO VERIFY</div>
+                <div class="qr-placeholder">QR<br/>Verify</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Authorized Signatory</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line">Higher Authority Stamp</div>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="doc-footer">
+              <p>📄 This is a secure system-generated document. No manual signature is required.</p>
+              <p style="margin-top: 3px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+            </div>
           </div>
         </body>
       </html>

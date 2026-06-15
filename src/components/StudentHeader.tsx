@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import * as Haptics from '../utils/haptics';
 import { isTelugu as isTeluguCheck } from '../utils/lang';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { interpolateColor, interpolate, useAnimatedStyle, Extrapolation, SharedValue } from 'react-native-reanimated';
+import Animated, { interpolateColor, interpolate, useAnimatedStyle, Extrapolation, SharedValue, useAnimatedReaction, runOnJS } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import MenuOverlay from './MenuOverlay';
@@ -16,7 +16,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SCHOOL_NAME } from '../constants/school';
 
 /** Reanimated can wrap the vector icon; it must not be nested inside `Animated.Text` (causes "Text strings must be rendered within a <Text> component" on Android). */
-const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
 interface StudentHeaderProps {
     onMenuPress?: () => void;
@@ -37,6 +36,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     const [isTeluguLang, setIsTeluguLang] = useState(isTeluguCheck(i18n.language));
     const [menuVisible, setMenuVisible] = useState(false);
     const insets = useSafeAreaInsets();
+    const [iconTint, setIconTint] = useState<string>('#FFFFFF');
 
     React.useEffect(() => {
         setIsTeluguLang(isTeluguCheck(i18n.language));
@@ -138,6 +138,19 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
         };
     }, [isDark]);
 
+    // Safely drive vector icon color into local state instead of using setNativeProps
+    useAnimatedReaction(
+        () => {
+            if (!scrollY) return '#FFFFFF';
+            const end = isDark ? '#F1F5F9' : '#1F2937';
+            return interpolateColor(scrollY.value, [0, 50], ['#FFFFFF', end]);
+        },
+        (currentValue) => {
+            runOnJS(setIconTint)(currentValue as string);
+        },
+        [isDark, scrollY]
+    );
+
     return (
         <Animated.View style={[
             styles.container,
@@ -160,14 +173,14 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 {showNavBack ? (
                     <Pressable onPress={handleBack} style={Platform.OS === 'web' && { cursor: 'pointer' }}>
                         <Animated.View style={[styles.iconButton, iconColorStyle]}>
-                            <AnimatedIonicons name="arrow-back" size={22} style={fontColorStyle} />
+                            <Ionicons name="arrow-back" size={22} color={iconTint} />
                         </Animated.View>
                     </Pressable>
                 ) : null}
                 {showNavMenu ? (
                     <Pressable onPress={handleMenuPress} style={Platform.OS === 'web' && { cursor: 'pointer' }}>
                         <Animated.View style={[styles.iconButton, iconColorStyle]}>
-                            <AnimatedIonicons name="menu" size={22} style={fontColorStyle} />
+                            <Ionicons name="menu" size={22} color={iconTint} />
                         </Animated.View>
                     </Pressable>
                 ) : null}
@@ -257,7 +270,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                         }}
                         style={[{ padding: 4 }, Platform.OS === 'web' && { cursor: 'pointer' }]}
                     >
-                        <AnimatedIonicons name="settings-outline" size={20} style={fontColorStyle} />
+                        <Ionicons name="settings-outline" size={20} color={iconTint} />
                     </Pressable>
                 )}
             </View>

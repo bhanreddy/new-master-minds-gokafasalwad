@@ -4,12 +4,17 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "node": "20.18.0"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development"
     },
     "internal": {
+      "extends": "base",
       "distribution": "internal",
       "channel": "internal",
       "android": {
@@ -18,6 +23,7 @@
       }
     },
     "production": {
+      "extends": "base",
       "distribution": "store",
       "autoIncrement": true,
       "channel": "production",
@@ -25,21 +31,46 @@
         "buildType": "app-bundle"
       }
     },
-    "school-12": {
+    "school-16-production-apk": {
+      "extends": "school-16",
+      "distribution": "internal",
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "school-16": {
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SCHOOL_ID": "12",
-        "EXPO_PUBLIC_SCHOOL_CODE": "SSK",
-        "EXPO_PUBLIC_SCHOOL_NAME": "SLATE SCHOOL KOSGI",
-        "EXPO_PUBLIC_API_URL": "https://schoolims-multitenancy.onrender.com/api/v1",
+        "EXPO_PUBLIC_SCHOOL_ID": "16",
+        "EXPO_PUBLIC_SCHOOL_CODE": "VMS",
+        "EXPO_PUBLIC_SCHOOL_NAME": "Vikas Model School Balampet",
+        "EXPO_PUBLIC_API_URL": "https://supabasebackend-551435597195.europe-west1.run.app/api/v1",
         "EXPO_PUBLIC_SUPABASE_URL": "https://jztckbupiepiqfrxhszt.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6dGNrYnVwaWVwaXFmcnhoc3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMzgyMTYsImV4cCI6MjA4ODcxNDIxNn0.TC6mwwLezkwMmPxkIzRnR7NPyworRVzQ_vXCkRmnz4o"
+      }
+    },
+    "school-16-production": {
+      "extends": "school-16",
+      "distribution": "store",
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
       }
     }
   },
   "submit": {
-    "production": {}
+    "school-16-production": {
+      "android": {
+        "serviceAccountKeyPath": "./secrets/play-service-account-school-16.json",
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": false
+      }
+    }
   }
 }

@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useAuth } from './useAuth';
+import { AuthService } from '../services/authService';
+import { isStudentRole, isStaffPortalRole } from '../utils/roleHelpers';
 
 // List of public routes that don't require authentication
 // Note: '/' is the 4-login-options index page.
@@ -59,7 +61,7 @@ export function useAuthGuard() {
         return;
       }
 
-      if (inStaffGroup && !['staff', 'teacher'].includes(roleCode)) {
+      if (inStaffGroup && !isStaffPortalRole(roleCode)) {
         router.replace(homeRoute);
         return;
       }
@@ -93,7 +95,7 @@ export function useAuthGuard() {
       // If user is stuck in a role that requires a profile they don't have
       if (roleCode === 'student' && user.has_student_profile === false) {
         router.replace('/no-profile');
-      } else if ((roleCode === 'staff' || roleCode === 'teacher') && user.has_staff_profile === false) {
+      } else if (isStaffPortalRole(roleCode) && user.has_staff_profile === false) {
         router.replace('/no-profile');
       }
 
@@ -102,9 +104,20 @@ export function useAuthGuard() {
       // If trying to access protected areas, redirect to login
       if (inTabsGroup || inAdminGroup || inStaffGroup || inAccountsGroup || inDriverGroup) {
         if (__DEV__) {}
-        // Check if we are already engaging with a login flow to avoid fighting
-        // But generally, if we're in a protected group and not logged in, we MUST go to root.
-        router.replace('/welcome');
+        // Before redirecting to /welcome, check if a student session exists in storage.
+        // Students should NEVER be redirected to welcome — their sessions persist forever.
+        AuthService.getSession().then((storedSession) => {
+          const storedRole = storedSession?.validatedUser?.role?.code;
+          if (isStudentRole(storedRole)) {
+            if (__DEV__) console.log('[useAuthGuard] Student session found in storage — auto-navigating to student dashboard');
+            router.replace('/(tabs)/home');
+          } else {
+            router.replace('/welcome');
+          }
+        }).catch(() => {
+          // If storage read fails, fall back to welcome
+          router.replace('/welcome');
+        });
       } else {
         if (__DEV__) {}
       }

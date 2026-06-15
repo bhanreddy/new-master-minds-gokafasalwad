@@ -35,6 +35,8 @@ export interface ValidatedUser {
   rollNo?: string | null;
   /** Direct user ID (sometimes used as alternative to userId) */
   id?: string | null;
+  /** Student admission number */
+  admission_no?: string | null;
 }
 
 export interface AuthSession {

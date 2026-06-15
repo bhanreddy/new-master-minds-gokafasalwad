@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
@@ -18,34 +18,116 @@ import Animated, {
 } from 'react-native-reanimated';
 import { StudentService } from '@/src/services/studentService';
 import { CertificateService } from '@/src/services/certificateService';
-import { SCHOOL_CONFIG } from '@/src/constants/schoolConfig';
+import { FeeService } from '@/src/services/feeService';
+import { SchoolSettingsService, SchoolSettings } from '@/src/services/schoolSettingsService';
+import { SCHOOL_CONFIG, SCHOOL_RECOGNITION_LINE } from '@/src/constants/schoolConfig';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import {
+  downloadCertificatePdf,
+  getLogoDataUri,
+  injectCertificatePrintStyles,
+  printCertificateElement,
+  resolveCertificateElement,
+} from '@/src/utils/certificatePrint';
 
 const { width, height } = Dimensions.get('window');
 
 // ─── Paper size constants ─────────────────────────────────────────────────────
-// Eagle  ≈ 13.4″ × 8.5″ landscape  (used for Transfer Certificate)
-// A5     ≈ 5.83″ × 8.27″ portrait  (used for Bonafide Certificate)
+// TC Legal (Eagle): 216mm × 330mm portrait.
+// TC A4 Half: A5 landscape 210mm × 148.5mm.
+// Bonafide: HALF an A4 sheet → A5 landscape (210mm × 148.5mm).
 export const PAPER = {
-  EAGLE: { widthPt: 964.8, heightPt: 612, label: 'Eagle (13.4″ × 8.5″)' },
-  A5: { widthPt: 420.9, heightPt: 595.3, label: 'A5 / Half-A4 (148 × 210 mm)' },
+  EAGLE: { widthPt: 612, heightPt: 935.4, label: 'Legal (216 × 330 mm)' },
+  TC_A4_HALF: { widthPt: 595.3, heightPt: 420.9, label: 'A4 Half (Landscape)' },
+  // 210mm = 595.3pt, 148.5mm = 420.9pt — exactly half of an A4 sheet.
+  BONAFIDE_A5_LANDSCAPE: { widthPt: 595.3, heightPt: 420.9, label: 'Half A4 (210 × 148.5 mm)' },
 } as const;
+
+export type TcLayout = 'LEGAL' | 'A4_HALF';
+
+export const TC_PAPER_MAP: Record<TcLayout, typeof PAPER.EAGLE | typeof PAPER.TC_A4_HALF> = {
+  LEGAL: PAPER.EAGLE,
+  A4_HALF: PAPER.TC_A4_HALF,
+};
+
+const BONAFIDE_BLUE = '#1e3a8a';
+
+interface SchoolProfile {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  affiliation: string;
+  recognition: string;
+  medium: string;
+  logoUrl: string;
+  principal: string;
+}
+
+function mapSchoolSettings(settings: Partial<SchoolSettings>): SchoolProfile {
+  return {
+    name: settings.school_name || SCHOOL_CONFIG.name,
+    address: settings.school_address || SCHOOL_CONFIG.address || '',
+    phone: settings.school_phone || SCHOOL_CONFIG.contact || '',
+    email: settings.school_email || SCHOOL_CONFIG.email || '',
+    affiliation: settings.school_affiliation?.trim() || '',
+    recognition: settings.school_recognition?.trim() || '',
+    medium: settings.school_medium?.trim() || '',
+    logoUrl: settings.school_logo_url || '',
+    principal: settings.school_principal || 'Head Master',
+  };
+}
+
+function formatRecognitionLine(recognition: string, medium: string): string {
+  if (!recognition) return '';
+  let line = `Recognised by Govt. ${recognition}`;
+  if (medium) {
+    const m = medium.toLowerCase();
+    if (m === 'e' || m.includes('english')) line += ' (E/M)';
+    else if (m === 't' || m.includes('telugu')) line += ' (T/M)';
+    else line += ` (${medium})`;
+  }
+  return line;
+}
+
+function resolveSchoolLogoSource(school: SchoolProfile) {
+  return school.logoUrl?.trim() ? { uri: school.logoUrl.trim() } : SCHOOL_CONFIG.logo;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CertificateType = 'TC' | 'BONAFIDE' | null;
+
+function getActivePaper(selectedType: CertificateType, tcLayout: TcLayout) {
+  if (selectedType === 'TC') return TC_PAPER_MAP[tcLayout];
+  if (selectedType === 'BONAFIDE') return PAPER.BONAFIDE_A5_LANDSCAPE;
+  return PAPER.EAGLE;
+}
+
+function getPdfFormat(selectedType: CertificateType, tcLayout: TcLayout): 'TC' | 'TC_A4_HALF' | 'BONAFIDE' {
+  if (selectedType === 'TC') return tcLayout === 'A4_HALF' ? 'TC_A4_HALF' : 'TC';
+  return 'BONAFIDE';
+}
 
 interface StudentData {
   id: string;
   name: string;
   fatherName: string;
   motherName: string;
+  parentName: string;
+  genderId: number;
+  genderLabel: string;
   class: string;
   dob: string;
   dobWords: string;
   admissionNo: string;
   academicYear: string;
+  fromClass: string;
+  fromYear: string;
+  toClass: string;
+  toYear: string;
+  aadharNo: string;
   address: string;
   nationality: string;
   category: string;
@@ -126,6 +208,27 @@ function dobToWords(dobStr: string): string {
   } catch { return 'N/A'; }
 }
 
+function formatInr(amount: number): string {
+  return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+}
+
+function genderHonorific(genderId?: number): string {
+  if (genderId === 1) return 'Master';
+  if (genderId === 2) return 'Kumari';
+  return 'Master/Kumari';
+}
+
+function genderPronouns(genderId?: number) {
+  if (genderId === 2) return { subject: 'She', possessive: 'her', verb: 'is' };
+  if (genderId === 1) return { subject: 'He', possessive: 'his', verb: 'is' };
+  return { subject: 'He/She', possessive: 'his/her', verb: 'is/was' };
+}
+
+function line(val?: string) {
+  const v = val?.trim();
+  return v || '________________________';
+}
+
 function dot(val: string) {
   return val?.trim() ? val : '..............................';
 }
@@ -138,7 +241,6 @@ const CERT_CONFIG = {
     iconColor: '#4F46E5', iconBg: '#EEF2FF',
     accentLight: '#4F46E5', accentDark: '#818CF8',
     gradFrom: '#4F46E5', gradTo: '#818CF8',
-    paper: PAPER.EAGLE,
     desc: 'For students leaving or transferring to another institution.',
   },
   BONAFIDE: {
@@ -147,8 +249,8 @@ const CERT_CONFIG = {
     iconColor: '#059669', iconBg: '#ECFDF5',
     accentLight: '#059669', accentDark: '#34D399',
     gradFrom: '#059669', gradTo: '#10B981',
-    paper: PAPER.A5,
-    desc: 'Official proof of enrolment for general purposes.',
+    paper: PAPER.BONAFIDE_A5_LANDSCAPE,
+    desc: 'Official proof of enrolment and conduct.',
   },
 } as const;
 
@@ -175,7 +277,7 @@ function TypeCard({ type, isDark, onPress }: { type: keyof typeof CERT_CONFIG; i
         <View style={[tcStyles.paperBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6' }]}>
           <Ionicons name="document-outline" size={10} color={isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF'} />
           <Text style={[tcStyles.paperBadgeText, { color: isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF' }]}>
-            {cfg.paper.label}
+            {type === 'TC' ? TC_PAPER_MAP.LEGAL.label : PAPER.BONAFIDE_A5_LANDSCAPE.label}
           </Text>
         </View>
         <View style={[tcStyles.arrowWrap, { backgroundColor: isDark ? `${cfg.iconColor}22` : cfg.iconBg }]}>
@@ -302,7 +404,12 @@ function EditModal({
                 <EditField label="Father's / Guardian Name" value={sd.fatherName} onChangeText={v => setSD('fatherName', v)} isDark={isDark} />
                 <EditField label="Mother's Name" value={sd.motherName} onChangeText={v => setSD('motherName', v)} isDark={isDark} />
                 <EditField label="Admission No." value={sd.admissionNo} onChangeText={v => setSD('admissionNo', v)} isDark={isDark} />
+                <EditField label="Aadhar Card No." value={sd.aadharNo} onChangeText={v => setSD('aadharNo', v)} isDark={isDark} />
                 <EditField label="Class" value={sd.class} onChangeText={v => setSD('class', v)} isDark={isDark} />
+                <EditField label="From Class (Bonafide)" value={sd.fromClass} onChangeText={v => setSD('fromClass', v)} isDark={isDark} />
+                <EditField label="From Year (Bonafide)" value={sd.fromYear} onChangeText={v => setSD('fromYear', v)} isDark={isDark} />
+                <EditField label="To Class (Bonafide)" value={sd.toClass} onChangeText={v => setSD('toClass', v)} isDark={isDark} />
+                <EditField label="To Year (Bonafide)" value={sd.toYear} onChangeText={v => setSD('toYear', v)} isDark={isDark} />
                 <EditField
                   label="Date of Birth (dd/MM/yyyy)"
                   value={sd.dob}
@@ -392,185 +499,183 @@ const emStyles = StyleSheet.create({
   subjectInput: { flex: 1, borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 8, height: 36, fontSize: 13, fontWeight: '500' },
 });
 
-// ─── Certificate Preview ──────────────────────────────────────────────────────
-function CertificatePreview({
-  studentData, tcFields, selectedType, serialNo, onEdit, onDownload,
+const webPrintRootProps = Platform.OS === 'web'
+  ? ({ className: 'certificate-print-root' } as const)
+  : ({} as const);
+
+const webWatermarkProps = Platform.OS === 'web'
+  ? ({ className: 'certificate-watermark' } as const)
+  : ({} as const);
+
+// ─── Bonafide document (HALF-A4 landscape letterhead) ────────────────────────
+// Fills the full half-sheet: header pinned top, footer pinned bottom via flex,
+// so there is no dead whitespace like the old full-A4 version produced.
+function BonafideDocument({
+  studentData,
+  school,
+  issueDate,
 }: {
-  studentData: StudentData; tcFields: TCEditableFields;
-  selectedType: CertificateType; serialNo: string;
-  onEdit: () => void; onDownload: () => void;
+  studentData: StudentData;
+  school: SchoolProfile;
+  issueDate: string;
 }) {
-  if (!selectedType) return null;
-  const cfg = CERT_CONFIG[selectedType];
-  const isTC = selectedType === 'TC';
-  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE CERTIFICATE';
-  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const pronouns = genderPronouns(studentData.genderId);
+  const logoSource = resolveSchoolLogoSource(school);
+  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
 
   return (
-    <Animated.View entering={FadeInDown.springify().damping(18)} style={cpStyles.wrap}>
-
-      {/* Paper size badge */}
-      <View style={cpStyles.paperBadgeRow}>
-        <View style={[cpStyles.paperBadge, { backgroundColor: `${cfg.gradFrom}18` }]}>
-          <Ionicons name="document-text-outline" size={12} color={cfg.gradFrom} />
-          <Text style={[cpStyles.paperBadgeText, { color: cfg.gradFrom }]}>{cfg.paper.label}</Text>
-        </View>
-        <Text style={cpStyles.serialText}>No. {serialNo}</Text>
-      </View>
-
-      {/* Paper Document */}
-      <View style={cpStyles.paper}>
-        {/* Top color bar */}
-        <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.topBar} />
-
-        {/* Watermark */}
-        <View style={cpStyles.watermarkWrap} pointerEvents="none">
-          <Image source={SCHOOL_CONFIG.logo} style={cpStyles.watermarkImg} />
+    <View style={bfStyles.outerFrame}>
+      <View style={bfStyles.innerFrame}>
+        <View style={bfStyles.watermarkWrap} pointerEvents="none" {...webWatermarkProps}>
+          <Image source={logoSource} style={bfStyles.watermarkImg} />
         </View>
 
-        {/* School Header */}
-        <View style={cpStyles.schoolHeader}>
-          <Image source={SCHOOL_CONFIG.logo} style={cpStyles.logo} />
-          <Text style={cpStyles.schoolName}>{SCHOOL_CONFIG.name}</Text>
-          <Text style={cpStyles.schoolAddr}>{SCHOOL_CONFIG.address || 'Madhapur, Hyderabad – 500081'}</Text>
-          <Text style={cpStyles.affiliation}>
-            Affiliated to CBSE, New Delhi · Affiliation No. {tcFields.cbseAffiliationNo || SCHOOL_CONFIG.cbseAffiliationNo || '———'}
-          </Text>
-          <View style={[cpStyles.dividerLine, { backgroundColor: cfg.gradFrom }]} />
-        </View>
-
-        {/* Title block */}
-        <View style={cpStyles.titleBlock}>
-          <Text style={[cpStyles.certTitle, { color: cfg.gradFrom }]}>{title}</Text>
-          <Text style={cpStyles.refNo}>Ref No: {serialNo}</Text>
-        </View>
-
-        {/* Body: TC */}
-        {isTC ? (
-          <View style={cpStyles.tcContainer}>
-            <View style={cpStyles.tcHeaderRow}>
-              <Text style={cpStyles.tcHeaderText}>CBSE Affiliation No. : {dot(tcFields.cbseAffiliationNo)}</Text>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={cpStyles.tcHeaderText}>School Code : {dot(tcFields.schoolCode)}</Text>
-                <Text style={cpStyles.tcHeaderText}>Scholar No. : {studentData.admissionNo}</Text>
-              </View>
-            </View>
-            <View style={cpStyles.tcList}>
-              <Text style={cpStyles.tcItem}>1. Name of Pupil : <Text style={cpStyles.bold}>{studentData.name}</Text></Text>
-              <Text style={cpStyles.tcItem}>2. Father's/Guardian Name : <Text style={cpStyles.bold}>{studentData.fatherName}</Text></Text>
-              <Text style={cpStyles.tcItem}>3. Mother's Name : <Text style={cpStyles.bold}>{studentData.motherName}</Text></Text>
-              <Text style={cpStyles.tcItem}>4. Nationality : <Text style={cpStyles.bold}>{studentData.nationality}</Text></Text>
-              <Text style={cpStyles.tcItem}>5. Whether Candidate belongs to SC/ST/OBC : <Text style={cpStyles.bold}>{studentData.category}</Text></Text>
-              <Text style={cpStyles.tcItem}>6. Date of First Admission in the School with Class : <Text style={cpStyles.bold}>{studentData.admissionDate}</Text></Text>
-              <Text style={cpStyles.tcItem}>7. Date of Birth (In Figures) : <Text style={cpStyles.bold}>{studentData.dob}</Text></Text>
-              <Text style={[cpStyles.tcItem, { paddingLeft: 16 }]}>   (In Words) : <Text style={cpStyles.bold}>{studentData.dobWords}</Text></Text>
-              <Text style={cpStyles.tcItem}>8. Class In Which Pupil Last Studied : <Text style={cpStyles.bold}>{studentData.class}</Text></Text>
-              <Text style={cpStyles.tcItem}>9. School/Board Examination Last Taken with Result : {dot(tcFields.examResult)}</Text>
-              <Text style={cpStyles.tcItem}>10. Whether Failed, If So Once/Twice in Same Class : {dot(tcFields.failedDetails)}</Text>
-              <Text style={cpStyles.tcItem}>
-                11. Subject Studied :{'  '}
-                {tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${dot(s)}`).join('  ')}
+        <View style={bfStyles.headerRow}>
+          <Image source={logoSource} style={bfStyles.headerLogo} />
+          <View style={bfStyles.headerCenter}>
+            <Text style={bfStyles.schoolName}>{school.name.toUpperCase()}</Text>
+            {recognitionLine ? (
+              <Text style={bfStyles.schoolRecognition}>{recognitionLine}</Text>
+            ) : null}
+            <Text style={bfStyles.schoolAddr}>{school.address}</Text>
+            {(school.phone || school.email) ? (
+              <Text style={bfStyles.schoolContact}>
+                {[school.phone ? `Tel: ${school.phone}` : null, school.email ? `Email: ${school.email}` : null].filter(Boolean).join('  ·  ')}
               </Text>
-              <Text style={cpStyles.tcItem}>12. Whether Qualified for Promotion to Higher Class : {dot(tcFields.qualifiedPromotion)}</Text>
-              <Text style={[cpStyles.tcItem, { paddingLeft: 22 }]}>    (If so, to which class) : {dot(tcFields.promotionClass)}</Text>
-              <Text style={cpStyles.tcItem}>13. Month Upto which School Dues Paid : {dot(tcFields.schoolDuesPaid)}</Text>
-              <Text style={cpStyles.tcItem}>14. Any Fee Concession availed of : {dot(tcFields.feeConcession)}</Text>
-              <Text style={cpStyles.tcItem}>15. Total No. of Working Days : {dot(tcFields.totalWorkingDays)}</Text>
-              <Text style={cpStyles.tcItem}>16. Total No. of Working Days Present : {dot(tcFields.workingDaysPresent)}</Text>
-              <Text style={cpStyles.tcItem}>17. Whether NCC Cadet / Scout Guide : {dot(tcFields.nccDetails)}</Text>
-              <Text style={cpStyles.tcItem}>18. Extra-Curricular Activities : {dot(tcFields.extraCurricular)}</Text>
-              <Text style={cpStyles.tcItem}>19. General Conduct : {dot(tcFields.generalConduct)}</Text>
-              <Text style={cpStyles.tcItem}>20. Date of Application for Certificate : {dot(tcFields.applicationDate)}</Text>
-              <Text style={cpStyles.tcItem}>21. Date of Issue of Certificate : <Text style={cpStyles.bold}>{today}</Text></Text>
-              <Text style={cpStyles.tcItem}>22. Reasons for Leaving the School : {dot(tcFields.leavingReason)}</Text>
-              <Text style={cpStyles.tcItem}>23. Any Other Remarks : {dot(tcFields.otherRemarks)}</Text>
-            </View>
-          </View>
-        ) : (
-          /* Body: Bonafide – A5 / half-A4 */
-          <View style={cpStyles.body}>
-            <Text style={cpStyles.bodyText}>
-              This is to certify that{' '}
-              <Text style={cpStyles.bold}>{studentData.name}</Text>,
-              {' '}ward of{' '}
-              <Text style={cpStyles.bold}>{studentData.fatherName}</Text>,
-              {' '}bearing Admission No.{' '}
-              <Text style={cpStyles.bold}>{studentData.admissionNo}</Text>,
-              {' '}is a bonafide student of this institution currently enrolled in class{' '}
-              <Text style={cpStyles.bold}>{studentData.class}</Text>
-              {' '}during the academic year{' '}
-              <Text style={cpStyles.bold}>{studentData.academicYear}</Text>.
-            </Text>
-            <Text style={[cpStyles.bodyText, { marginTop: 14 }]}>
-              Date of Birth:{' '}
-              <Text style={cpStyles.bold}>{studentData.dob}</Text>
-              {studentData.dobWords !== 'N/A' ? ` (${studentData.dobWords})` : ''}.{'\n'}
-              Nationality:{' '}
-              <Text style={cpStyles.bold}>{studentData.nationality}</Text>.{' '}
-              Category:{' '}
-              <Text style={cpStyles.bold}>{studentData.category}</Text>.
-            </Text>
-            <Text style={[cpStyles.bodyText, { marginTop: 14 }]}>
-              He/She bears a good moral character and is known for sincere academic conduct.
-              This certificate is issued upon request and may be presented for any official or scholastic purpose.
-            </Text>
-            <View style={cpStyles.bonafideNote}>
-              <Ionicons name="information-circle-outline" size={13} color="#059669" />
-              <Text style={cpStyles.bonafideNoteText}>Issued on: {today}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Footer / Signatures */}
-        <View style={cpStyles.footer}>
-          <View style={cpStyles.sigBlock}>
-            <Text style={cpStyles.sigDate}>Date: {today}</Text>
-            <View style={cpStyles.sigStamp}>
-              <Text style={cpStyles.sigStampText}>SCHOOL STAMP</Text>
-            </View>
-          </View>
-          <View style={cpStyles.sigBlock}>
-            <View style={cpStyles.sigLine} />
-            <Text style={cpStyles.sigLabel}>Class Teacher</Text>
-          </View>
-          <View style={cpStyles.sigBlock}>
-            <View style={cpStyles.sigLine} />
-            <Text style={cpStyles.sigLabel}>Principal</Text>
+            ) : null}
           </View>
         </View>
 
-        {/* Bottom bar */}
-        <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.bottomBar} />
-      </View>
+        <View style={bfStyles.titleBox}>
+          <Text style={bfStyles.titleText}>BONAFIDE & CONDUCT CERTIFICATE</Text>
+        </View>
 
-      {/* Actions */}
-      <View style={cpStyles.actions}>
-        <TouchableOpacity style={cpStyles.editBtn} onPress={onEdit} activeOpacity={0.8}>
-          <Feather name="edit-2" size={16} color="#6B7280" />
-          <Text style={cpStyles.editBtnText}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 2, borderRadius: 14, overflow: 'hidden' }} onPress={onDownload} activeOpacity={0.88}>
-          <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.downloadGrad}>
-            <Feather name="download" size={16} color="#FFF" />
-            <Text style={cpStyles.downloadText}>Download PDF ({cfg.paper.label.split(' ')[0]})</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <View style={bfStyles.metaRow}>
+          <Text style={bfStyles.metaText}>Admission No. <Text style={bfStyles.metaVal}>{line(studentData.admissionNo)}</Text></Text>
+          <Text style={bfStyles.metaText}>Date <Text style={bfStyles.metaVal}>{line(issueDate)}</Text></Text>
+        </View>
+
+        <View style={bfStyles.body}>
+          <Text style={bfStyles.bodyLine}>
+            This is to certify that {studentData.genderLabel}{' '}
+            <Text style={bfStyles.bold}>{line(studentData.name)}</Text>
+          </Text>
+          <Text style={bfStyles.bodyLine}>
+            S/o. D/o. Shri/Smt. <Text style={bfStyles.bold}>{line(studentData.parentName)}</Text> is a Bonafide student of this Institution.
+          </Text>
+          <Text style={bfStyles.bodyLine}>
+            {pronouns.subject} is Studying from Class{' '}
+            <Text style={bfStyles.bold}>{line(studentData.fromClass)}</Text> Year{' '}
+            <Text style={bfStyles.bold}>{line(studentData.fromYear)}</Text> to Class{' '}
+            <Text style={bfStyles.bold}>{line(studentData.toClass)}</Text> Year{' '}
+            <Text style={bfStyles.bold}>{line(studentData.toYear)}</Text> during {pronouns.possessive} study period. {pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} Character is found Good.
+          </Text>
+          <Text style={[bfStyles.bodyLine, { marginTop: 14 }]}>
+            {pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} date of birth according to School Admission register is{' '}
+            <Text style={bfStyles.bold}>{line(studentData.dob)}</Text>
+          </Text>
+          <Text style={bfStyles.dobWordsLine}>{line(studentData.dobWords)}</Text>
+        </View>
+
+        <View style={bfStyles.footer}>
+          <Text style={bfStyles.footerText}>
+            Aadhar Card No. <Text style={bfStyles.bold}>{line(studentData.aadharNo)}</Text>
+          </Text>
+          <Text style={bfStyles.footerSign}>{school.principal}</Text>
+        </View>
       </View>
-    </Animated.View>
+    </View>
   );
 }
+
+const bfStyles = StyleSheet.create({
+  outerFrame: {
+    margin: 40,
+    borderWidth: 2,
+    borderColor: BONAFIDE_BLUE,
+    padding: 8,
+    backgroundColor: '#FFFEF8',
+  },
+  innerFrame: {
+    borderWidth: 1.5,
+    borderColor: BONAFIDE_BLUE,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    position: 'relative',
+  },
+  watermarkWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+  watermarkImg: { width: 260, height: 260, opacity: 0.07, resizeMode: 'contain' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12, zIndex: 1 },
+  headerLogo: { width: 96, height: 96, resizeMode: 'contain' },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  schoolName: { fontSize: 32, fontWeight: '900', color: BONAFIDE_BLUE, letterSpacing: 0.8, textAlign: 'center' },
+  schoolRecognition: { fontSize: 14, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 4, fontWeight: '700' },
+  schoolAddr: { fontSize: 15, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 5, lineHeight: 22, fontWeight: '600' },
+  schoolContact: { fontSize: 13, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 4, fontWeight: '500' },
+  titleBox: {
+    alignSelf: 'center',
+    borderWidth: 1.5,
+    borderColor: BONAFIDE_BLUE,
+    borderRadius: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginTop: 10,
+    marginBottom: 60,
+    zIndex: 1,
+  },
+  titleText: { fontSize: 17, fontWeight: '800', color: BONAFIDE_BLUE, letterSpacing: 0.8, textAlign: 'center' },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, marginBottom: 14, zIndex: 1 },
+  metaText: { fontSize: 15, color: BONAFIDE_BLUE, fontWeight: '600' },
+  metaVal: { fontWeight: '800', textDecorationLine: 'underline' },
+  body: { zIndex: 1, gap: 14 },
+  bodyLine: { fontSize: 17, lineHeight: 28, color: BONAFIDE_BLUE, fontWeight: '500' },
+  dobWordsLine: { fontSize: 16, color: BONAFIDE_BLUE, fontWeight: '700', textDecorationLine: 'underline', marginTop: 4, marginBottom: 12 },
+  bold: { fontWeight: '800' },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 36, paddingTop: 8, zIndex: 1 },
+  footerText: { fontSize: 15, color: BONAFIDE_BLUE, fontWeight: '600', flex: 1 },
+  footerSign: { fontSize: 16, fontWeight: '800', color: BONAFIDE_BLUE, textAlign: 'right', minWidth: 140 },
+});
+
 const cpStyles = StyleSheet.create({
   wrap: { marginTop: 20, gap: 16 },
-  paperBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  paperBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
+  paperBadgeLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   paperBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   paperBadgeText: { fontSize: 11, fontWeight: '700' },
+  layoutToggle: { flexDirection: 'row', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F3F4F6' },
+  layoutPill: { paddingHorizontal: 10, paddingVertical: 5 },
+  layoutPillActive: { backgroundColor: '#4F46E5' },
+  layoutPillText: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
+  layoutPillTextActive: { color: '#FFFFFF' },
   serialText: { fontSize: 11, fontWeight: '600', color: '#94A3B8' },
-  paper: { backgroundColor: '#FAFAFA', borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20 }, android: { elevation: 8 } }) },
+  paper: { backgroundColor: '#FFFFFF', borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', position: 'relative', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20 }, android: { elevation: 8 } }) },
+  tcPaper: { width: 816, minHeight: 1247 },
+  tcHalfPaper: { width: 1060, minHeight: 520 },
+  // A5 landscape ratio (1060 / 749 ≈ 1.414). Fixed height so the flex footer
+  // can pin to the bottom and the sheet renders as a true half-A4 card.
+  bonafidePaper: { width: 1060, minHeight: 749, backgroundColor: '#FFFEF8' },
   topBar: { height: 6 },
   bottomBar: { height: 4 },
   watermarkWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   watermarkImg: { width: 260, height: 260, opacity: 0.04, resizeMode: 'contain' },
   schoolHeader: { alignItems: 'center', paddingTop: 20, paddingHorizontal: 20, paddingBottom: 4 },
+  tcHalfHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4, zIndex: 1 },
+  tcHalfLogo: { width: 48, height: 48, resizeMode: 'contain' },
+  tcHalfHeaderCenter: { flex: 1 },
+  tcHalfSchoolName: { fontSize: 16, fontWeight: '900', color: '#0F172A', letterSpacing: 0.4 },
+  tcHalfAffiliation: { fontSize: 9, color: '#64748B', fontStyle: 'italic', marginTop: 1 },
+  tcHalfTitleBlock: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 16, zIndex: 1 },
+  tcHalfCertTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 1, textDecorationLine: 'underline', color: '#4F46E5', textAlign: 'center' },
+  tcHalfRefNo: { fontSize: 9, color: '#94A3B8', marginTop: 2 },
   logo: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 8 },
   schoolName: { fontSize: 18, fontWeight: '900', color: '#0F172A', letterSpacing: 0.8, textAlign: 'center' },
   schoolAddr: { fontSize: 11, color: '#64748B', marginTop: 2, textAlign: 'center' },
@@ -579,32 +684,309 @@ const cpStyles = StyleSheet.create({
   titleBlock: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20 },
   certTitle: { fontSize: 18, fontWeight: '900', letterSpacing: 1.5, textDecorationLine: 'underline', textAlign: 'center' },
   refNo: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
-  // TC body
   tcContainer: { paddingHorizontal: 22, paddingBottom: 24 },
+  tcHalfContainer: { paddingHorizontal: 14, paddingBottom: 8, zIndex: 1 },
   tcHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  tcHalfHeaderMeta: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   tcHeaderText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  tcHalfHeaderText: { fontSize: 8, fontWeight: '700', color: '#475569' },
   tcList: { gap: 5 },
   tcItem: { fontSize: 11, lineHeight: 18, color: '#1E293B', fontWeight: '500' },
-  // Bonafide body
+  tcHalfGrid: { flexDirection: 'row' },
+  tcHalfCol: { width: '50%', paddingHorizontal: 4, gap: 2 },
+  tcHalfItem: { fontSize: 8, lineHeight: 12, color: '#1E293B', fontWeight: '500' },
   body: { paddingHorizontal: 22, paddingBottom: 16 },
   bodyText: { fontSize: 13.5, lineHeight: 24, color: '#1E293B', textAlign: 'justify' },
   bonafideNote: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   bonafideNoteText: { fontSize: 11, color: '#059669', fontWeight: '600' },
   bold: { fontWeight: '800', color: '#0F172A' },
-  // Footer
-  footer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 22, paddingVertical: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 22, paddingVertical: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 'auto' },
+  tcHalfFooter: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4, zIndex: 1 },
   sigBlock: { alignItems: 'center', gap: 6 },
   sigDate: { fontSize: 11, fontWeight: '600', color: '#475569' },
+  tcHalfSigText: { fontSize: 8, fontWeight: '600', color: '#475569' },
   sigStamp: { width: 70, height: 40, borderRadius: 4, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' },
+  sigStampCompact: { width: 52, height: 28 },
   sigStampText: { fontSize: 8, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
   sigLine: { width: 90, height: 1, backgroundColor: '#334155' },
   sigLabel: { fontSize: 11, fontWeight: '600', color: '#475569' },
-  // Actions
   actions: { flexDirection: 'row', gap: 12 },
   editBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 15, borderRadius: 14, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
   editBtnText: { fontSize: 14, fontWeight: '700', color: '#374151' },
+  printBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 15, borderRadius: 14, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
+  printBtnText: { fontSize: 14, fontWeight: '700', color: '#374151' },
   downloadGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, borderRadius: 14 },
   downloadText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
+});
+
+function buildTcItemTexts(studentData: StudentData, tcFields: TCEditableFields, today: string) {
+  return [
+    `1. Name of Pupil : ${studentData.name}`,
+    `2. Father's/Guardian Name : ${studentData.fatherName}`,
+    `3. Mother's Name : ${studentData.motherName}`,
+    `4. Nationality : ${studentData.nationality}`,
+    `5. Whether Candidate belongs to SC/ST/OBC : ${studentData.category}`,
+    `6. Date of First Admission in the School with Class : ${studentData.admissionDate}`,
+    `7. Date of Birth (In Figures) : ${studentData.dob}\n   (In Words) : ${studentData.dobWords}`,
+    `8. Class In Which Pupil Last Studied : ${studentData.class}`,
+    `9. School/Board Examination Last Taken with Result : ${dot(tcFields.examResult)}`,
+    `10. Whether Failed, If So Once/Twice in Same Class : ${dot(tcFields.failedDetails)}`,
+    `11. Subject Studied : ${tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${dot(s)}`).join('  ')}`,
+    `12. Whether Qualified for Promotion to Higher Class : ${dot(tcFields.qualifiedPromotion)}\n    (If so, to which class) : ${dot(tcFields.promotionClass)}`,
+    `13. Month Upto which School Dues Paid : ${dot(tcFields.schoolDuesPaid)}`,
+    `14. Any Fee Concession availed of : ${dot(tcFields.feeConcession)}`,
+    `15. Total No. of Working Days : ${dot(tcFields.totalWorkingDays)}`,
+    `16. Total No. of Working Days Present : ${dot(tcFields.workingDaysPresent)}`,
+    `17. Whether NCC Cadet / Scout Guide : ${dot(tcFields.nccDetails)}`,
+    `18. Extra-Curricular Activities : ${dot(tcFields.extraCurricular)}`,
+    `19. General Conduct : ${dot(tcFields.generalConduct)}`,
+    `20. Date of Application for Certificate : ${dot(tcFields.applicationDate)}`,
+    `21. Date of Issue of Certificate : ${today}`,
+    `22. Reasons for Leaving the School : ${dot(tcFields.leavingReason)}`,
+    `23. Any Other Remarks : ${dot(tcFields.otherRemarks)}`,
+  ];
+}
+
+function renderTcLegalItems(studentData: StudentData, tcFields: TCEditableFields, today: string) {
+  return (
+    <View style={cpStyles.tcList}>
+      <Text style={cpStyles.tcItem}>1. Name of Pupil : <Text style={cpStyles.bold}>{studentData.name}</Text></Text>
+      <Text style={cpStyles.tcItem}>2. Father's/Guardian Name : <Text style={cpStyles.bold}>{studentData.fatherName}</Text></Text>
+      <Text style={cpStyles.tcItem}>3. Mother's Name : <Text style={cpStyles.bold}>{studentData.motherName}</Text></Text>
+      <Text style={cpStyles.tcItem}>4. Nationality : <Text style={cpStyles.bold}>{studentData.nationality}</Text></Text>
+      <Text style={cpStyles.tcItem}>5. Whether Candidate belongs to SC/ST/OBC : <Text style={cpStyles.bold}>{studentData.category}</Text></Text>
+      <Text style={cpStyles.tcItem}>6. Date of First Admission in the School with Class : <Text style={cpStyles.bold}>{studentData.admissionDate}</Text></Text>
+      <Text style={cpStyles.tcItem}>7. Date of Birth (In Figures) : <Text style={cpStyles.bold}>{studentData.dob}</Text></Text>
+      <Text style={[cpStyles.tcItem, { paddingLeft: 16 }]}>   (In Words) : <Text style={cpStyles.bold}>{studentData.dobWords}</Text></Text>
+      <Text style={cpStyles.tcItem}>8. Class In Which Pupil Last Studied : <Text style={cpStyles.bold}>{studentData.class}</Text></Text>
+      <Text style={cpStyles.tcItem}>9. School/Board Examination Last Taken with Result : {dot(tcFields.examResult)}</Text>
+      <Text style={cpStyles.tcItem}>10. Whether Failed, If So Once/Twice in Same Class : {dot(tcFields.failedDetails)}</Text>
+      <Text style={cpStyles.tcItem}>
+        11. Subject Studied :{'  '}
+        {tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${dot(s)}`).join('  ')}
+      </Text>
+      <Text style={cpStyles.tcItem}>12. Whether Qualified for Promotion to Higher Class : {dot(tcFields.qualifiedPromotion)}</Text>
+      <Text style={[cpStyles.tcItem, { paddingLeft: 22 }]}>    (If so, to which class) : {dot(tcFields.promotionClass)}</Text>
+      <Text style={cpStyles.tcItem}>13. Month Upto which School Dues Paid : {dot(tcFields.schoolDuesPaid)}</Text>
+      <Text style={cpStyles.tcItem}>14. Any Fee Concession availed of : {dot(tcFields.feeConcession)}</Text>
+      <Text style={cpStyles.tcItem}>15. Total No. of Working Days : {dot(tcFields.totalWorkingDays)}</Text>
+      <Text style={cpStyles.tcItem}>16. Total No. of Working Days Present : {dot(tcFields.workingDaysPresent)}</Text>
+      <Text style={cpStyles.tcItem}>17. Whether NCC Cadet / Scout Guide : {dot(tcFields.nccDetails)}</Text>
+      <Text style={cpStyles.tcItem}>18. Extra-Curricular Activities : {dot(tcFields.extraCurricular)}</Text>
+      <Text style={cpStyles.tcItem}>19. General Conduct : {dot(tcFields.generalConduct)}</Text>
+      <Text style={cpStyles.tcItem}>20. Date of Application for Certificate : {dot(tcFields.applicationDate)}</Text>
+      <Text style={cpStyles.tcItem}>21. Date of Issue of Certificate : <Text style={cpStyles.bold}>{today}</Text></Text>
+      <Text style={cpStyles.tcItem}>22. Reasons for Leaving the School : {dot(tcFields.leavingReason)}</Text>
+      <Text style={cpStyles.tcItem}>23. Any Other Remarks : {dot(tcFields.otherRemarks)}</Text>
+    </View>
+  );
+}
+
+function renderTcHalfItems(studentData: StudentData, tcFields: TCEditableFields, today: string) {
+  const items = buildTcItemTexts(studentData, tcFields, today);
+  const left = items.slice(0, 12);
+  const right = items.slice(12);
+  return (
+    <View style={cpStyles.tcHalfGrid}>
+      <View style={cpStyles.tcHalfCol}>
+        {left.map((item, i) => (
+          <Text key={`l-${i}`} style={cpStyles.tcHalfItem}>{item}</Text>
+        ))}
+      </View>
+      <View style={cpStyles.tcHalfCol}>
+        {right.map((item, i) => (
+          <Text key={`r-${i}`} style={cpStyles.tcHalfItem}>{item}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function renderTcSignatures(today: string, compact = false) {
+  return (
+    <View style={compact ? cpStyles.tcHalfFooter : cpStyles.footer}>
+      <View style={cpStyles.sigBlock}>
+        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigDate}>Date: {today}</Text>
+        <View style={[cpStyles.sigStamp, compact && cpStyles.sigStampCompact]}>
+          <Text style={cpStyles.sigStampText}>SCHOOL STAMP</Text>
+        </View>
+      </View>
+      <View style={cpStyles.sigBlock}>
+        <View style={cpStyles.sigLine} />
+        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigLabel}>Class Teacher</Text>
+      </View>
+      <View style={cpStyles.sigBlock}>
+        <View style={cpStyles.sigLine} />
+        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigLabel}>Principal</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Certificate Preview ──────────────────────────────────────────────────────
+const CertificatePreview = React.forwardRef<View, {
+  studentData: StudentData;
+  tcFields: TCEditableFields;
+  selectedType: CertificateType;
+  serialNo: string;
+  school: SchoolProfile;
+  tcLayout: TcLayout;
+  setTcLayout: (layout: TcLayout) => void;
+  onEdit: () => void;
+  onPrint: () => void;
+  onDownload: () => void;
+}>(function CertificatePreview({
+  studentData, tcFields, selectedType, serialNo, school, tcLayout, setTcLayout, onEdit, onPrint, onDownload,
+}, certificateRef) {
+  if (!selectedType) return null;
+  const cfg = CERT_CONFIG[selectedType];
+  const isTC = selectedType === 'TC';
+  const isHalfTc = isTC && tcLayout === 'A4_HALF';
+  const activePaper = getActivePaper(selectedType, tcLayout);
+  const downloadLabel = isTC
+    ? (tcLayout === 'A4_HALF' ? 'A4 Half' : 'Legal')
+    : 'Half A4';
+  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE & CONDUCT CERTIFICATE';
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const logoSource = resolveSchoolLogoSource(school);
+  const affiliationLine = school.affiliation?.trim() || '';
+  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+
+  return (
+    <Animated.View entering={FadeInDown.springify().damping(18)} style={cpStyles.wrap}>
+
+      <View style={cpStyles.paperBadgeRow}>
+        <View style={cpStyles.paperBadgeLeft}>
+          <View style={[cpStyles.paperBadge, { backgroundColor: `${cfg.gradFrom}18` }]}>
+            <Ionicons name="document-text-outline" size={12} color={cfg.gradFrom} />
+            <Text style={[cpStyles.paperBadgeText, { color: cfg.gradFrom }]}>{activePaper.label}</Text>
+          </View>
+          {isTC ? (
+            <View style={cpStyles.layoutToggle}>
+              <TouchableOpacity
+                style={[cpStyles.layoutPill, tcLayout === 'LEGAL' && cpStyles.layoutPillActive]}
+                onPress={() => setTcLayout('LEGAL')}
+                activeOpacity={0.85}
+              >
+                <Text style={[cpStyles.layoutPillText, tcLayout === 'LEGAL' && cpStyles.layoutPillTextActive]}>
+                  Legal (216×330)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[cpStyles.layoutPill, tcLayout === 'A4_HALF' && cpStyles.layoutPillActive]}
+                onPress={() => setTcLayout('A4_HALF')}
+                activeOpacity={0.85}
+              >
+                <Text style={[cpStyles.layoutPillText, tcLayout === 'A4_HALF' && cpStyles.layoutPillTextActive]}>
+                  A4 Half (Landscape)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+        <Text style={cpStyles.serialText}>No. {serialNo}</Text>
+      </View>
+
+      <View
+        ref={certificateRef}
+        collapsable={false}
+        nativeID="certificate-print-root"
+        {...webPrintRootProps}
+        style={[
+          cpStyles.paper,
+          isTC ? (isHalfTc ? cpStyles.tcHalfPaper : cpStyles.tcPaper) : cpStyles.bonafidePaper,
+        ]}
+      >
+        {isTC ? (
+          isHalfTc ? (
+            <>
+              <View style={cpStyles.watermarkWrap} pointerEvents="none" {...webWatermarkProps}>
+                <Image source={logoSource} style={cpStyles.watermarkImg} />
+              </View>
+              <View style={cpStyles.tcHalfHeaderRow}>
+                <Image source={logoSource} style={cpStyles.tcHalfLogo} />
+                <View style={cpStyles.tcHalfHeaderCenter}>
+                  <Text style={cpStyles.tcHalfSchoolName}>{school.name}</Text>
+                  {affiliationLine ? (
+                    <Text style={cpStyles.tcHalfAffiliation}>{affiliationLine}</Text>
+                  ) : null}
+                  {recognitionLine ? (
+                    <Text style={cpStyles.tcHalfAffiliation}>{recognitionLine}</Text>
+                  ) : null}
+                </View>
+              </View>
+              <View style={cpStyles.tcHalfTitleBlock}>
+                <Text style={cpStyles.tcHalfCertTitle}>{title}</Text>
+                <Text style={cpStyles.tcHalfRefNo}>Ref No: {serialNo}</Text>
+              </View>
+              <View style={cpStyles.tcHalfContainer}>
+                <View style={cpStyles.tcHalfHeaderMeta}>
+                  <Text style={cpStyles.tcHalfHeaderText}>CBSE Affiliation No. : {dot(tcFields.cbseAffiliationNo)}</Text>
+                  <Text style={cpStyles.tcHalfHeaderText}>School Code : {dot(tcFields.schoolCode)} · Scholar No. : {studentData.admissionNo}</Text>
+                </View>
+                {renderTcHalfItems(studentData, tcFields, today)}
+              </View>
+              {renderTcSignatures(today, true)}
+            </>
+          ) : (
+            <>
+              <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.topBar} />
+              <View style={cpStyles.watermarkWrap} pointerEvents="none" {...webWatermarkProps}>
+                <Image source={logoSource} style={cpStyles.watermarkImg} />
+              </View>
+              <View style={cpStyles.schoolHeader}>
+                <Image source={logoSource} style={cpStyles.logo} />
+                <Text style={cpStyles.schoolName}>{school.name}</Text>
+                <Text style={cpStyles.schoolAddr}>{school.address}</Text>
+                {affiliationLine ? (
+                  <Text style={cpStyles.affiliation}>{affiliationLine}</Text>
+                ) : null}
+                {recognitionLine ? (
+                  <Text style={cpStyles.affiliation}>{recognitionLine}</Text>
+                ) : null}
+                <View style={[cpStyles.dividerLine, { backgroundColor: cfg.gradFrom }]} />
+              </View>
+              <View style={cpStyles.titleBlock}>
+                <Text style={[cpStyles.certTitle, { color: cfg.gradFrom }]}>{title}</Text>
+                <Text style={cpStyles.refNo}>Ref No: {serialNo}</Text>
+              </View>
+              <View style={cpStyles.tcContainer}>
+                <View style={cpStyles.tcHeaderRow}>
+                  <Text style={cpStyles.tcHeaderText}>CBSE Affiliation No. : {dot(tcFields.cbseAffiliationNo)}</Text>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={cpStyles.tcHeaderText}>School Code : {dot(tcFields.schoolCode)}</Text>
+                    <Text style={cpStyles.tcHeaderText}>Scholar No. : {studentData.admissionNo}</Text>
+                  </View>
+                </View>
+                {renderTcLegalItems(studentData, tcFields, today)}
+              </View>
+              {renderTcSignatures(today)}
+              <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.bottomBar} />
+            </>
+          )
+        ) : (
+          <BonafideDocument studentData={studentData} school={school} issueDate={today} />
+        )}
+      </View>
+
+      <View style={cpStyles.actions}>
+        <TouchableOpacity style={cpStyles.editBtn} onPress={onEdit} activeOpacity={0.8}>
+          <Feather name="edit-2" size={16} color="#6B7280" />
+          <Text style={cpStyles.editBtnText}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={cpStyles.printBtn} onPress={onPrint} activeOpacity={0.8}>
+          <Feather name="printer" size={16} color="#374151" />
+          <Text style={cpStyles.printBtnText}>Print</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 2, borderRadius: 14, overflow: 'hidden' }} onPress={onDownload} activeOpacity={0.88}>
+          <LinearGradient colors={[cfg.gradFrom, cfg.gradTo]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cpStyles.downloadGrad}>
+            <Feather name="download" size={16} color="#FFF" />
+            <Text style={cpStyles.downloadText}>Download PDF ({downloadLabel})</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
 });
 
 // ─── Step Indicator ───────────────────────────────────────────────────────────
@@ -652,14 +1034,30 @@ function buildCertificateHTML(
   tcFields: TCEditableFields,
   type: CertificateType,
   serialNo: string,
+  logoDataUri: string,
+  school: SchoolProfile,
+  tcLayout: TcLayout = 'LEGAL',
 ): string {
   if (!type) return '';
   const cfg = CERT_CONFIG[type];
   const isTC = type === 'TC';
+  const isHalfTc = isTC && tcLayout === 'A4_HALF';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE CERTIFICATE';
+  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE & CONDUCT CERTIFICATE';
+  const logoImg = logoDataUri
+    ? `<img src="${logoDataUri}" alt="School logo" class="header-logo-img" />`
+    : '';
+  const pronouns = genderPronouns(studentData.genderId);
+  const affiliationLine = school.affiliation?.trim() || '';
+  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const escAddr = (school.address || '').replace(/\n/g, '<br/>');
 
-  const tcRows = isTC ? `
+  const tcItemHtml = (items: string[]) => items.map(item => `<div class="tc-half-item">${item.replace(/\n/g, '<br/>')}</div>`).join('');
+  const tcItems = buildTcItemTexts(studentData, tcFields, today);
+  const tcLeftCol = tcItemHtml(tcItems.slice(0, 12));
+  const tcRightCol = tcItemHtml(tcItems.slice(12));
+
+  const tcRowsLegal = `
     <div class="tc-header-row">
       <span>CBSE Affiliation No. : ${tcFields.cbseAffiliationNo || '—'}</span>
       <span>School Code : ${tcFields.schoolCode || '—'} &nbsp;&nbsp; Scholar No. : ${studentData.admissionNo}</span>
@@ -688,24 +1086,138 @@ function buildCertificateHTML(
       <li>Date of Issue : <strong>${today}</strong></li>
       <li>Reason for Leaving : ${tcFields.leavingReason || '……………'}</li>
       <li>Other Remarks : ${tcFields.otherRemarks || '……………'}</li>
-    </ol>` : `
-    <p class="body-text">This is to certify that <strong>${studentData.name}</strong>, ward of <strong>${studentData.fatherName}</strong>, bearing Admission No. <strong>${studentData.admissionNo}</strong>, is a bonafide student of this institution currently enrolled in class <strong>${studentData.class}</strong> during the academic year <strong>${studentData.academicYear}</strong>.</p>
-    <p class="body-text">Date of Birth: <strong>${studentData.dob}</strong>${studentData.dobWords !== 'N/A' ? ` (${studentData.dobWords})` : ''}. Nationality: <strong>${studentData.nationality}</strong>. Category: <strong>${studentData.category}</strong>.</p>
-    <p class="body-text">He/She bears a good moral character and is known for sincere academic conduct. This certificate is issued upon request and may be presented for any official or scholastic purpose.</p>`;
+    </ol>`;
 
-  // Paper: Eagle = 34cm × 21.5cm landscape; A5 = 14.85cm × 21cm portrait
+  const tcRowsHalf = `
+    <div class="tc-half-header">
+      ${logoImg}
+      <div class="tc-half-header-center">
+        <div class="tc-half-school-name">${school.name}</div>
+        ${affiliationLine ? `<div class="tc-half-affiliation">${affiliationLine}</div>` : ''}
+        ${recognitionLine ? `<div class="tc-half-affiliation">${recognitionLine}</div>` : ''}
+      </div>
+    </div>
+    <div class="tc-half-title-block">
+      <div class="tc-half-cert-title">${title}</div>
+      <div class="tc-half-ref-no">Ref No: ${serialNo}</div>
+    </div>
+    <div class="tc-half-meta">
+      <span>CBSE Affiliation No. : ${tcFields.cbseAffiliationNo || '—'}</span>
+      <span>School Code : ${tcFields.schoolCode || '—'} · Scholar No. : ${studentData.admissionNo}</span>
+    </div>
+    <div class="tc-grid">
+      <div class="tc-col">${tcLeftCol}</div>
+      <div class="tc-col">${tcRightCol}</div>
+    </div>`;
+
+  const bonafideBody = `
+    <div class="bf-outer"><div class="bf-inner">
+      <div class="bf-header">
+        ${logoImg}
+        <div class="bf-header-center">
+          <div class="bf-school-name">${school.name.toUpperCase()}</div>
+          ${recognitionLine ? `<div class="bf-school-recognition">${recognitionLine}</div>` : ''}
+          <div class="bf-school-addr">${escAddr}</div>
+          ${(school.phone || school.email) ? `<div class="bf-school-contact">${[school.phone ? `Tel: ${school.phone}` : '', school.email ? `Email: ${school.email}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
+        </div>
+      </div>
+      <div class="bf-title-box">${title}</div>
+      <div class="bf-meta">
+        <span>Admission No. <u>${line(studentData.admissionNo)}</u></span>
+        <span>Date <u>${line(today)}</u></span>
+      </div>
+      <div class="bf-body">
+        <p class="bf-line">This is to certify that ${studentData.genderLabel} <strong>${line(studentData.name)}</strong></p>
+        <p class="bf-line">S/o. D/o. Shri/Smt. <strong>${line(studentData.parentName)}</strong> is a Bonafide student of this Institution.</p>
+        <p class="bf-line">${pronouns.subject} is Studying from Class <strong>${line(studentData.fromClass)}</strong> Year <strong>${line(studentData.fromYear)}</strong> to Class <strong>${line(studentData.toClass)}</strong> Year <strong>${line(studentData.toYear)}</strong> during ${pronouns.possessive} study period. ${pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} Character is found Good.</p>
+        <p class="bf-line bf-line-dob">${pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} date of birth according to School Admission register is <strong>${line(studentData.dob)}</strong></p>
+        <p class="bf-dob-words">${line(studentData.dobWords)}</p>
+      </div>
+      <div class="bf-footer">
+        <span>Aadhar Card No. <strong>${line(studentData.aadharNo)}</strong></span>
+        <span>${school.principal}</span>
+      </div>
+    </div></div>`;
+
+  // Bonafide now prints on HALF an A4 sheet (A5 landscape: 210mm × 148.5mm).
   const pageSize = isTC
-    ? '@page { size: 34cm 21.5cm landscape; margin: 1.2cm; }'
-    : '@page { size: A5 portrait; margin: 1.2cm; }';
+    ? (isHalfTc
+      ? '@page { size: 210mm 148.5mm landscape; margin: 0; }'
+      : '@page { size: 216mm 330mm portrait; margin: 0; }')
+    : '@page { size: 210mm 148.5mm landscape; margin: 0; }';
+
+  const rootWidth = isTC ? (isHalfTc ? '210mm' : '216mm') : '210mm';
+  const rootHeight = isTC ? (isHalfTc ? '148.5mm' : '330mm') : '148.5mm';
+
+  const tcLegalBlock = `
+      <div class="top-bar"></div>
+      <div class="school-header">
+        ${logoImg}
+        <div class="school-name">${school.name}</div>
+        <div class="school-addr">${escAddr}</div>
+        ${affiliationLine ? `<div class="affiliation">${affiliationLine}</div>` : ''}
+        ${recognitionLine ? `<div class="affiliation">${recognitionLine}</div>` : ''}
+        <div class="divider"></div>
+      </div>
+      <div class="title-block">
+        <div class="cert-title">${title}</div>
+        <div class="ref-no">Ref No: ${serialNo}</div>
+      </div>
+      ${tcRowsLegal}
+      <div class="footer">
+        <div><div>Date: ${today}</div><div class="stamp-box">SCHOOL STAMP</div></div>
+        <div><div class="sig-line"></div><div>Class Teacher</div></div>
+        <div><div class="sig-line"></div><div>Principal</div></div>
+      </div>
+      <div class="bottom-bar"></div>`;
+
+  const tcHalfBlock = `
+      ${tcRowsHalf}
+      <div class="footer footer-compact">
+        <div><div>Date: ${today}</div><div class="stamp-box stamp-box-compact">SCHOOL STAMP</div></div>
+        <div><div class="sig-line"></div><div>Class Teacher</div></div>
+        <div><div class="sig-line"></div><div>Principal</div></div>
+      </div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
   <style>
     ${pageSize}
-    body { font-family: 'Times New Roman', serif; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body { width: 100%; height: 100%; }
+    body { font-family: 'Times New Roman', serif; margin: 0; padding: 0; position: relative; background: #FFFEF8; }
+    .certificate-print-root {
+      position: relative;
+      background: ${isTC ? '#FAFAFA' : '#FFFEF8'};
+      width: ${rootWidth};
+      height: ${rootHeight};
+      min-height: ${rootHeight};
+      overflow: hidden;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .certificate-watermark {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.07;
+    }
+    .certificate-watermark img {
+      width: 220px; height: 220px;
+      object-fit: contain;
+      opacity: 0.07;
+    }
+    .page-content { position: relative; z-index: 1; height: 100%; }
     .top-bar { height: 8px; background: linear-gradient(to right, ${cfg.gradFrom}, ${cfg.gradTo}); }
     .school-header { text-align: center; padding: 16px 20px 4px; }
+    .header-logo-img { width: 64px; height: 64px; object-fit: contain; margin-bottom: 8px; }
     .school-name { font-size: 20px; font-weight: 900; color: #0F172A; letter-spacing: 0.8px; }
-    .school-addr { font-size: 12px; color: #64748B; margin-top: 2px; }
+    .school-addr { font-size: 12px; color: #64748B; margin-top: 2px; white-space: pre-line; }
     .affiliation { font-size: 11px; color: #94A3B8; font-style: italic; }
     .divider { height: 1.5px; background: ${cfg.gradFrom}; width: 80%; margin: 12px auto; opacity: 0.4; }
     .title-block { text-align: center; padding: 12px; }
@@ -714,31 +1226,115 @@ function buildCertificateHTML(
     .tc-header-row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 12px; padding: 0 22px; }
     .tc-list { padding: 0 22px; margin: 0; font-size: 11px; line-height: 22px; color: #1E293B; }
     .tc-list li { margin-bottom: 3px; }
-    .body-text { padding: 0 22px; font-size: 13.5px; line-height: 24px; color: #1E293B; text-align: justify; margin: 0 0 12px; }
+    .tc-half-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px 2px; }
+    .tc-half-header .header-logo-img { width: 48px; height: 48px; margin-bottom: 0; }
+    .tc-half-header-center { flex: 1; }
+    .tc-half-school-name { font-size: 16px; font-weight: 900; color: #0F172A; letter-spacing: 0.4px; }
+    .tc-half-affiliation { font-size: 9px; color: #64748B; font-style: italic; margin-top: 1px; }
+    .tc-half-title-block { text-align: center; padding: 4px 14px 6px; }
+    .tc-half-cert-title { font-size: 14px; font-weight: 900; color: ${cfg.gradFrom}; letter-spacing: 1px; text-decoration: underline; }
+    .tc-half-ref-no { font-size: 9px; color: #94A3B8; margin-top: 2px; }
+    .tc-half-meta { display: flex; justify-content: space-between; font-size: 8px; font-weight: 700; color: #475569; padding: 0 14px 4px; }
+    .tc-grid { display: flex; padding: 0 10px; }
+    .tc-col { width: 50%; padding: 0 4px; }
+    .tc-half-item { font-size: 8px; line-height: 12px; color: #1E293B; margin-bottom: 2px; }
     .footer { display: flex; justify-content: space-between; padding: 16px 22px; border-top: 1px solid #F1F5F9; font-size: 11px; color: #475569; }
+    .footer-compact { padding: 6px 14px; font-size: 8px; }
     .sig-line { border-bottom: 1px solid #334155; width: 90px; margin-bottom: 4px; }
     .stamp-box { border: 1.5px dashed #CBD5E1; width: 70px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #94A3B8; font-weight: 700; letter-spacing: 0.5px; }
+    .stamp-box-compact { width: 52px; height: 28px; font-size: 7px; }
     .bottom-bar { height: 5px; background: linear-gradient(to right, ${cfg.gradFrom}, ${cfg.gradTo}); margin-top: 4px; }
+
+    /* ── Bonafide: HALF-A4 landscape, content fills the full sheet ───────── */
+    .bf-outer {
+      margin: 8mm;
+      border: 2px solid ${BONAFIDE_BLUE};
+      padding: 6px;
+      height: calc(148.5mm - 16mm);
+      background: #FFFEF8;
+    }
+    .bf-inner {
+      border: 1.5px solid ${BONAFIDE_BLUE};
+      padding: 8mm 12mm;
+      height: 100%;
+      position: relative;
+      background: #FFFEF8;
+      display: flex;
+      flex-direction: column;
+    }
+    .bf-header { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+    .bf-header-center { flex: 1; text-align: center; }
+    .bf-header .header-logo-img { width: 88px; height: 88px; object-fit: contain; margin-bottom: 0; }
+    .bf-school-name { font-size: 30px; font-weight: 900; color: ${BONAFIDE_BLUE}; letter-spacing: 0.8px; line-height: 1.15; }
+    .bf-school-recognition { font-size: 13px; color: ${BONAFIDE_BLUE}; margin-top: 4px; font-weight: 700; }
+    .bf-school-addr { font-size: 14px; color: ${BONAFIDE_BLUE}; margin-top: 5px; font-weight: 600; white-space: pre-line; line-height: 1.45; }
+    .bf-school-contact { font-size: 12.5px; color: ${BONAFIDE_BLUE}; margin-top: 4px; font-weight: 500; }
+    .bf-title-box { text-align: center; border: 1.5px solid ${BONAFIDE_BLUE}; border-radius: 4px; padding: 6px 18px; margin: 8px auto 20px; width: fit-content; font-size: 16px; font-weight: 800; color: ${BONAFIDE_BLUE}; letter-spacing: 0.8px; }
+    .bf-meta { display: flex; justify-content: space-between; font-size: 14px; color: ${BONAFIDE_BLUE}; font-weight: 600; margin: 8px 0 12px; }
+    .bf-body { }
+    .bf-line { font-size: 16px; line-height: 26px; color: ${BONAFIDE_BLUE}; margin: 0 0 10px; }
+    .bf-line-dob { margin-top: 14px; }
+    .bf-dob-words { font-size: 15px; color: ${BONAFIDE_BLUE}; font-weight: 700; text-decoration: underline; margin: 5px 0 12px; }
+    .bf-footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; padding-top: 8px; font-size: 14px; color: ${BONAFIDE_BLUE}; font-weight: 600; }
   </style></head><body>
-  <div class="top-bar"></div>
-  <div class="school-header">
-    <div class="school-name">${SCHOOL_CONFIG.name}</div>
-    <div class="school-addr">${SCHOOL_CONFIG.address || 'Madhapur, Hyderabad – 500081'}</div>
-    <div class="affiliation">Affiliated to CBSE, New Delhi · Affiliation No. ${tcFields.cbseAffiliationNo || SCHOOL_CONFIG.cbseAffiliationNo || '———'}</div>
-    <div class="divider"></div>
+  <div class="certificate-print-root">
+    ${logoDataUri ? `<div class="certificate-watermark"><img src="${logoDataUri}" alt="" /></div>` : ''}
+    <div class="page-content">
+      ${isTC ? (isHalfTc ? tcHalfBlock : tcLegalBlock) : bonafideBody}
+    </div>
   </div>
-  <div class="title-block">
-    <div class="cert-title">${title}</div>
-    <div class="ref-no">Ref No: ${serialNo}</div>
-  </div>
-  ${tcRows}
-  <div class="footer">
-    <div><div>Date: ${today}</div><div class="stamp-box">SCHOOL STAMP</div></div>
-    <div><div class="sig-line"></div><div>Class Teacher</div></div>
-    <div><div class="sig-line"></div><div>Principal</div></div>
-  </div>
-  <div class="bottom-bar"></div>
 </body></html>`;
+}
+
+function parentDisplayName(p: any): string {
+  if (p?.display_name?.trim()) return p.display_name.trim();
+  return `${p?.first_name || ''} ${p?.last_name || ''}`.trim();
+}
+
+function buildStudentDataFromRecord(
+  student: any,
+  parents: any[],
+  enrollments: any[],
+): StudentData {
+  const enrollment = student.current_enrollment;
+  const cls = enrollment?.class_name || enrollment?.class_code || '';
+  const sec = enrollment?.section_name || '';
+  const fatherObj = parents?.find((p: any) => /father/i.test(p.relationship || p.relation || ''));
+  const father = fatherObj ? parentDisplayName(fatherObj) : 'Guardian';
+  const motherObj = parents?.find((p: any) => /mother/i.test(p.relationship || p.relation || ''));
+  const mother = motherObj ? parentDisplayName(motherObj) : 'N/A';
+  const rawDob = student.dob || student.person?.dob || '';
+  const dobFormatted = rawDob ? new Date(rawDob).toLocaleDateString('en-IN') : 'N/A';
+
+  const sortedEnrollments = [...(enrollments || [])].sort(
+    (a: any, b: any) => new Date(a.start_date || 0).getTime() - new Date(b.start_date || 0).getTime(),
+  );
+  const firstEnroll = sortedEnrollments[0];
+  const lastEnroll = sortedEnrollments[sortedEnrollments.length - 1];
+
+  return {
+    id: student.id,
+    name: student.display_name || `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+    fatherName: father,
+    motherName: mother,
+    parentName: father !== 'Guardian' ? father : mother !== 'N/A' ? mother : 'Guardian',
+    genderId: student.gender_id ?? student.person?.gender_id ?? 0,
+    genderLabel: genderHonorific(student.gender_id ?? student.person?.gender_id),
+    class: sec ? `${cls} – ${sec}` : cls,
+    dob: dobFormatted,
+    dobWords: rawDob ? dobToWords(rawDob) : 'N/A',
+    admissionNo: student.admission_no,
+    academicYear: enrollment?.academic_year || '2025–2026',
+    fromClass: firstEnroll?.class_name || cls,
+    fromYear: firstEnroll?.academic_year || enrollment?.academic_year || 'N/A',
+    toClass: lastEnroll?.class_name || cls,
+    toYear: lastEnroll?.academic_year || enrollment?.academic_year || 'N/A',
+    aadharNo: '',
+    address: 'Hyderabad',
+    nationality: 'Indian',
+    category: student.category?.name || 'General',
+    admissionDate: student.admission_date ? new Date(student.admission_date).toLocaleDateString('en-IN') : 'N/A',
+  };
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -756,8 +1352,18 @@ export default function CertificateGenerator() {
   const [showEdit, setShowEdit] = useState(false);
   const [serialNo, setSerialNo] = useState('');
   const [saving, setSaving] = useState(false);
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(() => mapSchoolSettings({}));
+  const [tcLayout, setTcLayout] = useState<TcLayout>('LEGAL');
+  const certificateRef = useRef<View>(null);
 
   const step = generated ? 3 : studentData ? 2 : 1;
+
+  useEffect(() => {
+    injectCertificatePrintStyles();
+    SchoolSettingsService.getSettings()
+      .then(settings => setSchoolProfile(mapSchoolSettings(settings)))
+      .catch(() => { /* keep SCHOOL_CONFIG fallback */ });
+  }, []);
 
   // ── Fetch student ──────────────────────────────────────────────────────────
   const handleSearch = async () => {
@@ -771,47 +1377,31 @@ export default function CertificateGenerator() {
     setSelectedType(null);
     setTcFields(DEFAULT_TC_FIELDS);
     try {
-      let student: any = null;
-      const results = await StudentService.search(studentId);
+      const silent = { silent: true } as const;
+      let studentRecord: any = null;
+      const results = await StudentService.search(studentId.trim());
       if (results?.length > 0) {
-        const exact = results.find((s: any) => s.admission_no === studentId);
-        student = exact || results[0];
+        const exact = results.find((s: any) => s.admission_no === studentId.trim());
+        studentRecord = exact || results[0];
       }
-      if (!student) {
-        try { student = await StudentService.getById(studentId); } catch { /* noop */ }
+      if (!studentRecord) {
+        try {
+          studentRecord = await StudentService.getById(studentId.trim(), silent);
+        } catch { /* noop */ }
       }
-      if (!student) {
+      if (!studentRecord?.id) {
         alertCompat('Not Found', 'No student matched the given ID or Admission No.');
         return;
       }
 
-      const enrollment = student.current_enrollment;
-      const cls = enrollment?.class_code || '';
-      const sec = enrollment?.section_name || '';
-      const fatherObj = student.parents?.find((p: any) => p.relation === 'Father');
-      const father = fatherObj ? `${fatherObj.first_name} ${fatherObj.last_name}` : 'Guardian';
-      const motherObj = student.parents?.find((p: any) => p.relation === 'Mother');
-      const mother = motherObj ? `${motherObj.first_name} ${motherObj.last_name}` : 'N/A';
-      const rawDob = student.dob || '';
-      const dobFormatted = rawDob ? new Date(rawDob).toLocaleDateString('en-IN') : 'N/A';
+      const [parents, enrollments] = await Promise.all([
+        StudentService.getParents(studentRecord.id, silent).catch(() => [] as any[]),
+        StudentService.getEnrollments(studentRecord.id, silent).catch(() => [] as any[]),
+      ]);
 
-      setStudentData({
-        id: student.id,
-        name: student.display_name || `${student.first_name} ${student.last_name}`,
-        fatherName: father,
-        motherName: mother,
-        class: `${cls} – ${sec}`,
-        dob: dobFormatted,
-        dobWords: rawDob ? dobToWords(rawDob) : 'N/A',
-        admissionNo: student.admission_no,
-        academicYear: enrollment?.academic_year || '2025–2026',
-        address: student.address || 'Hyderabad',
-        nationality: student.nationality || 'Indian',
-        category: student.category?.name || 'General',
-        admissionDate: student.admission_date ? new Date(student.admission_date).toLocaleDateString('en-IN') : 'N/A',
-      });
-    } catch {
-      alertCompat('Error', 'Could not fetch student data. Please try again.');
+      setStudentData(buildStudentDataFromRecord(studentRecord, parents, enrollments));
+    } catch (err: any) {
+      alertCompat('Error', err?.message || 'Could not fetch student data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -822,6 +1412,25 @@ export default function CertificateGenerator() {
     if (!studentData) return;
     setLoading(true);
     try {
+      if (type === 'TC') {
+        try {
+          const outstanding = await FeeService.getStudentOutstandingBalance(studentData.id);
+          if (outstanding > 0) {
+            alertCompat(
+              'Fee Dues Pending',
+              `${studentData.name} has outstanding fee dues of ${formatInr(outstanding)}.\n\nClear all dues in Accounts before issuing a Transfer Certificate.`
+            );
+            return;
+          }
+        } catch {
+          alertCompat(
+            'Could Not Verify Fees',
+            'Unable to confirm whether this student has pending dues. Please check the fee ledger before issuing a Transfer Certificate.'
+          );
+          return;
+        }
+      }
+
       // Fetch serial number from DB (falls back to local if service unavailable)
       let serial = '';
       try {
@@ -845,23 +1454,63 @@ export default function CertificateGenerator() {
     setShowEdit(false);
   }, []);
 
-  // ── Download PDF via expo-print ────────────────────────────────────────────
-  const handleDownload = async () => {
+  // ── Print certificate ──────────────────────────────────────────────────────
+  const handlePrint = async () => {
     if (!studentData || !selectedType) return;
-    const cfg = CERT_CONFIG[selectedType];
+    const paper = getActivePaper(selectedType, tcLayout);
+    const pdfFormat = getPdfFormat(selectedType, tcLayout);
     try {
-      // Dynamically import expo-print to keep bundle lean
+      if (Platform.OS === 'web') {
+        const element = resolveCertificateElement(certificateRef);
+        await printCertificateElement(element, pdfFormat);
+        return;
+      }
+
+      const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
+      const html = buildCertificateHTML(studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout);
       const Print = await import('expo-print');
-      const html = buildCertificateHTML(studentData, tcFields, selectedType, serialNo);
       await Print.printAsync({
         html,
-        // expo-print uses points; 1pt = 1/72"
-        // Eagle: 34cm × 21.5cm landscape
-        // A5:    148.5mm × 210mm portrait
-        // (expo-print ignores these fields on some platforms, but the @page CSS above handles actual layout)
-        width: cfg.paper.widthPt,
-        height: cfg.paper.heightPt,
+        width: paper.widthPt,
+        height: paper.heightPt,
       });
+    } catch (err: any) {
+      alertCompat('Print Error', err?.message || 'Could not print certificate.');
+    }
+  };
+
+  // ── Download PDF (html2canvas + jsPDF on web; expo-print file on native) ───
+  const handleDownload = async () => {
+    if (!studentData || !selectedType) return;
+    const paper = getActivePaper(selectedType, tcLayout);
+    const pdfFormat = getPdfFormat(selectedType, tcLayout);
+    const safeName = studentData.name.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_') || 'student';
+    const fileName = `certificate_${safeName}_${serialNo.replace(/\//g, '-')}.pdf`;
+
+    try {
+      if (Platform.OS === 'web') {
+        const element = resolveCertificateElement(certificateRef);
+        await downloadCertificatePdf(element, pdfFormat, fileName);
+      } else {
+        const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
+        const html = buildCertificateHTML(studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout);
+        const Print = await import('expo-print');
+        const { uri } = await Print.printToFileAsync({
+          html,
+          width: paper.widthPt,
+          height: paper.heightPt,
+        });
+        const Sharing = await import('expo-sharing');
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: fileName,
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          alertCompat('PDF Saved', `Certificate saved to:\n${uri}`);
+        }
+      }
 
       // Save issued record to DB
       setSaving(true);
@@ -876,7 +1525,7 @@ export default function CertificateGenerator() {
       } catch { /* non-blocking */ }
       setSaving(false);
     } catch (err: any) {
-      alertCompat('Export Failed', err?.message || 'Could not generate PDF. Ensure expo-print is installed.');
+      alertCompat('Export Failed', err?.message || 'Could not generate PDF.');
     }
   };
 
@@ -887,6 +1536,7 @@ export default function CertificateGenerator() {
     setStudentId('');
     setTcFields(DEFAULT_TC_FIELDS);
     setSerialNo('');
+    setTcLayout('LEGAL');
   };
 
   return (
@@ -983,11 +1633,16 @@ export default function CertificateGenerator() {
               {saving && <ActivityIndicator size="small" color="#4F46E5" style={{ marginLeft: 8 }} />}
             </View>
             <CertificatePreview
+              ref={certificateRef}
               studentData={studentData}
               tcFields={tcFields}
               selectedType={selectedType}
               serialNo={serialNo}
+              school={schoolProfile}
+              tcLayout={tcLayout}
+              setTcLayout={setTcLayout}
               onEdit={() => setShowEdit(true)}
+              onPrint={handlePrint}
               onDownload={handleDownload}
             />
             <TouchableOpacity style={[styles.resetLink, { marginTop: 8 }]} onPress={handleReset}>
@@ -1086,4 +1741,11 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
  *     ELSE n := nextval('bonafide_seq'); END IF;
  *     RETURN cert_type || '/' || cert_year || '/' || LPAD(n::text, 3, '0');
  *   END; $$;
+ *
+ * ─── WEB EXPORT NOTE (certificatePrint.ts) ───────────────────────────────────
+ * On web, Print/Download go through printCertificateElement()/downloadCertificatePdf()
+ * with pdfFormat 'BONAFIDE'. That file is NOT in this component. For the half-A4
+ * fix to also apply on web, the 'BONAFIDE' branch there MUST set the jsPDF/print
+ * page to A5 landscape (210 × 148.5 mm), and ideally use html2canvas scale: 3 for
+ * crisp output. Native (expo-print) is already fully handled here.
  */

@@ -8,14 +8,26 @@ import { Theme } from '../../src/theme/themes';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInUp, useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { FeeService } from '../../src/services/feeService';
+import { useAuth } from '../../src/hooks/useAuth';
 import LogoLoader from '../../src/components/LogoLoader';
+
+type FinanceStats = {
+  today_collection: number;
+  monthly_collection: number;
+  collected_total: number;
+  pending_dues: number;
+  defaulter_count: number;
+  recent_transactions?: any[];
+};
 
 export default function AdminFinanceScreen() {
   const { theme, isDark } = useTheme();
+  const { authChecked } = useAuth();
   const styles = useMemo(() => getStyles(theme), [theme]);
   const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [stats, setStats] = useState<any>({
     expected_total: 0,
@@ -36,17 +48,49 @@ export default function AdminFinanceScreen() {
     }
   });
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [dashboardStats, recentTx] = await Promise.all([
-        FeeService.getDashboardStats(),
-        FeeService.getRecentTransactions(10)]
-      );
-      setStats(dashboardStats);
-      setTransactions(recentTx || []);
-    } catch (error) {
+  const applyFinanceData = (data: FinanceStats) => {
+    setStats({
+      today_collection: data.today_collection ?? 0,
+      monthly_collection: data.monthly_collection ?? 0,
+      collected_total: data.collected_total ?? 0,
+      pending_dues: data.pending_dues ?? 0,
+      defaulter_count: data.defaulter_count ?? 0,
+    });
+    setTransactions(Array.isArray(data.recent_transactions) ? data.recent_transactions : []);
+  };
 
+  const fetchData = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const financeStats = await FeeService.getAdminFinanceStats();
+      applyFinanceData(financeStats);
+    } catch (primaryError: any) {
+      console.warn('Primary finance-stats failed, trying fallback:', primaryError?.message);
+      try {
+        const [statsRes, txRes] = await Promise.allSettled([
+          FeeService.getDashboardStats(),
+          FeeService.getRecentTransactions(10),
+        ]);
+        if (statsRes.status === 'rejected' && txRes.status === 'rejected') {
+          throw primaryError;
+        }
+        const raw = statsRes.status === 'fulfilled' ? (statsRes.value?.stats ?? statsRes.value ?? {}) : {};
+        const txList = txRes.status === 'fulfilled'
+          ? (Array.isArray(txRes.value) ? txRes.value : (txRes.value as any)?.data ?? [])
+          : [];
+        applyFinanceData({
+          today_collection: raw.todays_collection ?? 0,
+          monthly_collection: raw.total_collection_month ?? 0,
+          collected_total: raw.collected_total ?? 0,
+          pending_dues: raw.pending_dues ?? 0,
+          defaulter_count: raw.defaulter_count ?? 0,
+          recent_transactions: txList,
+        });
+      } catch (fallbackError: any) {
+        console.error('Failed to load admin finance data:', fallbackError);
+        setLoadError(fallbackError?.message || 'Failed to load finance data');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -54,8 +98,9 @@ export default function AdminFinanceScreen() {
   };
 
   useEffect(() => {
+    if (!authChecked) return;
     fetchData();
-  }, []);
+  }, [authChecked]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -125,6 +170,17 @@ export default function AdminFinanceScreen() {
               <LogoLoader size={30} />
             </View>
           }
+          {loadError && (
+            <TouchableOpacity
+              onPress={fetchData}
+              style={[styles.errorBanner, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="warning-outline" size={18} color="#DC2626" />
+              <Text style={styles.errorBannerText}>{loadError}</Text>
+              <Text style={styles.retryText}>Tap to retry</Text>
+            </TouchableOpacity>
+          )}
           {/* Hero Stats */}
           <Animated.View entering={FadeInUp.delay(0).springify()} style={styles.heroCard}>
             <Text style={styles.heroTitle}>Today's Collection</Text>
@@ -237,6 +293,27 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     padding: 20,
     paddingTop: 100,
     paddingBottom: 40
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#991B1B',
+    lineHeight: 17,
+  },
+  retryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7C3AED',
   },
   heroCard: {
     backgroundColor: theme.colors.primary,

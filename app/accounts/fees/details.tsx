@@ -75,11 +75,10 @@ const progressStyles = {
 // ─── Fee Card ─────────────────────────────────────────────────────────────────
 function FeeCard({
   fee, index, isDark, theme,
-  onPayment, onAdjustment,
+  onPayment,
 }: {
   fee: StudentFee; index: number; isDark: boolean; theme: Theme;
   onPayment: (f: StudentFee) => void;
-  onAdjustment: (f: StudentFee) => void;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const isPaid = fee.status === 'paid';
@@ -164,14 +163,6 @@ function FeeCard({
             disabled={isPaid}
             isDark={isDark}
             onPress={() => onPayment(fee)}
-          />
-          <ActionBtn
-            icon="cut-outline"
-            label="Adjustment"
-            color="#6366F1"
-            disabled={false}
-            isDark={isDark}
-            onPress={() => onAdjustment(fee)}
           />
         </View>
       </View>
@@ -306,18 +297,14 @@ export default function StudentFeeLedger() {
         feeId: fee.id, studentId,
         name: studentName,
         admissionNo: feeData?.student.admission_no,
+        className: feeData?.student.class_name,
+        sectionName: feeData?.student.section_name,
         feeType: fee.fee_type,
         due: (fee.amount_due - fee.discount - fee.amount_paid).toString(),
       },
     });
   };
 
-  const handleAdjustment = (fee: StudentFee) => {
-    router.push({
-      pathname: '/accounts/fees/adjust' as any,
-      params: { feeId: fee.id, studentId, name: studentName, feeType: fee.fee_type },
-    });
-  };
 
   if (loading) {
     return (
@@ -421,7 +408,6 @@ export default function StudentFeeLedger() {
             isDark={isDark}
             theme={theme}
             onPayment={handlePayment}
-            onAdjustment={handleAdjustment}
           />
         ))}
 

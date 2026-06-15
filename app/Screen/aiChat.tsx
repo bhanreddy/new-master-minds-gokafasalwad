@@ -185,7 +185,11 @@ export default function AIChatScreen() {
   return (
     <ScreenLayout>
       <StudentHeader showBackButton={true} title="AI Assistant" />
-      <View style={styles.container}>
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 85}
+      >
         {/* TOOLBAR */}
         <View style={styles.toolbar}>
           <View style={styles.modelBadge}>
@@ -209,11 +213,7 @@ export default function AIChatScreen() {
           keyboardShouldPersistTaps="handled" />
 
         {/* INPUT AREA */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
-
-          <View style={styles.inputWrapper}>
+        <View style={styles.inputWrapper}>
             <View style={[styles.inputContainer, ds.searchBarWrapper]}>
               <AppTextInput
                 placeholder="Ask a doubt..."
@@ -236,8 +236,7 @@ export default function AIChatScreen() {
             </View>
             <Text style={styles.disclaimer}>AI can make mistakes. Check important info.</Text>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+      </KeyboardAvoidingView>
     </ScreenLayout>);
 
 }

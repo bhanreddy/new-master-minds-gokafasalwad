@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
 import { useRequireRole } from '../../src/hooks/useRequireRole';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { AccountsWebChromeProvider } from '../../src/contexts/AccountsWebChromeContext';
 import AdminHeader from '../../src/components/AdminHeader';
 import AccountsWebSidebar from '../../src/components/AccountsWebSidebar';

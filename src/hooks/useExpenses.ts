@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 // User asked to use Supabase JS SDK. Let's use supabaseConfig.
 import { api } from '../services/apiClient';
 import { supabase } from '../services/supabaseConfig';
@@ -9,20 +9,31 @@ export function useExpenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFetchOptions = useRef<{ accountsScope?: boolean }>({});
 
-  const fetchExpenses = useCallback(async (searchQuery: string = '') => {
+  const fetchExpenses = useCallback(async (
+    searchQuery: string = '',
+    options?: { accountsScope?: boolean }
+  ) => {
+    lastFetchOptions.current = options ?? {};
     setLoading(true);
     setError(null);
     try {
-      // RLS handles visibility. We just select * 
+      if (options?.accountsScope) {
+        const params: Record<string, string> = { scope: 'accounts' };
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+        const data = await api.get<Expense[] | { data: Expense[] }>('/expenses', params);
+        setExpenses(Array.isArray(data) ? data : (data?.data ?? []));
+        return;
+      }
 
-      let query = supabase.
-        from('expenses').
-        select('*').
-        order('expense_date', { ascending: false });
+      // Admin / general list — RLS handles visibility via Supabase
+      let query = supabase
+        .from('expenses')
+        .select('*')
+        .order('expense_date', { ascending: false });
 
       if (searchQuery) {
-        // ILIKE search on title or category
         query = query.or(`title.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%`);
       }
 
@@ -45,7 +56,7 @@ export function useExpenses() {
       await api.post('/expenses', expenseData);
 
       // Refresh
-      await fetchExpenses();
+      await fetchExpenses('', lastFetchOptions.current);
       return true;
     } catch (err: any) {
       return false;

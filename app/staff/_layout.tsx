@@ -3,7 +3,7 @@ import type { MaterialTopTabNavigationOptions } from '@react-navigation/material
 import { MaterialTopTabs } from '../../src/layouts/MaterialTopTabs';
 import StaffFooter from '../../src/components/StaffFooter';
 import { useRequireRole } from '../../src/hooks/useRequireRole';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 
 /** Tab options plus parent native-stack fields React Navigation merges upward (e.g. headerShown). */
 type StaffTabScreenOptions = MaterialTopTabNavigationOptions & {

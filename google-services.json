@@ -7,9 +7,104 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:16bb6874d1d1a719f6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.chaitanyavidyanikethan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:f54a5384f8fe5705f6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.geetanjalihighschool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:09b15ccf89dfe9b4f6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.samskrutheschool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:50612038206:android:75898876293f2adaf6ff6f",
         "android_client_info": {
           "package_name": "com.nexsyrussims.slateschool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:3d55116f0d92316ff6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.theglobalschoolravulpally"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:7f3c84c93177d6c9f6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.vikasmodelschool"
         }
       },
       "oauth_client": [],

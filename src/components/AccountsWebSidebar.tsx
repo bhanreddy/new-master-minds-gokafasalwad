@@ -162,8 +162,10 @@ export default function AccountsWebSidebar({
     console.debug('[AccountsWebSidebar] onLogout start');
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      await AsyncStorage.removeItem('accounts_auto_login');
       await signOut();
-      router.replace('/accounts-login' as any);
+      router.replace('/welcome');
       console.debug('[AccountsWebSidebar] onLogout end');
     } catch (e) {
       console.error('Button action failed:', e);

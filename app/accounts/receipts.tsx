@@ -64,7 +64,8 @@ export default function ReceiptsScreen() {
           month: 'short'
         }),
         type: tx.payment_method,
-        class: tx.fee_type,
+        classLabel: [tx.class_name, tx.section_name].filter(Boolean).join(' — ') || '—',
+        feeType: tx.fee_type,
         raw: tx
       }));
       setReceipts(formatted);
@@ -123,7 +124,7 @@ export default function ReceiptsScreen() {
           flex: 1
         }}>
           <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
-          <Text style={styles.receiptDetails}>{item.admission_no} • {item.class}</Text>
+          <Text style={styles.receiptDetails}>{item.admission_no} • {item.classLabel}</Text>
         </View>
       </View>
       <View style={[styles.receiptRight, {

@@ -6,6 +6,8 @@ interface ResponsiveCardProps {
     style?: StyleProp<ViewStyle>;
     contentContainerStyle?: StyleProp<ViewStyle>;
     maxWidth?: number;
+    /** When true, content stretches to the full available width instead of staying centered. */
+    fullWidth?: boolean;
 }
 
 /**
@@ -16,13 +18,15 @@ export const ResponsiveCard: React.FC<ResponsiveCardProps> = ({
     children,
     style,
     contentContainerStyle,
-    maxWidth = 800 // Default max-width for optimal reading/viewing
+    maxWidth = 800,
+    fullWidth = false,
 }) => {
     return (
-        <View style={[styles.outerContainer, style]}>
+        <View style={[styles.outerContainer, fullWidth && styles.outerContainerFull, style]}>
             <View style={[
                 styles.innerCard,
                 { maxWidth },
+                fullWidth && styles.innerCardFull,
                 contentContainerStyle
             ]}>
                 {children}
@@ -34,15 +38,19 @@ export const ResponsiveCard: React.FC<ResponsiveCardProps> = ({
 const styles = StyleSheet.create({
     outerContainer: {
         width: '100%',
-        alignItems: 'center', // Centers the card within the parent full width
+        alignItems: 'center',
         justifyContent: 'center',
+    },
+    outerContainerFull: {
+        alignItems: 'stretch',
     },
     innerCard: {
         width: '100%',
-        alignSelf: 'center', // Safeguard for center alignment
-        // We defer borderRadius, padding, and backgroundColor to the specific implementation via contentContainerStyle
-        // to keep this component strictly for layout constraints.
+        alignSelf: 'center',
         overflow: 'hidden',
+    },
+    innerCardFull: {
+        alignSelf: 'stretch',
     },
 });
 

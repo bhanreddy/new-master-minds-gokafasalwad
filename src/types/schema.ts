@@ -123,6 +123,7 @@ export interface Student {
     id: string; // UUID
     person_id: string;
     admission_no: string;
+    pen_number?: string | null;
     admission_date: string; // ISO date
     category_id?: number | null;
     religion_id?: number | null;

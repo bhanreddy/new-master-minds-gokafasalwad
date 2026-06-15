@@ -1,44 +1,52 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
-import { useTheme } from '../../src/hooks/useTheme';
-const projects = [{
-  title: 'Magnetic Levitation',
-  query: 'Magnetic Levitation science project DIY'
-}, {
-  title: 'Simple Electric Circuit',
-  query: 'Simple Electric Circuit project for students'
-}, {
-  title: 'Volcano Eruption',
-  query: 'Volcano Eruption science experiment'
-}, {
-  title: 'Invisible Ink',
-  query: 'Invisible Ink lemon juice experiment'
-}, {
-  title: 'Mini Water Purifier',
-  query: 'Homemade Water Purifier science project'
-}, {
-  title: 'Solar Oven',
-  query: 'DIY Solar Oven box project'
-}, {
-  title: 'Homemade Slime',
-  query: 'Science behind slime experiment'
-}];
+import { api } from '../../src/services/apiClient';
+
+type ScienceProject = {
+  id: string;
+  title: string;
+  description?: string | null;
+  difficulty_level?: string | null;
+  materials_required?: string[] | null;
+  safety_instructions?: string | null;
+  content_url?: string | null;
+};
+
 const ScienceProjectsScreen = () => {
-  const {
-    theme,
-    isDark
-  } = useTheme();
   const styles = React.useMemo(() => getStyles(), []);
   const router = useRouter();
-  const handlePress = (item: {
-    title: string;
-    query: string;
-  }) => {
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(item.query)}`;
+  const [projects, setProjects] = React.useState<ScienceProject[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadProjects = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await api.get<ScienceProject[]>('/content/science-projects');
+        if (mounted) setProjects(data || []);
+      } catch (err: any) {
+        if (mounted) setError(err?.message || 'Failed to load science projects');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadProjects();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handlePress = (item: ScienceProject) => {
+    const searchUrl = item.content_url || `https://www.google.com/search?q=${encodeURIComponent(`${item.title} science project`)}`;
     router.push({
       pathname: '/Screen/webView',
       params: {
@@ -66,8 +74,15 @@ const ScienceProjectsScreen = () => {
                     Project List & Certification
                 </Text>
 
-                {projects.map((project, index) => {
-return <TouchableOpacity key={index} activeOpacity={0.9} onPress={() => handlePress(project)}>
+                {loading ? <View style={styles.stateContainer}>
+                    <ActivityIndicator color="#2e7d32" />
+                    <Text style={styles.stateText}>Loading science projects...</Text>
+                </View> : error ? <View style={styles.stateContainer}>
+                    <Text style={styles.stateText}>{error}</Text>
+                </View> : projects.length === 0 ? <View style={styles.stateContainer}>
+                    <Text style={styles.stateText}>No science projects uploaded yet.</Text>
+                </View> : projects.map((project) => {
+ return <TouchableOpacity key={project.id} activeOpacity={0.9} onPress={() => handlePress(project)}>
                         <LinearGradient colors={['#e8f5e9', '#c8e6c9']} // Green-ish for science
           start={{
             x: 0,
@@ -80,7 +95,11 @@ return <TouchableOpacity key={index} activeOpacity={0.9} onPress={() => handlePr
                                 <View style={styles.iconCircle}>
                                     <Text style={styles.icon}>🧪</Text>
                                 </View>
-                                <Text style={styles.projectText}>{project.title}</Text>
+                                <View style={styles.projectInfo}>
+                                    <Text style={styles.projectText}>{project.title}</Text>
+                                    {!!project.description && <Text style={styles.projectDescription} numberOfLines={2}>{project.description}</Text>}
+                                    {!!project.difficulty_level && <Text style={styles.difficulty}>{project.difficulty_level.toUpperCase()}</Text>}
+                                </View>
                             </View>
 
                             <View style={styles.arrowContainer}>
@@ -134,6 +153,18 @@ const getStyles = () => StyleSheet.create({
     marginBottom: 16,
     marginLeft: 4
   },
+  stateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30
+  },
+  stateText: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#558b2f',
+    textAlign: 'center'
+  },
   projectCard: {
     borderRadius: 20,
     paddingVertical: 18,
@@ -155,7 +186,8 @@ const getStyles = () => StyleSheet.create({
   },
   left: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    flex: 1
   },
   iconCircle: {
     width: 44,
@@ -173,6 +205,22 @@ const getStyles = () => StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1b5e20'
+  },
+  projectInfo: {
+    flex: 1
+  },
+  projectDescription: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#33691e'
+  },
+  difficulty: {
+    marginTop: 6,
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2e7d32',
+    letterSpacing: 0.5
   },
   arrowContainer: {
     width: 30,

@@ -11,9 +11,13 @@ import {
   Dimensions,
   ActivityIndicator,
   Animated as RNAnimated,
-  RefreshControl as RNRefreshControl
+  RefreshControl as RNRefreshControl,
+  Platform,
+  Share,
 } from 'react-native';
+import * as Print from 'expo-print';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import { copyToClipboard } from '../../src/utils/copyToClipboard';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -31,6 +35,8 @@ import Animated, {
   Extrapolate,
 } from 'react-native-reanimated';
 import { AdminService, StudentRiskProfile, HeatmapData } from '../../src/services/adminService';
+import { StudentService } from '../../src/services/studentService';
+import type { Student } from '../../src/types/models';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -60,6 +66,13 @@ const getRiskConfig = (level: RiskLevel) => COLORS[level.toLowerCase() as 'safe'
 
 const getInitials = (name: string) =>
   name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 // ─── Animated Progress Bar ────────────────────────────────────────────────────
 
@@ -284,16 +297,48 @@ const cardStyles = StyleSheet.create({
 export default function SmartInsights() {
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('RISK');
-  const [searchId, setSearchId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string; admissionNo: string } | null>(null);
   const [generatedPoints, setGeneratedPoints] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [riskData, setRiskData] = useState<StudentRiskProfile[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
+  const [searchResults, setSearchResults] = useState<Student[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef<any>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'TALKING_POINTS') return;
+
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    searchTimer.current = setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        const results = await StudentService.search(q);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, [searchQuery, activeTab]);
 
   const loadData = async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
@@ -314,37 +359,192 @@ export default function SmartInsights() {
   const safeStudents = useMemo(() => riskData.filter(s => s.riskLevel === 'SAFE'), [riskData]);
   const total = riskData.length;
 
-  const handleStudentPress = async (studentId: string, name?: string) => {
-    setSearchId(studentId);
-    setGeneratedPoints(null); // Clear previous
-    setActiveTab('TALKING_POINTS');
+  const formatStudentName = (student: Student) =>
+    student.display_name || `${student.first_name} ${student.last_name}`.trim();
 
-    // Automatically trigger generation for a better UX
+  const fetchTalkingPoints = async (
+    student: { id: string; name: string; admissionNo: string },
+    queryLabel?: string,
+  ) => {
+    setSelectedStudent(student);
+    if (queryLabel !== undefined) setSearchQuery(queryLabel);
+    setSearchResults([]);
+    setGeneratedPoints(null);
+    const points = await AdminService.generateTalkingPoints(student.id);
+    setGeneratedPoints(points);
+  };
+
+  const selectStudentAndGenerate = async (student: Student) => {
+    const name = formatStudentName(student);
     setGenerating(true);
     try {
-      const points = await AdminService.generateTalkingPoints(studentId);
-      setGeneratedPoints(points);
+      await fetchTalkingPoints(
+        { id: student.id, name, admissionNo: student.admission_no },
+        `${name} · #${student.admission_no}`,
+      );
     } catch {
-      // Silence error here, user can manually trigger if needed
+      alertCompat('Error', 'Failed to generate talking points.');
+      setGeneratedPoints(null);
+      setSelectedStudent(null);
     } finally {
       setGenerating(false);
     }
   };
 
+  const handleStudentPress = async (studentId: string, name?: string) => {
+    setActiveTab('TALKING_POINTS');
+    setGenerating(true);
+    try {
+      await fetchTalkingPoints(
+        { id: studentId, name: name || studentId, admissionNo: '' },
+        name || studentId,
+      );
+    } catch {
+      // Risk list already validated the student; allow manual retry from search.
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    if (generatedPoints || selectedStudent) {
+      setGeneratedPoints(null);
+      setSelectedStudent(null);
+    }
+  };
+
   const handleGeneratePoints = async () => {
-    if (!searchId) {
-      alertCompat('Enter ID', 'Please enter a valid student ID.');
+    const query = searchQuery.trim();
+    if (!query) {
+      alertCompat('Enter Student', 'Please enter a student name, ID, or admission number.');
       return;
     }
     setGenerating(true);
     try {
-      const points = await AdminService.generateTalkingPoints(searchId);
-      setGeneratedPoints(points);
-    } catch {
-      alertCompat('Not Found', 'Student ID not found or analysis failed.');
+      const resolution = await StudentService.resolveSearchQuery(query);
+      if (resolution.status === 'found') {
+        const student = resolution.student;
+        await fetchTalkingPoints(
+          {
+            id: student.id,
+            name: formatStudentName(student),
+            admissionNo: student.admission_no,
+          },
+          `${formatStudentName(student)} · #${student.admission_no}`,
+        );
+        return;
+      }
+      if (resolution.status === 'ambiguous') {
+        setSearchResults(resolution.students);
+        alertCompat(
+          'Multiple Matches',
+          'Several students match that search. Please select the correct one from the list.',
+        );
+        return;
+      }
+      alertCompat('Not Found', 'No student matched that name, ID, or admission number.');
       setGeneratedPoints(null);
+      setSelectedStudent(null);
+      setSearchResults([]);
+    } catch {
+      alertCompat('Not Found', 'Student not found or analysis failed.');
+      setGeneratedPoints(null);
+      setSelectedStudent(null);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const getInsightsTitle = () =>
+    generatedPoints?.[0]?.startsWith('[Rule-based') ? 'Basic Summary' : 'AI Performance Insights';
+
+  const getInsightsStudentLabel = () =>
+    selectedStudent
+      ? `${selectedStudent.name}${selectedStudent.admissionNo ? ` · #${selectedStudent.admissionNo}` : ''}`
+      : searchQuery;
+
+  const getInsightsText = () => {
+    if (!generatedPoints) return '';
+    const points = generatedPoints.map((point, index) => `${index + 1}. ${point}`).join('\n\n');
+    return `${getInsightsTitle()}\n${getInsightsStudentLabel()}\n\n${points}`;
+  };
+
+  const buildInsightsPrintHtml = () => {
+    if (!generatedPoints) return '';
+    const points = generatedPoints
+      .map((point, index) => `<li>${escapeHtml(point)}</li>`)
+      .join('');
+    return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(getInsightsTitle())}</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; color: #0f172a; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      .sub { color: #64748b; margin-bottom: 24px; }
+      ol { padding-left: 20px; }
+      li { margin-bottom: 12px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(getInsightsTitle())}</h1>
+    <div class="sub">${escapeHtml(getInsightsStudentLabel())}</div>
+    <ol>${points}</ol>
+  </body>
+</html>`;
+  };
+
+  const handleCopyAll = () => {
+    if (!generatedPoints) return;
+    const text = getInsightsText();
+    if (!text) {
+      alertCompat('Error', 'No insights to copy.');
+      return;
+    }
+    void copyToClipboard(text).then((copied) => {
+      if (copied) {
+        alertCompat('Copied', 'Insights copied to clipboard');
+        return;
+      }
+      alertCompat('Error', 'Could not copy insights to clipboard.');
+    }).catch(() => {
+      alertCompat('Error', 'Could not copy insights to clipboard.');
+    });
+  };
+
+  const handleShareInsights = async () => {
+    if (!generatedPoints) return;
+    const text = getInsightsText();
+    const title = getInsightsTitle();
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title, text });
+        return;
+      }
+      await Share.share({ title, message: text });
+    } catch (error) {
+      if ((error as Error)?.name === 'AbortError') return;
+      try {
+        const copied = await copyToClipboard(text);
+        if (copied) {
+          alertCompat('Copied', 'Share is unavailable here. Insights copied to clipboard instead.');
+          return;
+        }
+      } catch {
+        // Fall through to the generic error below.
+      }
+      alertCompat('Error', 'Could not share insights.');
+    }
+  };
+
+  const handlePrintInsights = async () => {
+    if (!generatedPoints) return;
+    try {
+      await Print.printAsync({ html: buildInsightsPrintHtml() });
+    } catch {
+      alertCompat('Error', 'Could not open the print dialog.');
     }
   };
 
@@ -433,11 +633,14 @@ export default function SmartInsights() {
           <AppTextInput
             ref={inputRef}
             style={[ds.inputInChrome, tpStyles.searchInput]}
-            placeholder="Student ID  (e.g. 103)"
+            placeholder="Name, ID, or admission no. (e.g. Bharath)"
             placeholderTextColor={COLORS.textMuted}
-            value={searchId}
-            onChangeText={setSearchId}
-            keyboardType="number-pad"
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            onSubmitEditing={handleGeneratePoints}
+            returnKeyType="search"
+            autoCapitalize="words"
+            autoCorrect={false}
           />
           <TouchableOpacity
             style={[tpStyles.generateBtn, generating && { opacity: 0.7 }]}
@@ -455,6 +658,35 @@ export default function SmartInsights() {
             }
           </TouchableOpacity>
         </View>
+
+        {isSearching && (
+          <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 10 }} />
+        )}
+
+        {searchResults.length > 0 && !generating && (
+          <View style={tpStyles.suggestList}>
+            {searchResults.map((student, index) => (
+              <TouchableOpacity
+                key={student.id}
+                style={[
+                  tpStyles.suggestItem,
+                  index < searchResults.length - 1 && tpStyles.suggestItemBorder,
+                ]}
+                onPress={() => selectStudentAndGenerate(student)}
+                activeOpacity={0.7}
+              >
+                <View style={tpStyles.suggestAvatar}>
+                  <Ionicons name="person-outline" size={14} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={tpStyles.suggestName}>{formatStudentName(student)}</Text>
+                  <Text style={tpStyles.suggestMeta}>#{student.admission_no}</Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Results */}
@@ -471,7 +703,11 @@ export default function SmartInsights() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={tpStyles.resultTitle}>{generatedPoints?.[0]?.startsWith('[Rule-based') ? 'Basic Summary' : 'AI Performance Insights'}</Text>
-              <Text style={tpStyles.resultSub}>Student ID: {searchId}</Text>
+              <Text style={tpStyles.resultSub}>
+                {selectedStudent
+                  ? `${selectedStudent.name}${selectedStudent.admissionNo ? ` · #${selectedStudent.admissionNo}` : ''}`
+                  : searchQuery}
+              </Text>
             </View>
             <View style={[tpStyles.aiBadge, generatedPoints?.[0]?.startsWith('[Rule-based') && { backgroundColor: COLORS.textMuted }]}>
               <Text style={tpStyles.aiBadgeText}>{generatedPoints?.[0]?.startsWith('[Rule-based') ? 'STATS' : '✦ AI'}</Text>
@@ -496,20 +732,17 @@ export default function SmartInsights() {
 
           {/* Actions */}
           <View style={tpStyles.actionRow}>
-            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={() => {
-              const text = generatedPoints.join('\n\n');
-              alertCompat('Copied', 'Insights copied to clipboard');
-            }}>
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={handleCopyAll}>
               <Feather name="copy" size={14} color={COLORS.primary} />
               <Text style={[tpStyles.actionText, { color: COLORS.primary }]}>Copy All</Text>
             </TouchableOpacity>
             <View style={tpStyles.actionDivider} />
-            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7}>
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={handleShareInsights}>
               <Feather name="share-2" size={14} color={COLORS.textSecondary} />
               <Text style={tpStyles.actionText}>Share</Text>
             </TouchableOpacity>
             <View style={tpStyles.actionDivider} />
-            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7}>
+            <TouchableOpacity style={tpStyles.actionBtn} activeOpacity={0.7} onPress={handlePrintInsights}>
               <Feather name="printer" size={14} color={COLORS.textSecondary} />
               <Text style={tpStyles.actionText}>Print</Text>
             </TouchableOpacity>
@@ -695,6 +928,40 @@ const tpStyles = StyleSheet.create({
   searchIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: `${COLORS.primary}12`, justifyContent: 'center', alignItems: 'center' },
   searchInput: { flex: 1, fontSize: 16, color: COLORS.textPrimary, fontWeight: '600' },
   generateBtn: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  suggestList: {
+    marginTop: 10,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  suggestItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  suggestItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  suggestAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: `${COLORS.primary}12`,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  suggestName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  suggestMeta: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
   resultCard: { borderRadius: 20, padding: 20, overflow: 'hidden', borderWidth: 1, borderColor: `${COLORS.primary}20`, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 3 },
   resultHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   resultIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: `${COLORS.primary}15`, justifyContent: 'center', alignItems: 'center' },

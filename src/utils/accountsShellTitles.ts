@@ -7,6 +7,8 @@ const EXACT: Record<string, string> = {
   '/accounts/fees/adjust': 'Issue Waiver',
   '/accounts/fees/details': 'Fee Ledger',
   '/accounts/receipts': 'Receipts',
+  '/accounts/defaulters': 'Defaulters',
+  '/accounts/transport-fees': 'Transport Fees',
   '/accounts/invoices': 'Invoices',
   '/accounts/expenses': 'Expense Tracker',
   '/accounts/payroll': 'Payroll',

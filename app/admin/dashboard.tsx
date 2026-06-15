@@ -29,19 +29,100 @@ import DashboardMenuOverlay from '../../src/components/DashboardMenuOverlay';
 import DashboardWebSidebar, {
   DASHBOARD_SIDEBAR_COLLAPSED,
   DASHBOARD_SIDEBAR_EXPANDED,
+  type WebSidebarActionItem,
 } from '../../src/components/DashboardWebSidebar';
 import { useAnalytics } from '../../src/hooks/useAnalytics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import PaymentDueBanner from '../../src/components/PaymentDueBanner';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  COLOUR HIERARCHY SYSTEM                                                    */
+/*                                                                             */
+/*  TIER 1 – PRIMARY (most-accessed daily actions)                            */
+/*    Deep indigo → cobalt. These own the most visual weight.                 */
+/*                                                                             */
+/*  TIER 2 – FINANCIAL (money flows)                                          */
+/*    Forest emerald → teal. Distinct from academic, easy to scan.            */
+/*                                                                             */
+/*  TIER 3 – ACADEMIC (learning / records)                                    */
+/*    Royal violet → purple. Knowledge domain.                                */
+/*                                                                             */
+/*  TIER 4 – OPS / SUPPORT (logistics, comms)                                 */
+/*    Burnt amber → gold. Warm, operational feel.                             */
+/*                                                                             */
+/*  TIER 5 – ADMIN / SECURITY (destructive / gated actions)                  */
+/*    Crimson → rose. High visual weight, signals authority.                  */
+/* ─────────────────────────────────────────────────────────────────────────── */
+type ActionCardVisual = {
+  g: [string, string];
+  accent: string;
+  badge: string;
+  rim: string;
+  orb: string;
+  wash: string;
+  label: string;
+  shadow: string;
+};
+
+const TIER = {
+  // Tier 1 — Primary academic navigation
+  PRIMARY:   { g: ['#172554', '#2563EB'] as [string, string], accent: '#93C5FD', badge: '#60A5FA', rim: 'rgba(147,197,253,0.48)', orb: 'rgba(59,130,246,0.30)', wash: 'rgba(219,234,254,0.18)', label: '#DBEAFE', shadow: '#2563EB' },
+  // Tier 2 — Financial flows
+  FINANCE:   { g: ['#064E3B', '#10B981'] as [string, string], accent: '#6EE7B7', badge: '#34D399', rim: 'rgba(110,231,183,0.45)', orb: 'rgba(16,185,129,0.28)', wash: 'rgba(209,250,229,0.18)', label: '#D1FAE5', shadow: '#059669' },
+  // Tier 3 — Academic records / reports
+  ACADEMIC:  { g: ['#3B0764', '#8B5CF6'] as [string, string], accent: '#C4B5FD', badge: '#A78BFA', rim: 'rgba(196,181,253,0.46)', orb: 'rgba(139,92,246,0.30)', wash: 'rgba(237,233,254,0.17)', label: '#EDE9FE', shadow: '#7C3AED' },
+  // Tier 4 — Operations / comms / support
+  OPS:       { g: ['#78350F', '#F59E0B'] as [string, string], accent: '#FDE68A', badge: '#FCD34D', rim: 'rgba(253,230,138,0.42)', orb: 'rgba(245,158,11,0.28)', wash: 'rgba(254,243,199,0.18)', label: '#FEF3C7', shadow: '#D97706' },
+  // Tier 5 — Admin / security / danger zone
+  ADMIN:     { g: ['#831843', '#F43F5E'] as [string, string], accent: '#FDA4AF', badge: '#FB7185', rim: 'rgba(253,164,175,0.46)', orb: 'rgba(244,63,94,0.30)', wash: 'rgba(255,228,230,0.17)', label: '#FFE4E6', shadow: '#E11D48' },
+} as const;
+
+type TierKey = keyof typeof TIER;
+
+const ACTION_CARD_VISUALS: Record<string, ActionCardVisual> = {
+  // Row 1: daily academic navigation, strongest blue family.
+  '/admin/academics':                  { g: ['#172554', '#2563EB'], accent: '#93C5FD', badge: '#60A5FA', rim: 'rgba(147,197,253,0.50)', orb: 'rgba(59,130,246,0.32)', wash: 'rgba(219,234,254,0.20)', label: '#DBEAFE', shadow: '#2563EB' },
+  '/admin/diary/viewer':               { g: ['#0F172A', '#0EA5E9'], accent: '#7DD3FC', badge: '#38BDF8', rim: 'rgba(125,211,252,0.48)', orb: 'rgba(14,165,233,0.30)', wash: 'rgba(224,242,254,0.18)', label: '#E0F2FE', shadow: '#0284C7' },
+  '/admin/timetable':                  { g: ['#1E1B4B', '#6366F1'], accent: '#A5B4FC', badge: '#818CF8', rim: 'rgba(165,180,252,0.48)', orb: 'rgba(99,102,241,0.31)', wash: 'rgba(224,231,255,0.18)', label: '#E0E7FF', shadow: '#4F46E5' },
+
+  // Row 2: academic admin, still important but a calmer support palette.
+  '/admin/academic-year-upgrade':      { g: ['#164E63', '#06B6D4'], accent: '#67E8F9', badge: '#22D3EE', rim: 'rgba(103,232,249,0.44)', orb: 'rgba(6,182,212,0.28)', wash: 'rgba(207,250,254,0.17)', label: '#CFFAFE', shadow: '#0891B2' },
+  '/admin/certificate-generator':      { g: ['#713F12', '#F59E0B'], accent: '#FDE68A', badge: '#FBBF24', rim: 'rgba(253,230,138,0.44)', orb: 'rgba(245,158,11,0.27)', wash: 'rgba(254,243,199,0.18)', label: '#FEF3C7', shadow: '#D97706' },
+  '/admin/progress-report-generator':  { g: ['#312E81', '#7C3AED'], accent: '#C4B5FD', badge: '#A78BFA', rim: 'rgba(196,181,253,0.46)', orb: 'rgba(124,58,237,0.30)', wash: 'rgba(237,233,254,0.17)', label: '#EDE9FE', shadow: '#6D28D9' },
+
+  // Finance: money flow cards get distinct green, teal, amber, and slate variants.
+  '/admin/expenses':                   { g: ['#7C2D12', '#EA580C'], accent: '#FDBA74', badge: '#FB923C', rim: 'rgba(253,186,116,0.44)', orb: 'rgba(234,88,12,0.28)', wash: 'rgba(255,237,213,0.17)', label: '#FFEDD5', shadow: '#C2410C' },
+  '/admin/fees/set-class-fee':         { g: ['#064E3B', '#10B981'], accent: '#6EE7B7', badge: '#34D399', rim: 'rgba(110,231,183,0.45)', orb: 'rgba(16,185,129,0.28)', wash: 'rgba(209,250,229,0.18)', label: '#D1FAE5', shadow: '#059669' },
+  '/admin/fees/adjustments':           { g: ['#365314', '#84CC16'], accent: '#BEF264', badge: '#A3E635', rim: 'rgba(190,242,100,0.42)', orb: 'rgba(132,204,22,0.27)', wash: 'rgba(236,252,203,0.17)', label: '#ECFCCB', shadow: '#65A30D' },
+  '/admin/upi-settings':               { g: ['#134E4A', '#14B8A6'], accent: '#5EEAD4', badge: '#2DD4BF', rim: 'rgba(94,234,212,0.44)', orb: 'rgba(20,184,166,0.28)', wash: 'rgba(204,251,241,0.17)', label: '#CCFBF1', shadow: '#0D9488' },
+  '/admin/fees/visibility':            { g: ['#334155', '#64748B'], accent: '#CBD5E1', badge: '#94A3B8', rim: 'rgba(203,213,225,0.40)', orb: 'rgba(100,116,139,0.24)', wash: 'rgba(241,245,249,0.14)', label: '#F1F5F9', shadow: '#475569' },
+
+  // Insights/reporting: high-signal analytic cards.
+  '/admin/reports':                    { g: ['#4C1D95', '#9333EA'], accent: '#D8B4FE', badge: '#C084FC', rim: 'rgba(216,180,254,0.46)', orb: 'rgba(147,51,234,0.30)', wash: 'rgba(243,232,255,0.18)', label: '#F3E8FF', shadow: '#7E22CE' },
+  '/admin/smart-insights':             { g: ['#831843', '#EC4899'], accent: '#F9A8D4', badge: '#F472B6', rim: 'rgba(249,168,212,0.46)', orb: 'rgba(236,72,153,0.30)', wash: 'rgba(252,231,243,0.17)', label: '#FCE7F3', shadow: '#DB2777' },
+
+  // Operations: each operational domain gets its own semantic color.
+  '/admin/notices':                    { g: ['#713F12', '#EAB308'], accent: '#FEF08A', badge: '#FACC15', rim: 'rgba(254,240,138,0.42)', orb: 'rgba(234,179,8,0.27)', wash: 'rgba(254,249,195,0.17)', label: '#FEF9C3', shadow: '#CA8A04' },
+  '/admin/complaints':                 { g: ['#881337', '#F43F5E'], accent: '#FDA4AF', badge: '#FB7185', rim: 'rgba(253,164,175,0.45)', orb: 'rgba(244,63,94,0.30)', wash: 'rgba(255,228,230,0.17)', label: '#FFE4E6', shadow: '#E11D48' },
+  '/admin/transport':                  { g: ['#0C4A6E', '#38BDF8'], accent: '#BAE6FD', badge: '#7DD3FC', rim: 'rgba(186,230,253,0.44)', orb: 'rgba(56,189,248,0.28)', wash: 'rgba(224,242,254,0.17)', label: '#E0F2FE', shadow: '#0284C7' },
+  '/admin/leaves':                     { g: ['#14532D', '#22C55E'], accent: '#86EFAC', badge: '#4ADE80', rim: 'rgba(134,239,172,0.43)', orb: 'rgba(34,197,94,0.28)', wash: 'rgba(220,252,231,0.17)', label: '#DCFCE7', shadow: '#16A34A' },
+  '/admin/manage-staff':               { g: ['#581C87', '#A855F7'], accent: '#D8B4FE', badge: '#C084FC', rim: 'rgba(216,180,254,0.45)', orb: 'rgba(168,85,247,0.29)', wash: 'rgba(243,232,255,0.17)', label: '#F3E8FF', shadow: '#9333EA' },
+  '/admin/add-accounts-staff':         { g: ['#9A3412', '#FB923C'], accent: '#FED7AA', badge: '#FDBA74', rim: 'rgba(254,215,170,0.43)', orb: 'rgba(251,146,60,0.28)', wash: 'rgba(255,237,213,0.17)', label: '#FFEDD5', shadow: '#EA580C' },
+
+  // Security: strongest warning color, intentionally reserved.
+  '/admin/access-requests':            { g: ['#7F1D1D', '#DC2626'], accent: '#FCA5A5', badge: '#F87171', rim: 'rgba(252,165,165,0.48)', orb: 'rgba(220,38,38,0.32)', wash: 'rgba(254,226,226,0.18)', label: '#FEE2E2', shadow: '#B91C1C' },
+};
 
 interface ActionItem {
   title: string;
   icon: IconName;
   route: string;
-  gradient: [string, string];
+  tier: TierKey;
+  gradient?: [string, string];
   badge?: number;
-  category?: string;
+  category: string;
   description?: string;
 }
 
@@ -73,14 +154,6 @@ const ACTION_CARD_WIDTH =
 
 const ORB_SIZE = ACTION_CARD_WIDTH * 0.88;
 
-const PAL = {
-  S: ['#2563EB', '#1D4ED8'] as [string, string],
-  V: ['#7C3AED', '#6D28D9'] as [string, string],
-  T: ['#0D9488', '#0F766E'] as [string, string],
-  R: ['#E11D48', '#BE123C'] as [string, string],
-  A: ['#D97706', '#B45309'] as [string, string],
-};
-
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  PULSE INDICATOR                                                            */
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -101,7 +174,7 @@ function PulseIndicator({ color = '#10B981' }: { color?: string }) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  HERO STAT CARD  (accounts-dashboard style)                                */
+/*  HERO STAT CARD                                                             */
 /* ─────────────────────────────────────────────────────────────────────────── */
 const DashboardCard = React.memo(
   ({ item, index, onPress, cardWidth }: { item: StatItem; index: number; onPress: () => void; cardWidth?: DimensionValue }) => {
@@ -136,13 +209,11 @@ const DashboardCard = React.memo(
               end={{ x: 1, y: 1 }}
               style={{ padding: isWideScreen ? 24 : 22, minHeight: isWideScreen ? 160 : 150 }}
             >
-              {/* Subtle inner glow */}
               <View style={{
                 position: 'absolute', top: 0, left: 0, right: 0, height: 1,
                 backgroundColor: 'rgba(255,255,255,0.25)',
               }} />
 
-              {/* Header row */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                 <View style={{
                   width: isWideScreen ? 44 : 40, height: isWideScreen ? 44 : 40,
@@ -172,7 +243,6 @@ const DashboardCard = React.memo(
                 )}
               </View>
 
-              {/* Label */}
               <Text style={{
                 color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: '700',
                 letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6,
@@ -180,7 +250,6 @@ const DashboardCard = React.memo(
                 {item.label}
               </Text>
 
-              {/* Value */}
               <Text style={{
                 color: '#FFFFFF', fontSize: isWideScreen ? 38 : 34,
                 fontWeight: '900', letterSpacing: -1.2, lineHeight: isWideScreen ? 44 : 40,
@@ -188,7 +257,6 @@ const DashboardCard = React.memo(
                 {item.value}
               </Text>
 
-              {/* Trend footer */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 }}>
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -205,7 +273,6 @@ const DashboardCard = React.memo(
                 </View>
               </View>
 
-              {/* Decorative orb */}
               <View style={{
                 position: 'absolute', width: 120, height: 120, borderRadius: 60,
                 backgroundColor: 'rgba(255,255,255,0.06)',
@@ -225,75 +292,241 @@ const DashboardCard = React.memo(
 );
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  QUICK ACTION CARD                                                          */
+/*  QUICK ACTION CARD  — Enhanced with tier-based colour hierarchy            */
 /* ─────────────────────────────────────────────────────────────────────────── */
 const GridItem = React.memo(({ item, index, cardWidth }: { item: ActionItem; index: number; cardWidth: number }) => {
   const router = useRouter();
   const { theme, isDark } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 768;
   const isWideScreen = isWeb && windowWidth >= 768;
   const styles = useMemo(() => getStyles(theme, isDark, isWideScreen), [theme, isDark, isWideScreen]);
 
   const scale = useSharedValue(1);
   const iconScale = useSharedValue(1);
+  const iconRotate = useSharedValue(0);
 
-  const cardAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const iconAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: iconScale.value }] }));
+  const cardAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const iconAnimStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: iconScale.value },
+      { rotate: `${iconRotate.value}deg` },
+    ],
+  }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.93, { damping: 14, stiffness: 360 });
+    scale.value = withSpring(0.91, { damping: 12, stiffness: 400 });
     iconScale.value = withSequence(
-      withSpring(1.18, { damping: 7, stiffness: 420 }),
-      withSpring(1, { damping: 9, stiffness: 300 }),
+      withSpring(1.22, { damping: 6, stiffness: 460 }),
+      withSpring(1.0, { damping: 10, stiffness: 320 }),
+    );
+    iconRotate.value = withSequence(
+      withTiming(-6, { duration: 80 }),
+      withTiming(6, { duration: 80 }),
+      withTiming(0, { duration: 100 }),
     );
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
-  const handlePressOut = () => { scale.value = withSpring(1, { damping: 12, stiffness: 260 }); };
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 14, stiffness: 280 });
+  };
 
-  const [g0, g1] = item.gradient;
+  const t = ACTION_CARD_VISUALS[item.route] ?? TIER[item.tier];
+  const [g0, g1] = item.gradient ?? t.g;
+  const orbSize = cardWidth * 1.05;
+  const radius = isWideScreen ? 26 : 22;
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 50).springify().mass(0.55).damping(14)}
+      entering={FadeInDown.delay(index * 45).springify().mass(0.5).damping(13)}
       style={[styles.gridWrapper, { width: cardWidth }]}
     >
-      <TouchableOpacity activeOpacity={1} onPressIn={handlePressIn} onPressOut={handlePressOut} onPress={() => router.push(item.route as any)}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={() => router.push(item.route as any)}
+      >
         <Animated.View style={[cardAnimStyle, {
-          shadowColor: g0, shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.45, shadowRadius: 18, elevation: 12,
+          shadowColor: item.gradient?.[1] ?? t.shadow,
+          shadowOffset: { width: 0, height: 14 },
+          shadowOpacity: isDark ? 0.36 : 0.24,
+          shadowRadius: 24,
+          elevation: 12,
         }]}>
-          <View style={styles.gridItem}>
+          <View style={[styles.gridItem, { borderRadius: radius }]}>
+
             <LinearGradient
               colors={[g0, g1]}
-              start={{ x: 0.1, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              start={{ x: 0.0, y: 0.0 }}
+              end={{ x: 1.0, y: 1.0 }}
               style={StyleSheet.absoluteFill}
             />
-            {/* Top highlight */}
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-            <View style={styles.gridInnerBorder} />
+
+            <LinearGradient
+              colors={[t.wash, 'rgba(255,255,255,0.04)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0.7 }}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0,
+                height: '58%',
+                borderTopLeftRadius: radius,
+                borderTopRightRadius: radius,
+              }}
+            />
+
+            <LinearGradient
+              colors={['transparent', 'rgba(15,23,42,0.32)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+
+            <View style={{
+              ...StyleSheet.absoluteFillObject,
+              borderRadius: radius,
+              borderWidth: 1.5,
+              borderColor: t.rim,
+            }} />
+
+            <LinearGradient
+              colors={[t.accent, 'rgba(255,255,255,0.08)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={{
+                position: 'absolute',
+                top: 12,
+                bottom: 12,
+                left: 0,
+                width: 4,
+                borderTopRightRadius: 99,
+                borderBottomRightRadius: 99,
+                opacity: 0.95,
+              }}
+            />
+
+            <View style={{
+              position: 'absolute',
+              width: orbSize, height: orbSize, borderRadius: orbSize / 2,
+              backgroundColor: t.orb,
+              bottom: -(orbSize * 0.46), right: -(orbSize * 0.42),
+            }} />
+            <View style={{
+              position: 'absolute',
+              width: orbSize * 0.48, height: orbSize * 0.48,
+              borderRadius: (orbSize * 0.48) / 2,
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              top: -(orbSize * 0.20), right: -(orbSize * 0.18),
+            }} />
 
             {item.badge !== undefined && item.badge > 0 && (
-              <View style={styles.gridBadge}>
+              <View style={[styles.gridBadge, { backgroundColor: t.badge, shadowColor: t.badge }]}>
                 <Text style={styles.gridBadgeText}>{item.badge > 99 ? '99+' : item.badge}</Text>
               </View>
             )}
 
-            {/* Orb */}
             <View style={{
-              position: 'absolute', width: ORB_SIZE, height: ORB_SIZE, borderRadius: ORB_SIZE / 2,
-              backgroundColor: 'rgba(255,255,255,0.07)',
-              bottom: -(ORB_SIZE * 0.35), right: -(ORB_SIZE * 0.35),
-            }} />
+              position: 'absolute', top: 9, left: 9,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              backgroundColor: 'rgba(15,23,42,0.24)',
+              paddingHorizontal: 8, paddingVertical: 4,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.18)',
+            }}>
+              <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: t.accent }} />
+              <Text style={{
+                fontSize: 7, fontWeight: '900', letterSpacing: 1.1,
+                color: t.label,
+                textTransform: 'uppercase',
+              }}>
+                {item.category}
+              </Text>
+            </View>
 
-            <View style={styles.gridContent}>
-              <Animated.View style={[styles.iconBox, iconAnimStyle]}>
-                <Ionicons name={item.icon} size={isWideScreen ? 26 : 20} color="rgba(255,255,255,0.95)" />
+            <View style={[styles.gridContent, { paddingTop: isWideScreen ? 38 : 34 }]}>
+
+              <Animated.View style={[iconAnimStyle, {
+                width: isWideScreen ? 50 : 42,
+                height: isWideScreen ? 50 : 42,
+                borderRadius: isWideScreen ? 18 : 15,
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.28)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                shadowColor: 'rgba(0,0,0,0.5)',
+                shadowOffset: { width: 0, height: 5 },
+                shadowOpacity: 0.55,
+                shadowRadius: 10,
+                elevation: 6,
+              }]}>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.30)', 'rgba(255,255,255,0.10)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Ionicons
+                  name={item.icon}
+                  size={isWideScreen ? 24 : 20}
+                  color="rgba(255,255,255,0.97)"
+                />
               </Animated.View>
+
               <View style={styles.bottomRow}>
-                <Text style={styles.gridTitle} numberOfLines={2}>{item.title}</Text>
-                <View style={styles.arrowChip}>
-                  <Ionicons name="chevron-forward" size={isWideScreen ? 16 : 12} color="rgba(255,255,255,0.85)" />
+                <View style={{ flex: 1, marginRight: 6 }}>
+                  <Text
+                    style={[
+                      styles.gridTitle,
+                      isMobile
+                        ? {
+                            flex: undefined,
+                            fontSize: windowWidth < 380 ? 12.5 : 13.5,
+                            lineHeight: windowWidth < 380 ? 16 : 17,
+                          }
+                        : { fontSize: isWideScreen ? 14 : 12.5 },
+                    ]}
+                    {...(!isMobile ? { numberOfLines: 2 } : {})}
+                  >
+                    {item.title}
+                  </Text>
+                  {!isMobile && (
+                    <Text style={{
+                      color: 'rgba(255,255,255,0.68)',
+                      fontSize: isWideScreen ? 9 : 8,
+                      fontWeight: '700',
+                      letterSpacing: 0.7,
+                      textTransform: 'uppercase',
+                      marginTop: 4,
+                    }} numberOfLines={1}>
+                      {item.tier === 'PRIMARY' ? 'Daily tools' : item.category}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={{
+                  width: isWideScreen ? 28 : 24,
+                  height: isWideScreen ? 28 : 24,
+                  borderRadius: isWideScreen ? 14 : 12,
+                  backgroundColor: 'rgba(255,255,255,0.16)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.26)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={isWideScreen ? 14 : 11}
+                    color="rgba(255,255,255,0.90)"
+                  />
                 </View>
               </View>
             </View>
@@ -305,7 +538,7 @@ const GridItem = React.memo(({ item, index, cardWidth }: { item: ActionItem; ind
 });
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  KPI METRIC CARD  (accounts right-panel style)                             */
+/*  KPI METRIC CARD                                                            */
 /* ─────────────────────────────────────────────────────────────────────────── */
 interface MetricCardProps {
   iconName: IconName;
@@ -341,10 +574,8 @@ const MetricCard = React.memo(({ iconName, iconColor, iconBg, value, label, widt
         elevation: 4,
         overflow: 'hidden',
       }]}>
-        {/* Subtle top border stripe in icon color */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: iconColor }} />
 
-        {/* Icon */}
         <View style={{
           width: isWideScreen ? 40 : 36, height: isWideScreen ? 40 : 36,
           borderRadius: isWideScreen ? 20 : 18,
@@ -356,21 +587,18 @@ const MetricCard = React.memo(({ iconName, iconColor, iconBg, value, label, widt
           <Ionicons name={iconName} size={isWideScreen ? 20 : 17} color={iconColor} />
         </View>
 
-        {/* Separator line */}
         <View style={{
           width: 28, height: 2, borderRadius: 1,
           backgroundColor: iconColor, marginBottom: isWideScreen ? 10 : 8,
           opacity: 0.7,
         }} />
 
-        {/* Label */}
         <Text style={{
           fontSize: isWideScreen ? 9 : 8, fontWeight: '700', letterSpacing: 1,
           color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(15,23,42,0.4)',
           textTransform: 'uppercase', marginBottom: isWideScreen ? 6 : 4,
         }}>{label}</Text>
 
-        {/* Value */}
         <Text numberOfLines={1} style={{
           fontSize: isWideScreen ? 22 : 17,
           fontWeight: '900', letterSpacing: -0.5,
@@ -428,6 +656,58 @@ function ActivityChip({ label, value, color, delay, styles, isDark, isLast }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/*  TIER LEGEND  — shows which colour = which domain                          */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function TierLegend({ isDark }: { isDark: boolean }) {
+  const entries: { tier: TierKey; name: string }[] = [
+    { tier: 'PRIMARY',  name: 'Navigation' },
+    { tier: 'FINANCE',  name: 'Finance'    },
+    { tier: 'ACADEMIC', name: 'Academic'   },
+    { tier: 'OPS',      name: 'Operations' },
+    { tier: 'ADMIN',    name: 'Admin'      },
+  ];
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(300).springify()}
+      style={{
+        flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+        marginTop: -4,
+        marginBottom: 22,
+      }}
+    >
+      {entries.map(({ tier, name }) => {
+        const t = TIER[tier];
+        return (
+          <View
+            key={tier}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.055)' : 'rgba(15,23,42,0.035)',
+              borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.055)',
+            }}
+          >
+            <LinearGradient
+              colors={t.g}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={{ width: 12, height: 12, borderRadius: 6 }}
+            />
+            <Text style={{
+              fontSize: 9, fontWeight: '800', letterSpacing: 0.9,
+              color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(15,23,42,0.6)',
+              textTransform: 'uppercase',
+            }}>
+              {name}
+            </Text>
+          </View>
+        );
+      })}
+    </Animated.View>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /*  PREMIUM PROGRESS CARD                                                      */
 /* ─────────────────────────────────────────────────────────────────────────── */
 function PremiumProgressCard({ title, pct, gradientColors, pctColor, isDark, isWideScreen, delay = 0 }: {
@@ -453,7 +733,6 @@ function PremiumProgressCard({ title, pct, gradientColors, pctColor, isDark, isW
         overflow: 'hidden',
       }}
     >
-      {/* Top accent */}
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, overflow: 'hidden' }}>
         <LinearGradient colors={gradientColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1 }} />
       </View>
@@ -502,10 +781,8 @@ function PremiumChartCard({ title, subtitle, accentColor, isDark, isWideScreen, 
         elevation: 6,
       }}
     >
-      {/* Top accent stripe */}
       <View style={{ height: 3, backgroundColor: accentColor }} />
 
-      {/* Header */}
       <View style={{
         paddingHorizontal: isWideScreen ? 24 : 18,
         paddingTop: isWideScreen ? 20 : 16,
@@ -534,14 +811,6 @@ function PremiumChartCard({ title, subtitle, accentColor, isDark, isWideScreen, 
     </Animated.View>
   );
 }
-
-/* ─────────────────────────────────────────────────────────────────────────── */
-/*  MOCK DATA                                                                  */
-/* ─────────────────────────────────────────────────────────────────────────── */
-const mockAttendanceData = [
-  { value: 85, label: 'M' }, { value: 89, label: 'T' }, { value: 92, label: 'W' },
-  { value: 90, label: 'T' }, { value: 94, label: 'F' }, { value: 96, label: 'S' },
-];
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  PAGE                                                                       */
@@ -578,7 +847,8 @@ export default function AdminDashboard() {
 
   const metricGap = isWideScreen ? 12 : 10;
   const metricCardWidth = Math.floor(((isWideScreen ? rightColWidth : contentWidth) - metricGap * 2) / 3) - 1;
-  const actionCardWidth = Math.floor((leftColWidth - GRID_GAP * 2) / 3) - 1;
+  const actionGridGap = isWideScreen ? 12 : GRID_GAP;
+  const actionCardWidth = Math.floor((leftColWidth - actionGridGap * 2) / 3) - 1;
 
   const { financials, attendance, academics, staff, insights } = useAnalytics();
 
@@ -646,24 +916,54 @@ export default function AdminDashboard() {
     },
   ], [t, loading, dashboardData, financials, staff]);
 
+  /* ─────────────────────────────────────────────────────────────────────── */
+  /*  QUICK ACTIONS — card gradients reflect position + operational priority */
+  /* ─────────────────────────────────────────────────────────────────────── */
   const quickActions: ActionItem[] = [
-    { title: t('admin_dashboard_v2.academic_structure', 'Academics'), icon: 'school-outline', route: '/admin/academics', gradient: PAL.S, category: 'Academic' },
-    { title: t('admin_dashboard_v2.expense_tracker', 'Expenses'), icon: 'receipt-outline', route: '/admin/expenses', gradient: PAL.V, category: 'Finance' },
-    { title: t('admin_dashboard_v2.notices', 'Notices'), icon: 'megaphone-outline', route: '/admin/notices', gradient: PAL.T, category: 'Comms' },
-    { title: t('admin_dashboard_v2.complaints', 'Complaints'), icon: 'chatbubble-ellipses-outline', route: '/admin/complaints', gradient: PAL.R, category: 'Support' },
-    { title: 'Access Requests', icon: 'key-outline', route: '/admin/access-requests', gradient: PAL.A, category: 'Security', badge: pendingRequestsCount },
-    { title: t('admin_dashboard_v2.timetable_manager', 'Timetable'), icon: 'calendar-outline', route: '/admin/timetable', gradient: PAL.S, category: 'Academic' },
-    { title: t('admin_dashboard_v2.view_reports', 'Reports'), icon: 'bar-chart-outline', route: '/admin/reports', gradient: PAL.V, category: 'Analytics' },
-    { title: t('admin_dashboard_v2.smart_insights', 'Insights'), icon: 'bulb-outline', route: '/admin/smart-insights', gradient: PAL.T, category: 'AI' },
-    { title: t('admin_dashboard_v2.manage_staff', 'Staff'), icon: 'people-outline', route: '/admin/manage-staff', gradient: PAL.R, category: 'HR' },
-    { title: t('admin_dashboard_v2.transport', 'Transport'), icon: 'bus-outline', route: '/admin/transport', gradient: PAL.A, category: 'Ops' },
-    { title: t('admin_dashboard_v2.progress_reports', 'Progress'), icon: 'stats-chart-outline', route: '/admin/progress-report-generator', gradient: PAL.V, category: 'Academic' },
-    { title: t('admin_dashboard_v2.certificates', 'Certs'), icon: 'ribbon-outline', route: '/admin/certificate-generator', gradient: PAL.T, category: 'Academic' },
-    { title: t('admin_dashboard_v2.leaves', 'Leaves'), icon: 'document-text-outline', route: '/admin/leaves', gradient: PAL.R, category: 'HR' },
-    { title: t('admin_dashboard_v2.fee_structure', 'Fee Setup'), icon: 'wallet-outline', route: '/admin/fees/set-class-fee', gradient: PAL.A, category: 'Finance' },
-    { title: 'UPI Settings', icon: 'qr-code-outline', route: '/admin/upi-settings', gradient: ['#D97706', '#F59E0B'] as [string, string], category: 'Finance' },
-    { title: t('admin_dashboard_v2.add_accounts_staff', 'Add Staff'), icon: 'person-add-outline', route: '/admin/add-accounts-staff', gradient: PAL.S, category: 'HR' },
+    // Row 1: highest-frequency academic workflows
+    { title: t('admin_dashboard_v2.academic_structure', 'Academics'),     icon: 'school-outline',              route: '/admin/academics',                   tier: 'PRIMARY',  gradient: ['#172554', '#2563EB'], category: 'Academic',  badge: dashboardData?.diaryEntriesToday ?? 0 },
+    { title: 'Class Diary',                                                icon: 'book-outline',                route: '/admin/diary/viewer',                tier: 'PRIMARY',  gradient: ['#0F3A5F', '#0284C7'], category: 'Academic' },
+    { title: t('admin_dashboard_v2.timetable_manager', 'Timetable'),      icon: 'calendar-outline',            route: '/admin/timetable',                  tier: 'PRIMARY',  gradient: ['#312E81', '#4F46E5'], category: 'Academic' },
+
+    // Row 2: lower-frequency academic administration
+    { title: 'Year Upgrade',                                               icon: 'refresh-circle-outline',      route: '/admin/academic-year-upgrade',      tier: 'PRIMARY',  gradient: ['#1E3A8A', '#7C3AED'], category: 'Academic' },
+    { title: t('admin_dashboard_v2.certificates', 'Certs'),               icon: 'ribbon-outline',              route: '/admin/certificate-generator',      tier: 'PRIMARY',  gradient: ['#1E40AF', '#06B6D4'], category: 'Academic' },
+    { title: t('admin_dashboard_v2.progress_reports', 'Progress'),        icon: 'stats-chart-outline',         route: '/admin/progress-report-generator',  tier: 'PRIMARY',  gradient: ['#4338CA', '#A855F7'], category: 'Academic' },
+
+    // Finance: money movement gets strong green/amber differentiation
+    { title: t('admin_dashboard_v2.expense_tracker', 'Expenses'),         icon: 'receipt-outline',             route: '/admin/expenses',                   tier: 'FINANCE',  gradient: ['#14532D', '#22C55E'], category: 'Finance' },
+    { title: t('admin_dashboard_v2.fee_structure', 'Fee Setup'),          icon: 'wallet-outline',              route: '/admin/fees/set-class-fee',         tier: 'FINANCE',  gradient: ['#064E3B', '#14B8A6'], category: 'Finance' },
+    { title: 'Fee Adjustments',                                            icon: 'cut-outline',                 route: '/admin/fees/adjustments',           tier: 'FINANCE',  gradient: ['#365314', '#84CC16'], category: 'Finance' },
+    { title: 'UPI Settings',                                               icon: 'qr-code-outline',             route: '/admin/upi-settings',               tier: 'FINANCE',  gradient: ['#0F766E', '#06B6D4'], category: 'Finance' },
+    { title: 'Dashboard Visibility',                                       icon: 'eye-outline',                 route: '/admin/fees/visibility',            tier: 'FINANCE',  gradient: ['#166534', '#65A30D'], category: 'Finance' },
+
+    // Analytics/AI: distinct violet-to-blue highlights
+    { title: t('admin_dashboard_v2.view_reports', 'Reports'),             icon: 'bar-chart-outline',           route: '/admin/reports',                    tier: 'ACADEMIC', gradient: ['#581C87', '#7C3AED'], category: 'Analytics' },
+    { title: t('admin_dashboard_v2.smart_insights', 'Insights'),          icon: 'bulb-outline',                route: '/admin/smart-insights',             tier: 'ACADEMIC', gradient: ['#4C1D95', '#2563EB'], category: 'AI' },
+
+    // Operations/support: warmer colors, with HR separated from logistics
+    { title: t('admin_dashboard_v2.notices', 'Notices'),                  icon: 'megaphone-outline',           route: '/admin/notices',                    tier: 'OPS',      gradient: ['#7C2D12', '#F97316'], category: 'Comms' },
+    { title: t('admin_dashboard_v2.complaints', 'Complaints'),            icon: 'chatbubble-ellipses-outline', route: '/admin/complaints',                 tier: 'OPS',      gradient: ['#991B1B', '#F59E0B'], category: 'Support' },
+    { title: t('admin_dashboard_v2.transport', 'Transport'),              icon: 'bus-outline',                 route: '/admin/transport',                  tier: 'OPS',      gradient: ['#92400E', '#EAB308'], category: 'Ops' },
+    { title: t('admin_dashboard_v2.leaves', 'Leaves'),                    icon: 'document-text-outline',       route: '/admin/leaves',                     tier: 'OPS',      gradient: ['#9A3412', '#FB923C'], category: 'HR' },
+    { title: t('admin_dashboard_v2.manage_staff', 'Staff'),               icon: 'people-outline',              route: '/admin/manage-staff',               tier: 'OPS',      gradient: ['#7C3AED', '#EC4899'], category: 'HR' },
+    { title: t('admin_dashboard_v2.add_accounts_staff', 'Add Staff'),     icon: 'person-add-outline',          route: '/admin/add-accounts-staff',         tier: 'OPS',      gradient: ['#BE123C', '#F97316'], category: 'HR' },
+
+    // Admin/security: highest-risk action uses the strongest warning gradient
+    { title: 'Access Requests',                                            icon: 'key-outline',                 route: '/admin/access-requests',            tier: 'ADMIN',    gradient: ['#881337', '#E11D48'], category: 'Security', badge: pendingRequestsCount },
   ];
+
+  const sidebarItems = useMemo<WebSidebarActionItem[]>(
+    () => quickActions.map((item) => ({
+      title: item.title,
+      icon: item.icon,
+      route: item.route,
+      gradient: item.gradient ?? TIER[item.tier].g,
+      badge: item.badge,
+      category: item.category,
+    })),
+    [quickActions],
+  );
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (event: any) => { scrollY.value = event.contentOffset.y; } });
@@ -690,6 +990,7 @@ export default function AdminDashboard() {
   const dashboardBody = (
     <View>
       <ResponsiveCard maxWidth={isWideScreen ? contentWidth : 1000}>
+        <PaymentDueBanner />
 
         {/* ── GREETING ── */}
         <Animated.View style={[styles.greetingBlock, greetingAnim]}>
@@ -778,6 +1079,7 @@ export default function AdminDashboard() {
 
             {/* ── QUICK ACTIONS ── */}
             <SectionHeader label={t('dashboard.quick_actions', 'Quick Actions')} delay={310} styles={styles} isDark={isDark} accentColor="#7C3AED" />
+            <TierLegend isDark={isDark} />
             <View style={styles.grid}>
               {quickActions.map((item, index) => (
                 <GridItem key={index} item={item} index={index} cardWidth={actionCardWidth} />
@@ -811,7 +1113,6 @@ export default function AdminDashboard() {
                 justifyContent: 'space-between',
               }}
             >
-              {/* Top accent */}
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: '#10B981' }} />
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -988,10 +1289,7 @@ export default function AdminDashboard() {
                         flexDirection: 'row',
                       }}
                     >
-                      {/* Left stripe */}
                       <View style={{ width: 5, backgroundColor: sevColor, borderTopLeftRadius: isWideScreen ? 20 : 18, borderBottomLeftRadius: isWideScreen ? 20 : 18 }} />
-
-                      {/* Content */}
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: isWideScreen ? 16 : 14, paddingHorizontal: isWideScreen ? 16 : 12 }}>
                         <View style={{
                           width: isWideScreen ? 42 : 36, height: isWideScreen ? 42 : 36,
@@ -1045,7 +1343,7 @@ export default function AdminDashboard() {
 
       {isWideScreen ? (
         <View style={{ flex: 1, flexDirection: 'row', paddingTop: headerOffset }}>
-          <DashboardWebSidebar collapsed={webSidebarCollapsed} items={quickActions} />
+          <DashboardWebSidebar collapsed={webSidebarCollapsed} items={sidebarItems} />
           <Animated.ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={[styles.content, { paddingTop: 20 }]}
@@ -1129,58 +1427,47 @@ const getStyles = (theme: Theme, isDark: boolean, isWide = false) =>
 
     metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: isWide ? 12 : 10, marginBottom: isWide ? 20 : 14 },
 
-    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, marginBottom: isWide ? 32 : 24 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: isWide ? 12 : GRID_GAP, marginBottom: isWide ? 34 : 26 },
     gridWrapper: {},
 
     gridItem: {
       width: '100%',
-      aspectRatio: 1 / 1.15,
-      borderRadius: isWide ? 24 : 20,
+      aspectRatio: isWide ? 1 / 1.04 : 1 / 1.12,
       overflow: 'hidden',
+      backgroundColor: isDark ? '#111827' : '#1E293B',
     },
 
-    gridInnerBorder: {
-      ...StyleSheet.absoluteFillObject,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.18)',
-      borderRadius: isWide ? 24 : 20,
+    gridContent: {
+      flex: 1,
+      padding: isWide ? 15 : 13,
+      justifyContent: 'space-between',
     },
 
-    gridContent: { flex: 1, padding: 13, justifyContent: 'space-between' },
-
-    iconBox: {
-      width: 42, height: 42, borderRadius: 13,
-      backgroundColor: 'rgba(255,255,255,0.20)',
-      alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    bottomRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
     },
-
-    bottomRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
 
     gridTitle: {
-      flex: 1, fontSize: SCREEN_WIDTH < 380 ? 11 : 12, fontWeight: '800',
-      color: '#FFFFFF', letterSpacing: -0.2, lineHeight: 16,
-      marginRight: 6,
-      textShadowColor: 'rgba(0,0,0,0.2)',
+      flex: 1,
+      fontWeight: '800',
+      color: '#FFFFFF',
+      letterSpacing: -0.15,
+      lineHeight: isWide ? 18 : 16,
+      textShadowColor: 'rgba(0,0,0,0.25)',
       textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 3,
-    },
-
-    arrowChip: {
-      width: 24, height: 24, borderRadius: 12,
-      backgroundColor: 'rgba(255,255,255,0.18)',
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
-      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      textShadowRadius: 4,
     },
 
     gridBadge: {
       position: 'absolute', top: 9, right: 9,
-      backgroundColor: '#EF4444', minWidth: 20, height: 20,
-      borderRadius: 10, paddingHorizontal: 5,
+      minWidth: 22, height: 22,
+      borderRadius: 11, paddingHorizontal: 6,
       alignItems: 'center', justifyContent: 'center',
-      shadowColor: '#EF4444', shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.6, shadowRadius: 6, elevation: 6, zIndex: 10,
-      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.65, shadowRadius: 6, elevation: 8, zIndex: 10,
+      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.72)',
     },
     gridBadgeText: { color: '#FFFFFF', fontSize: 9, fontWeight: '900', letterSpacing: 0.2 },
   });

@@ -147,7 +147,7 @@ export default function AdminStudentsScreen() {
   };
 
   const renderItem = ({ item, index }: any) => {
-    const fullName = `${item.first_name} ${item.last_name}`;
+    const fullName = item.display_name || [item.first_name, item.last_name].filter(Boolean).join(' ');
     const enrollment = item.current_enrollment || {};
     const isActive = item.status === 'active' || item.status_id === 1;
 
@@ -163,7 +163,7 @@ export default function AdminStudentsScreen() {
           <View style={styles.info}>
             <Text style={styles.name}>{fullName}</Text>
             <Text style={styles.details}>
-              {enrollment.class_code || 'N/A'} - {enrollment.section_name || 'N/A'}
+              {enrollment.class_name || enrollment.class_code || 'N/A'} - {enrollment.section_name || 'N/A'}
               {enrollment.roll_number ? ` • Roll ${enrollment.roll_number}` : ''}
             </Text>
             <Text style={styles.subDetails}>{item.admission_no}</Text>

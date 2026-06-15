@@ -1,5 +1,5 @@
 {
-  "name": "testapp",
+  "name": "samskruthe-school",
   "main": "expo-router/entry",
   "version": "2.0.0",
   "scripts": {
@@ -34,6 +34,7 @@
     "axios": "^1.13.6",
     "date-fns": "^4.1.0",
     "expo": "~54.0.31",
+    "expo-application": "~7.0.8",
     "expo-asset": "^12.0.12",
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
@@ -61,7 +62,9 @@
     "expo-system-ui": "~6.0.9",
     "expo-updates": "~29.0.16",
     "expo-web-browser": "~15.0.10",
+    "html2canvas": "^1.4.1",
     "i18next": "^25.7.3",
+    "jspdf": "^4.2.1",
     "phosphor-react-native": "^3.0.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -102,6 +105,7 @@
     "@types/react": "~19.1.0",
     "@types/stack-utils": "^2.0.3",
     "@types/yargs": "^17.0.35",
+    "babel-plugin-module-resolver": "^5.0.3",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "dotenv": "^17.3.1",
     "eslint": "^9.25.0",

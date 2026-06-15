@@ -2,7 +2,7 @@ import React from 'react';
 import { MaterialTopTabs } from '../../src/layouts/MaterialTopTabs';
 import DriverFooter from '../../src/components/DriverFooter';
 import { useRequireRole } from '../../src/hooks/useRequireRole';
-export { ErrorBoundary } from '../../src/components/ErrorBoundary';
+export { ErrorBoundary } from '@/src/components/ErrorBoundary';
 
 export default function DriverLayout() {
     // Ensure only drivers can access this segment
@@ -16,6 +16,7 @@ export default function DriverLayout() {
                 swipeEnabled: true,
                 animationEnabled: true,
                 lazy: true,
+                headerShown: false,
             }}
         >
             <MaterialTopTabs.Screen
