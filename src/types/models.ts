@@ -148,10 +148,28 @@ export interface ClassAttendanceResponse {
 }
 
 // ================= FEES =================
+export interface TransportDue {
+    readonly assignment_id?: string;
+    readonly route_id?: string;
+    readonly stop_id?: string | null;
+    readonly route_name?: string;
+    readonly stop_name?: string | null;
+    readonly transport_fee_id?: string | null;
+    readonly fee_amount?: number | null;
+    readonly billing_cycle?: string | null;
+    readonly academic_year?: string;
+    readonly paid_amount?: number;
+    readonly balance_due?: number | null;
+    readonly fee_not_set?: boolean;
+    readonly fee_type?: 'transport';
+}
+
 export interface FeeSummary {
     readonly total_due: number;
     readonly total_paid: number;
     readonly balance: number;
+    readonly total_balance?: number;
+    readonly transport_due?: TransportDue | null;
 }
 
 /** Per fee-type balance line on a fee receipt */
@@ -176,7 +194,9 @@ export interface FeeTransaction {
     readonly transaction_ref?: string;
     readonly remarks?: string;
     readonly received_by?: string;
+    readonly received_by_id?: string;
     readonly student_name?: string;
+    readonly father_name?: string;
     readonly admission_no?: string;
     readonly class_name?: string;
     readonly section_name?: string;
@@ -316,6 +336,7 @@ export interface FeeResponse {
     };
     readonly summary: FeeSummary;
     readonly fees: StudentFee[];
+    readonly transport_due?: TransportDue | null;
 }
 
 // ================= LMS =================

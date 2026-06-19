@@ -7,8 +7,19 @@ type CacheEntry<T> = { data: T; storedAt: number };
 
 const apiQueryCache = new Map<string, CacheEntry<unknown>>();
 
-function buildCacheKey(schoolId: number, userKey: string, key: string) {
-  return `${schoolId}:${userKey}:${key}`;
+function serializeQuery(query?: UseApiQueryOptions['query']) {
+  if (!query) return '';
+  const cleanEntries = Object.entries(query)
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return new URLSearchParams(
+    cleanEntries.map(([key, value]) => [key, String(value)])
+  ).toString();
+}
+
+function buildCacheKey(schoolId: number, userKey: string, key: string, queryKey: string) {
+  return `${schoolId}:${userKey}:${key}${queryKey ? `?${queryKey}` : ''}`;
 }
 
 export interface UseApiQueryOptions {
@@ -30,9 +41,14 @@ export function useApiQuery<T>(
   const { enabled = true, query } = options;
   const isFocused = useIsFocused();
   const userKey = userId || 'anon';
+  const queryKey = serializeQuery(query);
+  const requestQuery = useMemo(() => {
+    if (!queryKey) return undefined;
+    return Object.fromEntries(new URLSearchParams(queryKey).entries());
+  }, [queryKey]);
   const key = useMemo(
-    () => buildCacheKey(SCHOOL_ID, userKey, cacheKeySuffix),
-    [userKey, cacheKeySuffix]
+    () => buildCacheKey(SCHOOL_ID, userKey, cacheKeySuffix, queryKey),
+    [userKey, cacheKeySuffix, queryKey]
   );
 
   const [data, setData] = useState<T | null>(() => {
@@ -42,6 +58,17 @@ export function useApiQuery<T>(
   });
   const [loading, setLoading] = useState(!data && enabled);
   const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    const hit = apiQueryCache.get(key) as CacheEntry<T> | undefined;
+    if (hit && Date.now() - hit.storedAt < ttlMs) {
+      setData(hit.data);
+      setLoading(false);
+      return;
+    }
+    setData(null);
+    setLoading(enabled && !!userId);
+  }, [key, ttlMs, enabled, userId]);
 
   const fetcher = useCallback(
     async (force: boolean): Promise<T | null> => {
@@ -55,7 +82,7 @@ export function useApiQuery<T>(
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get<T>(endpoint, query);
+        const res = await api.get<T>(endpoint, requestQuery);
         apiQueryCache.set(key, { data: res as unknown, storedAt: Date.now() });
         setData(res);
         return res;
@@ -67,7 +94,7 @@ export function useApiQuery<T>(
         setLoading(false);
       }
     },
-    [endpoint, key, ttlMs, enabled, userId, query]
+    [endpoint, key, ttlMs, enabled, userId, requestQuery]
   );
 
   useEffect(() => {
@@ -82,4 +109,18 @@ export function useApiQuery<T>(
   const refetch = useCallback(() => fetcher(true), [fetcher]);
 
   return { data, loading, error, refetch };
+}
+
+/** Drop cached GET results so visibility changes apply immediately on other screens. */
+export function invalidateApiQueryCache(cacheKeySuffix?: string) {
+  if (!cacheKeySuffix) {
+    apiQueryCache.clear();
+    return;
+  }
+  const suffix = `:${cacheKeySuffix}`;
+  for (const key of apiQueryCache.keys()) {
+    if (key.endsWith(suffix) || key.includes(`${suffix}?`)) {
+      apiQueryCache.delete(key);
+    }
+  }
 }

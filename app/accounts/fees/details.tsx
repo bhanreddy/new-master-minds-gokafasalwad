@@ -1,18 +1,49 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Platform, Pressable
+  View, Text, StyleSheet, ScrollView,
+  Animated, Platform, Pressable, Modal, ActivityIndicator
 } from 'react-native';
+import AppTextInput from '@/src/components/AppTextInput';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AdminHeader from '../../../src/components/AdminHeader';
 import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService } from '../../../src/services/feeService';
-import { StudentFee, FeeResponse } from '../../../src/types/models';
+import { TransportFeeService } from '../../../src/services/transportFeeService';
+import { StudentFee, FeeResponse, TransportDue } from '../../../src/types/models';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { Theme } from '../../../src/theme/themes';
 import LogoLoader from '../../../src/components/LogoLoader';
+import { generateUUID } from './collect';
+
+type LedgerFeeItem = StudentFee & {
+  isTransport?: boolean;
+  routeName?: string;
+  stopName?: string | null;
+};
+
+function transportDueToLedgerItem(transport: TransportDue): LedgerFeeItem | null {
+  if (!transport || transport.fee_not_set || transport.fee_amount == null) return null;
+
+  const feeAmount = Number(transport.fee_amount);
+  const paidAmount = Number(transport.paid_amount || 0);
+  const balanceDue = Number(transport.balance_due ?? Math.max(feeAmount - paidAmount, 0));
+
+  return {
+    id: `transport-${transport.assignment_id || transport.route_id}`,
+    student_id: '',
+    amount_due: feeAmount,
+    amount_paid: paidAmount,
+    discount: 0,
+    status: balanceDue <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending',
+    due_date: '',
+    fee_type: 'Transport Fee',
+    isTransport: true,
+    routeName: transport.route_name,
+    stopName: transport.stop_name,
+  };
+}
 
 // ─── Status Config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string; label: string }> = {
@@ -74,11 +105,11 @@ const progressStyles = {
 
 // ─── Fee Card ─────────────────────────────────────────────────────────────────
 function FeeCard({
-  fee, index, isDark, theme,
+  fee, index, isDark,
   onPayment,
 }: {
-  fee: StudentFee; index: number; isDark: boolean; theme: Theme;
-  onPayment: (f: StudentFee) => void;
+  fee: LedgerFeeItem; index: number; isDark: boolean;
+  onPayment: (f: LedgerFeeItem) => void;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const isPaid = fee.status === 'paid';
@@ -118,9 +149,16 @@ function FeeCard({
         <View style={fcStyles.header}>
           <View style={fcStyles.headerLeft}>
             <View style={[fcStyles.dot, { backgroundColor: s.dot }]} />
-            <Text style={[fcStyles.feeType, { color: textPri }]} numberOfLines={1}>
-              {fee.fee_type}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[fcStyles.feeType, { color: textPri }]} numberOfLines={1}>
+                {fee.fee_type}
+              </Text>
+              {fee.isTransport && (fee.routeName || fee.stopName) && (
+                <Text style={[fcStyles.feeSub, { color: textSec }]} numberOfLines={1}>
+                  {[fee.routeName, fee.stopName].filter(Boolean).join(' · ')}
+                </Text>
+              )}
+            </View>
           </View>
           <View style={[fcStyles.badge, { backgroundColor: s.bg }]}>
             <Text style={[fcStyles.badgeText, { color: s.text }]}>
@@ -226,7 +264,8 @@ const fcStyles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  feeType: { fontSize: 15, fontWeight: '700', flex: 1 },
+  feeType: { fontSize: 15, fontWeight: '700' },
+  feeSub: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   badge: {
     paddingHorizontal: 9,
     paddingVertical: 4,
@@ -265,6 +304,10 @@ export default function StudentFeeLedger() {
 
   const [loading, setLoading] = useState(true);
   const [feeData, setFeeData] = useState<FeeResponse | null>(null);
+  const [transportCollectDue, setTransportCollectDue] = useState<number | null>(null);
+  const [transportAmount, setTransportAmount] = useState('');
+  const [transportMode, setTransportMode] = useState<'cash' | 'upi' | 'cheque'>('cash');
+  const [transportSubmitting, setTransportSubmitting] = useState(false);
 
   // Page-level animations
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -290,7 +333,15 @@ export default function StudentFeeLedger() {
     }
   };
 
-  const handlePayment = (fee: StudentFee) => {
+  const handlePayment = (fee: LedgerFeeItem) => {
+    if (fee.isTransport) {
+      const due = fee.amount_due - fee.discount - fee.amount_paid;
+      setTransportAmount(String(due));
+      setTransportMode('cash');
+      setTransportCollectDue(due);
+      return;
+    }
+
     router.push({
       pathname: '/accounts/fees/collect' as any,
       params: {
@@ -305,6 +356,39 @@ export default function StudentFeeLedger() {
     });
   };
 
+  const handleTransportCollect = async () => {
+    const amount = Number(transportAmount);
+    const maxDue = Number(transportCollectDue || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alertCompat('Invalid amount', 'Enter a valid collection amount.');
+      return;
+    }
+    if (amount > maxDue) {
+      alertCompat('Amount too high', `Maximum collectable is ₹${maxDue.toLocaleString('en-IN')}.`);
+      return;
+    }
+
+    setTransportSubmitting(true);
+    try {
+      const result = await TransportFeeService.collect({
+        student_id: studentId,
+        amount,
+        payment_method: transportMode,
+        transaction_ref: generateUUID(),
+      });
+      setTransportCollectDue(null);
+      alertCompat(
+        'Payment collected',
+        `Receipt ${result.receipt.receipt_no} — ₹${Number(result.receipt.total_amount).toLocaleString('en-IN')}`,
+      );
+      await loadLedger();
+    } catch {
+      alertCompat('Error', 'Failed to collect transport fee');
+    } finally {
+      setTransportSubmitting(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -316,9 +400,20 @@ export default function StudentFeeLedger() {
   }
 
   const summary = feeData?.summary;
-  const totalDue = parseFloat(String(summary?.total_due || 0));
-  const totalPaid = parseFloat(String(summary?.total_paid || 0));
-  const balance = parseFloat(String(summary?.balance || 0));
+  const transportDue = feeData?.transport_due ?? summary?.transport_due ?? null;
+  const transportItem = transportDue ? transportDueToLedgerItem(transportDue) : null;
+  const ledgerItems: LedgerFeeItem[] = [
+    ...(feeData?.fees ?? []),
+    ...(transportItem ? [transportItem] : []),
+  ];
+
+  const tuitionDue = parseFloat(String(summary?.total_due || 0));
+  const tuitionPaid = parseFloat(String(summary?.total_paid || 0));
+  const transportFeeAmount = transportItem ? Number(transportItem.amount_due) : 0;
+  const transportPaidAmount = transportItem ? Number(transportItem.amount_paid) : 0;
+  const totalDue = tuitionDue + transportFeeAmount;
+  const totalPaid = tuitionPaid + transportPaidAmount;
+  const balance = parseFloat(String(summary?.total_balance ?? summary?.balance ?? 0));
   const overallRatio = totalDue > 0 ? totalPaid / totalDue : 0;
 
   return (
@@ -396,20 +491,68 @@ export default function StudentFeeLedger() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>FEE BREAKDOWN</Text>
           <Text style={styles.sectionCount}>
-            {feeData?.fees.length ?? 0} items
+            {ledgerItems.length} items
           </Text>
         </View>
 
-        {feeData?.fees.map((fee, index) => (
+        {ledgerItems.map((fee, index) => (
           <FeeCard
             key={fee.id}
             fee={fee}
             index={index}
             isDark={isDark}
-            theme={theme}
             onPayment={handlePayment}
           />
         ))}
+
+        <Modal visible={transportCollectDue != null} transparent animationType="slide">
+          <Pressable style={transportModalStyles.overlay} onPress={() => setTransportCollectDue(null)}>
+            <Pressable style={transportModalStyles.sheet} onPress={(e) => e.stopPropagation()}>
+              <Text style={transportModalStyles.title}>Collect transport fee</Text>
+              <Text style={transportModalStyles.subtitle}>
+                {studentName}
+                {transportDue?.stop_name ? ` · ${transportDue.stop_name}` : ''}
+              </Text>
+              <Text style={transportModalStyles.label}>
+                Amount (max ₹{Number(transportCollectDue || 0).toLocaleString('en-IN')})
+              </Text>
+              <AppTextInput
+                value={transportAmount}
+                onChangeText={setTransportAmount}
+                keyboardType="numeric"
+                placeholder="Enter amount"
+              />
+              <View style={transportModalStyles.modeRow}>
+                {(['cash', 'upi', 'cheque'] as const).map((mode) => (
+                  <Pressable
+                    key={mode}
+                    style={[
+                      transportModalStyles.modeChip,
+                      transportMode === mode && transportModalStyles.modeChipActive,
+                    ]}
+                    onPress={() => setTransportMode(mode)}
+                  >
+                    <Text style={[
+                      transportModalStyles.modeText,
+                      transportMode === mode && transportModalStyles.modeTextActive,
+                    ]}>
+                      {mode.toUpperCase()}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable
+                style={[transportModalStyles.collectBtn, transportSubmitting && { opacity: 0.7 }]}
+                onPress={handleTransportCollect}
+                disabled={transportSubmitting}
+              >
+                {transportSubmitting
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={transportModalStyles.collectBtnText}>Collect & generate receipt</Text>}
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -436,6 +579,45 @@ function SummaryCell({ label, value, color, isDark }: {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
+const transportModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+    paddingBottom: 32,
+    gap: 12,
+  },
+  title: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  subtitle: { fontSize: 13, fontWeight: '600', color: '#64748B', marginBottom: 4 },
+  label: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  modeRow: { flexDirection: 'row', gap: 8 },
+  modeChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  modeChipActive: { backgroundColor: '#ECFDF5', borderColor: '#059669' },
+  modeText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  modeTextActive: { color: '#059669' },
+  collectBtn: {
+    marginTop: 8,
+    backgroundColor: '#059669',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  collectBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+});
+
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,

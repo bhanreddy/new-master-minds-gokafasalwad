@@ -51,6 +51,8 @@ export interface FeeSummary {
     admission_no?: string;
     student_name: string;
     class_name?: string;
+    father_name?: string;
+    student_gender?: string;
     total_amount: number | string;
     paid_amount: number | string;
     due_amount: number | string;
@@ -61,9 +63,53 @@ export interface FeeSummaryParams {
     class_id?: string;
     academic_year_id?: string;
     search?: string;
+    admission_no?: string;
+    father_name?: string;
+    mobile?: string;
     status?: FeeSummaryStatus;
     page?: number;
     limit?: number;
+}
+
+export interface FeeCollector {
+    id: string;
+    name: string;
+}
+
+export interface SchoolFeeType {
+    id: string;
+    name: string;
+    code?: string;
+}
+
+export interface CollectionSummaryParams {
+    date?: string;
+    from_date?: string;
+    to_date?: string;
+    group_by?: 'day' | 'month';
+    received_by?: string;
+}
+
+export interface TransactionListParams {
+    from_date?: string;
+    to_date?: string;
+    payment_method?: string;
+    received_by?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface TodayCollectionResponse {
+    date?: string;
+    collector_id?: string;
+    transactions: FeeTransaction[];
+    total_transactions: number;
+    total_collected: number;
+    by_payment_method?: Array<{
+        payment_method: string;
+        transaction_count: number;
+        total_amount: number | string;
+    }>;
 }
 
 export interface FeeSummaryResponse {
@@ -215,8 +261,62 @@ export const FeeService = {
     /**
      * List all transactions
      */
-    getTransactions: async (params?: { from_date?: string; to_date?: string; payment_method?: string }): Promise<FeeTransaction[]> => {
+    getTransactions: async (params?: TransactionListParams): Promise<FeeTransaction[]> => {
         return api.get<FeeTransaction[]>('/fees/transactions', params);
+    },
+
+    /**
+     * Fetch all matching transactions (paginates past the 100-row API cap).
+     */
+    getAllTransactions: async (params?: Omit<TransactionListParams, 'page' | 'limit'>): Promise<FeeTransaction[]> => {
+        const all: FeeTransaction[] = [];
+        let page = 1;
+        const limit = 100;
+        while (true) {
+            const batch = await api.get<FeeTransaction[]>('/fees/transactions', { ...params, page, limit });
+            const rows = Array.isArray(batch) ? batch : (batch as any)?.data ?? [];
+            all.push(...rows);
+            if (rows.length < limit) break;
+            page += 1;
+        }
+        return all;
+    },
+
+    /**
+     * List school-defined fee types (for filters and setup).
+     */
+    getFeeTypes: async (): Promise<SchoolFeeType[]> => {
+        const result = await api.get<SchoolFeeType[]>('/fees/types');
+        return Array.isArray(result) ? result : (result as any)?.data ?? [];
+    },
+
+    /**
+     * Today's collections for the logged-in accountant only (server-enforced).
+     */
+    getTodayCollection: async (): Promise<TodayCollectionResponse> => {
+        const result = await api.get<any>('/fees/today-collection');
+        const payload = result?.transactions != null ? result : result?.data ?? result;
+        const transactions = Array.isArray(payload?.transactions)
+            ? payload.transactions
+            : Array.isArray(payload)
+              ? payload
+              : [];
+        return {
+            date: payload?.date,
+            collector_id: payload?.collector_id,
+            transactions,
+            total_transactions: Number(payload?.total_transactions ?? transactions.length),
+            total_collected: Number(payload?.total_collected ?? 0),
+            by_payment_method: payload?.by_payment_method ?? [],
+        };
+    },
+
+    /**
+     * List users who collect fees (for accountant attribution filters)
+     */
+    getCollectors: async (): Promise<FeeCollector[]> => {
+        const result = await api.get<FeeCollector[]>('/fees/collectors');
+        return Array.isArray(result) ? result : (result as any)?.data ?? [];
     },
 
     /**
@@ -229,7 +329,7 @@ export const FeeService = {
     /**
      * Get collection summary (daily/monthly range)
      */
-    getCollectionSummary: async (params: { date?: string; from_date?: string; to_date?: string; group_by?: 'day' | 'month' }): Promise<any> => {
+    getCollectionSummary: async (params: CollectionSummaryParams): Promise<any> => {
         return api.get<any>('/fees/collection-summary', params);
     },
 

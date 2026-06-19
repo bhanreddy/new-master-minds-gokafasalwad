@@ -239,9 +239,8 @@ const amountInWords = (amount: number): string => {
 const BASE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  /* Force every fill/colour to survive print in Chromium/Tauri webviews.
-     Without this, child backgrounds (indigo header, gradient banner, due bar)
-     silently drop to white on some print paths. */
+  /* Preserve deliberate fills in non-receipt documents. Receipt pages opt into
+     economy printing below and avoid dark fills altogether. */
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { margin: 0; size: A4 portrait; }
   html, body { height: auto; margin: 0; padding: 0; }
@@ -268,6 +267,15 @@ const BASE_CSS = `
     max-width: none;
     padding: 20px;
     margin: 0;
+  }
+  .receipt-page .watermark,
+  .receipt-page .watermark-logo {
+    display: none;
+  }
+  .receipt-page,
+  .receipt-page * {
+    -webkit-print-color-adjust: economy !important;
+    print-color-adjust: economy !important;
   }
 
   /* ── Watermark (straight, faint, forced BEHIND content) ──
@@ -304,7 +312,7 @@ const BASE_CSS = `
     display: flex; justify-content: space-between;
     align-items: flex-start; margin-bottom: 6px;
     padding-bottom: 6px;
-    border-bottom: 3px solid #4F46E5;
+    border-bottom: 1px solid #9CA3AF;
   }
   .school-brand {
     display: flex; align-items: center; gap: 12px;
@@ -330,7 +338,7 @@ const BASE_CSS = `
   .school-reg { font-size: 8px; font-weight: 700; color: #374151; margin-top: 2px; letter-spacing: 0.2px; }
 
   .doc-title-block { text-align: right; flex-shrink: 0; }
-  .doc-title { font-size: 14px; font-weight: 800; letter-spacing: 0.5px; color: #4F46E5; }
+  .doc-title { font-size: 14px; font-weight: 800; letter-spacing: 0.5px; color: #111827; }
   .doc-no { font-size: 9px; color: #6B7280; margin-top: 1px; font-weight: 600; }
 
   /* ── Info grid ── */
@@ -342,7 +350,7 @@ const BASE_CSS = `
     background: #F9FAFB; border-radius: 5px;
     padding: 4px 7px; border: 1px solid #F3F4F6;
   }
-  .info-box.highlight { background: #EEF2FF; border-color: #C7D2FE; }
+  .info-box.highlight { background: #FFFFFF; border-color: #D1D5DB; }
   .info-label {
     font-size: 7px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px; color: #9CA3AF; margin-bottom: 1px;
@@ -351,16 +359,14 @@ const BASE_CSS = `
   .info-sub { font-size: 8px; color: #6B7280; margin-top: 0; }
 
   /* ── Table ──
-     Header is now a quiet light fill with dark indigo text, so the receipt
-     banner stays the single loudest element (one hero). A light-fill/dark-text
-     header also stays readable in grayscale print, unlike white-on-indigo. */
+     Header is a quiet light fill with dark text for grayscale-friendly output. */
   table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-  thead tr { background: #F3F4FF; }
+  thead tr { background: #F3F4F6; }
   thead th {
     padding: 5px 8px; text-align: left;
     font-size: 8px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.6px; color: #4338CA;
-    border-bottom: 1.5px solid #C7D2FE;
+    letter-spacing: 0.6px; color: #111827;
+    border-bottom: 1px solid #D1D5DB;
   }
   thead th:last-child { text-align: right; }
   tbody tr:nth-child(even) { background: #F9FAFB; }
@@ -386,49 +392,49 @@ const BASE_CSS = `
   .totals-row.grand {
     font-size: 11px; font-weight: 800;
     color: #111827; padding-top: 4px; margin-top: 2px;
-    border-top: 2px solid #4F46E5; border-bottom: none;
+    border-top: 1.5px solid #111827; border-bottom: none;
   }
-  .totals-row.paid-row { color: #059669; font-weight: 600; }
-  .totals-row.due-row  { color: #DC2626; font-weight: 700; }
+  .totals-row.paid-row { color: #111827; font-weight: 600; }
+  .totals-row.due-row  { color: #111827; font-weight: 700; }
 
   /* ── Due amount footer bar ── */
   .due-amount-bar {
     display: flex; justify-content: space-between; align-items: center;
     border-radius: 6px; padding: 6px 10px; margin-bottom: 6px;
-    border: 1px solid transparent;
+    border: 1px solid #D1D5DB;
   }
   .due-amount-bar.pending {
-    background: #FEF2F2; border-color: #FECACA;
+    background: #FFFFFF; border-color: #D1D5DB;
   }
   .due-amount-bar.clear {
-    background: #ECFDF5; border-color: #A7F3D0;
+    background: #FFFFFF; border-color: #D1D5DB;
   }
   .due-amount-left { display: flex; flex-direction: column; gap: 1px; }
   .due-amount-label {
     font-size: 7px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px;
   }
-  .due-amount-bar.pending .due-amount-label { color: #991B1B; }
-  .due-amount-bar.clear .due-amount-label { color: #065F46; }
+  .due-amount-bar.pending .due-amount-label { color: #374151; }
+  .due-amount-bar.clear .due-amount-label { color: #374151; }
   .due-amount-sub { font-size: 8px; color: #6B7280; }
   .due-amount-value {
     font-size: 14px; font-weight: 800; letter-spacing: -0.5px;
     font-variant-numeric: tabular-nums;
   }
-  .due-amount-bar.pending .due-amount-value { color: #DC2626; }
-  .due-amount-bar.clear .due-amount-value { color: #059669; }
+  .due-amount-bar.pending .due-amount-value { color: #111827; }
+  .due-amount-bar.clear .due-amount-value { color: #111827; }
   .due-status-badge {
     font-size: 8px; font-weight: 700; padding: 3px 8px;
     border-radius: 20px; text-transform: uppercase; letter-spacing: 0.4px;
   }
-  .due-status-badge.pending { background: #FEE2E2; color: #991B1B; }
-  .due-status-badge.clear { background: #D1FAE5; color: #065F46; }
+  .due-status-badge.pending { background: #FFFFFF; color: #111827; border: 1px solid #D1D5DB; }
+  .due-status-badge.clear { background: #FFFFFF; color: #111827; border: 1px solid #D1D5DB; }
 
   /* ── Amount in words ── */
   .amount-words {
-    background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 5px;
+    background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 5px;
     padding: 4px 8px; margin-bottom: 6px; font-size: 9px;
-    color: #065F46; font-weight: 500;
+    color: #111827; font-weight: 500;
   }
   .amount-words strong { font-weight: 700; }
 
@@ -496,10 +502,10 @@ const BASE_CSS = `
     text-align: right;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
-    color: #DC2626;
+    color: #111827;
   }
-  .dues-table tbody tr.dues-paid td.col-due { color: #059669; }
-  .dues-table tbody tr.dues-paid td.col-num-paid { color: #059669; }
+  .dues-table tbody tr.dues-paid td.col-due { color: #111827; }
+  .dues-table tbody tr.dues-paid td.col-num-paid { color: #111827; }
   .dues-table tbody tr.dues-highlight {
     background: #fff !important;
     box-shadow: inset 3px 0 0 #9CA3AF;
@@ -542,7 +548,7 @@ const BASE_CSS = `
   .dues-table tfoot td.col-due-total {
     text-align: right;
     font-variant-numeric: tabular-nums;
-    color: #DC2626;
+    color: #111827;
     font-size: 10px;
   }
 
@@ -552,15 +558,20 @@ const BASE_CSS = `
     border-radius: 20px; font-size: 8px; font-weight: 700;
     letter-spacing: 0.5px; text-transform: uppercase;
   }
-  .badge-paid    { background: #D1FAE5; color: #065F46; }
-  .badge-pending { background: #FEF3C7; color: #92400E; }
-  .badge-partial { background: #DBEAFE; color: #1E40AF; }
-  .badge-unpaid  { background: #FEE2E2; color: #991B1B; }
+  .badge-paid,
+  .badge-pending,
+  .badge-partial,
+  .badge-unpaid {
+    background: #FFFFFF;
+    color: #111827;
+    border: 1px solid #D1D5DB;
+  }
 
   /* ── Payment method chip ── */
   .method-chip {
     display: inline-flex; align-items: center; gap: 4px;
-    background: #EEF2FF; color: #4F46E5;
+    background: #FFFFFF; color: #111827;
+    border: 1px solid #D1D5DB;
     padding: 2px 6px; border-radius: 5px;
     font-size: 8px; font-weight: 700; letter-spacing: 0.5px;
   }
@@ -608,20 +619,21 @@ const BASE_CSS = `
 
   /* ── Receipt specific ── */
   .receipt-banner {
-    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    background: #FFFFFF;
+    border: 1px solid #9CA3AF;
     border-radius: 7px; padding: 7px 10px; margin-bottom: 6px;
     display: flex; justify-content: space-between; align-items: center;
   }
   .receipt-banner-label {
-    font-size: 8px; color: rgba(255,255,255,0.7);
+    font-size: 8px; color: #4B5563;
     font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
   }
   .receipt-banner-amount {
-    font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -1px;
+    font-size: 17px; font-weight: 800; color: #111827; letter-spacing: -1px;
     font-variant-numeric: tabular-nums;
   }
   .receipt-banner-right { text-align: right; }
-  .receipt-banner-date { font-size: 8px; color: rgba(255,255,255,0.8); margin-top: 1px; }
+  .receipt-banner-date { font-size: 8px; color: #4B5563; margin-top: 1px; }
 
   /* ── Print-specific overrides ── */
   @media print {
@@ -845,7 +857,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
                 <div class="doc-title">RECEIPT</div>
                 <div class="doc-no">${receiptNo}</div>
                 <div style="margin-top:4px;">
-                  <span class="badge badge-paid">✓ PAYMENT RECEIVED</span>
+                  <span class="badge badge-paid">PAYMENT RECEIVED</span>
                 </div>
               </div>
             </div>
@@ -857,7 +869,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
                 <div class="receipt-banner-amount">₹${amountFmt}</div>
               </div>
               <div class="receipt-banner-right">
-                <span class="method-chip">⚡ ${paymentMethod}</span>
+                <span class="method-chip">${paymentMethod}</span>
                 <div class="receipt-banner-date">${dateFull} · ${dateTime}</div>
               </div>
             </div>
@@ -922,7 +934,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
                   <span>₹${totalFeeFmt}</span>
                 </div>
                 ${(transaction.discount ?? 0) > 0 ? `
-                <div class="totals-row" style="color:#059669;">
+                <div class="totals-row">
                   <span>Discount</span>
                   <span>− ₹${fmtINR(transaction.discount ?? 0)}</span>
                 </div>` : ''}
@@ -966,7 +978,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
               <div style="text-align:right;">
                 <div class="due-amount-value">${isFullyPaid ? '₹0.00' : `₹${fmtINR(displayOutstanding)}`}</div>
                 <span class="due-status-badge ${isFullyPaid ? 'clear' : 'pending'}">
-                  ${isFullyPaid ? '✓ Fully Paid' : 'Due Pending'}
+                  ${isFullyPaid ? 'Fully Paid' : 'Due Pending'}
                 </span>
               </div>
             </div>
@@ -987,7 +999,7 @@ export const generateReceiptPDF = async (transaction: FeeTransaction) => {
 
             <!-- Footer -->
             <div class="doc-footer">
-              <p>🖨️ This is a computer-generated receipt and is valid without a physical signature.</p>
+              <p>This is a computer-generated receipt and is valid without a physical signature.</p>
               <p>
                 ${SCHOOL_CONFIG.contact ? `<strong>Phone:</strong> ${SCHOOL_CONFIG.contact}` : ''}
                 ${SCHOOL_CONFIG.website ? ` &nbsp;|&nbsp; <strong>Web:</strong> ${SCHOOL_CONFIG.website}` : ''}
