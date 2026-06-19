@@ -3,7 +3,7 @@ import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Pressable, Platform, ActivityIndicator, RefreshControl
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Pressable, Platform, ActivityIndicator, RefreshControl, ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,6 +16,7 @@ import Animated, {
 import { useAuth } from '../../../src/hooks/useAuth';
 import { useApiQuery } from '../../../src/hooks/useApiQuery';
 import { FeeService, FeeSummaryStatus } from '../../../src/services/feeService';
+import { ClassService, ClassInfo } from '../../../src/services/classService';
 import { useTheme } from '../../../src/hooks/useTheme';
 import LogoLoader from '../../../src/components/LogoLoader';
 
@@ -39,6 +40,9 @@ type FeeListStudent = {
   name: string;
   admissionNo: string;
   class: string;
+  fatherName?: string;
+  studentGender?: string;
+  parentLine?: string;
   status: FeeSummaryStatus;
   total: number | string;
   paid: number | string;
@@ -137,6 +141,11 @@ const StudentCard = React.memo(function StudentCard({
               <Text style={[cardStyles.name, { color: textPri }]} numberOfLines={1}>
                 {item.name}
               </Text>
+              {item.parentLine ? (
+                <Text style={[cardStyles.parentLine, { color: textSec }]} numberOfLines={1}>
+                  {item.parentLine}
+                </Text>
+              ) : null}
               <View style={cardStyles.metaRow}>
                 {item.admissionNo ? (
                   <View style={[cardStyles.metaTag, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6' }]}>
@@ -214,7 +223,8 @@ const cardStyles = StyleSheet.create({
   },
   avatarText: { fontSize: 18, fontWeight: '800' },
   nameBlock: { flex: 1 },
-  name: { fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  name: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  parentLine: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
   metaRow: { flexDirection: 'row', gap: 5 },
   metaTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
   metaTagText: { fontSize: 10, fontWeight: '700' },
@@ -337,6 +347,44 @@ const classBadgeLabel = (className?: string) => {
   return match?.[0] || (className || '?').charAt(0).toUpperCase();
 };
 
+const buildParentLine = (gender?: string, fatherName?: string): string | undefined => {
+  const name = fatherName?.trim();
+  if (!name) return undefined;
+  const g = (gender || '').toLowerCase();
+  if (g === 'male') return `S/o ${name}`;
+  if (g === 'female') return `D/o ${name}`;
+  return undefined;
+};
+
+const hasActiveStudentFilters = (filters: {
+  debouncedSearch: string;
+  selectedClassId: string | null;
+  debouncedAdmissionNo: string;
+  debouncedFatherName: string;
+  debouncedMobile: string;
+  activeFilter: FilterType;
+}) =>
+  filters.activeFilter !== 'All'
+  || filters.debouncedSearch.length > 0
+  || !!filters.selectedClassId
+  || filters.debouncedAdmissionNo.length > 0
+  || filters.debouncedFatherName.length > 0
+  || filters.debouncedMobile.length > 0;
+
+/** Narrow enough to query the API — avoids loading the full student roster on open. */
+const hasStudentQueryCriteria = (filters: {
+  debouncedSearch: string;
+  selectedClassId: string | null;
+  debouncedAdmissionNo: string;
+  debouncedFatherName: string;
+  debouncedMobile: string;
+}) =>
+  filters.debouncedSearch.length > 0
+  || !!filters.selectedClassId
+  || filters.debouncedAdmissionNo.length > 0
+  || filters.debouncedFatherName.length > 0
+  || filters.debouncedMobile.length > 0;
+
 // ─── Class Structure Card ─────────────────────────────────────────────────────
 const ClassStructureCard = React.memo(function ClassStructureCard({
   item, index, isDark,
@@ -452,6 +500,167 @@ const viewModeStyles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '800' },
 });
 
+function StudentFiltersPanel({
+  expanded,
+  onToggle,
+  isDark,
+  classes,
+  selectedClassId,
+  onSelectClass,
+  admissionNo,
+  onAdmissionNoChange,
+  fatherName,
+  onFatherNameChange,
+  mobile,
+  onMobileChange,
+  onClear,
+  hasActiveFilters,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  isDark: boolean;
+  classes: ClassInfo[];
+  selectedClassId: string | null;
+  onSelectClass: (id: string | null) => void;
+  admissionNo: string;
+  onAdmissionNoChange: (value: string) => void;
+  fatherName: string;
+  onFatherNameChange: (value: string) => void;
+  mobile: string;
+  onMobileChange: (value: string) => void;
+  onClear: () => void;
+  hasActiveFilters: boolean;
+}) {
+  const border = isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB';
+  const chipBg = isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6';
+  const chipText = isDark ? 'rgba(255,255,255,0.55)' : '#6B7280';
+  const inputBg = isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB';
+
+  return (
+    <View style={filterPanelStyles.wrap}>
+      <Pressable style={[filterPanelStyles.toggleRow, { borderColor: border }]} onPress={onToggle}>
+        <View style={filterPanelStyles.toggleLeft}>
+          <Ionicons name="options-outline" size={16} color={hasActiveFilters ? '#3B82F6' : chipText} />
+          <Text style={[filterPanelStyles.toggleText, { color: hasActiveFilters ? '#3B82F6' : chipText }]}>
+            Filters{hasActiveFilters ? ' · active' : ''}
+          </Text>
+        </View>
+        <View style={filterPanelStyles.toggleRight}>
+          {hasActiveFilters ? (
+            <Pressable onPress={(e) => { e.stopPropagation?.(); onClear(); }} hitSlop={8}>
+              <Text style={filterPanelStyles.clearText}>Clear</Text>
+            </Pressable>
+          ) : null}
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={chipText} />
+        </View>
+      </Pressable>
+
+      {expanded ? (
+        <Animated.View entering={FadeIn.duration(250)} style={[filterPanelStyles.panel, { borderColor: border, backgroundColor: isDark ? '#171923' : '#FAFAFA' }]}>
+          <Text style={[filterPanelStyles.label, { color: chipText }]}>CLASS</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterPanelStyles.chipRow}>
+            <Pressable
+              style={[filterPanelStyles.chip, { backgroundColor: !selectedClassId ? '#3B82F6' : chipBg, borderColor: !selectedClassId ? '#3B82F6' : border }]}
+              onPress={() => onSelectClass(null)}
+            >
+              <Text style={[filterPanelStyles.chipText, { color: !selectedClassId ? '#fff' : chipText }]}>All</Text>
+            </Pressable>
+            {classes.map((cls) => {
+              const active = selectedClassId === cls.id;
+              return (
+                <Pressable
+                  key={cls.id}
+                  style={[filterPanelStyles.chip, { backgroundColor: active ? '#3B82F6' : chipBg, borderColor: active ? '#3B82F6' : border }]}
+                  onPress={() => onSelectClass(active ? null : cls.id)}
+                >
+                  <Text style={[filterPanelStyles.chipText, { color: active ? '#fff' : chipText }]}>{cls.name}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <View style={filterPanelStyles.inputRow}>
+            <View style={filterPanelStyles.inputCell}>
+              <Text style={[filterPanelStyles.label, { color: chipText }]}>ADMISSION NO</Text>
+              <AppTextInput
+                style={[filterPanelStyles.input, { backgroundColor: inputBg, color: isDark ? '#F9FAFB' : '#111827', borderColor: border }]}
+                placeholder="Exact or prefix"
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
+                value={admissionNo}
+                onChangeText={onAdmissionNoChange}
+              />
+            </View>
+            <View style={filterPanelStyles.inputCell}>
+              <Text style={[filterPanelStyles.label, { color: chipText }]}>FATHER / GUARDIAN</Text>
+              <AppTextInput
+                style={[filterPanelStyles.input, { backgroundColor: inputBg, color: isDark ? '#F9FAFB' : '#111827', borderColor: border }]}
+                placeholder="Parent name"
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
+                value={fatherName}
+                onChangeText={onFatherNameChange}
+              />
+            </View>
+          </View>
+
+          <Text style={[filterPanelStyles.label, { color: chipText }]}>MOBILE</Text>
+          <AppTextInput
+            style={[filterPanelStyles.input, filterPanelStyles.mobileInput, { backgroundColor: inputBg, color: isDark ? '#F9FAFB' : '#111827', borderColor: border }]}
+            placeholder="Parent phone number"
+            placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
+            value={mobile}
+            onChangeText={onMobileChange}
+            keyboardType="phone-pad"
+          />
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+const filterPanelStyles = StyleSheet.create({
+  wrap: { paddingHorizontal: 16, marginBottom: 4 },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toggleRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  toggleText: { fontSize: 13, fontWeight: '700' },
+  clearText: { fontSize: 12, fontWeight: '800', color: '#3B82F6' },
+  panel: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+  },
+  label: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  chipRow: { gap: 8, paddingVertical: 4 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  chipText: { fontSize: 12, fontWeight: '700' },
+  inputRow: { flexDirection: 'row', gap: 10 },
+  inputCell: { flex: 1, gap: 6 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  mobileInput: { marginTop: -2 },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AccountsFees() {
   const { user } = useAuth();
@@ -462,8 +671,17 @@ export default function AccountsFees() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [admissionNoInput, setAdmissionNoInput] = useState('');
+  const [debouncedAdmissionNo, setDebouncedAdmissionNo] = useState('');
+  const [fatherNameInput, setFatherNameInput] = useState('');
+  const [debouncedFatherName, setDebouncedFatherName] = useState('');
+  const [mobileInput, setMobileInput] = useState('');
+  const [debouncedMobile, setDebouncedMobile] = useState('');
   const [activeView, setActiveView] = useState<ViewMode>('Students');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [structuresLoading, setStructuresLoading] = useState(true);
@@ -496,17 +714,24 @@ export default function AccountsFees() {
     user?.id
   );
 
-  const mapFeeSummary = useCallback((d: any): FeeListStudent => ({
-    id: d.student_id,
-    name: d.student_name,
-    admissionNo: d.admission_no || '',
-    class: d.class_name || '',
-    status: d.status,
-    total: d.total_amount,
-    paid: d.paid_amount,
-    due: d.due_amount,
-    rawId: `${d.student_id}_${d.class_name || ''}`,
-  }), []);
+  const mapFeeSummary = useCallback((d: any): FeeListStudent => {
+    const fatherName = d.father_name || '';
+    const studentGender = d.student_gender || '';
+    return {
+      id: d.student_id,
+      name: d.student_name,
+      admissionNo: d.admission_no || '',
+      class: d.class_name || '',
+      fatherName,
+      studentGender,
+      parentLine: buildParentLine(studentGender, fatherName),
+      status: d.status,
+      total: d.total_amount,
+      paid: d.paid_amount,
+      due: d.due_amount,
+      rawId: `${d.student_id}_${d.class_name || ''}`,
+    };
+  }, []);
 
   const mapStructure = useCallback((item: any): ClassFeeStructure => ({
     id: String(item.id),
@@ -564,6 +789,10 @@ export default function AccountsFees() {
         page: nextPage,
         limit: PAGE_LIMIT,
         search: debouncedSearch || undefined,
+        class_id: selectedClassId || undefined,
+        admission_no: debouncedAdmissionNo || undefined,
+        father_name: debouncedFatherName || undefined,
+        mobile: debouncedMobile || undefined,
         status: activeFilter === 'All' ? undefined : activeFilter,
       });
 
@@ -600,7 +829,22 @@ export default function AccountsFees() {
         setRefreshing(false);
       }
     }
-  }, [activeFilter, debouncedSearch, mapFeeSummary, user]);
+  }, [
+    activeFilter,
+    debouncedAdmissionNo,
+    debouncedFatherName,
+    debouncedMobile,
+    debouncedSearch,
+    mapFeeSummary,
+    selectedClassId,
+    user,
+  ]);
+
+  useEffect(() => {
+    ClassService.getClasses()
+      .then(setClasses)
+      .catch(() => setClasses([]));
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -611,14 +855,91 @@ export default function AccountsFees() {
   }, [searchQuery]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedAdmissionNo(admissionNoInput.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [admissionNoInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const query = fatherNameInput.trim();
+      setDebouncedFatherName(query.length >= 2 ? query : '');
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [fatherNameInput]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const digits = mobileInput.trim().replace(/\s+/g, '');
+      setDebouncedMobile(digits.length >= 3 ? digits : '');
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [mobileInput]);
+
+  const studentFiltersActive = hasActiveStudentFilters({
+    debouncedSearch,
+    selectedClassId,
+    debouncedAdmissionNo,
+    debouncedFatherName,
+    debouncedMobile,
+    activeFilter,
+  });
+
+  const studentQueryReady = hasStudentQueryCriteria({
+    debouncedSearch,
+    selectedClassId,
+    debouncedAdmissionNo,
+    debouncedFatherName,
+    debouncedMobile,
+  });
+
+  const clearStudentFilters = useCallback(() => {
+    setSelectedClassId(null);
+    setAdmissionNoInput('');
+    setDebouncedAdmissionNo('');
+    setFatherNameInput('');
+    setDebouncedFatherName('');
+    setMobileInput('');
+    setDebouncedMobile('');
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setActiveFilter('All');
+  }, []);
+
+  useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
-    if (activeView === 'Students') {
-      loadData({ nextPage: 1 });
+    if (activeView !== 'Students') return;
+
+    if (!studentQueryReady) {
+      requestIdRef.current += 1;
+      setStudents([]);
+      setMeta({
+        total: 0,
+        page: 1,
+        limit: PAGE_LIMIT,
+        total_pages: 1,
+        counts: EMPTY_COUNTS,
+      });
+      setLoading(false);
+      setLoadingMore(false);
+      return;
     }
-  }, [activeView, loadData, user]);
+
+    loadData({ nextPage: 1 });
+  }, [
+    activeFilter,
+    activeView,
+    debouncedAdmissionNo,
+    debouncedFatherName,
+    debouncedMobile,
+    debouncedSearch,
+    loadData,
+    selectedClassId,
+    studentQueryReady,
+    user,
+  ]);
 
   const filterCounts = meta.counts;
 
@@ -652,19 +973,24 @@ export default function AccountsFees() {
     void refetchStats();
     void refetchStructures();
     if (activeView === 'Students') {
-      loadData({ nextPage: 1, isRefreshing: true });
+      if (studentQueryReady) {
+        loadData({ nextPage: 1, isRefreshing: true });
+      } else {
+        setRefreshing(true);
+        setTimeout(() => setRefreshing(false), 400);
+      }
     } else {
       setRefreshing(true);
       setTimeout(() => setRefreshing(false), 400);
     }
-  }, [activeView, loadData, refetchStats, refetchStructures]);
+  }, [activeView, loadData, refetchStats, refetchStructures, studentQueryReady]);
 
   const hasMore = meta.page < meta.total_pages;
 
   const handleEndReached = useCallback(() => {
-    if (loading || loadingMore || refreshing || !hasMore) return;
+    if (!studentQueryReady || loading || loadingMore || refreshing || !hasMore) return;
     loadData({ nextPage: meta.page + 1, append: true });
-  }, [hasMore, loadData, loading, loadingMore, meta.page, refreshing]);
+  }, [hasMore, loadData, loading, loadingMore, meta.page, refreshing, studentQueryReady]);
 
   const renderStudentItem = useCallback(({ item, index }: { item: any; index: number }) => (
     <StudentCard
@@ -699,6 +1025,23 @@ export default function AccountsFees() {
 
       {activeView === 'Students' ? (
         <>
+          <StudentFiltersPanel
+            expanded={filtersExpanded}
+            onToggle={() => setFiltersExpanded((prev) => !prev)}
+            isDark={isDark}
+            classes={classes}
+            selectedClassId={selectedClassId}
+            onSelectClass={setSelectedClassId}
+            admissionNo={admissionNoInput}
+            onAdmissionNoChange={setAdmissionNoInput}
+            fatherName={fatherNameInput}
+            onFatherNameChange={setFatherNameInput}
+            mobile={mobileInput}
+            onMobileChange={setMobileInput}
+            onClear={clearStudentFilters}
+            hasActiveFilters={studentFiltersActive}
+          />
+
           <View style={styles.filterRow}>
             {FILTERS.map(f => (
               <FilterPill
@@ -712,12 +1055,16 @@ export default function AccountsFees() {
             ))}
           </View>
 
-          {!loading && (
+          {!loading && studentQueryReady && (
             <Animated.View entering={FadeIn.duration(300)}>
               <Text style={styles.resultsCount}>
                 {meta.total} student{meta.total !== 1 ? 's' : ''}
                 {activeFilter !== 'All' ? ` · ${activeFilter}` : ''}
                 {debouncedSearch ? ` · "${debouncedSearch}"` : ''}
+                {selectedClassId ? ` · ${classes.find((c) => c.id === selectedClassId)?.name || 'Class'}` : ''}
+                {debouncedAdmissionNo ? ` · Adm ${debouncedAdmissionNo}` : ''}
+                {debouncedFatherName ? ` · ${debouncedFatherName}` : ''}
+                {debouncedMobile ? ` · ${debouncedMobile}` : ''}
               </Text>
             </Animated.View>
           )}
@@ -733,7 +1080,35 @@ export default function AccountsFees() {
         )
       )}
     </>
-  ), [activeFilter, activeView, debouncedSearch, filterCounts, filteredStructures.length, handleFilterChange, isDark, loading, meta.total, searchQuery, structuresLoading, styles.filterRow, styles.resultsCount, styles.viewModeRow, summaryStats]);
+  ), [
+    activeFilter,
+    activeView,
+    admissionNoInput,
+    classes,
+    clearStudentFilters,
+    debouncedAdmissionNo,
+    debouncedFatherName,
+    debouncedMobile,
+    debouncedSearch,
+    filterCounts,
+    filteredStructures.length,
+    filtersExpanded,
+    fatherNameInput,
+    handleFilterChange,
+    isDark,
+    loading,
+    meta.total,
+    mobileInput,
+    searchQuery,
+    selectedClassId,
+    studentFiltersActive,
+    studentQueryReady,
+    structuresLoading,
+    styles.filterRow,
+    styles.resultsCount,
+    styles.viewModeRow,
+    summaryStats,
+  ]);
 
   const ListFooter = useMemo(() => (
     loadingMore ? (
@@ -761,24 +1136,25 @@ export default function AccountsFees() {
       );
     }
 
-    const hasQuery = debouncedSearch.length > 0;
-    const hasFilter = activeFilter !== 'All';
+    const hasQuery = studentQueryReady;
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyIcon}>🔍</Text>
         <Text style={styles.emptyTitle}>
-          {hasQuery || hasFilter ? 'No students found' : 'No fee records yet'}
+          {hasQuery ? 'No students found' : 'Search to find a student'}
         </Text>
         <Text style={styles.emptySubtitle}>
-          {hasQuery || hasFilter
-            ? 'Try a different name, ID, class, or filter'
-            : 'Assigned student fees will appear here'}
+          {hasQuery
+            ? 'Try different filters or clear them to see more students'
+            : 'Enter a name, admission number, class, or other filter — students load only when you search.'}
         </Text>
       </View>
     );
-  }, [activeFilter, activeView, debouncedSearch.length, searchQuery, styles.emptyIcon, styles.emptySubtitle, styles.emptyTitle, styles.emptyWrap]);
+  }, [activeView, searchQuery, studentQueryReady, styles.emptyIcon, styles.emptySubtitle, styles.emptyTitle, styles.emptyWrap]);
 
-  const isListLoading = activeView === 'Students' ? loading : structuresLoading;
+  const isListLoading = activeView === 'Students'
+    ? loading && studentQueryReady && students.length === 0
+    : structuresLoading;
 
   return (
     <View style={styles.container}>

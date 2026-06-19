@@ -7,6 +7,7 @@ import { SCHOOL_ID } from '../constants/school';
 import { registerLogoutCallback } from '../services/apiClient';
 import { isStudentRole } from '../utils/roleHelpers';
 import { getBackupRefreshToken, clearBackupRefreshToken } from '../services/secureTokenStore';
+import { SessionPolicy } from '../services/sessionPolicyService';
 
 interface AuthContextType {
   session: AuthSession | null;
@@ -163,6 +164,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (storedSession) {
           setSession(storedSession);
+          // Re-seed the role into SessionPolicy on cold start so the student
+          // 401-suppression guard is active immediately, before any refresh.
+          const restoredRole = storedSession.validatedUser?.role?.code;
+          if (restoredRole && !(await SessionPolicy.getStoredRole())) {
+            await SessionPolicy.startSession(restoredRole as any);
+          }
         } else {
           // ── Layer B: Student silent restore from SecureStore backup ──
           // If getSession() returned null (storage cleared or timeout),
@@ -267,7 +274,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await AuthService.signIn(email, pass);
       if (result.session) {
         setSession(result.session);
-
+        // Record the role so the role-based session policy + the student
+        // 401-suppression guard in apiClient/sessionManager work. Without this
+        // the policy layer stays empty and parents (student role) get evicted
+        // on the first transient 401.
+        const roleCode = result.session.validatedUser?.role?.code;
+        if (roleCode) {
+          await SessionPolicy.startSession(roleCode as any);
+        }
       }
       return result;
     } finally {

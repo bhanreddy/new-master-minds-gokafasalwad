@@ -7,7 +7,30 @@ import { showAlert } from '../components/CustomAlert';
 import { API_URL, SCHOOL_ID } from '../constants/school';
 import { isStudentRole } from '../utils/roleHelpers';
 import { SessionPolicy } from './sessionPolicyService';
+import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
+
+/**
+ * Resolve the current role for the 401 guard WITHOUT depending on
+ * SessionPolicy being populated. The persisted auth_session (written by
+ * authService on every login/refresh) is the single source of truth for role.
+ * SessionPolicy.startSession() was historically never called, which left the
+ * student logout-suppression guard dead — this reads the role directly so
+ * parent (student-role) sessions are never dropped on a transient 401.
+ */
+async function resolveStoredRole(): Promise<string | null> {
+  try {
+    const raw = await SecureTokenStore.getItem('auth_session');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const code = parsed?.validatedUser?.role?.code;
+      if (code) return code;
+    }
+  } catch {
+    // fall through to SessionPolicy
+  }
+  return SessionPolicy.getStoredRole();
+}
 
 /**
  * Cross-platform alert helper.
@@ -300,7 +323,7 @@ async function apiRequestInner<T>(
         // Student sessions NEVER expire. A 401 for a student means a
         // server/network issue, NOT an auth issue. Show a retry toast
         // and reject without triggering any logout flow.
-        const storedRole = await SessionPolicy.getStoredRole();
+        const storedRole = await resolveStoredRole();
         if (isStudentRole(storedRole)) {
           if (__DEV__) console.log('[apiClient] 401 for student — suppressing logout, showing retry toast');
           Toast.show({

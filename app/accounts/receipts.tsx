@@ -1,20 +1,32 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ScrollView, Pressable } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
-import { FeeService } from '../../src/services/feeService';
+import { FeeCollector, FeeService } from '../../src/services/feeService';
 import { generateReceiptPDF } from '../../src/utils/pdfGenerator';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAuth } from '../../src/hooks/useAuth';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+
+const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+
+const monthStart = () => {
+  const now = new Date();
+  return toDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
+};
+
+const todayInput = () => toDateInput(new Date());
+
+const isAdminRole = (role?: string | null) => role === 'admin' || role === 'principal';
 
 /** Map API fee_type label to Receipts filter chip (fee_types are school-defined names). */
 function feeTypeToFilterCategory(feeType: string | undefined): 'Fees' | 'Uniform' | 'Transport' | 'Other' {
@@ -34,11 +46,11 @@ function feeTypeToFilterCategory(feeType: string | undefined): 'Fees' | 'Uniform
 
 export default function ReceiptsScreen() {
   const {
-    theme,
-    isDark
+    theme
   } = useTheme();
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const { shellActive } = useAccountsWebChrome();
+  const { user, role } = useAuth();
   const {
     t
   } = useTranslation();
@@ -46,19 +58,53 @@ export default function ReceiptsScreen() {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [collectors, setCollectors] = useState<FeeCollector[]>([]);
+  const [fromDate, setFromDate] = useState(monthStart());
+  const [toDate, setToDate] = useState(todayInput());
+  const [selectedCollectorId, setSelectedCollectorId] = useState<string | null>(null);
+  const [collectionTotal, setCollectionTotal] = useState<number | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const filters = ['All', 'Fees', 'Uniform', 'Transport', 'Other'];
+  const canPickCollector = isAdminRole(role);
+  const currentUserId = user?.userId || user?.id || null;
+
   useEffect(() => {
-    loadData();
+    FeeService.getCollectors()
+      .then(setCollectors)
+      .catch(() => setCollectors([]));
   }, []);
-  const loadData = async () => {
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (!canPickCollector) {
+      setSelectedCollectorId(currentUserId);
+    }
+  }, [canPickCollector, currentUserId]);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await FeeService.getTransactions();
-      const formatted = data.map((tx) => ({
+      const receivedBy = selectedCollectorId || (canPickCollector ? undefined : currentUserId || undefined);
+      const [txData, summaryData] = await Promise.all([
+        FeeService.getTransactions({
+          from_date: fromDate,
+          to_date: `${toDate}T23:59:59`,
+          received_by: receivedBy,
+          limit: 200,
+        }),
+        FeeService.getCollectionSummary({
+          from_date: fromDate,
+          to_date: `${toDate}T23:59:59`,
+          received_by: receivedBy,
+        }),
+      ]);
+
+      const rows = Array.isArray(txData) ? txData : (txData as any)?.data ?? [];
+      const formatted = rows.map((tx: any) => ({
         id: tx.id,
         student: tx.student_name,
         admission_no: tx.admission_no,
-        amount: `₹${tx.amount.toLocaleString()}`,
+        amount: `₹${Number(tx.amount || 0).toLocaleString('en-IN')}`,
         date: new Date(tx.paid_at).toLocaleDateString('en-IN', {
           day: '2-digit',
           month: 'short'
@@ -66,15 +112,25 @@ export default function ReceiptsScreen() {
         type: tx.payment_method,
         classLabel: [tx.class_name, tx.section_name].filter(Boolean).join(' — ') || '—',
         feeType: tx.fee_type,
+        collector: tx.received_by || '—',
         raw: tx
       }));
       setReceipts(formatted);
+      setCollectionTotal(Number(summaryData?.total_collected ?? 0));
     } catch (error) {
 
     } finally {
       setLoading(false);
     }
-  };
+  }, [canPickCollector, currentUserId, fromDate, selectedCollectorId, toDate]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [loadData, user]);
 
   const filteredReceipts = useMemo(() => {
     let list = receipts;
@@ -116,15 +172,16 @@ export default function ReceiptsScreen() {
         flex: 1
       }]}>
         <View style={[styles.iconBox, {
-          backgroundColor: '#E0F2FE'
+          backgroundColor: '#F3F4F6'
         }]}>
-          <Ionicons name="receipt" size={20} color="#0284C7" />
+          <Ionicons name="receipt" size={20} color="#4B5563" />
         </View>
         <View style={{
           flex: 1
         }}>
           <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
           <Text style={styles.receiptDetails}>{item.admission_no} • {item.classLabel}</Text>
+          <Text style={styles.collectorText}>Collected by {item.collector}</Text>
         </View>
       </View>
       <View style={[styles.receiptRight, {
@@ -142,7 +199,7 @@ export default function ReceiptsScreen() {
         }}>
           <Text style={styles.typeBadge}>{item.type}</Text>
           <TouchableOpacity onPress={() => handlePrint(item.raw)}>
-            <Ionicons name="print-outline" size={18} color="#6366F1" />
+            <Ionicons name="print-outline" size={18} color="#4B5563" />
           </TouchableOpacity>
         </View>
       </View>
@@ -152,6 +209,81 @@ export default function ReceiptsScreen() {
     <StatusBar barStyle="dark-content" backgroundColor="#fff" />
     {!shellActive && <AdminHeader title="Receipts" showBackButton={true} />}
     <View style={styles.content}>
+      <Pressable style={styles.filterToggle} onPress={() => setFiltersExpanded((prev) => !prev)}>
+        <View style={styles.filterToggleLeft}>
+          <Ionicons name="calendar-outline" size={16} color="#4B5563" />
+          <Text style={styles.filterToggleText}>
+            {fromDate} → {toDate}
+            {selectedCollectorId
+              ? ` · ${collectors.find((c) => c.id === selectedCollectorId)?.name || 'Accountant'}`
+              : canPickCollector ? ' · All accountants' : ''}
+          </Text>
+        </View>
+        <Ionicons name={filtersExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />
+      </Pressable>
+
+      {filtersExpanded ? (
+        <Animated.View entering={FadeIn.duration(250)} style={styles.filterPanel}>
+          <View style={styles.dateRow}>
+            <View style={styles.dateCell}>
+              <Text style={styles.filterLabel}>FROM</Text>
+              <AppTextInput
+                style={[ds.inputInChrome, styles.dateInput]}
+                value={fromDate}
+                onChangeText={setFromDate}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+            <View style={styles.dateCell}>
+              <Text style={styles.filterLabel}>TO</Text>
+              <AppTextInput
+                style={[ds.inputInChrome, styles.dateInput]}
+                value={toDate}
+                onChangeText={setToDate}
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+          </View>
+
+          {canPickCollector ? (
+            <>
+              <Text style={styles.filterLabel}>ACCOUNTANT</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.collectorChip, !selectedCollectorId && styles.collectorChipActive]}
+                  onPress={() => setSelectedCollectorId(null)}
+                >
+                  <Text style={[styles.collectorChipText, !selectedCollectorId && styles.collectorChipTextActive]}>All</Text>
+                </TouchableOpacity>
+                {collectors.map((collector) => {
+                  const active = selectedCollectorId === collector.id;
+                  return (
+                    <TouchableOpacity
+                      key={collector.id}
+                      style={[styles.collectorChip, active && styles.collectorChipActive]}
+                      onPress={() => setSelectedCollectorId(active ? null : collector.id)}
+                    >
+                      <Text style={[styles.collectorChipText, active && styles.collectorChipTextActive]}>{collector.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : (
+            <Text style={styles.selfCollectorNote}>
+              Showing collections recorded by you
+            </Text>
+          )}
+        </Animated.View>
+      ) : null}
+
+      {collectionTotal !== null ? (
+        <View style={styles.totalBanner}>
+          <Text style={styles.totalLabel}>Collected in range</Text>
+          <Text style={styles.totalValue}>₹{collectionTotal.toLocaleString('en-IN')}</Text>
+        </View>
+      ) : null}
+
       {/* Search Bar */}
       <View style={[styles.searchContainer, ds.searchBarWrapper]}>
         <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
@@ -169,7 +301,7 @@ export default function ReceiptsScreen() {
           })}
         </ScrollView>
       </View>
-      {loading ? <LogoLoader size={60} color="#6366F1" style={{
+      {loading ? <LogoLoader size={60} color="#6B7280" style={{
         marginTop: 20
       }} /> : <FlatList data={filteredReceipts} renderItem={renderReceiptItem} keyExtractor={(item) => item.id} showsVerticalScrollIndicator={false} contentContainerStyle={{
         paddingBottom: 20
@@ -180,16 +312,105 @@ export default function ReceiptsScreen() {
 const getStyles = (theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent'
+    backgroundColor: '#FFFFFF'
   },
   content: {
     flex: 1,
     paddingHorizontal: 20
   },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  filterToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, paddingRight: 8 },
+  filterToggleText: { fontSize: 12, fontWeight: '700', color: '#374151', flexShrink: 1 },
+  filterPanel: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  filterLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: theme.colors.textSecondary,
+  },
+  dateRow: { flexDirection: 'row', gap: 10 },
+  dateCell: { flex: 1, gap: 6 },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    fontSize: 14,
+    color: '#111827',
+  },
+  chipRow: { gap: 8, paddingVertical: 4 },
+  collectorChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
+  collectorChipActive: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#9CA3AF',
+  },
+  collectorChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
+  collectorChipTextActive: {
+    color: '#111827',
+  },
+  selfCollectorNote: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  totalBanner: {
+    marginTop: 12,
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  totalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  totalValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 15,
     height: 50,
@@ -213,13 +434,13 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: theme.colors.border
   },
   activeFilterChip: {
-    backgroundColor: '#6366F1',
-    borderColor: '#6366F1'
+    backgroundColor: '#F3F4F6',
+    borderColor: '#9CA3AF'
   },
   filterText: {
     fontSize: 13,
@@ -227,16 +448,18 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     fontWeight: '500'
   },
   activeFilterText: {
-    color: theme.colors.background
+    color: '#111827'
   },
   receiptCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 15,
     marginTop: 15,
-    elevation: 1
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 0
   },
   receiptLeft: {
     flexDirection: 'row',
@@ -260,13 +483,19 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.textSecondary,
     marginTop: 2
   },
+  collectorText: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
+    fontWeight: '600',
+  },
   receiptRight: {
     alignItems: 'flex-end'
   },
   amount: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#059669'
+    color: '#111827'
   },
   date: {
     fontSize: 11,
@@ -275,11 +504,13 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   },
   typeBadge: {
     fontSize: 10,
-    backgroundColor: theme.colors.card,
+    backgroundColor: '#FFFFFF',
     color: theme.colors.textSecondary,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     textTransform: 'uppercase',
     fontWeight: 'bold'
   },

@@ -12,7 +12,8 @@ import { useAuth } from '../../../src/hooks/useAuth';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { Theme } from '../../../src/theme/themes';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
-import { ACCOUNTS_STAT_KEYS } from '../../../src/utils/constants';
+import { ACCOUNTS_STAT_KEYS, normalizeAccountsDashboardConfig, toggleAccountsDashboardStat } from '../../../src/utils/constants';
+import { invalidateApiQueryCache } from '../../../src/hooks/useApiQuery';
 
 const STAT_LABELS: Record<string, string> = {
     total_collection_month: 'Total Collection (This Month)',
@@ -53,7 +54,7 @@ export default function AccountsDashboardVisibilityScreen() {
 
     /** Build an all-visible default config from the canonical key list. */
     const buildDefaultConfig = (): Record<string, boolean> =>
-        ACCOUNTS_STAT_KEYS.reduce((acc, key) => { acc[key] = true; return acc; }, {} as Record<string, boolean>);
+        normalizeAccountsDashboardConfig();
 
     const loadConfig = async () => {
         setLoading(true);
@@ -63,7 +64,7 @@ export default function AccountsDashboardVisibilityScreen() {
             // Safely extract config — handle both { config: {...} } and direct config shapes
             const resolved = res?.config ?? (res && typeof res === 'object' && !('config' in res) ? res as Record<string, boolean> : null);
             if (resolved && typeof resolved === 'object') {
-                setConfig(resolved);
+                setConfig(normalizeAccountsDashboardConfig(resolved));
             } else {
                 // Server returned unexpected shape — fall back to all-visible defaults
                 console.warn('Unexpected config response shape, using defaults:', res);
@@ -82,14 +83,11 @@ export default function AccountsDashboardVisibilityScreen() {
     };
 
     const handleToggle = (key: string) => {
-        setConfig(prev => ({
-            ...prev,
-            [key]: !prev[key]
-        }));
+        setConfig(prev => toggleAccountsDashboardStat(prev, key));
     };
 
     const handleSetAll = (value: boolean) => {
-        const updated: Record<string, boolean> = {};
+        const updated = normalizeAccountsDashboardConfig();
         ACCOUNTS_STAT_KEYS.forEach(key => {
             updated[key] = value;
         });
@@ -98,8 +96,11 @@ export default function AccountsDashboardVisibilityScreen() {
 
     const handleSave = async () => {
         setSaving(true);
+        const payload = normalizeAccountsDashboardConfig(config);
         try {
-            await AdminService.updateAccountsDashboardConfig(config);
+            await AdminService.updateAccountsDashboardConfig(payload);
+            invalidateApiQueryCache('accounts-dashboard-stats');
+            setConfig(payload);
             alertCompat('Success', 'Visibility settings saved successfully.', [
                 { text: 'OK', onPress: () => router.back() }
             ]);

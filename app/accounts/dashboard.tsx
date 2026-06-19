@@ -26,6 +26,7 @@ import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContex
 import LogoLoader from '../../src/components/LogoLoader';
 import { LineChart } from "react-native-gifted-charts";
 import PaymentDueBanner from '../../src/components/PaymentDueBanner';
+import { ACCOUNTS_STAT_KEYS, normalizeAccountsDashboardConfig } from '../../src/utils/constants';
 
 const IS_WEB = Platform.OS === 'web';
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
@@ -672,10 +673,16 @@ export default function AccountsDashboard() {
     setAnalyticsLoading(statsLoading);
     if (!statsData) return;
 
-    const resolvedConfig = statsData.config || {};
-    setConfig(resolvedConfig);
-
     const rawStats = statsData.stats || {};
+    const resolvedConfig = normalizeAccountsDashboardConfig(statsData.config);
+    const effectiveConfig = { ...resolvedConfig };
+    ACCOUNTS_STAT_KEYS.forEach((key) => {
+      if (rawStats[key] === undefined) {
+        effectiveConfig[key] = false;
+      }
+    });
+    setConfig(effectiveConfig);
+
     setStats({
       totalCollection: rawStats.total_collection_month !== undefined ? `₹${rawStats.total_collection_month.toLocaleString()}` : null,
       todaysCollection: rawStats.todays_collection !== undefined ? `₹${rawStats.todays_collection.toLocaleString()}` : null,
@@ -720,13 +727,13 @@ export default function AccountsDashboard() {
 
   const carouselCards = useMemo(() => {
     const cards = [];
-    if (config.total_collection_month !== false) {
+    if (config.total_collection_month !== false && stats?.totalCollection != null) {
       cards.push({ id: 'monthly', label: t('accounts_dashboard.total_collection_month'), value: loading ? '—' : stats?.totalCollection || '₹0', icon: 'wallet', grad: ['#1D4ED8', '#6366F1'] as [string, string], shadowColor: '#4338CA', showLive: true, watermark: 'chart-bar', tag: 'THIS MONTH' });
     }
-    if (config.todays_collection !== false) {
+    if (config.todays_collection !== false && stats?.todaysCollection != null) {
       cards.push({ id: 'today', label: t('accounts_dashboard.todays_collection'), value: loading ? '—' : stats?.todaysCollection || '₹0', icon: 'wallet', grad: ['#047857', '#10B981'] as [string, string], shadowColor: '#059669', showLive: false, watermark: 'arrow-circle-up', tag: 'TODAY' });
     }
-    if (config.pending_dues !== false) {
+    if (config.pending_dues !== false && stats?.pendingDues != null) {
       cards.push({ id: 'pending', label: t('accounts_dashboard.pending_dues'), value: loading ? '—' : stats?.pendingDues || '₹0', icon: 'file-invoice-dollar', grad: ['#991B1B', '#EF4444'] as [string, string], shadowColor: '#DC2626', showLive: false, watermark: 'exclamation-circle', tag: 'OVERDUE' });
     }
     return cards;
@@ -744,6 +751,7 @@ export default function AccountsDashboard() {
 
   const quickActions = [
     { id: 'collect', title: 'Collect Fees', description: 'Process student payments', icon: 'cash', color: ['#059669', '#10B981'] as [string, string], route: '/accounts/fees', library: Ionicons },
+    { id: 'today_collection', title: "Today's Collection", description: 'Your daily collection report', icon: 'today', color: ['#0E7490', '#06B6D4'] as [string, string], route: '/accounts/fees/today-collection', library: Ionicons },
     { id: 'upi_qr', title: 'Collect via UPI', description: 'Dynamic UPI QR for payments', icon: 'qr-code-outline', color: ['#B45309', '#F59E0B'] as [string, string], route: '/accounts/collect-fee-qr', library: Ionicons },
     { id: 'expenses', title: 'Expenses', description: 'Manage school expenditures', icon: 'receipt', color: ['#B91C1C', '#EF4444'] as [string, string], route: '/accounts/expenses', library: Ionicons },
     { id: 'payroll', title: 'Payroll', description: 'Staff salary & attendance', icon: 'people', color: ['#4338CA', '#6366F1'] as [string, string], route: '/accounts/payroll', library: Ionicons },
