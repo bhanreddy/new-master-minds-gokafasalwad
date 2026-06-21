@@ -1011,7 +1011,7 @@ export default function AdminDashboard() {
             {!loading && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: isWideScreen ? '55%' : '100%' }}>
                 <SummaryMiniCard label="Students" value={dashboardData?.totalStudents ?? 1} icon="people-sharp" color="#2563EB" isDark={isDark} delay={200} />
-                <SummaryMiniCard label="Attendance" value={attendance?.avg_attendance ? `${attendance.avg_attendance}%` : '83%'} icon="checkmark-circle-sharp" color="#10B981" isDark={isDark} delay={240} />
+                <SummaryMiniCard label="Attendance" value={attendance?.avg_attendance != null ? `${attendance.avg_attendance}%` : '0%'} icon="checkmark-circle-sharp" color="#10B981" isDark={isDark} delay={240} />
                 <SummaryMiniCard label="Collected" value={financials?.total_collected ? `₹${(financials.total_collected / 1000).toFixed(1)}K` : '₹0.0K'} icon="wallet-sharp" color="#F59E0B" isDark={isDark} delay={280} />
                 <SummaryMiniCard label="Issues" value={dashboardData?.complaints ?? 0} icon="alert-circle-sharp" color="#EF4444" isDark={isDark} delay={320} />
               </View>

@@ -77,6 +77,7 @@ interface BroadcastResult {
   sent_count: number;
   failure_count: number;
   no_token_count: number;
+  remaining_count?: number;
   tokens_targeted?: number;
   message?: string;
   parent_batch_id?: string;
@@ -585,6 +586,10 @@ function DeliveryStatusModal({
   const noDevice = status.no_token_count ?? 0;
   const total = status.total_targets ?? 0;
   const accounted = sent + failed + noDevice;
+  const remaining = status.remaining_count ?? Math.max(total - accounted, 0);
+  const progressRatio =
+    total > 0 ? Math.min(accounted / total, 1) : isProcessing ? 0 : 1;
+  const progressPercent = `${Math.round(progressRatio * 100)}%`;
   const successRate = accounted > 0 ? Math.round((sent / accounted) * 100) : 0;
   const canRetry = status.status === 'completed' && failed > 0;
   const allClean = status.status === 'completed' && failed === 0 && noDevice === 0;
@@ -617,11 +622,28 @@ function DeliveryStatusModal({
           {isProcessing ? (
             <View style={styles.modalLoadingRow}>
               <LogoLoader color={accent} size={32} />
+              <View style={styles.liveCounterBox}>
+                <Text style={[styles.liveCounterNumber, { color: accent }]}>
+                  {remaining.toLocaleString()}
+                </Text>
+                <Text style={styles.liveCounterLabel}>
+                  {remaining === 1 ? 'device needs' : 'devices need'} to reach
+                </Text>
+              </View>
+              <View style={styles.liveProgressTrack}>
+                <View
+                  style={[
+                    styles.liveProgressFill,
+                    { width: progressPercent, backgroundColor: accent },
+                  ]}
+                />
+              </View>
               <Text style={styles.modalProcessingText}>
-                Sending to {total.toLocaleString()} parent{total === 1 ? '' : 's'}…
+                Reached {Math.min(accounted, total).toLocaleString()} of{' '}
+                {total.toLocaleString()} target device{total === 1 ? '' : 's'}…
               </Text>
               <Text style={styles.modalProcessingHint}>
-                Large groups can take a moment. Keep this open to watch progress as it updates.
+                Backend progress updates after each broadcast chunk. Keep this open to watch it count down.
               </Text>
             </View>
           ) : (
@@ -872,6 +894,15 @@ export default function NotificationsTriggerPage() {
       sent_count: result.sent_count ?? 0,
       failure_count: result.failure_count ?? 0,
       no_token_count: result.no_token_count ?? 0,
+      remaining_count:
+        result.remaining_count ??
+        Math.max(
+          (result.total_targets ?? 0) -
+            (result.sent_count ?? 0) -
+            (result.failure_count ?? 0) -
+            (result.no_token_count ?? 0),
+          0
+        ),
     });
     setStatusModalVisible(true);
   }, []);
@@ -953,6 +984,15 @@ export default function NotificationsTriggerPage() {
         sent_count: result.sent_count ?? 0,
         failure_count: result.failure_count ?? 0,
         no_token_count: result.no_token_count ?? 0,
+        remaining_count:
+          result.remaining_count ??
+          Math.max(
+            (result.total_targets ?? 0) -
+              (result.sent_count ?? 0) -
+              (result.failure_count ?? 0) -
+              (result.no_token_count ?? 0),
+            0
+          ),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
@@ -1546,6 +1586,35 @@ const getStyles = (
       alignItems: 'center',
       paddingVertical: 32,
       gap: 16,
+    },
+    liveCounterBox: {
+      alignItems: 'center',
+      gap: 2,
+    },
+    liveCounterNumber: {
+      fontSize: 42,
+      fontWeight: '900',
+      lineHeight: 44,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -1,
+    },
+    liveCounterLabel: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: THEME_COLORS.text,
+    },
+    liveProgressTrack: {
+      width: '100%',
+      height: 8,
+      borderRadius: 4,
+      overflow: 'hidden',
+      backgroundColor: THEME_COLORS.surfaceHighlight,
+      borderWidth: 1,
+      borderColor: THEME_COLORS.border,
+    },
+    liveProgressFill: {
+      height: '100%',
+      borderRadius: 4,
     },
     modalProcessingText: {
       fontSize: 15,
