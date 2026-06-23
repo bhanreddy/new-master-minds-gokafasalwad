@@ -219,13 +219,13 @@ const marqueeStyles = StyleSheet.create({
   schoolName: {
     color: ribbonTheme.ribbonTitle,
     fontWeight: '800',
-    fontSize: 15,
+    fontSize: 18,
     letterSpacing: 0.25,
   },
   taglineInline: {
-    color: ribbonTheme.accent,
+    color: ribbonTheme.ribbonTagline,
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 14,
     letterSpacing: 0.15,
   },
   separator: {
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   schoolName: {
     color: ribbonTheme.ribbonTitle,
     fontWeight: '800',
-    fontSize: 16,
+    fontSize: 20,
     letterSpacing: 0.35,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
@@ -431,9 +431,9 @@ const styles = StyleSheet.create({
   },
   tagline: {
     marginTop: 2,
-    color: ribbonTheme.accent,
+    color: ribbonTheme.ribbonTagline,
     fontWeight: '600',
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 0.2,
     textShadowColor: 'rgba(0,0,0,0.25)',
     textShadowOffset: { width: 0, height: 1 },

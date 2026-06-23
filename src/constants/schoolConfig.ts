@@ -20,7 +20,7 @@ export function schoolColorWithAlpha(hex: string, alpha: number): string {
     h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   }
   if (!/^[0-9a-fA-F]{6}$/.test(h)) {
-    return `rgba(212,175,55,${alpha})`;
+    return `rgba(124,58,237,${alpha})`;
   }
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
@@ -42,54 +42,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultLightTheme,
     colors: {
       ...defaultLightTheme.colors,
-      // Primary brand color – Royal Indigo (logo outer ring)
-      primary: '#3535A8',
-      primaryLight: '#0082C8',   // Cerulean Blue (logo book & center figure)
-      primaryDark: '#282889',    // Deep Indigo (ring darker areas)
-      // Secondary color – Vibrant Orange (logo side figures)
-      secondary: '#F26522',
-      // Accent color – Bright Yellow/Gold (logo ring text)
-      accent: '#FFE600',
-      // Backgrounds – cool blue-tinted neutrals
-      background: '#F8FAFC',
+      // Primary brand color – Blue
+      primary: '#2563EB',
+      primaryLight: '#818CF8',
+      primaryDark: '#4338CA',
+      // Secondary color – Purple
+      secondary: '#7C3AED',
+      // Accent color – Violet highlight
+      accent: '#9333EA',
+      // Backgrounds – soft purple-tinted neutrals
+      background: '#F5F3FF',
       surface: '#FFFFFF',
-      card: '#FFFFFF',
-      // Text colors – indigo palette
-      textPrimary: '#3535A8',
-      textStrong: '#282889',
-      textSecondary: '#475569',
-      textMuted: '#64748B',
-      text: '#3535A8',
-      textTertiary: '#64748B',
-      // Borders – indigo-tinted
-      border: '#E2E8F0',
-      borderLight: '#F1F5F9',
+      card: '#FAFAFF',
+      // Text colors – cool slate with purple undertone
+      textPrimary: '#1E1B4B',
+      textStrong: '#0F0A2E',
+      textSecondary: '#6B7280',
+      textMuted: '#9CA3AF',
+      text: '#1E1B4B',
+      textTertiary: '#A78BFA',
+      // Borders – lavender-gray
+      border: '#DDD6FE',
+      borderLight: '#EDE9FE',
       // Semantic colors
-      danger: '#D32F2F',
+      danger: '#EF4444',
       success: '#10B981',
       warning: '#F59E0B',
-      info: '#0082C8',           // Cerulean Blue
-      notification: '#F26522',
-      // Navigation – indigo pill tints
-      navPill: '#E0E7FF',
-      navIconActive: '#3535A8',
-      navIconInactive: '#64748B',
+      info: '#7C3AED',
+      notification: '#EF4444',
+      // Navigation – purple pill tints
+      navPill: '#EDE9FE',
+      navIconActive: '#7C3AED',
+      navIconInactive: '#A78BFA',
       // Header/Footer backgrounds (with transparency for glass effect)
-      headerBg: 'rgba(248,250,252, 0.88)',
-      footerBg: 'rgba(255,255,255, 0.92)',
+      headerBg: 'rgba(245,243,255, 0.92)',
+      footerBg: 'rgba(250,250,255, 0.94)',
       // Alert colors
-      alertBg: '#EEEDFA',        // Light indigo wash
-      alertBorder: '#C7C7F0',    // Indigo border tint
-      alertIcon: '#3535A8',
-      alertText: '#282889',
+      alertBg: '#F5F3FF',
+      alertBorder: '#DDD6FE',
+      alertIcon: '#7C3AED',
+      alertText: '#5B21B6',
       alertBgDanger: '#FEF2F2',
       alertBorderDanger: '#FECACA',
-      alertIconDanger: '#D32F2F',
+      alertIconDanger: '#EF4444',
       alertTextDanger: '#991B1B',
-      alertBgInfo: '#E6F4FE',    // Cerulean blue wash
-      alertBorderInfo: '#B3DDFB',
-      alertIconInfo: '#0082C8',
-      alertTextInfo: '#282889',
+      alertBgInfo: '#F5F3FF',
+      alertBorderInfo: '#DDD6FE',
+      alertIconInfo: '#7C3AED',
+      alertTextInfo: '#5B21B6',
     },
     typography: {
       fontFamily: 'System',
@@ -141,9 +141,9 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
         elevation: 6,
       },
       lg: {
-        shadowColor: '#0F172A',
+        shadowColor: '#7C3AED',
         shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.1,
         shadowRadius: 24,
         elevation: 12,
       },
@@ -153,54 +153,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultDarkTheme,
     colors: {
       ...defaultDarkTheme.colors,
-      // Primary – lighter indigo for dark mode legibility
-      primary: '#9595E0',       // Lightened Royal Indigo
-      primaryLight: '#C7D2FE',
-      primaryDark: '#3535A8',   // Royal Indigo (full strength)
-      // Secondary – light orange for dark mode
-      secondary: '#FFA066',
-      // Accent – bright yellow
-      accent: '#FFE600',
-      // Dark backgrounds – deep dark slate/indigo tones
-      background: '#0F1228',    // Very dark indigo-tinted
-      surface: '#1C1E38',       // Dark indigo surface
-      card: '#1C1E38',
+      // Primary – lighter blue-violet for dark mode legibility
+      primary: '#818CF8',
+      primaryLight: '#A5B4FC',
+      primaryDark: '#6366F1',
+      // Secondary – lighter purple
+      secondary: '#A78BFA',
+      // Accent – bright violet for dark backgrounds
+      accent: '#C084FC',
+      // Dark backgrounds – deep purple-indigo tones
+      background: '#1E1B4B',
+      surface: '#2E1065',
+      card: '#312E81',
       // Light text for dark backgrounds
-      textPrimary: '#F1F5F9',
-      textStrong: '#FFFFFF',
-      textSecondary: '#94A3B8',
-      textMuted: '#64748B',
-      text: '#F1F5F9',
-      textTertiary: '#64748B',
-      // Darker borders – indigo-tinted slate
-      border: '#2E3052',
-      borderLight: '#3D4068',
+      textPrimary: '#EDE9FE',
+      textStrong: '#F5F3FF',
+      textSecondary: '#C4B5FD',
+      textMuted: '#A78BFA',
+      text: '#EDE9FE',
+      textTertiary: '#8B5CF6',
+      // Darker borders – purple-slate
+      border: '#4C1D95',
+      borderLight: '#5B21B6',
       // Lighter semantic colors for dark mode
       danger: '#F87171',
       success: '#34D399',
       warning: '#FBBF24',
-      info: '#5CC4F0',          // Light cerulean
-      notification: '#FFA066',
-      // Navigation – indigo tint
-      navPill: 'rgba(53, 53, 168, 0.2)',
-      navIconActive: '#C7D2FE',
-      navIconInactive: '#94A3B8',
-      // Header/Footer with dark indigo glass effect
-      headerBg: 'rgba(15, 18, 40, 0.88)',
-      footerBg: 'rgba(28, 30, 56, 0.92)',
+      info: '#A78BFA',
+      notification: '#F87171',
+      // Navigation – purple tint
+      navPill: 'rgba(124,58,237, 0.2)',
+      navIconActive: '#C084FC',
+      navIconInactive: '#7C3AED',
+      // Header/Footer with dark purple glass effect
+      headerBg: 'rgba(30,27,75, 0.92)',
+      footerBg: 'rgba(46,16,101, 0.94)',
       // Alert colors (dark mode)
-      alertBg: 'rgba(53, 53, 168, 0.12)',
-      alertBorder: 'rgba(53, 53, 168, 0.25)',
-      alertIcon: '#C7D2FE',
-      alertText: '#C7D2FE',
-      alertBgDanger: 'rgba(248,113,113, 0.1)',
-      alertBorderDanger: 'rgba(248,113,113, 0.2)',
+      alertBg: 'rgba(124,58,237, 0.12)',
+      alertBorder: 'rgba(167,139,250, 0.3)',
+      alertIcon: '#C084FC',
+      alertText: '#EDE9FE',
+      alertBgDanger: 'rgba(239,68,68, 0.1)',
+      alertBorderDanger: 'rgba(239,68,68, 0.2)',
       alertIconDanger: '#F87171',
       alertTextDanger: '#FECACA',
-      alertBgInfo: 'rgba(0, 130, 200, 0.15)',
-      alertBorderInfo: 'rgba(0, 130, 200, 0.3)',
-      alertIconInfo: '#5CC4F0',
-      alertTextInfo: '#B3DDFB',
+      alertBgInfo: 'rgba(124,58,237, 0.12)',
+      alertBorderInfo: 'rgba(124,58,237, 0.25)',
+      alertIconInfo: '#A78BFA',
+      alertTextInfo: '#DDD6FE',
     },
     typography: {
       fontFamily: 'System',
@@ -252,9 +252,9 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
         elevation: 6,
       },
       lg: {
-        shadowColor: '#0F172A',
+        shadowColor: '#7C3AED',
         shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.15,
+        shadowOpacity: 0.2,
         shadowRadius: 24,
         elevation: 12,
       },
@@ -264,26 +264,26 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
 
 export const SCHOOL_CONFIG = {
   // The official name of the school displayed in headers and reports
-  name: "Bhashyam Vidyanikethan Mohammadabad",
+  name: "Vikas Model School Balampet",
 
-  // Short line under the school name on the header ribbon (gold text)
-  tagline: "Education with Moral Values",
+  // Short line under the school name on the header ribbon
+  tagline: "Arise Awake Stop Not till you reach the Goal",
 
   // Motto / core values shown in the first info column of the ribbon (letterhead)
-  motto: "Care and Achieve through Quality Education and Discipline",
+  motto: "Wisdom, Knowledge and Victory",
 
   // The school logo used in headers and reports
   // Ensure the image exists in assets/images/
   logo: require('../../assets/images/icon.png'),
 
   // Optional: School Address for reports
-  address: "Bhashyam Vidyanikethan School,VenkatReddypally Road, Mohammadabad,Mahabubnagar District, Telangana-509337",
+  address: "Vikas Model School ,Balampet, Mandal Doulathabad, Dist Vikarabad, Telangana-509336",
 
   // Optional: Contact info for reports
-  contact: "9966868389",
+  contact: "9848981191",
 
   // Optional: School email for letterhead / reports
-  email: "bhashyamvidyanikethan@gmail.com",
+  email: "vmsbalampet@gmail.com",
 
   // Website or Email
   website: "www.nexsyrus.com",
@@ -292,19 +292,19 @@ export const SCHOOL_CONFIG = {
   cbseAffiliationNo: "NA",
 
   // School Code (if applicable)
-  schoolCode: "BVS",
+  schoolCode: "VMS",
 
   /**
    * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
-   * Extracted from the logo: rich navy/royal blue with bright yellow accents.
+   * Blue-to-purple gradient with violet accents.
    */
   theme: {
-    /** Bright golden yellow dividers and trim (logo ring text) */
-    accent: '#FFE600',
-    /** Tagline text – bright gold/yellow */
-    ribbonTagline: '#FFE600',
-    /** Four-stop diagonal ribbon – deep indigo to royal blue gradient (extracted from logo ring) */
-    ribbonGradient: ['#282889', '#3535A8', '#3D4FC0', '#4B64D4'] as const,
+    /** Violet stripes, dividers, and accent trim */
+    accent: '#9333EA',
+    /** Tagline text – warm gold accent for contrast on purple ribbon */
+    ribbonTagline: '#FEF08A',
+    /** Four-stop diagonal ribbon – indigo through deep purple */
+    ribbonGradient: ['#4338CA', '#6366F1', '#7C3AED', '#9333EA'] as const,
     /** Optional stops for expo-linear-gradient (length must match ribbonGradient) */
     ribbonGradientLocations: [0, 0.30, 0.65, 1] as const,
     /** Main title on the ribbon */
