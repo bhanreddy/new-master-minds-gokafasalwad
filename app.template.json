@@ -37,9 +37,9 @@
       "googleServicesFile": "./google-services.json",
       "enableShrinkResources": true,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/android-icon-foreground-v2.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#E6F4FE",
-        "monochromeImage": "./assets/images/android-icon-monochrome-v2.png"
+        "monochromeImage": "./assets/images/icon.png"
       },
       "permissions": [
         "INTERNET",
@@ -50,8 +50,11 @@
         "RECEIVE_BOOT_COMPLETED"
       ]
     },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
     "notification": {
-      "icon": "./assets/images/android-icon-monochrome-v2.png",
+      "icon": "./assets/images/icon.png",
       "color": "#FFFFFF"
     },
     "plugins": [
@@ -59,7 +62,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/icon.png",
           "backgroundColor": "#FFFFFF",
           "resizeMode": "contain"
         }
@@ -68,7 +71,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/android-icon-monochrome-v2.png",
+          "icon": "./assets/images/icon.png",
           "color": "#FFFFFF",
           "sounds": [
             "./assets/sounds/attendance_absent_alert.wav",

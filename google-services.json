@@ -64,6 +64,25 @@
     },
     {
       "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:c80c937511e54bfbf6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.nmsgokafasalwad"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:50612038206:android:09b15ccf89dfe9b4f6ff6f",
         "android_client_info": {
           "package_name": "com.nexsyrussims.samskrutheschool"
