@@ -416,7 +416,7 @@ export default function Index() {
                     borderColor: C.accentBorder,
                   }]}
                 >
-                  <Text style={[styles.taglineText, { color: C.c600 }]}>
+                  <Text style={[styles.taglineText, { color: SCHOOL_CONFIG.theme.accent }]}>
                     {SCHOOL_CONFIG.tagline}
                   </Text>
                 </Animated.View>
