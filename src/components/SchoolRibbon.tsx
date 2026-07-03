@@ -1,239 +1,480 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  Animated,
-  Dimensions,
-  Easing,
   Image,
   Platform,
   StyleSheet,
   Text,
+  TextStyle,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTranslation } from 'react-i18next';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Stop,
+} from 'react-native-svg';
+
 import { SCHOOL_NAME } from '../constants/school';
-import { SCHOOL_CONFIG, schoolColorWithAlpha } from '../constants/schoolConfig';
+import {
+  SCHOOL_CONFIG,
+  schoolColorWithAlpha,
+} from '../constants/schoolConfig';
 
 const ribbonTheme = SCHOOL_CONFIG.theme;
 
 const STRIPE_H = 3;
-const MOVING_RIBBON_H = 42;
-const REPEAT_COUNT = 5;
-const SEPARATOR = '  •  ';
+const WAVE_H = 30;
 
-function RibbonSegment({
-  schoolName,
-  tagline,
+/** Bottom wave depth — used by root layout for content inset. */
+export const SCHOOL_RIBBON_WAVE_HEIGHT = WAVE_H;
+
+/** How far screen content slides up under the transparent wave cutout. */
+export const SCHOOL_RIBBON_OVERLAP = Math.round(WAVE_H * 0.78);
+
+/* ------------------------------------------------------------------ */
+/* Unified banner shape (body + wavy bottom + gold crest)              */
+/* ------------------------------------------------------------------ */
+
+function buildBannerShape(W: number, H: number) {
+  const w = WAVE_H;
+  const yRight = H - w * 0.22;
+
+  // Adjusted the center join point Y-offset to H - w * 0.53 to match 
+  // the tangents of both Bézier curves, removing the sharp vertex kink.
+  return `
+    M0 0
+    H${W}
+    V${yRight}
+    C ${W * 0.9} ${H - w * 0.02},
+      ${W * 0.72} ${H - w * 1.02},
+      ${W * 0.52} ${H - w * 0.53}
+    C ${W * 0.32} ${H - w * 0.04},
+      ${W * 0.14} ${H - w * 0.98},
+      0 ${H - w * 0.14}
+    Z
+  `;
+}
+
+function buildBannerCrest(W: number, H: number) {
+  const w = WAVE_H;
+  const yRight = H - w * 0.22;
+
+  return `
+    M${W} ${yRight}
+    C ${W * 0.9} ${H - w * 0.02},
+      ${W * 0.72} ${H - w * 1.02},
+      ${W * 0.52} ${H - w * 0.53}
+    C ${W * 0.32} ${H - w * 0.04},
+      ${W * 0.14} ${H - w * 0.98},
+      0 ${H - w * 0.14}
+  `;
+}
+
+const BannerBackground = React.memo(function BannerBackground({
+  width,
+  height,
+  showGoldStripe = false,
 }: {
-  schoolName: string;
-  tagline: string;
+  width: number;
+  height: number;
+  showGoldStripe?: boolean;
+}) {
+  const W = Math.max(1, Math.round(width));
+  const H = Math.max(1, Math.round(height));
+  if (H <= 1) return null;
+
+  const g = ribbonTheme.ribbonGradient;
+  const loc = ribbonTheme.ribbonGradientLocations;
+  const accent = ribbonTheme.accent;
+  const gradId = `banner-grad-${W}-${H}`;
+  const shape = buildBannerShape(W, H);
+  const crest = buildBannerCrest(W, H);
+
+  return (
+    <Svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFillObject, { backgroundColor: 'transparent' }]}
+    >
+      <Defs>
+        <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={g[0]} />
+          <Stop offset={String(loc[1])} stopColor={g[1]} />
+          <Stop offset={String(loc[2])} stopColor={g[2]} />
+          <Stop offset="1" stopColor={g[3]} />
+        </SvgLinearGradient>
+      </Defs>
+
+      <Path d={shape} fill={`url(#${gradId})`} />
+
+      {showGoldStripe ? (
+        <Path
+          d={`M0 0 H${W} V${STRIPE_H} H0 Z`}
+          fill={accent}
+        />
+      ) : null}
+
+      <Path
+        d={crest}
+        stroke={accent}
+        strokeWidth={2}
+        strokeLinecap="round"
+        fill="none"
+      />
+    </Svg>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* Decorative sparkles                                                 */
+/* ------------------------------------------------------------------ */
+
+const SPARKLE_PATH =
+  'M12 2 C12.6 7 13 9.4 22 12 C13 14.6 12.6 17 12 22 C11.4 17 11 14.6 2 12 C11 9.4 11.4 7 12 2 Z';
+
+function Sparkle({
+  size,
+  opacity,
+  left,
+  top,
+}: {
+  size: number;
+  opacity: number;
+  left: number;
+  top: number;
 }) {
   return (
-    <View style={marqueeStyles.segment}>
-      <Image
-        source={SCHOOL_CONFIG.logo}
-        style={marqueeStyles.logo}
-        resizeMode="contain"
-      />
-      <Text style={marqueeStyles.schoolName} numberOfLines={1}>
-        {schoolName}
-      </Text>
-      {tagline ? (
-        <Text style={marqueeStyles.taglineInline} numberOfLines={1}>
-          {' · '}
-          {tagline}
-        </Text>
-      ) : null}
-      <Text style={marqueeStyles.separator}>{SEPARATOR}</Text>
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', left, top, opacity }}
+    >
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path d={SPARKLE_PATH} fill="#FFFFFF" />
+      </Svg>
     </View>
   );
 }
 
-function movingRibbonBodyHeight() {
-  return STRIPE_H * 2 + MOVING_RIBBON_H;
-}
+function HeaderSparkles({ top }: { top: number }) {
+  const { width } = useWindowDimensions();
 
-/** Backdrop fills the status-bar (unsafe) region + ribbon so the gradient is seamless. */
-function NativeRibbonUnsafeBackdrop({ totalHeight }: { totalHeight: number }) {
-  const g = ribbonTheme.ribbonGradient;
-  const loc = ribbonTheme.ribbonGradientLocations;
-  const a = ribbonTheme.accent;
+  const sparks = [
+    { left: 28, top: top + 10, size: 10, opacity: 0.85 },
+    { left: width * 0.42, top: top + 18, size: 7, opacity: 0.6 },
+    { left: width - 118, top: top + 8, size: 8, opacity: 0.7 },
+    { left: width - 48, top: top + 52, size: 9, opacity: 0.55 },
+    { left: 72, top: top + 58, size: 6, opacity: 0.45 },
+  ];
+
   return (
-    <>
-      <LinearGradient
-        colors={[...g]}
-        locations={[...loc]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[nativeEdgeStyles.backdrop, { height: totalHeight }]}
-      />
-      <LinearGradient
-        colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.14)']}
-        locations={[0, 0.48, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[nativeEdgeStyles.gloss, { height: totalHeight }]}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={[schoolColorWithAlpha(a, 0.22), schoolColorWithAlpha(a, 0), 'transparent']}
-        locations={[0, 0.35, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[nativeEdgeStyles.topGoldWash, { height: Math.min(totalHeight * 0.45, 56) }]}
-        pointerEvents="none"
-      />
-    </>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {sparks.map((s, i) => (
+        <Sparkle
+          key={i}
+          size={s.size}
+          opacity={s.opacity}
+          left={s.left}
+          top={s.top}
+        />
+      ))}
+    </View>
   );
 }
 
-function MovingSchoolRibbon() {
-  const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
-  const width = Dimensions.get('window').width;
-  const translateX = useRef(new Animated.Value(width)).current;
-  const [contentWidth, setContentWidth] = useState(0);
-  const schoolName = SCHOOL_NAME || SCHOOL_CONFIG.name;
-  const tagline = SCHOOL_CONFIG.tagline?.trim() || '';
+const SCHOOL_NAME_MAX_LINES = 2;
 
-  const bodyH = movingRibbonBodyHeight();
-  const backdropH = insets.top + bodyH;
+function measureWordWidth(
+  word: string,
+  fontSize: number,
+  charWidthFactor: number,
+  letterSpacing: number,
+) {
+  if (!word) return 0;
+  return (
+    word.length * fontSize * charWidthFactor +
+    Math.max(0, word.length - 1) * letterSpacing
+  );
+}
 
-  useEffect(() => {
-    if (contentWidth <= 0) return;
+function estimateSchoolNameLines(
+  text: string,
+  availableWidth: number,
+  fontSize: number,
+) {
+  if (!text || availableWidth <= 0) return 1;
 
-    let cancelled = false;
+  const safeWidth = availableWidth * 0.96;
+  const charWidthFactor = 0.56;
+  const letterSpacing = 0.2;
+  const spaceWidth = fontSize * charWidthFactor + letterSpacing;
+  const words = text.trim().split(/\s+/);
+  let lines = 1;
+  let lineWidth = 0;
 
-    const animate = () => {
-      if (cancelled) return;
-      translateX.setValue(width);
-      Animated.timing(translateX, {
-        toValue: -contentWidth,
-        duration: 12000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished && !cancelled) animate();
-      });
-    };
+  for (const word of words) {
+    const wordWidth = measureWordWidth(
+      word,
+      fontSize,
+      charWidthFactor,
+      letterSpacing,
+    );
 
-    animate();
+    if (lineWidth === 0) {
+      lineWidth = wordWidth;
+      continue;
+    }
 
-    return () => {
-      cancelled = true;
-      translateX.stopAnimation();
-    };
-  }, [contentWidth, width]);
+    if (lineWidth + spaceWidth + wordWidth <= safeWidth) {
+      lineWidth += spaceWidth + wordWidth;
+    } else {
+      lines += 1;
+      lineWidth = wordWidth;
+    }
+  }
+
+  return lines;
+}
+
+function estimateSchoolNameFontSize(
+  text: string,
+  availableWidth: number,
+  maxFontSize: number,
+  minFontSize: number,
+  maxLines: number,
+) {
+  if (!text || availableWidth <= 0) return maxFontSize;
+
+  for (let size = maxFontSize; size >= minFontSize; size -= 0.5) {
+    const linesNeeded = estimateSchoolNameLines(text, availableWidth, size);
+    if (linesNeeded <= maxLines) return size;
+  }
+
+  return minFontSize;
+}
+
+function AdaptiveSchoolName({
+  text,
+  baseStyle,
+  maxFontSize,
+  minFontSize,
+  fallbackWidth,
+  maxLines = SCHOOL_NAME_MAX_LINES,
+}: {
+  text: string;
+  baseStyle: TextStyle;
+  maxFontSize: number;
+  minFontSize: number;
+  fallbackWidth: number;
+  maxLines?: number;
+}) {
+  const [containerWidth, setContainerWidth] = useState(0);
+  const availableWidth = containerWidth > 0 ? containerWidth : fallbackWidth;
+
+  const fontSize = useMemo(
+    () =>
+      estimateSchoolNameFontSize(
+        text,
+        availableWidth,
+        maxFontSize,
+        minFontSize,
+        maxLines,
+      ),
+    [text, availableWidth, maxFontSize, minFontSize, maxLines],
+  );
+
+  const lineHeight = Math.round(fontSize * 1.2);
 
   return (
     <View
-      style={[nativeEdgeStyles.shell, { height: backdropH }]}
-      accessibilityRole="header"
+      style={adaptiveNameStyles.container}
+      onLayout={(e) => {
+        const nextWidth = e.nativeEvent.layout.width;
+        if (nextWidth > 0 && Math.abs(nextWidth - containerWidth) > 0.5) {
+          setContainerWidth(nextWidth);
+        }
+      }}
     >
-      <StatusBar style={ribbonTheme.statusBarOnRibbon} />
-      <NativeRibbonUnsafeBackdrop totalHeight={backdropH} />
-      <View style={{ paddingTop: insets.top }}>
-        <View style={marqueeStyles.goldStripe} />
-        <View style={marqueeStyles.gradientBar}>
-          <View style={marqueeStyles.clip}>
-            <Animated.View
-              style={[
-                marqueeStyles.track,
-                { transform: [{ translateX }] },
-              ]}
-              onLayout={(e) => setContentWidth(e.nativeEvent.layout.width)}
-            >
-              {Array.from({ length: REPEAT_COUNT }, (_, i) => (
-                <RibbonSegment key={i} schoolName={schoolName} tagline={tagline} />
-              ))}
-            </Animated.View>
+      <Text
+        style={[baseStyle, { fontSize, lineHeight }]}
+        numberOfLines={maxLines}
+        adjustsFontSizeToFit={Platform.OS !== 'web'}
+        minimumFontScale={minFontSize / maxFontSize}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const adaptiveNameStyles = StyleSheet.create({
+  container: {
+    width: '100%',
+    minWidth: 0,
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* Mobile header                                                       */
+/* ------------------------------------------------------------------ */
+
+function MobileHeaderRibbon() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const [bannerHeight, setBannerHeight] = useState(0);
+
+  const schoolName = SCHOOL_NAME || SCHOOL_CONFIG.name;
+  const tagline = SCHOOL_CONFIG.tagline?.trim() || '';
+  const titleFallbackWidth = Math.max(0, width - 92);
+
+  return (
+    <View
+      accessibilityRole="header"
+      style={headerStyles.wrapper}
+    >
+      <View
+        style={[
+          headerStyles.shell,
+          { paddingTop: insets.top, paddingBottom: 4 },
+        ]}
+        onLayout={(e) =>
+          setBannerHeight(e.nativeEvent.layout.height)
+        }
+      >
+        <StatusBar style={ribbonTheme.statusBarOnRibbon} />
+
+        {bannerHeight > 0 ? (
+          <BannerBackground
+            width={width}
+            height={bannerHeight}
+          />
+        ) : null}
+
+        <HeaderSparkles top={insets.top} />
+
+        <View style={headerStyles.contentRow}>
+          <View style={headerStyles.logoFrame}>
+            <Image
+              source={SCHOOL_CONFIG.logo}
+              style={headerStyles.logo}
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={headerStyles.titleBlock}>
+            <AdaptiveSchoolName
+              text={schoolName}
+              baseStyle={headerStyles.schoolName}
+              maxFontSize={20}
+              minFontSize={12}
+              fallbackWidth={titleFallbackWidth}
+            />
+
+            {tagline ? (
+              <Text
+                style={headerStyles.tagline}
+                numberOfLines={1}
+              >
+                {`"${tagline}"`}
+              </Text>
+            ) : null}
           </View>
         </View>
-        <View style={[marqueeStyles.goldStripe, marqueeStyles.goldStripeBottom]} />
       </View>
     </View>
   );
 }
 
-const nativeEdgeStyles = StyleSheet.create({
+const headerStyles = StyleSheet.create({
+  wrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    zIndex: 10,
+    pointerEvents: 'box-none',
+    ...Platform.select({
+      android: { elevation: 10 },
+      default: {},
+    }),
+  },
+
   shell: {
     position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: ribbonTheme.ribbonGradient[0],
-  },
-  backdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-  },
-  gloss: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-  },
-  topGoldWash: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-  },
-});
-
-const marqueeStyles = StyleSheet.create({
-  goldStripe: {
-    height: STRIPE_H,
-    backgroundColor: ribbonTheme.accent,
-  },
-  goldStripeBottom: {
-    opacity: 1,
-  },
-  gradientBar: {
-    height: MOVING_RIBBON_H,
-    justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  clip: {
-    height: MOVING_RIBBON_H,
-    overflow: 'hidden',
+
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  logoFrame: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 12px rgba(0,0,0,0.14)',
+      } as object,
+
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.16,
+        shadowRadius: 6,
+        elevation: 4,
+      },
+    }),
+  },
+
+  logo: {
+    width: 44,
+    height: 44,
+  },
+
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
     justifyContent: 'center',
   },
-  track: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-  },
-  segment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 24,
-    height: 24,
-    marginRight: 8,
-  },
+
   schoolName: {
     color: ribbonTheme.ribbonTitle,
     fontWeight: '800',
-    fontSize: 18,
+    letterSpacing: 0.2,
+  },
+
+  tagline: {
+    marginTop: 2,
+    color: ribbonTheme.ribbonTagline,
+    fontWeight: '700',
+    fontSize: 12,
     letterSpacing: 0.25,
   },
-  taglineInline: {
-    color: ribbonTheme.ribbonTagline,
-    fontWeight: '600',
-    fontSize: 14,
-    letterSpacing: 0.15,
-  },
-  separator: {
-    color: ribbonTheme.marqueeSeparator,
-    fontWeight: '600',
-    fontSize: 15,
-  },
+
 });
+
+/* ------------------------------------------------------------------ */
+/* Entry point                                                         */
+/* ------------------------------------------------------------------ */
 
 export default function SchoolRibbon() {
   if (Platform.OS === 'web') {
@@ -247,61 +488,120 @@ export default function SchoolRibbon() {
       </SafeAreaView>
     );
   }
-  return <MovingSchoolRibbon />;
+
+  return <MobileHeaderRibbon />;
 }
 
 const shellStyles = StyleSheet.create({
   safeTop: {
     backgroundColor: ribbonTheme.accent,
+    flexShrink: 0,
   },
 });
+
+/* ------------------------------------------------------------------ */
+/* Web letterhead (unchanged behaviour)                                */
+/* ------------------------------------------------------------------ */
 
 function StaticLetterheadRibbon() {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
-  const schoolName = SCHOOL_NAME || SCHOOL_CONFIG.name;
-  const tagline = SCHOOL_CONFIG.tagline?.trim() || '';
-  const motto = SCHOOL_CONFIG.motto?.trim() || '';
-  const address = SCHOOL_CONFIG.address?.trim() || '';
-  const phone = SCHOOL_CONFIG.contact?.trim() || '';
-  const email = SCHOOL_CONFIG.email?.trim() || '';
+  const [bannerHeight, setBannerHeight] = useState(0);
+
+  const schoolName =
+    SCHOOL_NAME || SCHOOL_CONFIG.name;
+
+  const tagline =
+    SCHOOL_CONFIG.tagline?.trim() || '';
+
+  const motto =
+    SCHOOL_CONFIG.motto?.trim() || '';
+
+  const address =
+    SCHOOL_CONFIG.address?.trim() || '';
+
+  const phone =
+    SCHOOL_CONFIG.contact?.trim() || '';
+
+  const email =
+    SCHOOL_CONFIG.email?.trim() || '';
 
   const compactInfo = width < 380;
+  const titleFallbackWidth = compactInfo
+    ? Math.max(0, width - 76)
+    : Math.max(0, width * 0.44 - 62);
 
   const columns = useMemo(() => {
-    const items: { key: string; body: string }[] = [];
-    if (motto) items.push({ key: 'motto', body: motto });
-    if (address) items.push({ key: 'addr', body: address });
+    const items: {
+      key: string;
+      body: string;
+    }[] = [];
+
+    if (motto)
+      items.push({
+        key: 'motto',
+        body: motto,
+      });
+
+    if (address)
+      items.push({
+        key: 'addr',
+        body: address,
+      });
+
     const contactBlock = [
-      phone && `${t('schoolRibbon.tel')} ${phone}`,
-      email && `${t('schoolRibbon.email')} ${email}`,
+      phone &&
+        `${t('schoolRibbon.tel')} ${phone}`,
+      email &&
+        `${t('schoolRibbon.email')} ${email}`,
     ]
       .filter(Boolean)
       .join('\n');
-    if (contactBlock) items.push({ key: 'contact', body: contactBlock });
+
+    if (contactBlock)
+      items.push({
+        key: 'contact',
+        body: contactBlock,
+      });
+
     return items;
   }, [motto, address, phone, email, t]);
 
   return (
     <View style={styles.column}>
-      <View style={styles.goldStripe} />
-      <LinearGradient
-        colors={[...ribbonTheme.ribbonGradient]}
-        locations={[...ribbonTheme.ribbonGradientLocations]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
+      <View
+        pointerEvents="none"
+        style={styles.ambientHalo}
+      />
+
+      <View
+        style={styles.letterheadShell}
+        onLayout={(e) =>
+          setBannerHeight(e.nativeEvent.layout.height)
+        }
       >
-        <LinearGradient
-          colors={['rgba(255,255,255,0.12)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0.15)']}
-          locations={[0, 0.45, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-        <View style={[styles.inner, compactInfo && styles.innerCompact]}>
-          <View style={[styles.brandRow, compactInfo && styles.brandRowCompact]}>
+        {bannerHeight > 0 ? (
+          <BannerBackground
+            width={width}
+            height={bannerHeight}
+            showGoldStripe
+          />
+        ) : null}
+
+        <View
+          style={[
+            styles.inner,
+            compactInfo &&
+              styles.innerCompact,
+          ]}
+        >
+          <View
+            style={[
+              styles.brandRow,
+              compactInfo &&
+                styles.brandRowCompact,
+            ]}
+          >
             <View style={styles.logoFrame}>
               <Image
                 source={SCHOOL_CONFIG.logo}
@@ -309,13 +609,22 @@ function StaticLetterheadRibbon() {
                 resizeMode="contain"
               />
             </View>
+
             <View style={styles.titleBlock}>
-              <Text style={styles.schoolName} numberOfLines={2}>
-                {schoolName}
-              </Text>
+              <AdaptiveSchoolName
+                text={schoolName}
+                baseStyle={styles.schoolName}
+                maxFontSize={22}
+                minFontSize={11}
+                fallbackWidth={titleFallbackWidth}
+              />
+
               {tagline ? (
-                <Text style={styles.tagline} numberOfLines={2}>
-                  {tagline}
+                <Text
+                  style={styles.tagline}
+                  numberOfLines={2}
+                >
+                  {`"${tagline}"`}
                 </Text>
               ) : null}
             </View>
@@ -326,20 +635,43 @@ function StaticLetterheadRibbon() {
               <View style={styles.infoStack}>
                 {columns.map((col, i) => (
                   <React.Fragment key={col.key}>
-                    {i > 0 ? <View style={styles.hDivider} /> : null}
-                    <Text style={styles.infoTextStacked} numberOfLines={4}>
+                    {i > 0 ? (
+                      <View
+                        style={styles.hDivider}
+                      />
+                    ) : null}
+
+                    <Text
+                      style={
+                        styles.infoTextStacked
+                      }
+                      numberOfLines={4}
+                    >
                       {col.body}
                     </Text>
                   </React.Fragment>
                 ))}
               </View>
             ) : (
-              <View style={[styles.infoRow, styles.infoRowWide]}>
+              <View
+                style={[
+                  styles.infoRow,
+                  styles.infoRowWide,
+                ]}
+              >
                 {columns.map((col, i) => (
                   <React.Fragment key={col.key}>
-                    {i > 0 ? <View style={styles.vDivider} /> : null}
+                    {i > 0 ? (
+                      <View
+                        style={styles.vDivider}
+                      />
+                    ) : null}
+
                     <View style={styles.infoCol}>
-                      <Text style={styles.infoText} numberOfLines={4}>
+                      <Text
+                        style={styles.infoText}
+                        numberOfLines={4}
+                      >
                         {col.body}
                       </Text>
                     </View>
@@ -349,30 +681,60 @@ function StaticLetterheadRibbon() {
             )
           ) : null}
         </View>
-      </LinearGradient>
-      <View style={[styles.goldStripe, styles.goldStripeBottom]} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   column: {
-    backgroundColor: ribbonTheme.accent,
+    backgroundColor: 'transparent',
   },
-  goldStripe: {
-    height: STRIPE_H,
-    backgroundColor: ribbonTheme.accent,
-    shadowColor: ribbonTheme.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 2,
+
+  ambientHalo: {
+    position: 'absolute',
+    left: '15%',
+    right: '15%',
+    top: -18,
+    height: 90,
+    borderRadius: 90,
+    backgroundColor: schoolColorWithAlpha(
+      ribbonTheme.accent,
+      0.14,
+    ),
+
+    ...Platform.select({
+      web: {
+        filter: 'blur(40px)',
+      } as object,
+
+      default: {},
+    }),
   },
-  goldStripeBottom: {
-    shadowOpacity: 0,
+
+  letterheadShell: {
+    position: 'relative',
+    paddingBottom: 10,
+    backgroundColor: 'transparent',
+    flexShrink: 0,
+
+    ...Platform.select({
+      web: {
+        boxShadow: `0 10px 30px ${schoolColorWithAlpha(
+          ribbonTheme.ribbonGradient[0],
+          0.28,
+        )}`,
+      } as object,
+
+      default: {
+        shadowColor: ribbonTheme.ribbonGradient[0],
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+      },
+    }),
   },
-  gradient: {
-    overflow: 'hidden',
-  },
+
   inner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -380,81 +742,115 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 10,
   },
+
   innerCompact: {
     flexDirection: 'column',
     alignItems: 'stretch',
     gap: 8,
     paddingVertical: 8,
   },
+
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+
     flexShrink: 0,
     maxWidth: '44%',
     minWidth: 132,
   },
+
   brandRowCompact: {
     maxWidth: '100%',
     width: '100%',
     minWidth: 0,
     alignSelf: 'stretch',
   },
+
   logoFrame: {
     width: 52,
     height: 52,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+
+    backgroundColor:
+      'rgba(255,255,255,0.14)',
+
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: schoolColorWithAlpha(ribbonTheme.accent, 0.45),
+
+    borderColor: schoolColorWithAlpha(
+      ribbonTheme.accent,
+      0.45,
+    ),
+
     alignItems: 'center',
     justifyContent: 'center',
     padding: 4,
   },
+
   logo: {
     width: 44,
     height: 44,
   },
+
   titleBlock: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
   },
+
   schoolName: {
     color: ribbonTheme.ribbonTitle,
     fontWeight: '800',
-    fontSize: 20,
     letterSpacing: 0.35,
-    textShadowColor: 'rgba(0,0,0,0.35)',
-    textShadowOffset: { width: 0, height: 1 },
+
+    textShadowColor:
+      'rgba(0,0,0,0.35)',
+
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+
     textShadowRadius: 2,
   },
+
   tagline: {
     marginTop: 2,
     color: ribbonTheme.ribbonTagline,
     fontWeight: '600',
     fontSize: 12,
     letterSpacing: 0.2,
-    textShadowColor: 'rgba(0,0,0,0.25)',
-    textShadowOffset: { width: 0, height: 1 },
+
+    textShadowColor:
+      'rgba(0,0,0,0.25)',
+
+    textShadowOffset: {
+      width: 0,
+      height: 1,
+    },
+
     textShadowRadius: 1,
   },
+
   infoRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
     minWidth: 0,
     gap: 0,
   },
+
   infoRowWide: {
     flex: 1,
     justifyContent: 'flex-end',
   },
+
   infoCol: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
+
   infoText: {
     color: ribbonTheme.ribbonBody,
     fontSize: 10,
@@ -462,22 +858,42 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.15,
   },
+
   vDivider: {
     width: StyleSheet.hairlineWidth,
-    backgroundColor: schoolColorWithAlpha(ribbonTheme.accent, 0.35),
+
+    backgroundColor: schoolColorWithAlpha(
+      ribbonTheme.accent,
+      0.35,
+    ),
+
     marginVertical: 2,
   },
+
   infoStack: {
     width: '100%',
     paddingTop: 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: schoolColorWithAlpha(ribbonTheme.accent, 0.25),
+
+    borderTopWidth:
+      StyleSheet.hairlineWidth,
+
+    borderTopColor: schoolColorWithAlpha(
+      ribbonTheme.accent,
+      0.25,
+    ),
   },
+
   hDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: schoolColorWithAlpha(ribbonTheme.accent, 0.3),
+
+    backgroundColor: schoolColorWithAlpha(
+      ribbonTheme.accent,
+      0.3,
+    ),
+
     marginVertical: 6,
   },
+
   infoTextStacked: {
     color: ribbonTheme.ribbonBodyMuted,
     fontSize: 10,

@@ -2489,11 +2489,8 @@ const getStyles = (c: Tokens) =>
       borderStyle: 'dashed',
       backgroundColor: c.accentSoft,
     },
-    addPeriodText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: c.accentText,
-    },
+    // NOTE: addPeriodText is defined later in this sheet (the later duplicate
+    // won at runtime, so only that definition is kept).
 
     // Modal Base
     modalOverlay: {

@@ -333,6 +333,37 @@ export const AuthService = {
     if (error) throw error;
   },
 
+  /**
+   * Patch the active user's photoUrl in the persisted auth_session AND the
+   * multi-account vault, then return the updated in-memory session so the
+   * provider can re-render every avatar that reads validatedUser.photoUrl.
+   * Tokens are never touched. Returns null if there is no stored session.
+   */
+  updateActivePhotoUrl: async (photoUrl: string | null): Promise<AuthSession | null> => {
+    const raw = await getSecureItem(STORAGE_KEY);
+    if (!raw) return null;
+    let parsed: AuthSession;
+    try {
+      parsed = JSON.parse(raw) as AuthSession;
+    } catch {
+      return null;
+    }
+    if (!parsed?.validatedUser) return null;
+
+    const updated: AuthSession = {
+      ...parsed,
+      validatedUser: { ...parsed.validatedUser, photoUrl },
+    };
+
+    await setSecureItem(STORAGE_KEY, JSON.stringify(updated));
+    try {
+      await accountVault.addAccount(accountVault.buildVaultAccount(updated));
+    } catch {
+      // Vault update is best-effort — never block the photo change on it.
+    }
+    return updated;
+  },
+
   signIn: async (email: string, password: string): Promise<{ session?: AuthSession; error?: string }> => {
     // 1. clearAuthState() — always clear before new login
     await clearAuthState();

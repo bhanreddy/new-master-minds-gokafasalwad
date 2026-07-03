@@ -75,7 +75,7 @@ export default function AdminFinanceScreen() {
         if (statsRes.status === 'rejected' && txRes.status === 'rejected') {
           throw primaryError;
         }
-        const raw = statsRes.status === 'fulfilled' ? (statsRes.value?.stats ?? statsRes.value ?? {}) : {};
+        const raw = (statsRes.status === 'fulfilled' ? (statsRes.value?.stats ?? statsRes.value ?? {}) : {}) as Record<string, any>;
         const txList = txRes.status === 'fulfilled'
           ? (Array.isArray(txRes.value) ? txRes.value : (txRes.value as any)?.data ?? [])
           : [];

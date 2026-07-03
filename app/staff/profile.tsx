@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, StatusBar, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Linking } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from '@/src/utils/haptics';
 import StaffHeader from '../../src/components/StaffHeader';
 import ViewAsBanner from '../../src/components/ViewAsBanner';
+import Avatar from '../../src/components/Avatar';
+import AvatarUploader from '../../src/components/AvatarUploader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useEffectiveStaffId } from '../../src/hooks/useEffectiveStaffId';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -98,9 +100,17 @@ const StaffProfileScreen = () => {
 
         <View style={styles.profileContent}>
           <View style={styles.avatarContainer}>
-            <Image source={{
-              uri: photoUrl || 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
-            }} style={styles.avatar} />
+            {isViewingAsAdmin ? (
+              <Avatar photoUrl={photoUrl} name={displayName} size={100} ringColor={theme.colors.background} ringWidth={4} />
+            ) : (
+              <AvatarUploader
+                photoUrl={photoUrl}
+                name={displayName}
+                size={100}
+                ringColor={theme.colors.background}
+                ringWidth={4}
+              />
+            )}
             <View style={styles.statusBadge}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>Active</Text>

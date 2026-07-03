@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, SafeAreaView, Platform, StatusBar, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, SafeAreaView, Platform, StatusBar, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import AvatarUploader from '../../src/components/AvatarUploader';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 const {
@@ -103,9 +104,15 @@ const ProfileScreen = () => {
           </View>
           <View style={styles.profileSummary}>
             <View style={styles.avatarContainer}>
-              <Image source={{
-                uri: student.photo_url || `https://ui-avatars.com/api/?name=${student.first_name}+${student.last_name}&background=random&size=200`
-              }} style={styles.avatar} />
+              <AvatarUploader
+                photoUrl={student.photo_url}
+                name={student.display_name || `${student.first_name || ''} ${student.last_name || ''}`}
+                size={104}
+                ringColor="rgba(255,255,255,0.9)"
+                ringWidth={4}
+                onUploaded={(url) => setStudent((prev) => (prev ? { ...prev, photo_url: url } : prev))}
+                onRemoved={() => setStudent((prev) => (prev ? { ...prev, photo_url: undefined } : prev))}
+              />
               <View style={styles.statusBadge}>
                 <View style={[styles.statusDot, {
                   backgroundColor: student.status === 'active' ? '#10B981' : '#EF4444'

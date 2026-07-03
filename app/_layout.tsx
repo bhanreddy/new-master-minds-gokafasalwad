@@ -10,8 +10,9 @@ import { ThemeProvider, ThemeContext } from '../src/context/ThemeContext';
 import { ThemeProvider as NavThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Platform, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Platform, StyleSheet, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { toastConfig } from '../src/components/CustomToast';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -19,7 +20,9 @@ import { useNotifications } from '../src/hooks/useNotifications';
 import { useAuthGuard } from '../src/hooks/useAuthGuard';
 import { useNotificationObserver } from '../src/hooks/useNotificationObserver';
 import { AuthGate } from '../src/components/AuthGate';
-import SchoolRibbon from '../src/components/SchoolRibbon';
+import SchoolRibbon, {
+  SCHOOL_RIBBON_OVERLAP,
+} from '../src/components/SchoolRibbon';
 import { useSchoolHeader } from '../src/hooks/useSchoolHeader';
 import { notificationManager } from '../src/services/notificationManager';
 
@@ -30,11 +33,11 @@ import { notificationManager } from '../src/services/notificationManager';
 import { useFonts } from 'expo-font';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
-import AppSplash from '../src/components/AppSplash';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import ForceUpdateScreen from '../src/components/ForceUpdateScreen';
 import { useVersionCheck } from '../src/hooks/useVersionCheck';
+import FestivalPosterGate from '../src/components/FestivalPosterGate';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -45,9 +48,8 @@ export default function Layout() {
   });
 
   const [appReady, setAppReady] = useState(false);
-  const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [buildConfigError, setBuildConfigError] = useState<string | null>(null);
-  const { updateRequired, checking } = useVersionCheck();
+  const { updateRequired } = useVersionCheck();
 
   // Inject portal root for web (must happen before any alert can fire)
   useEffect(() => {
@@ -111,15 +113,6 @@ export default function Layout() {
     return null;
   }
 
-  if (checking) {
-    return (
-      <View style={styles.versionLoader}>
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={styles.versionLoaderText}>Checking app version...</Text>
-      </View>
-    );
-  }
-
   if (updateRequired) {
     return <ForceUpdateScreen />;
   }
@@ -147,9 +140,6 @@ export default function Layout() {
       <ThemeProvider>
         <CustomAlertProvider>
           <ThemeSyncWrapper />
-          {showCustomSplash && (
-            <AppSplash onFinish={() => setShowCustomSplash(false)} />
-          )}
         </CustomAlertProvider>
       </ThemeProvider>
     </AuthProvider>);
@@ -159,6 +149,12 @@ export default function Layout() {
 function ThemeSyncWrapper() {
   const { theme, isDark } = useContext(ThemeContext);
   const getSchoolHeader = useSchoolHeader();
+  const insets = useSafeAreaInsets();
+
+  // Content row + small bottom pad; overlap pulls page under the wave cutout.
+  const ribbonBodyHeight = 80;
+  const stackTopInset =
+    insets.top + ribbonBodyHeight - SCHOOL_RIBBON_OVERLAP;
 
   // Convert our custom SchoolTheme to React Navigation theme format
   const baseNavTheme = isDark ? DarkTheme : DefaultTheme;
@@ -176,24 +172,43 @@ function ThemeSyncWrapper() {
     }
   };
 
+  const isWeb = Platform.OS === 'web';
+
   return (
     <NavThemeProvider value={navTheme}>
-      <GestureHandlerRootView style={styles.gestureRoot}>
+      <GestureHandlerRootView
+        style={[
+          styles.gestureRoot,
+          { backgroundColor: theme.colors.background },
+        ]}
+      >
         <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
-        <SchoolRibbon />
-        <View style={styles.stackShell}>
-          <AuthGate>
-            <Stack
-              screenOptions={{
-                ...getSchoolHeader(),
-                headerShown: false, // Default to false but provide the options for screens that opt-in
-                animation: 'slide_from_right',
-                contentStyle: { backgroundColor: theme.colors.background }
-              }} />
-          </AuthGate>
+        <View style={styles.appFrame}>
+          {isWeb ? <SchoolRibbon /> : null}
+          <View
+            style={[
+              styles.stackShell,
+              !isWeb && { paddingTop: stackTopInset },
+              { backgroundColor: theme.colors.background },
+            ]}
+          >
+            <AuthGate>
+              <Stack
+                screenOptions={{
+                  ...getSchoolHeader(),
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                  contentStyle: { backgroundColor: theme.colors.background },
+                }}
+              />
+            </AuthGate>
+          </View>
+          {!isWeb ? <SchoolRibbon /> : null}
         </View>
         {/* Auth guard and hooks run AFTER the Stack navigator has mounted */}
         <NavigationReady />
+        {/* Festival poster popup (SuperAdmin-uploaded), once per user per poster */}
+        <FestivalPosterGate />
 
         <Toast config={toastConfig} />
         {/* Global Animated Splash Screen Overlay removed - now native AnimatedSplash handles this */}
@@ -204,19 +219,11 @@ function ThemeSyncWrapper() {
 
 const styles = StyleSheet.create({
   gestureRoot: { flex: 1 },
-  stackShell: { flex: 1 },
-  versionLoader: {
+  appFrame: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    gap: 12,
+    position: 'relative',
   },
-  versionLoaderText: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  stackShell: { flex: 1 },
 });
 
 /**

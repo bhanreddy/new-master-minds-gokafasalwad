@@ -16,7 +16,6 @@ export default function DriverLayout() {
                 swipeEnabled: true,
                 animationEnabled: true,
                 lazy: true,
-                headerShown: false,
             }}
         >
             <MaterialTopTabs.Screen

@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from '@/src/utils/haptics';
 import StudentHeader from '../../src/components/StudentHeader';
+import AvatarUploader from '../../src/components/AvatarUploader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { StaffService, StaffMyProfile } from '../../src/services/staffService';
 import LogoLoader from '../../src/components/LogoLoader';
@@ -122,7 +123,6 @@ export default function DriverProfile() {
   const [loadingPayslips, setLoadingPayslips] = useState(true);
 
   const displayName = profile?.display_name || user?.displayName || (user as any)?.first_name || 'Driver';
-  const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
   const email = displayOrEmpty(profile?.email || (user as any)?.email);
   const phone = displayOrEmpty(profile?.phone || (user as any)?.phone);
   const dob = formatDob(profile?.dob);
@@ -207,11 +207,16 @@ export default function DriverProfile() {
           <View style={[styles.decorCircle, { bottom: -15, left: -15, width: 60, height: 60 }]} />
           <View style={styles.heroContent}>
             <View style={styles.avatarWrapper}>
-              <View style={styles.avatarRing}>
-                <View style={styles.avatarInner}>
-                  <Text style={styles.avatarText}>{initials}</Text>
-                </View>
-              </View>
+              <AvatarUploader
+                photoUrl={profile?.photo_url ?? user?.photoUrl}
+                name={displayName}
+                size={100}
+                ringColor="#FFF"
+                ringWidth={3}
+                accentColor={DRIVER_PINK}
+                onUploaded={(url) => setProfile((prev) => (prev ? { ...prev, photo_url: url } : prev))}
+                onRemoved={() => setProfile((prev) => (prev ? { ...prev, photo_url: null } : prev))}
+              />
               <View style={styles.onlineBadge}>
                 <View style={styles.onlineDot} />
                 <Text style={styles.onlineText}>Active</Text>

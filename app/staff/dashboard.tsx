@@ -21,6 +21,7 @@ import { useTheme } from '@/src/hooks/useTheme';
 import StaffHeader from '@/src/components/StaffHeader';
 import ViewAsBanner from '@/src/components/ViewAsBanner';
 import { useEffectiveStaffId } from '@/src/hooks/useEffectiveStaffId';
+import { usePersistedSWR } from '@/src/hooks/usePersistedSWR';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const MENU_GAP = 16;
@@ -791,30 +792,33 @@ export default function StaffDashboard() {
   const { staffId, isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
   const viewAsParams = isViewingAsAdmin ? { staffId, viewAsName } : undefined;
 
-  const [data, setData] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      try {
-        // Pending-leave approvals aren't scoped to an arbitrary staffId today —
-        // skip them in admin view-as mode rather than showing the admin's own count.
-        const pendingLeaves = isViewingAsAdmin ? [] : await LeaveService.getAll({ status: 'pending' });
-        let studentCount = 0, presentCount = 0, absentCount = 0;
-        let detectedClassId: string | undefined;
-        const myClass = await AttendanceService.getMyClass(undefined, staffId);
-        if (myClass) {
-          detectedClassId = myClass.class_section_id;
-          studentCount = myClass.total_students;
-          presentCount = myClass.students.filter((s: any) => s.status === 'present').length;
-          absentCount = myClass.students.filter((s: any) => s.status === 'absent').length;
-        }
-        setData({ totalStudents: studentCount, presentToday: presentCount, absentToday: absentCount, pendingLeaves: pendingLeaves.length, classId: detectedClassId });
-      } catch { }
-      finally { setLoading(false); }
-    })();
-  }, [user, staffId, isViewingAsAdmin]);
+  const { data, loading: metricsLoading } = usePersistedSWR<DashboardMetrics>({
+    cacheKey: `staff-dashboard-${staffId ?? 'self'}`,
+    userId: user?.userId,
+    ttlMs: 120_000,
+    persist: !isViewingAsAdmin,
+    enabled: !!user,
+    fetcher: async () => {
+      const pendingLeaves = isViewingAsAdmin ? [] : await LeaveService.getAll({ status: 'pending' });
+      let studentCount = 0, presentCount = 0, absentCount = 0;
+      let detectedClassId: string | undefined;
+      const myClass = await AttendanceService.getMyClass(undefined, staffId);
+      if (myClass) {
+        detectedClassId = myClass.class_section_id;
+        studentCount = myClass.total_students;
+        presentCount = myClass.students.filter((s: any) => s.status === 'present').length;
+        absentCount = myClass.students.filter((s: any) => s.status === 'absent').length;
+      }
+      return {
+        totalStudents: studentCount,
+        presentToday: presentCount,
+        absentToday: absentCount,
+        pendingLeaves: pendingLeaves.length,
+        classId: detectedClassId,
+      };
+    },
+  });
+  const loading = metricsLoading && !data;
 
   useFocusEffect(useCallback(() => {
     // Only the teacher's own home screen should treat hardware back as "exit app".

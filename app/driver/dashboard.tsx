@@ -15,6 +15,7 @@ import Animated, {
   'react-native-reanimated';
 import * as Haptics from '@/src/utils/haptics';
 import { api } from '../../src/services/apiClient';
+import { usePersistedSWR } from '../../src/hooks/usePersistedSWR';
 import LogoLoader from '../../src/components/LogoLoader';
 
 const PINK = '#EC4899';
@@ -89,10 +90,27 @@ export default function DriverDashboard() {
   const [elapsedMin, setElapsedMin] = useState(0);
 
   // UI state
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [speed, setSpeed] = useState(0);
+
+  const {
+    data: driverBusData,
+    loading: busDataLoading,
+    isRefreshing: busDataRefreshing,
+    refetch: refetchBusData,
+  } = usePersistedSWR<any>({
+    cacheKey: 'driver-my-bus',
+    userId: user?.userId,
+    ttlMs: 30_000,
+    persist: true,
+    revalidateOnMount: true,
+    enabled: !!user?.userId,
+    fetcher: () => api.get<any>('/transport/driver/my-bus'),
+  });
+
+  const loading = busDataLoading && !driverBusData;
+  const tripControlsEnabled = !busDataRefreshing;
 
   // Refs
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
@@ -132,51 +150,56 @@ export default function DriverDashboard() {
     ? routes.filter((r) => r.bus_id === selectedBus.id)
     : routes;
 
-  /* ─── Fetch driver's buses & routes ─── */
-  const fetchDriverData = useCallback(async () => {
-    try {
-      const data = await api.get<any>('/transport/driver/my-bus');
-      const busList: BusInfo[] = data.buses?.length ? data.buses : (data.bus ? [data.bus] : []);
-      const routeList: RouteInfo[] = data.routes || [];
-      setBuses(busList);
-      setRoutes(routeList);
+  /* ─── Apply driver's buses & routes from API payload ─── */
+  const applyDriverPayload = useCallback(async (data: any) => {
+    const busList: BusInfo[] = data.buses?.length ? data.buses : (data.bus ? [data.bus] : []);
+    const routeList: RouteInfo[] = data.routes || [];
+    setBuses(busList);
+    setRoutes(routeList);
 
-      const activeTrips: any[] = data.activeTrips?.length
-        ? data.activeTrips
-        : (data.activeTrip ? [data.activeTrip] : []);
+    const activeTrips: any[] = data.activeTrips?.length
+      ? data.activeTrips
+      : (data.activeTrip ? [data.activeTrip] : []);
 
-      if (activeTrips.length > 0) {
-        const active = activeTrips[0];
-        const activeBus = busList.find((b) => b.id === active.bus_id) || busList[0] || null;
-        setSelectedBus(activeBus);
-        const activeRoute = routeList.find((r) => r.id === active.route_id) || null;
-        if (activeRoute) {
-          setSelectedRoute(activeRoute);
-          setTripLeg(active.trip_direction === 'evening' || active.trip_direction === 'afternoon' ? 'evening' : 'morning');
-        }
-        setActiveTripId(active.id);
-        setIsTracking(true);
-        setTripStartedAt(new Date(active.started_at));
-        await fetchTripStatus(active.id);
-      } else if (busList.length > 0) {
-        const initialBus = busList[0];
-        setSelectedBus(initialBus);
-        const busRoutes = routeList.filter((r) => r.bus_id === initialBus.id);
-        if (busRoutes.length > 0) {
-          setSelectedRoute(busRoutes[0]);
-          setTripLeg(inferTripLeg(busRoutes[0].direction));
-          await fetchRouteStops(busRoutes[0].id, inferTripLeg(busRoutes[0].direction));
-        }
+    if (activeTrips.length > 0) {
+      const active = activeTrips[0];
+      const activeBus = busList.find((b) => b.id === active.bus_id) || busList[0] || null;
+      setSelectedBus(activeBus);
+      const activeRoute = routeList.find((r) => r.id === active.route_id) || null;
+      if (activeRoute) {
+        setSelectedRoute(activeRoute);
+        setTripLeg(active.trip_direction === 'evening' || active.trip_direction === 'afternoon' ? 'evening' : 'morning');
       }
-    } catch (err) {
-
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setActiveTripId(active.id);
+      setIsTracking(true);
+      setTripStartedAt(new Date(active.started_at));
+      await fetchTripStatus(active.id);
+    } else if (busList.length > 0) {
+      const initialBus = busList[0];
+      setSelectedBus(initialBus);
+      const busRoutes = routeList.filter((r) => r.bus_id === initialBus.id);
+      if (busRoutes.length > 0) {
+        setSelectedRoute(busRoutes[0]);
+        const leg = inferTripLeg(busRoutes[0].direction);
+        setTripLeg(leg);
+        await fetchRouteStops(busRoutes[0].id, leg);
+      }
     }
   }, []);
 
-  useEffect(() => { fetchDriverData(); }, []);
+  useEffect(() => {
+    if (!driverBusData) return;
+    void applyDriverPayload(driverBusData);
+  }, [driverBusData, applyDriverPayload]);
+
+  const refreshDriverData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetchBusData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchBusData]);
 
   /* ─── Fetch route stops (pre-trip) ─── */
   const fetchRouteStops = async (routeId: string, leg: TripLeg = tripLeg) => {
@@ -256,7 +279,7 @@ export default function DriverDashboard() {
             setIsTracking(false);
             setActiveTripId(null);
             stopLocationTracking();
-            await fetchDriverData();
+            await refreshDriverData();
           } catch (err: any) {
             alertCompat('Error', err?.message || 'Failed to end trip');
           } finally { setActionLoading(false); }
@@ -360,7 +383,7 @@ export default function DriverDashboard() {
       <ScrollView
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchDriverData(); }} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshDriverData} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent" />}>
 
         {refreshing &&
           <View style={{ width: '100%', alignItems: 'center', paddingVertical: 20 }}>
@@ -563,7 +586,7 @@ export default function DriverDashboard() {
                             <TouchableOpacity
                               style={[s.stopBtn, { backgroundColor: '#FEF3C7' }]}
                               onPress={() => handleArriveStop(stop.stop_id)}
-                              disabled={actionLoading}>
+                              disabled={actionLoading || !tripControlsEnabled}>
 
                               <Ionicons name="location" size={14} color="#D97706" />
                               <Text style={[s.stopBtnText, { color: '#D97706' }]}>Arrive</Text>
@@ -571,7 +594,7 @@ export default function DriverDashboard() {
                             <TouchableOpacity
                               style={[s.stopBtn, { backgroundColor: '#FEE2E2' }]}
                               onPress={() => handleSkipStop(stop.stop_id)}
-                              disabled={actionLoading}>
+                              disabled={actionLoading || !tripControlsEnabled}>
 
                               <Ionicons name="close-circle-outline" size={14} color={RED} />
                               <Text style={[s.stopBtnText, { color: RED }]}>Skip</Text>
@@ -582,7 +605,7 @@ export default function DriverDashboard() {
                           <TouchableOpacity
                             style={[s.stopBtn, { backgroundColor: '#DCFCE7', flex: 1 }]}
                             onPress={() => handleCompleteStop(stop.stop_id)}
-                            disabled={actionLoading}>
+                            disabled={actionLoading || !tripControlsEnabled}>
 
                             <Ionicons name="checkmark-circle" size={14} color="#059669" />
                             <Text style={[s.stopBtnText, { color: '#059669' }]}>Complete Stop</Text>
@@ -604,7 +627,7 @@ export default function DriverDashboard() {
                 style={s.startWrap}
                 onPress={handleStartTrip}
                 activeOpacity={0.8}
-                disabled={actionLoading || !selectedRoute}>
+                disabled={actionLoading || !selectedRoute || !tripControlsEnabled}>
 
                 <LinearGradient colors={PINK_GRADIENT} style={s.startGrad}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
@@ -619,7 +642,7 @@ export default function DriverDashboard() {
                 </LinearGradient>
               </TouchableOpacity> :
 
-              <TouchableOpacity style={s.endBtn} onPress={handleEndTrip} activeOpacity={0.8} disabled={actionLoading}>
+              <TouchableOpacity style={s.endBtn} onPress={handleEndTrip} activeOpacity={0.8} disabled={actionLoading || !tripControlsEnabled}>
                 {actionLoading ? <LogoLoader color="#FFF" /> :
                   <>
                     <Ionicons name="stop" size={22} color="#FFF" />

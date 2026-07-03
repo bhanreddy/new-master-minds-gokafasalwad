@@ -1,6 +1,6 @@
-import React, { useEffect, useContext, useRef, useCallback } from 'react';
+import React, { useEffect, useContext, useState } from 'react';
 import { StyleSheet, View, Text, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -28,6 +28,24 @@ const getHomeRoute = (role: string) => {
     case 'driver': return '/driver/dashboard';
     default: return '/(tabs)/home';
   }
+};
+
+/** Where a cold start should land, given the restored auth state. */
+const resolveTarget = (user: ReturnType<typeof useAuth>['user']): string => {
+  if (!user) return '/welcome';
+
+  const roleCode =
+    typeof user.role === 'object' && user.role !== null
+      ? (user.role as any).code
+      : user.role;
+
+  if (roleCode === 'student' && user.has_student_profile === false) {
+    return '/no-profile';
+  }
+  if ((roleCode === 'staff' || roleCode === 'teacher') && user.has_staff_profile === false) {
+    return '/no-profile';
+  }
+  return getHomeRoute(roleCode);
 };
 
 // ─── Ambient Orb ─────────────────────────────────────────────────────────────
@@ -173,48 +191,24 @@ const BottomBadge = ({ isDark }: { isDark: boolean }) => {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function AnimatedSplash() {
-  const router = useRouter();
   const { theme, isDark } = useContext(ThemeContext);
-  const { user, loading } = useAuth();
+  const { user, loading, authChecked } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
 
-  const loadingRef = useRef(loading);
-  const userRef = useRef(user);
-  loadingRef.current = loading;
-  userRef.current = user;
-  const hasNavigated = useRef(false);
-
-  const doNavigate = useCallback(() => {
-    if (hasNavigated.current) return;
-    hasNavigated.current = true;
-
-    const currentUser = userRef.current;
-    if (currentUser) {
-      const roleCode =
-        typeof currentUser?.role === 'object' && currentUser?.role !== null
-          ? (currentUser.role as any).code
-          : currentUser?.role;
-
-      if (roleCode === 'student' && currentUser.has_student_profile === false) {
-        router.replace('/no-profile');
-      } else if ((roleCode === 'staff' || roleCode === 'teacher') && currentUser.has_staff_profile === false) {
-        router.replace('/no-profile');
-      } else {
-        router.replace(getHomeRoute(roleCode));
-      }
-    } else {
-      router.replace('/welcome');
-    }
-  }, [router]);
-
+  // Safety net: if auth init ever hangs, navigate with whatever state we have.
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
-      if (!hasNavigated.current) {
-        if (__DEV__) console.warn('[AnimatedSplash] Safety timeout — forcing navigation');
-        doNavigate();
-      }
+      if (__DEV__) console.warn('[AnimatedSplash] Safety timeout — forcing navigation');
+      setTimedOut(true);
     }, 8000);
     return () => clearTimeout(safetyTimer);
-  }, [doNavigate]);
+  }, []);
+
+  // Navigate the moment the stored session is read — no animation gating.
+  // Declarative Redirect is safe here even on the very first render pass.
+  if ((authChecked && !loading) || timedOut) {
+    return <Redirect href={resolveTarget(user) as any} />;
+  }
 
   // ── Gradient palettes ────────────────────────────────────────────────────
   const bgGradient = isDark
@@ -263,8 +257,6 @@ export default function AnimatedSplash() {
           <LogoLoader
             size={160}
             color={isDark ? '#FFFFFF' : '#1C1710'}
-            isReady={!loading}
-            onLogoRevealed={doNavigate}
           />
         </View>
       </View>

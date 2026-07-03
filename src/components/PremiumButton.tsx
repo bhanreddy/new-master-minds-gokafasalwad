@@ -60,7 +60,7 @@ const PremiumButton: React.FC<PremiumButtonProps> = ({
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}
-                style={[styles.touchable, Platform.OS === 'web' && { cursor: disabled || loading ? 'not-allowed' : 'pointer' }]}
+                style={[styles.touchable, Platform.OS === 'web' && ({ cursor: disabled || loading ? 'not-allowed' : 'pointer' } as any)]}
             >
                 <LinearGradient
                     colors={disabled ? ['#E2E8F0', '#CBD5E1'] : colors}

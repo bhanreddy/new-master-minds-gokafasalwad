@@ -10,6 +10,9 @@ import { getBackupRefreshToken, clearBackupRefreshToken } from '../services/secu
 import { SessionPolicy } from '../services/sessionPolicyService';
 import { notificationManager } from '../services/notificationManager';
 import * as accountVault from '../services/accountVault';
+import { invalidateApiQueryCache } from './useApiQuery';
+import { persistentQueryCache } from '../services/persistentQueryCache';
+import { StorageService } from '../services/storageService';
 
 interface AuthContextType {
   session: AuthSession | null;
@@ -22,6 +25,8 @@ interface AuthContextType {
   signIn: typeof AuthService.signIn;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  /** Update the active user's profile picture URL in-memory + persisted storage. */
+  updateUserPhoto: (photoUrl: string | null) => Promise<void>;
   /** Phase 2 — seamlessly switch the live + active account (no password prompt). */
   switchAccount: (userId: string) => Promise<{ session?: AuthSession; error?: string }>;
   /** Phase 1/2 — add another account to the vault; active account stays unchanged. */
@@ -41,6 +46,7 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => ({ error: 'Not initialized' }),
   signOut: async () => {},
   refreshSession: async () => {},
+  updateUserPhoto: async () => {},
   switchAccount: async () => ({ error: 'Not initialized' }),
   addAccount: async () => ({ error: 'Not initialized' }),
   authChecked: false,
@@ -111,6 +117,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    try {
+      invalidateApiQueryCache();
+    } catch (e) {
+      if (__DEV__) console.warn('[useAuth] query cache purge on sign-out failed (non-fatal):', e);
+    }
+    if (signingOutUserId) {
+      try {
+        await persistentQueryCache.removeMatching(signingOutUserId);
+      } catch (e) {
+        if (__DEV__) console.warn('[useAuth] disk query cache purge on sign-out failed (non-fatal):', e);
+      }
+      try {
+        await StorageService.clear(signingOutUserId);
+      } catch (e) {
+        if (__DEV__) console.warn('[useAuth] StorageService.clear on sign-out failed (non-fatal):', e);
+      }
+    }
+
     await AuthService.signOut();
     // Clear student backup keys on explicit sign-out
     await clearBackupRefreshToken();
@@ -140,6 +164,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       // Retries exhausted for non-persistent role — clear session.
       void (async () => {
+        const expiredUserId = sessionRef.current?.validatedUser?.userId ?? null;
+        try {
+          invalidateApiQueryCache();
+        } catch (e) {
+          if (__DEV__) console.warn('[useAuth] query cache purge on auto-logout failed (non-fatal):', e);
+        }
+        if (expiredUserId) {
+          try {
+            await persistentQueryCache.removeMatching(expiredUserId);
+          } catch (e) {
+            if (__DEV__) console.warn('[useAuth] disk query cache purge on auto-logout failed (non-fatal):', e);
+          }
+          try {
+            await StorageService.clear(expiredUserId);
+          } catch (e) {
+            if (__DEV__) console.warn('[useAuth] StorageService.clear on auto-logout failed (non-fatal):', e);
+          }
+        }
         await clearAuthState();
         setSession(null);
         backoffDelay.current = 1000; // Reset for next login
@@ -358,6 +400,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await handleRefresh(role);
   };
 
+  // Profile picture change (any portal). Patches the persisted auth_session +
+  // vault via AuthService, then mirrors the result into in-memory state so every
+  // avatar bound to user.photoUrl updates immediately — no re-login needed.
+  const updateUserPhoto = async (photoUrl: string | null) => {
+    const updated = await AuthService.updateActivePhotoUrl(photoUrl);
+    if (updated) {
+      setSession(updated);
+    }
+  };
+
   // Phase 2 — seamless account switch. The heavy lifting (setSession, silent
   // refresh-token recovery, vault pointer update, auth_session persistence,
   // serialization, and event suppression) lives in AuthService.switchAccount.
@@ -393,7 +445,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, loading, authChecked, isAppLocked: false, user, role, isStudent, schoolId, signIn, signOut, refreshSession, switchAccount, addAccount }}>
+    <AuthContext.Provider value={{ session, loading, authChecked, isAppLocked: false, user, role, isStudent, schoolId, signIn, signOut, refreshSession, updateUserPhoto, switchAccount, addAccount }}>
       {children}
     </AuthContext.Provider>
   );

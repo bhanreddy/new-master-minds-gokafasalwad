@@ -32,6 +32,7 @@ import DashboardWebSidebar, {
   type WebSidebarActionItem,
 } from '../../src/components/DashboardWebSidebar';
 import { useAnalytics } from '../../src/hooks/useAnalytics';
+import { usePersistedSWR } from '../../src/hooks/usePersistedSWR';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PaymentDueBanner from '../../src/components/PaymentDueBanner';
 
@@ -822,8 +823,15 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const { t } = useTranslation();
-  const [dashboardData, setDashboardData] = useState<AdminDashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: dashboardData, loading: dashboardLoading } = usePersistedSWR<AdminDashboardStats>({
+    cacheKey: 'admin-dashboard-stats',
+    userId: user?.userId,
+    ttlMs: 60_000,
+    persist: true,
+    enabled: !!user,
+    fetcher: () => AdminService.getDashboardStats({ silent: true }),
+  });
+  const loading = dashboardLoading && !dashboardData;
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -862,7 +870,7 @@ export default function AdminDashboard() {
     const fetchPendingCount = async () => { try { const requests = await AccessControlService.getPendingRequests(); setPendingRequestsCount(requests.length); } catch (e) { console.error(e); } };
     fetchPendingCount();
     const channel = supabase.channel('access_req_badge').on('postgres_changes', { event: '*', schema: 'public', table: 'access_requests' }, fetchPendingCount).subscribe();
-    (async () => { try { const data = await AdminService.getDashboardStats({ silent: true }); setDashboardData(data); } catch (err: any) { if (!err?.message?.includes('Student profile not found')) { /* suppress */ } } finally { setLoading(false); } })();
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   useFocusEffect(React.useCallback(() => {

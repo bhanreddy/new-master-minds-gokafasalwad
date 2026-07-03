@@ -199,7 +199,6 @@ export default function TransportImportScreen() {
             </TouchableOpacity>
 
             {Platform.OS === 'web' && (
-              // @ts-expect-error web-only input
               <input
                 ref={fileInputRef}
                 type="file"

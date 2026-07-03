@@ -20,6 +20,7 @@ import DashboardMenuOverlay from '../../src/components/DashboardMenuOverlay';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useApiQuery } from '../../src/hooks/useApiQuery';
+import { usePersistedSWR } from '../../src/hooks/usePersistedSWR';
 import { AnalyticsData } from '../../src/services/analyticsService';
 import { FeeService } from '../../src/services/feeService';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -672,12 +673,33 @@ export default function AccountsDashboard() {
     'accounts-dashboard-stats',
     DASHBOARD_CACHE_TTL_MS,
     authUserId,
-    { query: { for_accounts: '1' } }
+    { query: { for_accounts: '1' }, persist: true }
   );
 
+  const recentFromStats = statsData?.stats?.recent_transactions;
+  const shouldFetchRecentTx = !!authUserId && !(Array.isArray(recentFromStats) && recentFromStats.length > 0);
+  const recentTxQuery = canSeeAllCollections ? '' : `received_by=${authUserId}`;
+
+  const { data: recentTxRows } = usePersistedSWR<any[]>({
+    cacheKey: 'accounts-recent-tx',
+    userId: authUserId,
+    ttlMs: 60_000,
+    persist: true,
+    enabled: shouldFetchRecentTx,
+    query: recentTxQuery,
+    fetcher: async () => {
+      const rows = await FeeService.getTransactions({
+        limit: 5,
+        ...(canSeeAllCollections ? {} : { received_by: authUserId! }),
+      });
+      return Array.isArray(rows) ? rows : (rows as any)?.data ?? [];
+    },
+  });
+
   useEffect(() => {
-    setLoading(statsLoading);
-    setAnalyticsLoading(statsLoading);
+    const showLoader = statsLoading && !statsData;
+    setLoading(showLoader);
+    setAnalyticsLoading(showLoader);
     if (!statsData) return;
 
     const rawStats = statsData.stats || {};
@@ -718,35 +740,21 @@ export default function AccountsDashboard() {
     };
     setAnalytics(reconstructedAnalytics);
 
-    const recentFromStats = rawStats.recent_transactions;
-    if (Array.isArray(recentFromStats) && recentFromStats.length > 0) {
-      setTransactions(mapDashboardTransactions(recentFromStats));
+    const recentFromStatsLocal = rawStats.recent_transactions;
+    if (Array.isArray(recentFromStatsLocal) && recentFromStatsLocal.length > 0) {
+      setTransactions(mapDashboardTransactions(recentFromStatsLocal));
       return;
     }
 
-    if (!authUserId) {
+    if (recentTxRows) {
+      setTransactions(mapDashboardTransactions(recentTxRows));
+      return;
+    }
+
+    if (!shouldFetchRecentTx) {
       setTransactions([]);
-      return;
     }
-
-    let cancelled = false;
-    FeeService.getTransactions({
-      limit: 5,
-      ...(canSeeAllCollections ? {} : { received_by: authUserId }),
-    })
-      .then((rows) => {
-        if (cancelled) return;
-        const list = Array.isArray(rows) ? rows : (rows as any)?.data ?? [];
-        setTransactions(mapDashboardTransactions(list));
-      })
-      .catch(() => {
-        if (!cancelled) setTransactions([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [statsData, statsLoading, authUserId, canSeeAllCollections]);
+  }, [statsData, statsLoading, authUserId, canSeeAllCollections, recentTxRows, shouldFetchRecentTx]);
 
   const carouselCards = useMemo(() => {
     const cards = [];

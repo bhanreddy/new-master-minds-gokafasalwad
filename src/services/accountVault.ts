@@ -53,6 +53,10 @@ export interface VaultAccount {
   displayName: string | null;
   photoUrl: string | null;
   admissionNo: string | null;
+  /** Cached class label for quick-switch UI (e.g. "Class 10 · Sec A"). */
+  classLabel?: string | null;
+  /** Cached school name for quick-switch UI. */
+  schoolName?: string | null;
   /** Full Supabase session (access + refresh tokens, expiry, user). */
   supabaseSession: Session;
   /** Backend-validated user profile. */
@@ -362,6 +366,26 @@ export async function removeAccount(userId: string): Promise<void> {
 export async function listAccounts(): Promise<VaultAccount[]> {
   await ensureMigrated();
   return _readAccounts();
+}
+
+/**
+ * Patch display metadata on a vaulted account (class / school labels for quick-switch UI).
+ * No-ops if the account is not in the vault.
+ */
+export async function patchAccountMetadata(
+  userId: string,
+  meta: { classLabel?: string | null; schoolName?: string | null }
+): Promise<void> {
+  await ensureMigrated();
+  const accounts = await _readAccounts();
+  const idx = accounts.findIndex((a) => a.userId === userId);
+  if (idx < 0) return;
+  accounts[idx] = {
+    ...accounts[idx],
+    ...(meta.classLabel !== undefined ? { classLabel: meta.classLabel } : {}),
+    ...(meta.schoolName !== undefined ? { schoolName: meta.schoolName } : {}),
+  };
+  await _writeAccounts(accounts);
 }
 
 /** Return the currently-active account, or null. */

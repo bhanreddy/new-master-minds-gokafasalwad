@@ -455,7 +455,7 @@ export default function RouteDetailScreen() {
             style={({ pressed }) => [
               styles.dragHandle,
               pressed && styles.dragHandlePressed,
-              Platform.OS === 'web' && { cursor: 'grab' as const },
+              Platform.OS === 'web' && ({ cursor: 'grab' } as any),
             ]}
           >
             <Ionicons name="reorder-three" size={28} color="#94A3B8" />

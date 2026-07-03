@@ -9,6 +9,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "phosphor-react-native/src/icons/*": [
+        "./src/types/phosphor-icons.d.ts"
       ]
     }
   },

@@ -37,9 +37,9 @@
       "googleServicesFile": "./google-services.json",
       "enableShrinkResources": true,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
+        "foregroundImage": "./assets/images/icon-v2.png",
         "backgroundColor": "#E6F4FE",
-        "monochromeImage": "./assets/images/icon.png"
+        "monochromeImage": "./assets/images/icon-v2.png"
       },
       "useNextNotificationsApi": true,
       "permissions": [
@@ -52,10 +52,10 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon-v2.png"
     },
     "notification": {
-      "icon": "./assets/images/icon.png",
+      "icon": "./assets/images/icon-v2.png",
       "color": "#FFFFFF"
     },
     "plugins": [

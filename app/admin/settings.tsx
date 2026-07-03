@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    StatusBar, Switch, Image, Linking
+    StatusBar, Switch, Linking
 } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
+import AvatarUploader from '../../src/components/AvatarUploader';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { AuthService } from '../../src/services/authService';
@@ -133,9 +134,14 @@ export default function AdminSettings() {
 
                     <View style={styles.profileTop}>
                         <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
-                            <Image
-                                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png' }}
-                                style={styles.avatar}
+                            <AvatarUploader
+                                photoUrl={user?.photoUrl}
+                                name={user?.displayName || 'Admin User'}
+                                size={62}
+                                borderRadius={18}
+                                ringColor={theme.colors.border}
+                                ringWidth={2}
+                                accentColor="#7C3AED"
                             />
                             <View style={styles.onlineDot} />
                         </Animated.View>

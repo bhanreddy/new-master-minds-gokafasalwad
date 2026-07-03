@@ -50,9 +50,11 @@ import HeaderCard from '../../src/components/HeaderCard';
 import LogoLoader from '../../src/components/LogoLoader';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
+import { SCHOOL_CONFIG } from '../../src/constants/schoolConfig';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useStudentQuery } from '../../src/hooks/useStudentQuery';
 import { useTheme } from '../../src/hooks/useTheme';
+import { patchAccountMetadata } from '../../src/services/accountVault';
 import { StudentDashboardResponse } from '../../src/services/studentService';
 import { AttendanceSummary } from '../../src/types/models';
 import { t_field } from '../../src/utils/lang';
@@ -816,7 +818,7 @@ const HomeScreen = () => {
     'dashboard',
     2 * 60 * 1000,
     user?.userId,
-    { enabled: !!user?.userId && isStudent }
+    { enabled: !!user?.userId && isStudent, persist: true }
   );
 
   const student = useMemo(() => dash?.profile ?? null, [dash]);
@@ -881,6 +883,18 @@ const HomeScreen = () => {
     return `${cn} · ${t('studentHome.sectionPrefix')} ${sec}`.trim();
   }, [student, t]);
 
+  useEffect(() => {
+    if (!user?.userId || !student) return;
+    void patchAccountMetadata(user.userId, {
+      classLabel: classSec,
+      schoolName: SCHOOL_CONFIG.name,
+    });
+  }, [user?.userId, student, classSec]);
+
+  const handleAccountSwitched = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
+
   return (
     <HomeSvgContext.Provider value={svgMod}>
       <ScreenLayout>
@@ -927,6 +941,8 @@ const HomeScreen = () => {
               studentName={student?.display_name || user?.displayName || t('studentHome.studentFallback')}
               classSec={classSec}
               rollNo={student?.current_enrollment?.roll_number || 'N/A'}
+              photoUrl={student?.photo_url || user?.photoUrl}
+              onAccountSwitched={handleAccountSwitched}
             />
           </Animated.View>
 

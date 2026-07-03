@@ -64,7 +64,7 @@ export default function AccountsPortalStaffScreen() {
     const q = search.trim().toLowerCase();
     if (!q) return staff;
     return staff.filter((row) => {
-      const name = personListDisplayName(row as Record<string, unknown>).toLowerCase();
+      const name = personListDisplayName(row as unknown as Record<string, unknown>).toLowerCase();
       const code = String(row.staff_code || '').toLowerCase();
       const email = String(row.email || '').toLowerCase();
       const designation = String(row.designation || '').toLowerCase();
@@ -215,7 +215,7 @@ export default function AccountsPortalStaffScreen() {
           ) : (
             filteredStaff.map((row, index) => {
               const isLast = index === filteredStaff.length - 1;
-              const name = personListDisplayName(row as Record<string, unknown>);
+              const name = personListDisplayName(row as unknown as Record<string, unknown>);
               const subtitle = [row.designation, row.staff_code].filter(Boolean).join(' · ');
               const isEnabled = row.has_accounts_access || row.is_elevated;
               const isSaving = savingId === row.staff_id;

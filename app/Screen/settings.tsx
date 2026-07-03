@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Switch, Image, Linking } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Switch, Linking } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StudentHeader from '../../src/components/StudentHeader';
 import AccountSwitcherSheet from '../../src/components/AccountSwitcherSheet';
+import AvatarUploader, { AvatarUploaderHandle } from '../../src/components/AvatarUploader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
@@ -119,11 +120,8 @@ export default function Settings() {
     const { theme, isDark, toggleTheme } = useTheme();
     const { t, i18n } = useTranslation();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
-    const [updating, setUpdating] = useState(false);
     const [switcherOpen, setSwitcherOpen] = useState(false);
-
-    const handlePress = (item: string) =>
-        alertCompat(item, 'This feature will be available in the next update.');
+    const avatarUploaderRef = useRef<AvatarUploaderHandle>(null);
 
     const handleLogout = async () => {
         await AsyncStorage.removeItem('student_auto_login');
@@ -152,9 +150,15 @@ export default function Settings() {
 
                     <View style={styles.profileTop}>
                         <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
-                            <Image
-                                source={{ uri: user?.photoUrl || 'https://cdn-icons-png.flaticon.com/512/2922/2922506.png' }}
-                                style={styles.avatar}
+                            <AvatarUploader
+                                ref={avatarUploaderRef}
+                                photoUrl={user?.photoUrl}
+                                name={user?.displayName || 'Student Name'}
+                                size={62}
+                                borderRadius={18}
+                                ringColor={theme.colors.border}
+                                ringWidth={2}
+                                accentColor="#10B981"
                             />
                             <View style={styles.onlineDot} />
                         </Animated.View>
@@ -173,11 +177,11 @@ export default function Settings() {
 
                         <TouchableOpacity
                             style={styles.editChip}
-                            onPress={() => handlePress('Edit Profile')}
+                            onPress={() => avatarUploaderRef.current?.open()}
                             activeOpacity={0.7}
                         >
-                            <Ionicons name="pencil" size={11} color="#10B981" />
-                            <Text style={styles.editChipText}>{t('settings.edit_profile', 'Edit')}</Text>
+                            <Ionicons name="camera" size={11} color="#10B981" />
+                            <Text style={styles.editChipText}>{t('settings.edit_profile', 'Change Photo')}</Text>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
@@ -341,10 +345,6 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     },
     profileTop: { flexDirection: 'row', alignItems: 'center' },
     avatarWrap: { position: 'relative', marginRight: 14 },
-    avatar: {
-        width: 62, height: 62, borderRadius: 18,
-        borderWidth: 2, borderColor: colors.border,
-    },
     onlineDot: {
         position: 'absolute', bottom: 2, right: 2,
         width: 14, height: 14, borderRadius: 7,

@@ -357,33 +357,33 @@ const buildParentLine = (gender?: string, fatherName?: string): string | undefin
 };
 
 const hasActiveStudentFilters = (filters: {
-  debouncedSearch: string;
+  submittedSearch: string;
   selectedClassId: string | null;
-  debouncedAdmissionNo: string;
-  debouncedFatherName: string;
-  debouncedMobile: string;
+  submittedAdmissionNo: string;
+  submittedFatherName: string;
+  submittedMobile: string;
   activeFilter: FilterType;
 }) =>
   filters.activeFilter !== 'All'
-  || filters.debouncedSearch.length > 0
+  || filters.submittedSearch.length > 0
   || !!filters.selectedClassId
-  || filters.debouncedAdmissionNo.length > 0
-  || filters.debouncedFatherName.length > 0
-  || filters.debouncedMobile.length > 0;
+  || filters.submittedAdmissionNo.length > 0
+  || filters.submittedFatherName.length > 0
+  || filters.submittedMobile.length > 0;
 
 /** Narrow enough to query the API — avoids loading the full student roster on open. */
 const hasStudentQueryCriteria = (filters: {
-  debouncedSearch: string;
+  submittedSearch: string;
   selectedClassId: string | null;
-  debouncedAdmissionNo: string;
-  debouncedFatherName: string;
-  debouncedMobile: string;
+  submittedAdmissionNo: string;
+  submittedFatherName: string;
+  submittedMobile: string;
 }) =>
-  filters.debouncedSearch.length > 0
+  filters.submittedSearch.length > 0
   || !!filters.selectedClassId
-  || filters.debouncedAdmissionNo.length > 0
-  || filters.debouncedFatherName.length > 0
-  || filters.debouncedMobile.length > 0;
+  || filters.submittedAdmissionNo.length > 0
+  || filters.submittedFatherName.length > 0
+  || filters.submittedMobile.length > 0;
 
 // ─── Class Structure Card ─────────────────────────────────────────────────────
 const ClassStructureCard = React.memo(function ClassStructureCard({
@@ -514,6 +514,7 @@ function StudentFiltersPanel({
   mobile,
   onMobileChange,
   onClear,
+  onSubmit,
   hasActiveFilters,
 }: {
   expanded: boolean;
@@ -529,6 +530,7 @@ function StudentFiltersPanel({
   mobile: string;
   onMobileChange: (value: string) => void;
   onClear: () => void;
+  onSubmit: () => void;
   hasActiveFilters: boolean;
 }) {
   const border = isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB';
@@ -588,6 +590,8 @@ function StudentFiltersPanel({
                 placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
                 value={admissionNo}
                 onChangeText={onAdmissionNoChange}
+                returnKeyType="search"
+                onSubmitEditing={onSubmit}
               />
             </View>
             <View style={filterPanelStyles.inputCell}>
@@ -598,6 +602,8 @@ function StudentFiltersPanel({
                 placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
                 value={fatherName}
                 onChangeText={onFatherNameChange}
+                returnKeyType="search"
+                onSubmitEditing={onSubmit}
               />
             </View>
           </View>
@@ -610,7 +616,14 @@ function StudentFiltersPanel({
             value={mobile}
             onChangeText={onMobileChange}
             keyboardType="phone-pad"
+            returnKeyType="search"
+            onSubmitEditing={onSubmit}
           />
+
+          <Pressable style={filterPanelStyles.searchButton} onPress={onSubmit}>
+            <Ionicons name="search" size={15} color="#fff" />
+            <Text style={filterPanelStyles.searchButtonText}>Search students</Text>
+          </Pressable>
         </Animated.View>
       ) : null}
     </View>
@@ -650,6 +663,17 @@ const filterPanelStyles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '700' },
   inputRow: { flexDirection: 'row', gap: 10 },
   inputCell: { flex: 1, gap: 6 },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#3B82F6',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 2,
+  },
+  searchButtonText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   input: {
     borderWidth: 1,
     borderRadius: 10,
@@ -670,16 +694,16 @@ export default function AccountsFees() {
   const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [admissionNoInput, setAdmissionNoInput] = useState('');
-  const [debouncedAdmissionNo, setDebouncedAdmissionNo] = useState('');
+  const [submittedAdmissionNo, setSubmittedAdmissionNo] = useState('');
   const [fatherNameInput, setFatherNameInput] = useState('');
-  const [debouncedFatherName, setDebouncedFatherName] = useState('');
+  const [submittedFatherName, setSubmittedFatherName] = useState('');
   const [mobileInput, setMobileInput] = useState('');
-  const [debouncedMobile, setDebouncedMobile] = useState('');
+  const [submittedMobile, setSubmittedMobile] = useState('');
   const [activeView, setActiveView] = useState<ViewMode>('Students');
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -788,11 +812,11 @@ export default function AccountsFees() {
       const response = await FeeService.getStudentFeeSummaries({
         page: nextPage,
         limit: PAGE_LIMIT,
-        search: debouncedSearch || undefined,
+        search: submittedSearch || undefined,
         class_id: selectedClassId || undefined,
-        admission_no: debouncedAdmissionNo || undefined,
-        father_name: debouncedFatherName || undefined,
-        mobile: debouncedMobile || undefined,
+        admission_no: submittedAdmissionNo || undefined,
+        father_name: submittedFatherName || undefined,
+        mobile: submittedMobile || undefined,
         status: activeFilter === 'All' ? undefined : activeFilter,
       });
 
@@ -831,10 +855,10 @@ export default function AccountsFees() {
     }
   }, [
     activeFilter,
-    debouncedAdmissionNo,
-    debouncedFatherName,
-    debouncedMobile,
-    debouncedSearch,
+    submittedAdmissionNo,
+    submittedFatherName,
+    submittedMobile,
+    submittedSearch,
     mapFeeSummary,
     selectedClassId,
     user,
@@ -846,62 +870,57 @@ export default function AccountsFees() {
       .catch(() => setClasses([]));
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const query = searchQuery.trim();
-      setDebouncedSearch(query.length >= 2 ? query : '');
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // Free-text filters commit only on Enter / the Search button — typing alone
+  // never fires a request. React batches the setters, so one submit triggers
+  // at most one fetch via the load effect below.
+  const commitStudentSearch = useCallback(() => {
+    const query = searchQuery.trim();
+    setSubmittedSearch(query.length >= 2 ? query : '');
+    setSubmittedAdmissionNo(admissionNoInput.trim());
+    const father = fatherNameInput.trim();
+    setSubmittedFatherName(father.length >= 2 ? father : '');
+    const digits = mobileInput.trim().replace(/\s+/g, '');
+    setSubmittedMobile(digits.length >= 3 ? digits : '');
+  }, [admissionNoInput, fatherNameInput, mobileInput, searchQuery]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedAdmissionNo(admissionNoInput.trim()), 400);
-    return () => clearTimeout(timer);
-  }, [admissionNoInput]);
+  // Class Structures view filters locally on searchQuery, so submit only
+  // matters for the Students view.
+  const handleSearchSubmit = useCallback(() => {
+    if (activeView === 'Students') commitStudentSearch();
+  }, [activeView, commitStudentSearch]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const query = fatherNameInput.trim();
-      setDebouncedFatherName(query.length >= 2 ? query : '');
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [fatherNameInput]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const digits = mobileInput.trim().replace(/\s+/g, '');
-      setDebouncedMobile(digits.length >= 3 ? digits : '');
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [mobileInput]);
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSubmittedSearch('');
+  }, []);
 
   const studentFiltersActive = hasActiveStudentFilters({
-    debouncedSearch,
+    submittedSearch,
     selectedClassId,
-    debouncedAdmissionNo,
-    debouncedFatherName,
-    debouncedMobile,
+    submittedAdmissionNo,
+    submittedFatherName,
+    submittedMobile,
     activeFilter,
   });
 
   const studentQueryReady = hasStudentQueryCriteria({
-    debouncedSearch,
+    submittedSearch,
     selectedClassId,
-    debouncedAdmissionNo,
-    debouncedFatherName,
-    debouncedMobile,
+    submittedAdmissionNo,
+    submittedFatherName,
+    submittedMobile,
   });
 
   const clearStudentFilters = useCallback(() => {
     setSelectedClassId(null);
     setAdmissionNoInput('');
-    setDebouncedAdmissionNo('');
+    setSubmittedAdmissionNo('');
     setFatherNameInput('');
-    setDebouncedFatherName('');
+    setSubmittedFatherName('');
     setMobileInput('');
-    setDebouncedMobile('');
+    setSubmittedMobile('');
     setSearchQuery('');
-    setDebouncedSearch('');
+    setSubmittedSearch('');
     setActiveFilter('All');
   }, []);
 
@@ -931,10 +950,10 @@ export default function AccountsFees() {
   }, [
     activeFilter,
     activeView,
-    debouncedAdmissionNo,
-    debouncedFatherName,
-    debouncedMobile,
-    debouncedSearch,
+    submittedAdmissionNo,
+    submittedFatherName,
+    submittedMobile,
+    submittedSearch,
     loadData,
     selectedClassId,
     studentQueryReady,
@@ -1039,6 +1058,7 @@ export default function AccountsFees() {
             mobile={mobileInput}
             onMobileChange={setMobileInput}
             onClear={clearStudentFilters}
+            onSubmit={commitStudentSearch}
             hasActiveFilters={studentFiltersActive}
           />
 
@@ -1060,11 +1080,11 @@ export default function AccountsFees() {
               <Text style={styles.resultsCount}>
                 {meta.total} student{meta.total !== 1 ? 's' : ''}
                 {activeFilter !== 'All' ? ` · ${activeFilter}` : ''}
-                {debouncedSearch ? ` · "${debouncedSearch}"` : ''}
+                {submittedSearch ? ` · "${submittedSearch}"` : ''}
                 {selectedClassId ? ` · ${classes.find((c) => c.id === selectedClassId)?.name || 'Class'}` : ''}
-                {debouncedAdmissionNo ? ` · Adm ${debouncedAdmissionNo}` : ''}
-                {debouncedFatherName ? ` · ${debouncedFatherName}` : ''}
-                {debouncedMobile ? ` · ${debouncedMobile}` : ''}
+                {submittedAdmissionNo ? ` · Adm ${submittedAdmissionNo}` : ''}
+                {submittedFatherName ? ` · ${submittedFatherName}` : ''}
+                {submittedMobile ? ` · ${submittedMobile}` : ''}
               </Text>
             </Animated.View>
           )}
@@ -1086,10 +1106,11 @@ export default function AccountsFees() {
     admissionNoInput,
     classes,
     clearStudentFilters,
-    debouncedAdmissionNo,
-    debouncedFatherName,
-    debouncedMobile,
-    debouncedSearch,
+    commitStudentSearch,
+    submittedAdmissionNo,
+    submittedFatherName,
+    submittedMobile,
+    submittedSearch,
     filterCounts,
     filteredStructures.length,
     filtersExpanded,
@@ -1146,7 +1167,7 @@ export default function AccountsFees() {
         <Text style={styles.emptySubtitle}>
           {hasQuery
             ? 'Try different filters or clear them to see more students'
-            : 'Enter a name, admission number, class, or other filter — students load only when you search.'}
+            : 'Type a name, admission number or mobile, then press Enter (or tap Search) to load students.'}
         </Text>
       </View>
     );
@@ -1169,24 +1190,29 @@ export default function AccountsFees() {
         entering={FadeInDown.duration(400)}
         style={[styles.searchWrap, ds.searchBarWrapper, searchFocused && styles.searchWrapFocused]}
       >
-        <Ionicons
-          name="search"
-          size={18}
-          color={searchFocused ? '#3B82F6' : (isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF')}
-        />
+        <TouchableOpacity onPress={handleSearchSubmit} hitSlop={8}>
+          <Ionicons
+            name="search"
+            size={18}
+            color={searchFocused ? '#3B82F6' : (isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF')}
+          />
+        </TouchableOpacity>
         <AppTextInput
           style={[ds.inputInChrome, styles.searchInput]}
           placeholder={activeView === 'Students'
-            ? 'Search by name, ID or class…'
+            ? 'Search name, ID or class — press Enter'
             : 'Search by class, fee type or year…'}
           placeholderTextColor={isDark ? 'rgba(255,255,255,0.2)' : '#94A3B8'}
           value={searchQuery}
           onChangeText={setSearchQuery}
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
+          returnKeyType="search"
+          onSubmitEditing={handleSearchSubmit}
+          blurOnSubmit={false}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity onPress={handleClearSearch}>
             <Ionicons name="close-circle" size={18} color={isDark ? 'rgba(255,255,255,0.3)' : '#9CA3AF'} />
           </TouchableOpacity>
         )}
