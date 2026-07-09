@@ -2,16 +2,16 @@ import { ViewStyle } from "react-native";
 
 export const ADMIN_THEME = {
     colors: {
-        primary: '#2563EB', // Blue
-        secondary: '#7C3AED', // Purple
+        primary: '#665990', // Indigo/Violet
+        secondary: '#F57964',
         success: '#10B981', // Emerald
         warning: '#F59E0B', // Amber
         danger: '#EF4444', // Rose
         info: '#3B82F6', // Sky
         background: {
-            app: '#F5F3FF', // Violet 50
+            app: '#F3F4F6', // Cool Gray 100
             surface: '#FFFFFF',
-            subtle: '#FAF5FF', // Purple 50
+            subtle: '#F9FAFB',
         },
         text: {
             primary: '#111827', // Gray 900
@@ -19,7 +19,7 @@ export const ADMIN_THEME = {
             muted: '#9CA3AF', // Gray 400
             inverse: '#FFFFFF',
         },
-        border: '#DDD6FE', // Violet 200
+        border: '#E5E7EB', // Gray 200
         icon: '#6B7280',
     },
     spacing: {

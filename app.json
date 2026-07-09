@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Vikas Model School Balampet",
-    "slug": "vikasmodelschoolbalampet",
+    "name": "The Global School Ravulpally",
+    "slug": "theglobalschoolravulpally",
     "version": "1.5.0",
     "platforms": [
       "android",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "bundleIdentifier": "com.nexsyrussims.vikasmodelschool",
+      "bundleIdentifier": "com.nexsyrussims.theglobalschoolravulpally",
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
@@ -31,7 +31,7 @@
       }
     },
     "android": {
-      "package": "com.nexsyrussims.vikasmodelschool",
+      "package": "com.nexsyrussims.theglobalschoolravulpally",
       "jsEngine": "hermes",
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",
@@ -52,6 +52,7 @@
       ]
     },
     "web": {
+      "bundler": "metro",
       "favicon": "./assets/images/icon.png"
     },
     "notification": {
@@ -116,7 +117,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "431387a6-0e21-4d25-bf0f-5fdd3ad56585"
+        "projectId": "dea90aa8-3fd0-45b6-9ab0-9e9a46f5fc97"
       }
     },
     "owner": "nexsyrus"
