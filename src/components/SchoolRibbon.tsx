@@ -792,17 +792,16 @@ const shellStyles = StyleSheet.create({
 /* ------------------------------------------------------------------ */
 
 /*
- * Clay palette — sourced exclusively from `schoolTheme.light.colors`.
- * No invented hex swatches: every tone below is a direct SchoolTheme token
- * (or an alpha-blend of one), so the ribbon re-themes automatically if the
- * school's brand colours ever change.
+ * Clay palette — body/accent from `SCHOOL_CONFIG.theme` ribbon tokens so editing
+ * `ribbonGradient` / `accent` re-themes the letterhead. Deep carve uses
+ * primaryDark (plum/indigo) so inset chips stay recessed purple on the peach body.
  */
 const brand = schoolTheme.light.colors;
-const CLAY_BASE = brand.secondary;     // #F57964 — clay body hue
-const CLAY_DEEP = brand.primaryDark;   // #3A1155 — carve / ambient shadow
-const CLAY_SURFACE = brand.surface;    // #FFFFFF — logo puck & highlight sheen
-const CLAY_ACCENT = brand.accent;      // #0D8ECF — SchoolTheme's own "stripes / dividers" colour
-const CLAY_EDGE = brand.borderLight;   // #F0ECF6 — soft secondary stop for the logo puck
+const CLAY_BASE = ribbonTheme.ribbonGradient[1]; // mid peach — clay body hue
+const CLAY_DEEP = brand.primaryDark;            // indigo — carve / ambient shadow
+const CLAY_SURFACE = brand.surface;             // #FFFFFF — logo puck & highlight sheen
+const CLAY_ACCENT = ribbonTheme.accent;         // gold — stripes / dividers / crest
+const CLAY_EDGE = brand.borderLight;            // soft secondary stop for the logo puck
 
 /*
  * Premium high-fidelity clay extrusion stack.
@@ -997,7 +996,10 @@ const styles = StyleSheet.create({
 
     ...Platform.select({
       web: {
-        backgroundImage: `linear-gradient(165deg, ${schoolColorWithAlpha(CLAY_SURFACE, 0.38)} 0%, ${schoolColorWithAlpha(CLAY_SURFACE, 0)} 34%, ${schoolColorWithAlpha(CLAY_DEEP, 0)} 60%, ${schoolColorWithAlpha(CLAY_DEEP, 0.26)} 100%)`,
+        backgroundImage: [
+          `linear-gradient(165deg, ${schoolColorWithAlpha(CLAY_SURFACE, 0.38)} 0%, ${schoolColorWithAlpha(CLAY_SURFACE, 0)} 34%, ${schoolColorWithAlpha(CLAY_DEEP, 0)} 60%, ${schoolColorWithAlpha(CLAY_DEEP, 0.26)} 100%)`,
+          `linear-gradient(180deg, ${ribbonTheme.ribbonGradient[0]} 0%, ${ribbonTheme.ribbonGradient[1]} ${ribbonTheme.ribbonGradientLocations[1] * 100}%, ${ribbonTheme.ribbonGradient[2]} ${ribbonTheme.ribbonGradientLocations[2] * 100}%, ${ribbonTheme.ribbonGradient[3]} 100%)`,
+        ].join(', '),
         boxShadow: CLAY_CARD_SHADOW,
       } as object,
 
