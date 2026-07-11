@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Vikas Model School Balampet",
-    "slug": "vikasmodelschoolbalampet",
+    "name": "Slate School Kosgi",
+    "slug": "slateschool",
     "version": "1.5.1",
     "platforms": [
       "android",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "bundleIdentifier": "com.nexsyrussims.vikasmodelschool",
+      "bundleIdentifier": "com.nexsyrussims.slateschool",
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
@@ -31,7 +31,7 @@
       }
     },
     "android": {
-      "package": "com.nexsyrussims.vikasmodelschool",
+      "package": "com.nexsyrussims.slateschool",
       "jsEngine": "hermes",
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",
@@ -52,6 +52,7 @@
       ]
     },
     "web": {
+      "bundler": "metro",
       "favicon": "./assets/images/icon.png"
     },
     "notification": {
@@ -92,7 +93,8 @@
             "./assets/sounds/notification_default.wav",
             "./assets/sounds/emergency.wav",
             "./assets/sounds/fee_reminder.wav",
-            "./assets/sounds/voice_alert.wav"
+            "./assets/sounds/voice_alert.wav",
+            "./assets/sounds/bus_present.wav"
           ]
         }
       ],
@@ -116,7 +118,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "431387a6-0e21-4d25-bf0f-5fdd3ad56585"
+        "projectId": "092e54fd-6629-4c8c-ab8d-a21a3ea7633c"
       }
     },
     "owner": "nexsyrus"
