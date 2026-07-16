@@ -286,7 +286,7 @@ export const SCHOOL_CONFIG = {
   logo: require('../../assets/images/icon.png'),
 
   // Optional: School Address for reports
-  address: "Geetanjali High School Maddur, Narayanapet Road, Maddur, Narayanapet District, Telangana - 509411",
+  address: "Narayanapet Road, Maddur(Mandal), Narayanapet (District), Telangana - 509411",
 
   // Optional: Contact info for reports
   contact: "9573276939",

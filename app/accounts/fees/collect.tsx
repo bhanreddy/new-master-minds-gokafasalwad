@@ -4,8 +4,9 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ScrollView, Animated, Pressable, Platform, Share, ActivityIndicator, Modal
+    Animated, Pressable, Platform, Share, ActivityIndicator, Modal
 } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
@@ -485,10 +486,11 @@ export default function CollectFeesScreen() {
         <View style={styles.container}>
             {!shellActive && <AdminHeader title="Collect Fee" showBackButton={true} />}
 
-            <ScrollView
+            <KeyboardAwareScreen
+                variant="scroll"
                 contentContainerStyle={styles.content}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+                bottomOffset={24}
             >
                 {/* ── Student Info Card ── */}
                 <Animated.View style={[
@@ -850,7 +852,7 @@ export default function CollectFeesScreen() {
                 </Animated.View>
 
                 <View style={{ height: 32 }} />
-            </ScrollView>
+            </KeyboardAwareScreen>
 
             {/* ── Arrears Collection Modal ── */}
             <Modal

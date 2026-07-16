@@ -10,10 +10,10 @@ import {
   ActivityIndicator,
   TextInput,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

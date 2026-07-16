@@ -20,7 +20,7 @@ import Avatar from '../../src/components/Avatar';
 import HardDeleteStudentModal from '../../src/components/accounts/HardDeleteStudentModal';
 import {
   personListDisplayName,
-  staffRoleDepartmentLine,
+  staffRoleCodeLine,
   studentEnrollmentSubtitle,
 } from '../../src/utils/displayHelpers';
 
@@ -191,7 +191,7 @@ export default function ManageUsersScreen() {
         <Text style={styles.userSub}>
           {activeTab === 'student'
             ? studentEnrollmentSubtitle(row.current_enrollment)
-            : staffRoleDepartmentLine(row)}
+            : staffRoleCodeLine(row)}
         </Text>
       </View>
       <View style={styles.actions}>

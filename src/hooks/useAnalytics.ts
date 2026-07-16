@@ -49,7 +49,7 @@ export type Section = 'overview' | 'finance' | 'attendance' | 'academic' | 'staf
 
 // ─── Simple in-memory cache ─────────────────────────────────────────────────
 interface CacheEntry {
-  data: AnalyticsData;
+  data: Partial<AnalyticsData>;
   fetchedAt: number; // ms timestamp
 }
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -58,6 +58,19 @@ const cache: Record<TimeRange, CacheEntry | null> = {
   quarter: null,
   year:    null,
 };
+
+function isAnalyticsPayload(value: unknown): value is Partial<AnalyticsData> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+
+  const payload = value as Record<string, unknown>;
+  return (
+    'financials' in payload ||
+    'attendance' in payload ||
+    'academics' in payload ||
+    'staff' in payload ||
+    'insights' in payload
+  );
+}
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
@@ -92,15 +105,26 @@ export function useAnalytics(): UseAnalyticsReturn {
       const cached = cache[selectedRange];
       const now = Date.now();
       if (!isRefresh && cached && now - cached.fetchedAt < CACHE_TTL_MS) {
-        applyData(cached.data);
-        return;
+        if (isAnalyticsPayload(cached.data)) {
+          applyData(cached.data);
+          return;
+        }
+        cache[selectedRange] = null;
       }
 
-      isRefresh ? setRefreshing(true) : setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       try {
         const data = await AnalyticsService.getAnalytics(selectedRange);
+
+        if (!isAnalyticsPayload(data)) {
+          throw new Error('Analytics data is unavailable. Please try again.');
+        }
 
         // Store in cache
         cache[selectedRange] = { data, fetchedAt: now };
@@ -118,13 +142,13 @@ export function useAnalytics(): UseAnalyticsReturn {
     []
   );
 
-  function applyData(data: AnalyticsData) {
-    setFinancials(data.financials);
-    setAttendance(data.attendance);
-    setAcademics(data.academics);
-    setStaff(data.staff);
-    setInsights(data.insights ?? []);
-    setGeneratedAt(data.generated_at);
+  function applyData(data: Partial<AnalyticsData>) {
+    setFinancials(data.financials ?? null);
+    setAttendance(data.attendance ?? null);
+    setAcademics(data.academics ?? null);
+    setStaff(data.staff ?? null);
+    setInsights(Array.isArray(data.insights) ? data.insights : []);
+    setGeneratedAt(typeof data.generated_at === 'string' ? data.generated_at : null);
   }
 
   // ── Range change ───────────────────────────────────────────────────────────
@@ -136,7 +160,7 @@ export function useAnalytics(): UseAnalyticsReturn {
   useEffect(() => {
     fetchData(range);
     return () => { abortRef.current?.abort(); };
-  }, [range]);
+  }, [range, fetchData]);
 
   // ── Effect: revalidate stale data whenever the screen regains focus ──────────
   // Without this, the module-level cache freezes values for CACHE_TTL_MS and

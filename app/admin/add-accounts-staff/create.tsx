@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AppDatePicker from '@/src/components/AppDatePicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import AdminHeader from '../../../src/components/AdminHeader';
 import LogoLoader from '../../../src/components/LogoLoader';
 import { ADMIN_THEME } from '../../../src/constants/adminTheme';
@@ -124,7 +125,7 @@ export default function AddAccountsStaff() {
   return <View style={styles.container}>
     <StatusBar barStyle="light-content" backgroundColor={ADMIN_THEME.colors.primary} />
     <AdminHeader title="Add Accounts Staff" showBackButton />
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} bottomOffset={24}>
       {/* Header Card */}
       <LinearGradient colors={['#FBBF24', '#F59E0B']} start={{
         x: 0,
@@ -279,7 +280,7 @@ export default function AddAccountsStaff() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </KeyboardAwareScreen>
   </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({

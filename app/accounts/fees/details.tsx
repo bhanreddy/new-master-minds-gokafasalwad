@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   Animated, Platform, Pressable, Modal, ActivityIndicator
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AppTextInput from '@/src/components/AppTextInput';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -619,6 +620,7 @@ export default function StudentFeeLedger() {
 
         <Modal visible={transportCollectDue != null} transparent animationType="slide">
           <Pressable style={transportModalStyles.overlay} onPress={() => setTransportCollectDue(null)}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <Pressable style={transportModalStyles.sheet} onPress={(e) => e.stopPropagation()}>
               <Text style={transportModalStyles.title}>Collect transport fee</Text>
               <Text style={transportModalStyles.subtitle}>
@@ -663,6 +665,7 @@ export default function StudentFeeLedger() {
                   : <Text style={transportModalStyles.collectBtnText}>Collect & generate receipt</Text>}
               </Pressable>
             </Pressable>
+            </KeyboardAvoidingView>
           </Pressable>
         </Modal>
 

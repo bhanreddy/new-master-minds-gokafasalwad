@@ -141,10 +141,10 @@ export const AnalyticsService = {
    * Fetch the full analytics snapshot for a given time range.
    * GET /admin/analytics?range=month|quarter|year
    */
-  async getAnalytics(range: TimeRange): Promise<AnalyticsData> {
+  async getAnalytics(range: TimeRange): Promise<AnalyticsData | null> {
     // Silent: useAnalytics/reports screens surface errors inline (retry cards),
     // not via the global apiClient "Network Error" modal.
-    const data = await apiClient.get<AnalyticsData>('/admin/analytics', { range }, { silent: true });
+    const data = await apiClient.get<AnalyticsData | null>('/admin/analytics', { range }, { silent: true });
     return data;
   },
 

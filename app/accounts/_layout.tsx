@@ -75,7 +75,7 @@ export default function AccountsLayout() {
           <View style={styles.bodyRow}>
             <AccountsWebSidebar
               collapsed={sidebarCollapsed}
-              usersBadge={pendingEnrollmentBadge}
+              pendingEnrollmentsBadge={pendingEnrollmentBadge}
             />
             <View style={styles.stackCell}>{stack}</View>
           </View>

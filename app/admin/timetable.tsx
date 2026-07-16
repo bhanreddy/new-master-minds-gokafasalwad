@@ -14,6 +14,7 @@ import {
   Animated,
   Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
@@ -1513,7 +1514,7 @@ export default function TimetableManagement() {
 
       {/* ════════════════════ MODAL: Edit Single Period ════════════════════ */}
       <Modal transparent visible={editPeriodModalVisible} onRequestClose={() => setEditPeriodModalVisible(false)} animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
               <View style={styles.modalTitleGroup}>
@@ -1597,12 +1598,12 @@ export default function TimetableManagement() {
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ════════════════════ MODAL: Manage All Periods ════════════════════ */}
       <Modal transparent visible={managePeriodsVisible} onRequestClose={() => setManagePeriodsVisible(false)} animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
             <View style={styles.sheetHandle} />
             <View style={styles.modalHeaderRow}>
@@ -1742,12 +1743,12 @@ export default function TimetableManagement() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ════════════════════ MODAL: Create Period ════════════════════ */}
       <Modal transparent visible={createPeriodVisible} onRequestClose={() => setCreatePeriodVisible(false)} animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
               <View style={styles.modalTitleGroup}>
@@ -1850,7 +1851,7 @@ export default function TimetableManagement() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

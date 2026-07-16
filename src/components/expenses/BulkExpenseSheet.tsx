@@ -6,9 +6,9 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 import { Ionicons } from '@expo/vector-icons';

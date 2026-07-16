@@ -41,18 +41,13 @@ export function studentEnrollmentSubtitle(enrollment: unknown): string {
   return `Class: ${classLabel} - ${section} • Roll: ${roll}`;
 }
 
-export function staffRoleDepartmentLine(row: Record<string, unknown>): string {
+export function staffRoleCodeLine(row: Record<string, unknown>): string {
   const role = safeField(
     row.designation ?? row.designation_name ?? row.role ?? row.role_name ?? row.user_type,
     'Staff'
   );
-  const department = safeField(
-    (row.department as Record<string, unknown> | undefined)?.name ??
-      row.department ??
-      row.dept_name ??
-      row.department_name
-  );
-  return `${role} • ${department}`;
+  const staffCode = safeField(row.staff_code ?? row.staffCode);
+  return `${role} • ${staffCode}`;
 }
 
 /** Lowercase string for client-side search across common name/admission fields. */

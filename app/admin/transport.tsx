@@ -10,11 +10,11 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
-  KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
   Switch,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useRouter } from 'expo-router';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';

@@ -4,9 +4,10 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  StatusBar, Switch, ScrollView,
+  StatusBar, Switch, ScrollView, Platform,
   Animated as RNAnimated
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -334,7 +335,7 @@ export default function AdminNotices() {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.sheetOverlay}>
+        <KeyboardAvoidingView style={styles.sheetOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Animated.View entering={FadeInUp.duration(320).springify()} style={styles.sheetContent}>
             {/* Handle */}
             <View style={styles.sheetHandle} />
@@ -493,7 +494,7 @@ export default function AdminNotices() {
 
             </ScrollView>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -102,7 +103,7 @@ export default function StudentDetails() {
     </LinearGradient>
 
     {/* Editable Form */}
-    <ScrollView contentContainerStyle={styles.formContent}>
+    <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.formContent} bottomOffset={24}>
       <Text style={styles.sectionHeader}>Personal Information</Text>
 
       <View style={styles.inputGroup}>
@@ -170,7 +171,7 @@ export default function StudentDetails() {
         </LinearGradient>
       </TouchableOpacity>
 
-    </ScrollView>
+    </KeyboardAwareScreen>
   </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({

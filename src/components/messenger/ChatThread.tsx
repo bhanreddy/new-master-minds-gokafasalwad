@@ -12,8 +12,8 @@ import {
   Platform,
   TextInput,
   FlatList,
-  KeyboardAvoidingView,
 } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
@@ -176,6 +176,43 @@ export default function ChatThread({ conversation, recipient, currentUserId, onB
 
   return (
     <Animated.View entering={FadeInDown.duration(300)} exiting={FadeOut.duration(200)} style={styles.container}>
+      <KeyboardAwareScreen
+        variant="fixed"
+        stickyContent={
+          readOnly ? (
+            <View style={styles.readOnlyBar}>
+              <Ionicons name="megaphone-outline" size={16} color="#94A3B8" />
+              <Text style={styles.readOnlyText}>{t('messages.broadcast_readonly', 'Only admins can post in this broadcast group')}</Text>
+            </View>
+          ) : (
+            <View style={styles.inputBar}>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  value={inputText}
+                  onChangeText={(v) => {
+                    setInputText(v);
+                    notifyTyping();
+                  }}
+                  placeholder={t('messages.type_message', 'Type a message...')}
+                  placeholderTextColor="#94A3B8"
+                  multiline
+                  maxLength={4000}
+                  style={styles.input}
+                  onKeyPress={(e: any) => {
+                    if (Platform.OS === 'web' && e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+              </View>
+              <PressScale onPress={handleSend} disabled={!inputText.trim()} style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]}>
+                <Ionicons name="send" size={20} color="#FFFFFF" />
+              </PressScale>
+            </View>
+          )
+        }
+      >
       <View style={styles.header}>
         <PressScale onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#1E293B" />
@@ -236,40 +273,7 @@ export default function ChatThread({ conversation, recipient, currentUserId, onB
         />
       </View>
 
-      {readOnly ? (
-        <View style={styles.readOnlyBar}>
-          <Ionicons name="megaphone-outline" size={16} color="#94A3B8" />
-          <Text style={styles.readOnlyText}>{t('messages.broadcast_readonly', 'Only admins can post in this broadcast group')}</Text>
-        </View>
-      ) : (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.inputBar}>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                value={inputText}
-                onChangeText={(v) => {
-                  setInputText(v);
-                  notifyTyping();
-                }}
-                placeholder={t('messages.type_message', 'Type a message...')}
-                placeholderTextColor="#94A3B8"
-                multiline
-                maxLength={4000}
-                style={styles.input}
-                onKeyPress={(e: any) => {
-                  if (Platform.OS === 'web' && e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-              />
-            </View>
-            <PressScale onPress={handleSend} disabled={!inputText.trim()} style={[styles.sendBtn, !inputText.trim() && { opacity: 0.5 }]}>
-              <Ionicons name="send" size={20} color="#FFFFFF" />
-            </PressScale>
-          </View>
-        </KeyboardAvoidingView>
-      )}
+      </KeyboardAwareScreen>
     </Animated.View>
   );
 }

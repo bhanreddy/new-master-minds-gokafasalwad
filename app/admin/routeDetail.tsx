@@ -9,12 +9,12 @@ import {
   Pressable,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
   StatusBar,
   ViewStyle,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { Swipeable } from 'react-native-gesture-handler';

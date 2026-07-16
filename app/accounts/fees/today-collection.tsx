@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import AdminHeader from '../../../src/components/AdminHeader';
 import LogoLoader from '../../../src/components/LogoLoader';
+import PaymentDeletionActions from '../../../src/components/accounts/PaymentDeletionActions';
 import { useAuth } from '../../../src/hooks/useAuth';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
@@ -110,10 +111,12 @@ const TransactionCard = React.memo(function TransactionCard({
   item,
   index,
   isDark,
+  onChanged,
 }: {
   item: FeeTransaction;
   index: number;
   isDark: boolean;
+  onChanged: () => void | Promise<void>;
 }) {
   const cardBg = isDark ? '#1C1F2A' : '#FFFFFF';
   const textPri = isDark ? '#F9FAFB' : '#111827';
@@ -181,6 +184,7 @@ const TransactionCard = React.memo(function TransactionCard({
             <DetailCell label="Time" value={formatTime(item.paid_at)} color={textSec} />
             <DetailCell label="Ref" value={item.transaction_ref ?? '—'} color={textSec} flex />
           </View>
+          <PaymentDeletionActions transaction={item} isDark={isDark} onChanged={onChanged} />
         </View>
       </View>
     </Animated.View>
@@ -685,8 +689,9 @@ export default function TodayCollectionScreen() {
     }
     const scoped = result.transactions.filter(
       (tx) =>
-        tx.received_by_id === accountantId ||
-        tx.received_by_id === result.collector_id,
+        tx.deletion_status !== 'DELETED' &&
+        (tx.received_by_id === accountantId ||
+          tx.received_by_id === result.collector_id),
     );
     setAllRows(scoped);
     return scoped;
@@ -907,7 +912,7 @@ export default function TodayCollectionScreen() {
         data={filteredRows}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
-          <TransactionCard item={item} index={index} isDark={isDark} />
+          <TransactionCard item={item} index={index} isDark={isDark} onChanged={handleRefresh} />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}

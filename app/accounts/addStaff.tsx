@@ -3,10 +3,11 @@ import AppTextInput from '@/src/components/AppTextInput';
 import AppDatePicker from '@/src/components/AppDatePicker';
 
 import {
-  View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, StatusBar, KeyboardAvoidingView,
+  View, Text, StyleSheet,
+  TouchableOpacity, StatusBar,
   Platform, Pressable, Dimensions
 } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -679,12 +680,12 @@ export default function AddStaffScreen() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? '#12101A' : '#F5F2FA'} />
       {!shellActive && <AdminHeader title={isEditMode ? 'Edit Staff' : 'Add Staff'} showBackButton />}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <KeyboardAwareScreen
+        variant="scroll"
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}
+      >
 
           {/* ── HERO CARD ── */}
           <Animated.View entering={FadeInDown.duration(500)}>
@@ -866,8 +867,7 @@ export default function AddStaffScreen() {
             </Pressable>
           </Animated.View>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

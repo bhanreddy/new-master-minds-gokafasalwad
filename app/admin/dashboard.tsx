@@ -1287,7 +1287,7 @@ export default function AdminDashboard() {
     { title: t('admin_dashboard_v2.expense_tracker', 'Expenses'), icon: 'receipt-outline', route: '/admin/expenses', tier: 'FINANCE', gradient: ['#14532D', '#22C55E'], category: 'Finance' },
     { title: t('admin_dashboard_v2.fee_structure', 'Fee Setup'), icon: 'wallet-outline', route: '/admin/fees/set-class-fee', tier: 'FINANCE', gradient: ['#064E3B', '#14B8A6'], category: 'Finance' },
     { title: 'Fee Adjustments', icon: 'cut-outline', route: '/admin/fees/adjustments', tier: 'FINANCE', gradient: ['#365314', '#84CC16'], category: 'Finance' },
-    { title: 'Partial Fee Collection', icon: 'pie-chart-outline', route: '/admin/fee-approvals', tier: 'FINANCE', gradient: ['#92400E', '#F59E0B'], category: 'Finance' },
+    { title: 'Fee Approvals', icon: 'shield-checkmark-outline', route: '/admin/fee-approvals', tier: 'FINANCE', gradient: ['#92400E', '#F59E0B'], category: 'Finance' },
     { title: 'UPI Settings', icon: 'qr-code-outline', route: '/admin/upi-settings', tier: 'FINANCE', gradient: ['#0F766E', '#06B6D4'], category: 'Finance' },
     { title: 'Dashboard Visibility', icon: 'eye-outline', route: '/admin/fees/visibility', tier: 'FINANCE', gradient: ['#166534', '#65A30D'], category: 'Finance' },
     { title: 'Payroll', icon: 'card-outline', route: '/admin/payroll', tier: 'FINANCE', gradient: ['#312E81', '#6366F1'], category: 'Finance' },

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, StatusBar, Pressable, Dimensions, Modal, Switch,
+  Image, StatusBar, Pressable, Dimensions, Modal, Switch, Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../AdminHeader';
@@ -438,7 +439,7 @@ const AdjustSalaryModal = ({ visible, item, isDark, onClose, onSave, saving }: A
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={modalSt.overlay}>
+      <KeyboardAvoidingView style={modalSt.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[modalSt.card, { backgroundColor: isDark ? '#111827' : '#fff' }]}>
           <Text style={[modalSt.title, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>Adjust Salary</Text>
           <Text style={[modalSt.sub, { color: isDark ? '#94A3B8' : '#64748B' }]}>{name}</Text>
@@ -489,7 +490,7 @@ const AdjustSalaryModal = ({ visible, item, isDark, onClose, onSave, saving }: A
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

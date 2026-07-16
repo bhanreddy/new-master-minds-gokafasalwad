@@ -230,6 +230,10 @@ export interface FeeTransaction {
     readonly discount?: number;
     /** Remaining balance on this fee line after this transaction */
     readonly balance_due?: number;
+    /** Latest admin workflow state for deleting this posted payment. */
+    readonly deletion_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DELETED' | null;
+    /** One-time approval request bound to this payment or combined receipt. */
+    readonly deletion_approval_id?: string | null;
     /** All assigned fee types and balances for this student */
     readonly fee_dues?: readonly StudentFeeDueLine[];
 }

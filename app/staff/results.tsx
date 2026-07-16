@@ -3,6 +3,7 @@ import AppTextInput from '@/src/components/AppTextInput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform, ViewStyle, Pressable } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -690,9 +691,11 @@ export default function UploadMarks() {
 
   const renderUploadForm = () =>
     <>
-      <ScrollView
+      <KeyboardAwareScreen
+        variant="scroll"
         contentContainerStyle={styles.uploadScroll}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}>
 
         {selectedAssignment && (
           <Animated.View entering={FadeInRight.duration(300)} style={styles.breadcrumb}>
@@ -774,7 +777,7 @@ export default function UploadMarks() {
             </View>
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScreen>
 
       <View style={styles.floatingAction}>
         <View style={styles.submitCountBadge}>

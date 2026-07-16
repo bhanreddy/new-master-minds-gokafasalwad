@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -58,10 +59,7 @@ export default function AddAdminScreen() {
   return <View style={styles.container}>
     <StatusBar barStyle="dark-content" backgroundColor="#fff" />
     {!shellActive && <AdminHeader title={t('accounts.add_admin', 'Add New Admin')} />}
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
-      flex: 1
-    }}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bottomOffset={24}>
         <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.section}>
           <Text style={styles.sectionHeader}>{t('common.admin_details', 'Admin Details')}</Text>
           <InputField label={t('common.full_name', 'Full Name')} placeholder="e.g. Rajesh Singh" value={formData.name} onChangeText={(text: string) => setFormData({
@@ -97,8 +95,7 @@ export default function AddAdminScreen() {
             <Ionicons name="arrow-forward" size={20} color="#fff" />
           </TouchableOpacity>
         </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScreen>
   </View>;
 }
 const getStyles = (theme: Theme) => StyleSheet.create({

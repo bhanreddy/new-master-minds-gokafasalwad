@@ -32,6 +32,8 @@ import PaymentDueBanner from '../../src/components/PaymentDueBanner';
 import AdminHeaderCard from '../../src/components/AdminHeaderCard';
 import DashboardHero from '../../src/components/DashboardHero';
 import { ACCOUNTS_STAT_KEYS, normalizeAccountsDashboardConfig } from '../../src/utils/constants';
+import { DASHBOARD_SIDEBAR_EXPANDED } from '../../src/components/DashboardWebSidebar';
+import { schoolColorWithAlpha } from '../../src/constants/schoolConfig';
 
 const IS_WEB = Platform.OS === 'web';
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
@@ -51,8 +53,9 @@ function useLayout(shellActive: boolean) {
   const { width: winW } = useWindowDimensions();
   const isWeb = IS_WEB && shellActive;
 
-  // Sidebar is ~170px; cap content at 960 for readability
-  const contentW = isWeb ? Math.min(winW - 172, 960) : winW;
+  // Fill the desktop workspace while accounting for the sidebar and the
+  // ScrollView's 28px padding on both sides.
+  const contentW = isWeb ? Math.max(0, winW - DASHBOARD_SIDEBAR_EXPANDED - 56) : winW;
 
   const CARD_H_PAD = isWeb ? 0 : 20;
   const GRID_COLS = isWeb ? 5 : 3;
@@ -155,57 +158,106 @@ const WebStatCard = ({ card, loading, isDark, theme }: any) => (
 );
 
 // ─── WEB Grid Item ─────────────────────────────────────────────────────────────
-const WebGridItem = ({ item, router, itemW, isDark }: any) => {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+const WebGridItem = ({ item, router, itemW, isDark, compact = false }: any) => {
+  const pressDepth = useSharedValue(0);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: pressDepth.value * 3 },
+      { scale: 1 - pressDepth.value * 0.014 },
+    ],
+  }));
   const IconLib = item.library;
+  const deepTone = item.color[0];
+  const lightTone = item.color[1];
+  const ambientShadow = schoolColorWithAlpha(deepTone, isDark ? 0.66 : 0.48);
+  const restShadow = [
+    `0 18px 30px -16px ${ambientShadow}`,
+    `0 10px 18px -14px rgba(15,23,42,${isDark ? 0.72 : 0.35})`,
+    'inset 3px 3px 7px rgba(255,255,255,0.30)',
+    'inset -5px -6px 11px rgba(15,23,42,0.20)',
+    '0 1px 0 rgba(255,255,255,0.70)',
+  ].join(', ');
+  const pressedShadow = [
+    `0 8px 15px -11px ${schoolColorWithAlpha(deepTone, 0.42)}`,
+    'inset 4px 5px 10px rgba(15,23,42,0.24)',
+    'inset -2px -2px 5px rgba(255,255,255,0.17)',
+  ].join(', ');
 
   return (
     <Animated.View style={[{ width: itemW }, animStyle]}>
       <Pressable
-        onPressIn={() => { scale.value = withSpring(0.95, { damping: 14, stiffness: 320 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 10, stiffness: 200 }); }}
+        onPressIn={() => { pressDepth.value = withTiming(1, { duration: 100 }); }}
+        onPressOut={() => { pressDepth.value = withSpring(0, { damping: 14, stiffness: 220 }); }}
         onPress={() => router.push(item.route)}
-        style={{
-          borderRadius: 24, overflow: 'hidden',
-          backgroundColor: item.color[0],
-          borderWidth: 0,
-          borderTopWidth: 1.5,
-          borderTopColor: 'rgba(255,255,255,0.45)',
-          borderBottomWidth: 3.5,
-          borderBottomColor: 'rgba(0,0,0,0.3)',
-          shadowColor: item.color[0],
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: isDark ? 0.4 : 0.25,
-          shadowRadius: 12,
-          elevation: 6,
+        style={({ pressed }) => ({
+          borderRadius: compact ? 20 : 24, overflow: 'hidden',
+          backgroundColor: deepTone,
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.36)',
+          shadowColor: deepTone,
+          shadowOffset: { width: 0, height: pressed ? 4 : 10 },
+          shadowOpacity: pressed ? 0.20 : 0.34,
+          shadowRadius: pressed ? 8 : 16,
+          elevation: pressed ? 3 : 8,
           position: 'relative',
-        }}>
-        {/* Dual Depth Clay Glare */}
-        <View style={[StyleSheet.absoluteFill, { borderRadius: 24, overflow: 'hidden' }]}>
-          <LinearGradient
-            colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0.9 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-        </View>
+          ...({
+            boxShadow: pressed ? pressedShadow : restShadow,
+            cursor: 'pointer',
+            transition: 'box-shadow 150ms ease, border-color 150ms ease',
+          } as any),
+        })}>
+        {/* Clay body: diagonal pigment gradient plus directional studio light. */}
+        <LinearGradient
+          colors={[lightTone, deepTone]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              ...({
+                backgroundImage: 'radial-gradient(120% 105% at 4% -8%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.13) 38%, rgba(255,255,255,0) 68%)',
+              } as any),
+            },
+          ]}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.03)', 'rgba(15,23,42,0.14)']}
+          locations={[0, 0.52, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: 1, left: 16, right: 16, height: 1,
+            borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.52)',
+          }}
+        />
 
-        <View style={{ padding: 18, height: 120, justifyContent: 'space-between', zIndex: 2 }}>
+        <View style={{ padding: compact ? 14 : 18, height: compact ? 104 : 120, justifyContent: 'space-between', zIndex: 2 }}>
           <View style={{ 
-            width: 44, height: 44, borderRadius: 14, 
-            backgroundColor: 'rgba(255,255,255,0.2)', 
+            width: compact ? 38 : 44, height: compact ? 38 : 44, borderRadius: compact ? 12 : 14,
+            backgroundColor: 'rgba(255,255,255,0.22)',
             alignItems: 'center', justifyContent: 'center', 
-            borderTopWidth: 1.2, borderTopColor: 'rgba(255,255,255,0.45)', 
-            borderBottomWidth: 1.2, borderBottomColor: 'rgba(0,0,0,0.15)' 
+            borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+            ...({
+              boxShadow: 'inset 2px 2px 4px rgba(255,255,255,0.34), inset -3px -3px 6px rgba(15,23,42,0.16), 0 6px 12px -7px rgba(15,23,42,0.55)',
+            } as any),
           }}>
-            <IconLib name={item.icon} size={22} color="#FFFFFF" />
+            <IconLib name={item.icon} size={compact ? 19 : 22} color="#FFFFFF" />
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
             <Text style={{
-              flex: 1, color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.2, lineHeight: 18,
-              textShadowColor: 'rgba(0,0,0,0.15)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2
+              flex: 1, color: '#FFFFFF', fontSize: compact ? 12.5 : 14, fontWeight: '800', letterSpacing: 0.2, lineHeight: compact ? 16 : 18,
+              textShadowColor: 'rgba(15,23,42,0.24)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3
             }} numberOfLines={2}>
               {item.title}
             </Text>
@@ -453,7 +505,7 @@ const WebAnalyticsSection = ({ data, loading, isDark, theme, contentW, config = 
 };
 
 // ─── Web Transactions Table ───────────────────────────────────────────────────
-const WebTransactionsSection = ({ transactions, loading, isDark, theme, router }: any) => (
+const WebTransactionsSection = ({ transactions, loading, isDark, theme, router, compact = false }: any) => (
   <View style={{ marginBottom: 24 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -489,18 +541,18 @@ const WebTransactionsSection = ({ transactions, loading, isDark, theme, router }
 
       <View style={{ position: 'relative', zIndex: 2 }}>
         {/* Table header */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(0,0,0,0.15)' : 'rgba(249,250,251,0.6)', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
-          {['Student', 'Class · Type', 'Date', 'Amount'].map((h, i) => (
-            <Text key={h} style={{ flex: i === 0 ? 2 : 1, fontSize: 10, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', letterSpacing: 0.8, textTransform: 'uppercase', textAlign: i === 3 ? 'right' : 'left' }}>{h}</Text>
+        <View style={{ flexDirection: 'row', paddingHorizontal: compact ? 16 : 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', backgroundColor: isDark ? 'rgba(0,0,0,0.15)' : 'rgba(249,250,251,0.6)', borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
+          {(compact ? ['Student · Fee', 'Date', 'Amount'] : ['Student', 'Class · Type', 'Date', 'Amount']).map((h, i, headers) => (
+            <Text key={h} style={{ flex: i === 0 ? 2 : 1, fontSize: 10, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', letterSpacing: 0.8, textTransform: 'uppercase', textAlign: i === headers.length - 1 ? 'right' : 'left' }}>{h}</Text>
           ))}
         </View>
 
         {loading
           ? [1, 2, 3, 4].map(i => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', gap: 12 }}>
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: compact ? 16 : 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', gap: 12 }}>
               <ShimmerBar width={36} height={36} borderRadius={10} />
               <View style={{ flex: 2, gap: 6 }}><ShimmerBar width={100} height={11} /><ShimmerBar width={70} height={9} /></View>
-              <ShimmerBar width={60} height={10} style={{ flex: 1 } as any} />
+              {!compact ? <ShimmerBar width={60} height={10} style={{ flex: 1 } as any} /> : null}
               <ShimmerBar width={50} height={10} style={{ flex: 1 } as any} />
               <ShimmerBar width={70} height={14} style={{ flex: 1 } as any} />
             </View>
@@ -512,12 +564,12 @@ const WebTransactionsSection = ({ transactions, loading, isDark, theme, router }
                 <Pressable
                   onPress={() => router.push('/accounts/receipts')}
                   style={({ pressed }: any) => ({ 
-                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 12, 
+                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: compact ? 16 : 22, paddingVertical: 12,
                     borderBottomWidth: index < transactions.length - 1 ? 1 : 0, 
                     borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', 
                     backgroundColor: pressed ? (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)') : 'transparent' 
                   })}>
-                  <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: compact ? 10 : 14, minWidth: 0 }}>
                     <View style={{ 
                       width: 40, height: 40, borderRadius: 12, 
                       backgroundColor: accent, 
@@ -527,14 +579,23 @@ const WebTransactionsSection = ({ transactions, loading, isDark, theme, router }
                     }}>
                       <Text style={{ fontSize: 15, fontWeight: '800', color: '#FFFFFF', textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>{tx.name?.[0]?.toUpperCase() ?? '?'}</Text>
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>{tx.name}</Text>
-                  </View>
-                  <View style={{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                    <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 }}>
-                      <Text style={{ fontSize: 9.5, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.7)' : '#4B5563', letterSpacing: 0.3 }}>{tx.class}</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: theme.colors.text }}>{tx.name}</Text>
+                      {compact ? (
+                        <Text numberOfLines={1} style={{ fontSize: 10.5, marginTop: 3, color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', fontWeight: '600' }}>
+                          {tx.class} · {tx.type}
+                        </Text>
+                      ) : null}
                     </View>
-                    <Text style={{ fontSize: 11.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', fontWeight: '600' }}>{tx.type}</Text>
                   </View>
+                  {!compact ? (
+                    <View style={{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                      <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.7)' : '#4B5563', letterSpacing: 0.3 }}>{tx.class}</Text>
+                      </View>
+                      <Text numberOfLines={1} style={{ fontSize: 11.5, color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', fontWeight: '600' }}>{tx.type}</Text>
+                    </View>
+                  ) : null}
                   <Text style={{ flex: 1, fontSize: 12, color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', fontWeight: '500' }}>{tx.time}</Text>
                   <Text style={{ flex: 1, fontSize: 14, fontWeight: '800', color: theme.colors.success, textAlign: 'right' }}>{tx.amount}</Text>
                 </Pressable>
@@ -860,17 +921,24 @@ export default function AccountsDashboard() {
   const quickActions = useMemo(() => [
     { id: 'collect', title: 'Collect Fees', description: 'Process student payments', icon: 'cash', color: ['#059669', '#10B981'] as [string, string], route: '/accounts/fees', library: Ionicons, permission: 'fees.collect' },
     { id: 'today_collection', title: "Today's Collection", description: 'Your daily collection report', icon: 'today', color: ['#0E7490', '#06B6D4'] as [string, string], route: '/accounts/fees/today-collection', library: Ionicons, permission: 'fees.collect' },
-    { id: 'upi_qr', title: 'Collect via UPI', description: 'Dynamic UPI QR for payments', icon: 'qr-code-outline', color: ['#B45309', '#F59E0B'] as [string, string], route: '/accounts/collect-fee-qr', library: Ionicons, permission: 'fees.collect' },
+    { id: 'receipts', title: 'Receipts', description: 'View payment history', icon: 'documents', color: ['#0369A1', '#0EA5E9'] as [string, string], route: '/accounts/receipts', library: Ionicons },
+    { id: 'users_clients', title: 'Users / Clients', description: 'Open the user directory', icon: 'people-outline', color: ['#4F46E5', '#7C3AED'] as [string, string], route: '/accounts/manage-users', library: Ionicons },
     { id: 'expenses', title: 'Expenses', description: 'Manage school expenditures', icon: 'receipt', color: ['#B91C1C', '#EF4444'] as [string, string], route: '/accounts/expenses', library: Ionicons, permission: 'expenses.view' },
     { id: 'payroll', title: 'Payroll', description: 'Staff salary & attendance', icon: 'people', color: ['#4338CA', '#6366F1'] as [string, string], route: '/accounts/payroll', library: Ionicons, permission: 'payroll.process' },
-    { id: 'invoices', title: 'Invoices', description: 'Generate & track invoices', icon: 'document-text', color: ['#1D4ED8', '#3B82F6'] as [string, string], route: '/accounts/invoices', library: Ionicons },
-    { id: 'receipts', title: 'Receipts', description: 'View payment history', icon: 'documents', color: ['#0369A1', '#0EA5E9'] as [string, string], route: '/accounts/receipts', library: Ionicons },
     { id: 'staff', title: 'Add Staff', description: 'Register new employees', icon: 'person-add', color: ['#6D28D9', '#8B5CF6'] as [string, string], route: '/accounts/addStaff', library: Ionicons, permission: 'staff.create' },
     { id: 'student', title: 'Add Student', description: 'Enroll new students', icon: 'school', color: ['#BE185D', '#F43F5E'] as [string, string], route: '/accounts/addStudent', library: Ionicons },
-    { id: 'pending_enrollments', title: 'Pending Enrolments', description: 'Review new applications', icon: 'person-add-outline', color: ['#7C3AED', '#A78BFA'] as [string, string], route: '/accounts/pending-enrollments', library: Ionicons },
     { id: 'defaulters', title: 'Defaulters', description: 'Previous-year pending fees', icon: 'alert-circle', color: ['#B91C1C', '#EF4444'] as [string, string], route: '/accounts/defaulters', library: Ionicons },
     { id: 'transport_fees', title: 'Transport Fees', description: 'Stop-based bus fee management', icon: 'bus', color: ['#0E7490', '#06B6D4'] as [string, string], route: '/accounts/transport-fees', library: Ionicons },
+    { id: 'invoices', title: 'Invoices', description: 'Generate & track invoices', icon: 'document-text', color: ['#1D4ED8', '#3B82F6'] as [string, string], route: '/accounts/invoices', library: Ionicons },
+    { id: 'upi_qr', title: 'Collect via UPI', description: 'Dynamic UPI QR for payments', icon: 'qr-code-outline', color: ['#B45309', '#F59E0B'] as [string, string], route: '/accounts/collect-fee-qr', library: Ionicons, permission: 'fees.collect' },
   ].filter((action) => !action.permission || hasPermission(action.permission)), [hasPermission]);
+
+  const webSplitGap = 24;
+  const webTwoColumn = contentW >= 760;
+  const webColumnW = webTwoColumn ? Math.floor((contentW - webSplitGap) / 2) : contentW;
+  const webActionItemW = webTwoColumn
+    ? Math.floor((webColumnW - GRID_GAP * 2) / 3)
+    : GRID_ITEM_W;
 
   // ── WEB LAYOUT ──────────────────────────────────────────────────────────────
   if (isWeb) {
@@ -915,26 +983,50 @@ export default function AccountsDashboard() {
           {/* Analytics */}
           <WebAnalyticsSection data={analytics} loading={analyticsLoading} isDark={isDark} theme={theme} contentW={contentW} config={config} />
 
-          {/* Quick Actions */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#3B82F6', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 5 }} />
-              <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary }}>Quick Actions</Text>
+          {/* Desktop work area: actions left, recent receipts/transactions right */}
+          <View style={{ flexDirection: webTwoColumn ? 'row' : 'column', gap: webSplitGap, alignItems: 'flex-start' }}>
+            <View style={{ width: webColumnW }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 4, height: 20, borderRadius: 2, backgroundColor: '#3B82F6', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 5 }} />
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary }}>Quick Actions</Text>
+                </View>
+                <View style={{
+                  backgroundColor: isDark ? 'rgba(59,130,246,0.20)' : '#EAF1FF',
+                  borderRadius: 12,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(147,197,253,0.28)' : 'rgba(255,255,255,0.90)',
+                  ...({
+                    boxShadow: isDark
+                      ? 'inset 2px 2px 4px rgba(255,255,255,0.08), inset -2px -2px 5px rgba(0,0,0,0.28), 0 4px 10px -6px rgba(59,130,246,0.65)'
+                      : 'inset 2px 2px 4px rgba(255,255,255,0.95), inset -2px -2px 5px rgba(96,135,210,0.16), 0 5px 12px -7px rgba(37,99,235,0.45)',
+                  } as any),
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6' }}>{quickActions.length}</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, marginBottom: webTwoColumn ? 24 : 32 }}>
+                {quickActions.map((action, index) => (
+                  <Animated.View key={action.id} entering={FadeInDown.delay(80 + index * 35).duration(350).springify()}>
+                    <WebGridItem item={action} router={router} itemW={webActionItemW} isDark={isDark} compact={webTwoColumn} />
+                  </Animated.View>
+                ))}
+              </View>
             </View>
-            <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.18)' : 'rgba(59,130,246,0.10)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.30)' : 'rgba(59,130,246,0.20)' }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6' }}>{quickActions.length}</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, marginBottom: 32 }}>
-            {quickActions.map((action, index) => (
-              <Animated.View key={action.id} entering={FadeInDown.delay(80 + index * 35).duration(350).springify()}>
-                <WebGridItem item={action} router={router} itemW={GRID_ITEM_W} isDark={isDark} />
-              </Animated.View>
-            ))}
-          </View>
 
-          {/* Transactions table */}
-          <WebTransactionsSection transactions={transactions} loading={loading} isDark={isDark} theme={theme} router={router} />
+            <View style={{ width: webColumnW }}>
+              <WebTransactionsSection
+                transactions={transactions}
+                loading={loading}
+                isDark={isDark}
+                theme={theme}
+                router={router}
+                compact={webTwoColumn}
+              />
+            </View>
+          </View>
 
         </ScrollView>
       </View>

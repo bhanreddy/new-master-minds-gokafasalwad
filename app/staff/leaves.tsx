@@ -5,7 +5,8 @@ import { clayCard, clayInset, clay } from '@/src/theme/clayStyles';
 import AppDatePicker from '@/src/components/AppDatePicker';
 
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Platform, Dimensions } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeInDown, FadeIn, useSharedValue, useAnimatedStyle,
@@ -309,7 +310,7 @@ export default function ApplyLeave() {
       <StaffHeader title="Apply Leave" showBackButton={true} />
       {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
-      <ScrollView contentContainerStyle={mainStyles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScreen variant="scroll" contentContainerStyle={mainStyles.scroll} showsVerticalScrollIndicator={false} bottomOffset={24}>
 
         {/* ── Form Card ── */}
         <Animated.View entering={FadeInDown.delay(60).duration(340).easing(Easing.out(Easing.cubic))}>
@@ -399,7 +400,7 @@ export default function ApplyLeave() {
           </View>
         )}
 
-      </ScrollView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

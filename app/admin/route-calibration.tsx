@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import Animated, {
@@ -447,7 +448,7 @@ export default function RouteCalibrationScreen() {
       </ScrollView>
 
       <Modal visible={Boolean(editing)} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => !saving && setEditing(null)} />
           <View style={[styles.modalCard, { backgroundColor: surface }]}>
             <View style={styles.modalHeader}>
@@ -492,7 +493,7 @@ export default function RouteCalibrationScreen() {
               </View>
             </PressScale>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

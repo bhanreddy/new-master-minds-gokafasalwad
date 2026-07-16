@@ -5,8 +5,9 @@ import { styles as ds } from '@/src/theme/styles';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Dimensions, Image, Platform, Pressable,
-  Modal, KeyboardAvoidingView, ActivityIndicator
+  Modal, ActivityIndicator
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -573,11 +574,6 @@ function BonafideDocument({
               <Text style={bfStyles.schoolRecognition}>{recognitionLine}</Text>
             ) : null}
             <Text style={bfStyles.schoolAddr}>{school.address}</Text>
-            {(school.phone || school.email) ? (
-              <Text style={bfStyles.schoolContact}>
-                {[school.phone ? `Tel: ${school.phone}` : null, school.email ? `Email: ${school.email}` : null].filter(Boolean).join('  ·  ')}
-              </Text>
-            ) : null}
           </View>
         </View>
 
@@ -587,7 +583,6 @@ function BonafideDocument({
 
         <View style={bfStyles.metaRow}>
           <Text style={bfStyles.metaText}>Admission No. <Text style={bfStyles.metaVal}>{line(studentData.admissionNo)}</Text></Text>
-          <Text style={bfStyles.metaText}>Academic Year <Text style={bfStyles.metaVal}>{line(studentData.academicYear)}</Text></Text>
           <Text style={bfStyles.metaText}>Date <Text style={bfStyles.metaVal}>{line(issueDate)}</Text></Text>
         </View>
 
@@ -630,7 +625,7 @@ const bfStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: BONAFIDE_BLUE,
     padding: 8,
-    backgroundColor: '#FFFEF8',
+    backgroundColor: '#FFFFFF',
   },
   innerFrame: {
     borderWidth: 1.5,
@@ -650,13 +645,12 @@ const bfStyles = StyleSheet.create({
     zIndex: 0,
   },
   watermarkImg: { width: 260, height: 260, opacity: 0.07, resizeMode: 'contain' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12, zIndex: 1 },
-  headerLogo: { width: 96, height: 96, resizeMode: 'contain' },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, paddingTop: 28, marginBottom: 32, zIndex: 1 },
+  headerLogo: { width: 160, height: 160, resizeMode: 'contain' },
   headerCenter: { flex: 1, alignItems: 'center' },
   schoolName: { fontSize: 32, fontWeight: '900', color: BONAFIDE_BLUE, letterSpacing: 0.8, textAlign: 'center' },
   schoolRecognition: { fontSize: 14, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 4, fontWeight: '700' },
   schoolAddr: { fontSize: 15, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 5, lineHeight: 22, fontWeight: '600' },
-  schoolContact: { fontSize: 13, color: BONAFIDE_BLUE, textAlign: 'center', marginTop: 4, fontWeight: '500' },
   titleBox: {
     alignSelf: 'center',
     borderWidth: 1.5,
@@ -664,8 +658,8 @@ const bfStyles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 20,
     paddingVertical: 8,
-    marginTop: 10,
-    marginBottom: 60,
+    marginTop: -92,
+    marginBottom: 52,
     zIndex: 1,
   },
   titleText: { fontSize: 19, fontWeight: '800', color: BONAFIDE_BLUE, letterSpacing: 0.8, textAlign: 'center' },
@@ -698,7 +692,7 @@ const cpStyles = StyleSheet.create({
   tcHalfPaper: { width: 1060, minHeight: 520 },
   // A5 landscape ratio (1060 / 749 ≈ 1.414). Fixed height so the flex footer
   // can pin to the bottom and the sheet renders as a true half-A4 card.
-  bonafidePaper: { width: 1060, minHeight: 749, backgroundColor: '#FFFEF8' },
+  bonafidePaper: { width: 1060, minHeight: 749, backgroundColor: '#FFFFFF' },
   topBar: { height: 6 },
   bottomBar: { height: 4 },
   watermarkWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
@@ -1154,13 +1148,11 @@ function buildCertificateHTML(
           <div class="bf-school-name">${school.name.toUpperCase()}</div>
           ${recognitionLine ? `<div class="bf-school-recognition">${recognitionLine}</div>` : ''}
           <div class="bf-school-addr">${escAddr}</div>
-          ${(school.phone || school.email) ? `<div class="bf-school-contact">${[school.phone ? `Tel: ${school.phone}` : '', school.email ? `Email: ${school.email}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
         </div>
       </div>
       <div class="bf-title-box">${title}</div>
       <div class="bf-meta">
         <span>Admission No. <u>${line(studentData.admissionNo)}</u></span>
-        <span>Academic Year <u>${line(studentData.academicYear)}</u></span>
         <span>Date <u>${line(today)}</u></span>
       </div>
       <div class="bf-body">
@@ -1225,10 +1217,10 @@ function buildCertificateHTML(
       print-color-adjust: exact !important;
     }
     html, body { width: 100%; height: 100%; }
-    body { font-family: 'Times New Roman', serif; margin: 0; padding: 0; position: relative; background: #FFFEF8; }
+    body { font-family: 'Times New Roman', serif; margin: 0; padding: 0; position: relative; background: ${isTC ? '#FFFEF8' : '#FFFFFF'}; }
     .certificate-print-root {
       position: relative;
-      background: ${isTC ? '#FAFAFA' : '#FFFEF8'};
+      background: ${isTC ? '#FAFAFA' : '#FFFFFF'};
       width: ${rootWidth};
       height: ${rootHeight};
       min-height: ${rootHeight};
@@ -1288,25 +1280,24 @@ function buildCertificateHTML(
       border: 2px solid ${BONAFIDE_BLUE};
       padding: 6px;
       height: calc(148.5mm - 16mm);
-      background: #FFFEF8;
+      background: #FFFFFF;
     }
     .bf-inner {
       border: 1.5px solid ${BONAFIDE_BLUE};
       padding: 8mm 12mm;
       height: 100%;
       position: relative;
-      background: #FFFEF8;
+      background: #FFFFFF;
       display: flex;
       flex-direction: column;
     }
-    .bf-header { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+    .bf-header { display: flex; align-items: flex-start; gap: 14px; padding-top: 15px; margin-bottom: 20px; }
     .bf-header-center { flex: 1; text-align: center; }
-    .bf-header .header-logo-img { width: 88px; height: 88px; object-fit: contain; margin-bottom: 0; }
+    .bf-header .header-logo-img { width: 140px; height: 140px; object-fit: contain; margin-bottom: 0; }
     .bf-school-name { font-size: 30px; font-weight: 900; color: ${BONAFIDE_BLUE}; letter-spacing: 0.8px; line-height: 1.15; }
     .bf-school-recognition { font-size: 13px; color: ${BONAFIDE_BLUE}; margin-top: 4px; font-weight: 700; }
     .bf-school-addr { font-size: 14px; color: ${BONAFIDE_BLUE}; margin-top: 5px; font-weight: 600; white-space: pre-line; line-height: 1.45; }
-    .bf-school-contact { font-size: 12.5px; color: ${BONAFIDE_BLUE}; margin-top: 4px; font-weight: 500; }
-    .bf-title-box { text-align: center; border: 1.5px solid ${BONAFIDE_BLUE}; border-radius: 4px; padding: 6px 18px; margin: 8px auto 20px; width: fit-content; font-size: 19px; font-weight: 800; color: ${BONAFIDE_BLUE}; letter-spacing: 0.8px; }
+    .bf-title-box { text-align: center; border: 1.5px solid ${BONAFIDE_BLUE}; border-radius: 4px; padding: 6px 18px; margin: -70px auto 40px; width: fit-content; font-size: 19px; font-weight: 800; color: ${BONAFIDE_BLUE}; letter-spacing: 0.8px; }
     .bf-meta { display: flex; justify-content: space-between; font-size: 17px; color: ${BONAFIDE_BLUE}; font-weight: 600; margin: 8px 0 12px; }
     .bf-meta u { font-size: 19px; font-weight: 800; }
     .bf-body { }

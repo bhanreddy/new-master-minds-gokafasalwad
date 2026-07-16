@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Keyboard } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, Feather, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import Animated, { FadeInUp, FadeOut, Layout } from "react-native-reanimated";
@@ -185,35 +186,11 @@ export default function AIChatScreen() {
   return (
     <ScreenLayout>
       <StudentHeader showBackButton={true} title="AI Assistant" />
-      <KeyboardAvoidingView 
+      <KeyboardAwareScreen
+        variant="fixed"
         style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 85}
-      >
-        {/* TOOLBAR */}
-        <View style={styles.toolbar}>
-          <View style={styles.modelBadge}>
-            <FontAwesome5 name="robot" size={14} color="#4F46E5" />
-            <Text style={styles.modelText}>NexSyrus AI</Text>
-          </View>
-          <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
-            <Feather name="refresh-cw" size={16} color="#555" />
-            <Text style={styles.newChatButtonText}>New Chat</Text>
-          </TouchableOpacity>
-        </View>
-        {/* MESSAGES */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MessageBubble item={item} />}
-          contentContainerStyle={styles.chatListContent}
-          ListEmptyComponent={renderEmptyState}
-          ListFooterComponent={loading ? <TypingIndicator /> : <View style={{ height: 20 }} />}
-          keyboardShouldPersistTaps="handled" />
-
-        {/* INPUT AREA */}
-        <View style={styles.inputWrapper}>
+        stickyContent={
+          <View style={styles.inputWrapper}>
             <View style={[styles.inputContainer, ds.searchBarWrapper]}>
               <AppTextInput
                 placeholder="Ask a doubt..."
@@ -236,7 +213,31 @@ export default function AIChatScreen() {
             </View>
             <Text style={styles.disclaimer}>AI can make mistakes. Check important info.</Text>
           </View>
-      </KeyboardAvoidingView>
+        }
+      >
+        {/* TOOLBAR */}
+        <View style={styles.toolbar}>
+          <View style={styles.modelBadge}>
+            <FontAwesome5 name="robot" size={14} color="#4F46E5" />
+            <Text style={styles.modelText}>NexSyrus AI</Text>
+          </View>
+          <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
+            <Feather name="refresh-cw" size={16} color="#555" />
+            <Text style={styles.newChatButtonText}>New Chat</Text>
+          </TouchableOpacity>
+        </View>
+        {/* MESSAGES */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <MessageBubble item={item} />}
+          style={styles.messagesList}
+          contentContainerStyle={styles.chatListContent}
+          ListEmptyComponent={renderEmptyState}
+          ListFooterComponent={loading ? <TypingIndicator /> : <View style={{ height: 20 }} />}
+          keyboardShouldPersistTaps="handled" />
+      </KeyboardAwareScreen>
     </ScreenLayout>);
 
 }
@@ -279,6 +280,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#555',
     fontWeight: '500'
+  },
+  messagesList: {
+    flex: 1
   },
   chatListContent: {
     paddingHorizontal: 16,

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity} from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -210,7 +211,7 @@ export default function PolicyManagerScreen() {
                     <LogoLoader size={60} color="#007AFF" />
                 </View> :
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.content} bottomOffset={24}>
                     {activeTab === 'rules' ?
         rules.map(renderRuleItem) :
 
@@ -218,7 +219,7 @@ export default function PolicyManagerScreen() {
         <Text style={styles.emptyText}>No critical actions recorded yet.</Text>
 
         }
-                </ScrollView>
+                </KeyboardAwareScreen>
       }
         </View>);
 

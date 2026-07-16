@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import AppDatePicker from '@/src/components/AppDatePicker';
 
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, FlatList, Modal, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -288,7 +289,7 @@ export default function AcademicManagement() {
       </LinearGradient>
     </TouchableOpacity>
     <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Add New {activeTab.slice(0, -1)}</Text>
           {activeTab !== 'years' && activeTab !== 'mappings' && <AppTextInput style={styles.input} placeholder="Name (e.g. Class 10)" value={newItemName} onChangeText={setNewItemName} />}
@@ -366,7 +367,7 @@ export default function AcademicManagement() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   </View>;
 }

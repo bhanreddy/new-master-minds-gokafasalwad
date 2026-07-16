@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   StyleSheet,
   ScrollView,
+  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { StudentService } from '../../services/studentService';
@@ -83,7 +85,7 @@ export default function HardDeleteStudentModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={deleting ? undefined : onClose}>
-      <View style={s.backdrop}>
+      <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[s.card, { backgroundColor: theme.colors.surface }]}>
           {/* Danger banner */}
           <View style={s.iconWrap}>
@@ -195,7 +197,7 @@ export default function HardDeleteStudentModal({
             )}
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

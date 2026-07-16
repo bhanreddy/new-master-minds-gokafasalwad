@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import AppTextInput from '@/src/components/AppTextInput';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { useRouter } from 'expo-router';
@@ -207,7 +208,7 @@ export default function FeeAdjustmentsScreen() {
     <View style={styles.container}>
       <AdminHeader title="Fee Adjustments" showBackButton />
       
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.scrollContent} bottomOffset={24}>
         {/* Adjustment Creation Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Apply Adjustment</Text>
@@ -413,7 +414,7 @@ export default function FeeAdjustmentsScreen() {
         </View>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

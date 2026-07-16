@@ -5,11 +5,10 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   Pressable,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform} from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../utils/crossPlatformAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -124,15 +123,13 @@ export default function UPISettingsScreen() {
   return (
     <View style={styles.root}>
       <AdminHeader title="UPI fee settings" showBackButton />
-      <KeyboardAvoidingView
+      <KeyboardAwareScreen
+        variant="scroll"
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           <LinearGradient
             colors={['rgba(245, 158, 11, 0.14)', 'rgba(10, 10, 15, 0.92)']}
             start={{ x: 0, y: 0 }}
@@ -240,8 +237,7 @@ export default function UPISettingsScreen() {
           <Text style={styles.footerNote}>
             Admins and principals can change these values. Accounts staff can use them to generate payment QRs.
           </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

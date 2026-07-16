@@ -352,6 +352,24 @@ export const FeeService = {
         return api.get<FeeTransaction[]>('/fees/transactions', params);
     },
 
+    /** Ask an admin to authorize deletion of one posted payment. */
+    requestPaymentDeletion: async (
+        transactionId: string,
+        reason: string,
+    ): Promise<{ message: string; approval_request: { id: string; status: string } }> => {
+        return api.post(`/fees/transactions/${transactionId}/deletion-request`, { reason });
+    },
+
+    /** Consume the requesting accountant's approved one-time authorization. */
+    deleteApprovedPayment: async (
+        transactionId: string,
+        approvalRequestId: string,
+    ): Promise<{ message: string; reversal_transaction_ids: string[] }> => {
+        return api.post(`/fees/transactions/${transactionId}/delete-approved`, {
+            approval_request_id: approvalRequestId,
+        });
+    },
+
     /**
      * Fetch all matching transactions (paginates past the 100-row API cap).
      */

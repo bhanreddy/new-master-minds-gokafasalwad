@@ -19,6 +19,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import PaymentDeletionActions from '../../src/components/accounts/PaymentDeletionActions';
 
 const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -117,7 +118,7 @@ export default function ReceiptsScreen() {
       ]);
 
       const rows = Array.isArray(txData) ? txData : (txData as any)?.data ?? [];
-      const formatted = rows.map((tx: any) => ({
+      const formatted = rows.filter((tx: any) => tx.deletion_status !== 'DELETED').map((tx: any) => ({
         id: tx.id,
         student: tx.student_name,
         admission_no: tx.admission_no,
@@ -199,6 +200,7 @@ export default function ReceiptsScreen() {
 
       const q = searchQuery.trim().toLowerCase();
       const rows = allRows.filter((tx) => {
+        if (tx.deletion_status === 'DELETED') return false;
         if (selectedFilter !== 'All' && feeTypeToFilterCategory(tx.fee_type) !== selectedFilter) {
           return false;
         }
@@ -285,6 +287,13 @@ export default function ReceiptsScreen() {
           <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
           <Text style={styles.receiptDetails}>{item.admission_no} • {item.classLabel}</Text>
           <Text style={styles.collectorText}>Collected by {item.collector}</Text>
+          {(role === 'accounts' || role === 'accountant') && item.raw?.received_by_id === currentUserId ? (
+            <PaymentDeletionActions
+              transaction={item.raw}
+              isDark={isDark}
+              onChanged={loadData}
+            />
+          ) : null}
         </View>
       </View>
       <View style={[styles.receiptRight, {

@@ -3,6 +3,7 @@ import AppTextInput from '@/src/components/AppTextInput';
 import AppDatePicker from '@/src/components/AppDatePicker';
 
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Platform, Switch } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../../src/components/AdminHeader';
@@ -377,7 +378,7 @@ export default function SetClassFeeScreen() {
   return (
     <View style={styles.container}>
       <AdminHeader title="Set Class Fee" showBackButton />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.content} bottomOffset={24}>
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Fee Mode</Text>
           <View style={styles.modeRow}>
@@ -718,7 +719,7 @@ export default function SetClassFeeScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

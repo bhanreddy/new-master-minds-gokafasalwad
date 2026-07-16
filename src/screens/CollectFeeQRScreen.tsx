@@ -5,12 +5,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   Pressable,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   Share} from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { alertCompat } from '../utils/crossPlatformAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -142,15 +141,13 @@ export default function CollectFeeQRScreen() {
   return (
     <View style={styles.root}>
       <AdminHeader title="Collect fee via UPI" showBackButton />
-      <KeyboardAvoidingView
+      <KeyboardAwareScreen
+        variant="scroll"
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           {bootLoading ? (
             <View style={styles.centerBlock}>
               <ActivityIndicator color={ACCENT} size="large" />
@@ -266,8 +263,7 @@ export default function CollectFeeQRScreen() {
               )}
             </>
           ) : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

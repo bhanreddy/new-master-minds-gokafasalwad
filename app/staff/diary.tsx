@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import AppTextInput from '@/src/components/AppTextInput';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -339,7 +340,7 @@ export default function StaffDiary() {
     <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? '#0B1020' : '#EFF2F9'} />
     <StaffHeader title={TE.header} showBackButton={true} />
     {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScreen variant="scroll" scrollViewRef={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bottomOffset={24}>
       <Animated.View entering={FadeInDown.delay(80).duration(500)} style={styles.tabWrap}>
         <DiaryHistoryTabSwitcher
           active={activeTab}
@@ -495,7 +496,7 @@ export default function StaffDiary() {
         onEdit={handleEdit}
         labels={TE}
       />
-    </ScrollView>
+    </KeyboardAwareScreen>
 
     <DiaryHistoryDatePickerSheet
       visible={pickerVisible}

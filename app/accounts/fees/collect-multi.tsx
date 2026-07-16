@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity,
-    ScrollView, Platform, Share, ActivityIndicator,
+    Platform, Share, ActivityIndicator,
 } from 'react-native';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
@@ -210,7 +211,7 @@ export default function CollectMultiFeesScreen() {
         <View style={styles.container}>
             {!shellActive && <AdminHeader title="Collect Multiple Fees" showBackButton={true} />}
 
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAwareScreen variant="scroll" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} bottomOffset={24}>
                 {/* Student card */}
                 <View style={styles.infoCard}>
                     <View style={styles.avatar}>
@@ -379,7 +380,7 @@ export default function CollectMultiFeesScreen() {
                 </TouchableOpacity>
 
                 <View style={{ height: 32 }} />
-            </ScrollView>
+            </KeyboardAwareScreen>
         </View>
     );
 }

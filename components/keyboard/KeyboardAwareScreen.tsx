@@ -64,6 +64,12 @@ interface ScrollVariantProps extends BaseProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** Whether scroll indicators are visible. @default false */
   showsVerticalScrollIndicator?: boolean;
+  /**
+   * Optional ref to the underlying scroll view, for programmatic
+   * scrolling (`scrollTo`, `scrollToEnd`). Forwarded to the native
+   * KeyboardAwareScrollView and the web ScrollView fallback alike.
+   */
+  scrollViewRef?: React.Ref<ScrollView>;
   stickyContent?: never;
 }
 
@@ -122,6 +128,7 @@ function ScrollVariant({
   extraScrollPadding = Spacing.xxl,
   contentContainerStyle,
   showsVerticalScrollIndicator = false,
+  scrollViewRef,
   safeBottom,
   isWeb,
 }: ScrollVariantProps & { safeBottom: number; isWeb: boolean }) {
@@ -136,6 +143,7 @@ function ScrollVariant({
     return (
       <View style={[containerStyle, style]}>
         <ScrollView
+          ref={scrollViewRef}
           contentContainerStyle={[
             { paddingBottom: extraScrollPadding + safeBottom },
             contentContainerStyle,
@@ -152,6 +160,7 @@ function ScrollVariant({
   return (
     <View style={[containerStyle, style]}>
       <KeyboardAwareScrollView
+        ref={scrollViewRef}
         bottomOffset={bottomOffset}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={showsVerticalScrollIndicator}

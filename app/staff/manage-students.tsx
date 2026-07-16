@@ -10,9 +10,9 @@ import {
   TextInput,
   LayoutAnimation,
   UIManager,
-  KeyboardAvoidingView,
   ViewStyle,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
