@@ -877,6 +877,15 @@ export default function RouteDetailScreen() {
                   </View>
 
                   <View style={styles.cardActionIcons}>
+                    <TouchableOpacity
+                      style={styles.iconActionBtn}
+                      onPress={() => router.push({
+                        pathname: '/admin/route-calibration' as any,
+                        params: { routeId, routeName: encodeURIComponent(routeName || routeTitle) },
+                      })}
+                    >
+                      <Ionicons name="analytics-outline" size={18} color={theme.colors.primary} />
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.iconActionBtn} onPress={openEditRouteModal}>
                       <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
                     </TouchableOpacity>

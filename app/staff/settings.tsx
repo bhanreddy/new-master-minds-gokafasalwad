@@ -6,7 +6,6 @@ import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';
 import ViewAsBanner from '../../src/components/ViewAsBanner';
 import AccountSwitcherSheet from '../../src/components/AccountSwitcherSheet';
-import Avatar from '../../src/components/Avatar';
 import AvatarUploader, { AvatarUploaderHandle } from '../../src/components/AvatarUploader';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
@@ -184,7 +183,7 @@ export default function StaffSettings() {
         <View style={styles.container}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
             <StaffHeader title="Settings" showBackButton />
-            {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+            {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
@@ -197,27 +196,19 @@ export default function StaffSettings() {
                     {/* Top row */}
                     <View style={styles.profileTop}>
                         <Animated.View entering={ZoomIn.delay(200).duration(400)} style={styles.avatarWrap}>
-                            {isViewingAsAdmin ? (
-                                <Avatar
-                                    photoUrl={photoUrl}
-                                    name={displayName}
-                                    size={62}
-                                    borderRadius={18}
-                                    ringColor={theme.colors.border}
-                                    ringWidth={2}
-                                />
-                            ) : (
-                                <AvatarUploader
-                                    ref={avatarUploaderRef}
-                                    photoUrl={photoUrl}
-                                    name={displayName}
-                                    size={62}
-                                    borderRadius={18}
-                                    ringColor={theme.colors.border}
-                                    ringWidth={2}
-                                    accentColor="#6366F1"
-                                />
-                            )}
+                            <AvatarUploader
+                                ref={avatarUploaderRef}
+                                photoUrl={photoUrl}
+                                name={displayName}
+                                size={62}
+                                borderRadius={18}
+                                ringColor={theme.colors.border}
+                                ringWidth={2}
+                                accentColor="#6366F1"
+                                syncAuthContext={!isViewingAsAdmin}
+                                onUploaded={(nextPhoto) => setViewedStaff((current) => current ? { ...current, photo_url: nextPhoto } : current)}
+                                onRemoved={() => setViewedStaff((current) => current ? { ...current, photo_url: undefined } : current)}
+                            />
                             <View style={styles.onlineDot} />
                         </Animated.View>
 
@@ -231,16 +222,14 @@ export default function StaffSettings() {
                             </View>
                         </View>
 
-                        {!isViewingAsAdmin && (
-                            <TouchableOpacity
-                                style={styles.editChip}
-                                onPress={() => avatarUploaderRef.current?.open()}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="camera" size={11} color="#6366F1" />
-                                <Text style={styles.editChipText}>Change Photo</Text>
-                            </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                            style={styles.editChip}
+                            onPress={() => avatarUploaderRef.current?.open()}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="camera" size={11} color="#6366F1" />
+                            <Text style={styles.editChipText}>Change Photo</Text>
+                        </TouchableOpacity>
                     </View>
 
 

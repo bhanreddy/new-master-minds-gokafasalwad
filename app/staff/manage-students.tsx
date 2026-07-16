@@ -25,7 +25,7 @@ import StaffHeader from '../../src/components/StaffHeader';
 import SwipeableStudentCard from '../../src/components/SwipeableStudentCard';
 import { staffTabBarReserve } from '../../src/components/StaffFooter';
 import { useAuth } from '../../src/hooks/useAuth';
-import { AttendanceService, currentSession } from '../../src/services/attendanceService';
+import { AttendanceService, currentSession, localAttendanceDate } from '../../src/services/attendanceService';
 import { AttendanceStatus, AttendanceSession } from '../../src/types/schema';
 import { useTheme } from '../../src/hooks/useTheme';
 import type { SchoolTheme } from '../../src/theme/types';
@@ -317,7 +317,7 @@ export default function ManageStudents() {
       setSubmitting(true);
       if (!detectedClassId) throw new Error('No class assigned.');
       
-      const date = new Date().toISOString().split('T')[0];
+      const date = localAttendanceDate();
       await AttendanceService.markAttendance({
         class_section_id: detectedClassId,
         date,

@@ -4,11 +4,11 @@
  * Tiling stationery-pattern background for SchoolIMS.
  * Drop this once in your root layout — every screen inherits it.
  *
- * Requirements: react-native-svg (Expo built-in), react-native-reanimated
+ * Requirement: react-native-svg (Expo built-in)
  * Usage: <SchoolBackground /> inside a flex:1 View in _layout.tsx / App.tsx
  */
 
-import React, { useEffect, memo } from 'react';
+import React, { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, {
   Defs,
@@ -21,20 +21,8 @@ import Svg, {
   Polygon,
   Ellipse,
 } from 'react-native-svg';
-import Animated, {
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-  withDelay,
-  useAnimatedProps,
-  Easing,
-} from 'react-native-reanimated';
 import { schoolTheme } from '@/src/constants/schoolConfig';
 import { useTheme } from '@/src/hooks/useTheme';
-
-// ─── Animated SVG <G> ────────────────────────────────────────────────────────
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 // ─── Component ───────────────────────────────────────────────────────────────
 function SchoolBackgroundComponent() {
@@ -45,34 +33,6 @@ function SchoolBackgroundComponent() {
   const themed = schoolTheme[isDark ? 'dark' : 'light'].colors;
   const cream = themed.background;   // base tint
   const gold = themed.primary;       // school brand colour drives the icon strokes
-
-  // Shared values for 3 pulse phases (matches CSS pa/pb/pc with 1.4s offsets)
-  const opA = useSharedValue(0.26);
-  const opB = useSharedValue(0.26);
-  const opC = useSharedValue(0.26);
-
-  useEffect(() => {
-    const pulse = (sv: typeof opA, delayMs: number) => {
-      sv.value = withDelay(
-        delayMs,
-        withRepeat(
-          withSequence(
-            withTiming(0.44, { duration: 2100, easing: Easing.inOut(Easing.ease) }),
-            withTiming(0.26, { duration: 2100, easing: Easing.inOut(Easing.ease) })
-          ),
-          -1,
-          false
-        )
-      );
-    };
-    pulse(opA, 0);
-    pulse(opB, 1400);
-    pulse(opC, 2800);
-  }, []);
-
-  const animPropsA = useAnimatedProps(() => ({ opacity: opA.value }));
-  const animPropsB = useAnimatedProps(() => ({ opacity: opB.value }));
-  const animPropsC = useAnimatedProps(() => ({ opacity: opC.value }));
 
   // Shared stroke style applied to every icon group
   const S = {
@@ -490,10 +450,9 @@ function SchoolBackgroundComponent() {
 
 
             {/* ══════════════════════════════════════════════════════════════
-                PULSE GROUP A  — phase 0s  (Book · Backpack · Scissors · Pen · Microscope)
-                opacity animates 0.38 → 0.60 → 0.38 @ 4.2s cycle
+                ACCENT GROUP A  (Book · Backpack · Scissors · Pen · Microscope)
                 ══════════════════════════════════════════════════════════════ */}
-            <AnimatedG animatedProps={animPropsA} {...S}>
+            <G opacity={0.32} {...S}>
 
               {/* Closed Book with bookmark */}
               <G transform="translate(44,44)">
@@ -549,13 +508,13 @@ function SchoolBackgroundComponent() {
                 <Rect x="-10" y="-23" width="6" height="5"   rx="1.5" />
               </G>
 
-            </AnimatedG>
+            </G>
 
 
             {/* ══════════════════════════════════════════════════════════════
-                PULSE GROUP B  — phase 1.4s  (Calculator · Open Book · Eraser · Test · Pushpin)
+                ACCENT GROUP B  (Calculator · Open Book · Eraser · Test · Pushpin)
                 ══════════════════════════════════════════════════════════════ */}
-            <AnimatedG animatedProps={animPropsB} {...S}>
+            <G opacity={0.32} {...S}>
 
               {/* Calculator */}
               <G transform="translate(190,44)">
@@ -616,13 +575,13 @@ function SchoolBackgroundComponent() {
                 <Circle cx="0" cy="18" r="1" />
               </G>
 
-            </AnimatedG>
+            </G>
 
 
             {/* ══════════════════════════════════════════════════════════════
-                PULSE GROUP C  — phase 2.8s  (Grad Cap · Notebook · Bell · Trophy · Paperclip)
+                ACCENT GROUP C  (Grad Cap · Notebook · Bell · Trophy · Paperclip)
                 ══════════════════════════════════════════════════════════════ */}
-            <AnimatedG animatedProps={animPropsC} {...S}>
+            <G opacity={0.32} {...S}>
 
               {/* Graduation Cap */}
               <G transform="translate(336,44)">
@@ -676,7 +635,7 @@ function SchoolBackgroundComponent() {
                 <Path d="M 4,-15 Q 10,-15 10,-7 L 10,10 Q 10,18 0,18 Q -10,18 -10,10 L -10,-6 Q -10,-14 2,-14 Q 12,-14 12,-6 L 12,10" />
               </G>
 
-            </AnimatedG>
+            </G>
 
           </Pattern>
         </Defs>

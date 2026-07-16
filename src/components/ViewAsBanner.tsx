@@ -1,10 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Link } from 'expo-router';
 import { useTheme } from '../hooks/useTheme';
+import { clearStaffPortalSession } from '../services/staffPortalSession';
 
-export default function ViewAsBanner({ name, limited }: { name?: string; limited?: boolean }) {
+export default function ViewAsBanner({ name }: { name?: string }) {
   const { isDark } = useTheme();
+  const exitPortal = () => {
+    clearStaffPortalSession();
+  };
   return (
     <View
       style={[
@@ -15,11 +20,16 @@ export default function ViewAsBanner({ name, limited }: { name?: string; limited
         },
       ]}
     >
-      <Ionicons name="eye-outline" size={14} color="#B45309" style={{ marginRight: 7 }} />
+      <Ionicons name="create-outline" size={14} color="#047857" style={{ marginRight: 7 }} />
       <Text style={styles.text} numberOfLines={2}>
-        Viewing {name || 'staff'}'s portal — Admin (read-only)
-        {limited ? '. This section isn\'t available in admin view yet.' : ''}
+        Managing {name || 'staff'}'s portal — Admin read/write access
       </Text>
+      <Link href="/admin/manage-staff" replace asChild>
+        <TouchableOpacity onPress={exitPortal} style={styles.exit} accessibilityRole="link" accessibilityLabel="Exit staff portal">
+          <Text style={styles.exitText}>Exit</Text>
+          <Ionicons name="close" size={14} color="#047857" />
+        </TouchableOpacity>
+      </Link>
     </View>
   );
 }
@@ -32,7 +42,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 4,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
   },
@@ -40,6 +50,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
-    color: '#B45309',
+    color: '#047857',
   },
+  exit: { flexDirection: 'row', alignItems: 'center', marginLeft: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 9, backgroundColor: 'rgba(16,185,129,0.10)' },
+  exitText: { color: '#047857', fontSize: 11, fontWeight: '800', marginRight: 2 },
 });

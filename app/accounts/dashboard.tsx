@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, StatusBar,
+  View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl,
   Pressable, Dimensions, NativeScrollEvent, NativeSyntheticEvent,
   Platform, useWindowDimensions,
 } from 'react-native';
@@ -725,6 +725,7 @@ export default function AccountsDashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -734,7 +735,7 @@ export default function AccountsDashboard() {
   const authUserId = user?.userId || user?.id || null;
   const canSeeAllCollections = role === 'admin' || role === 'principal';
 
-  const { data: statsData, loading: statsLoading } = useApiQuery<any>(
+  const { data: statsData, loading: statsLoading, refetch: refetchStats } = useApiQuery<any>(
     '/fees/dashboard-stats',
     'accounts-dashboard-stats',
     DASHBOARD_CACHE_TTL_MS,
@@ -746,7 +747,7 @@ export default function AccountsDashboard() {
   const shouldFetchRecentTx = !!authUserId && !(Array.isArray(recentFromStats) && recentFromStats.length > 0);
   const recentTxQuery = canSeeAllCollections ? '' : `received_by=${authUserId}`;
 
-  const { data: recentTxRows } = usePersistedSWR<any[]>({
+  const { data: recentTxRows, refetch: refetchRecentTransactions } = usePersistedSWR<any[]>({
     cacheKey: 'accounts-recent-tx',
     userId: authUserId,
     ttlMs: 60_000,
@@ -761,6 +762,16 @@ export default function AccountsDashboard() {
       return Array.isArray(rows) ? rows : (rows as any)?.data ?? [];
     },
   });
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await Promise.all([refetchStats(), refetchRecentTransactions()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchStats, refetchRecentTransactions]);
 
   useEffect(() => {
     const showLoader = statsLoading && !statsData;
@@ -865,7 +876,12 @@ export default function AccountsDashboard() {
   if (isWeb) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 34, paddingBottom: 48 }} overScrollMode="never">
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 34, paddingBottom: 48 }}
+          overScrollMode="never"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} colors={[theme.colors.primary]} />}
+        >
           <PaymentDueBanner />
 
           {/* Page hero */}
@@ -941,7 +957,13 @@ export default function AccountsDashboard() {
         onItemPress={(route) => { setIsMenuOpen(false); router.push(route as any); }}
         activeRoute="/accounts/dashboard" />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} overScrollMode="never" bounces>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+        overScrollMode="never"
+        bounces
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} colors={[theme.colors.primary]} progressBackgroundColor={theme.colors.surface} />}
+      >
         <View style={styles.bannerPad}>
           <PaymentDueBanner />
         </View>

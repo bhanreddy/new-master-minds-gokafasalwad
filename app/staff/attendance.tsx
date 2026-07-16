@@ -564,7 +564,7 @@ export default function StaffMyAttendanceScreen() {
             <View style={[styles.orb2, { backgroundColor: orb2Color }]} />
 
             <StaffHeader title="Attendance" scrollY={scrollY} onBack={() => router.back()} showMenuButton={false} />
-            {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+            {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
             {loading && !refreshing ? (
                 <AttendanceSkeleton isDark={isDark} cardBg={cardBg} cardBorder={cardBorder} />

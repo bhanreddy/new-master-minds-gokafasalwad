@@ -35,6 +35,8 @@ export interface AvatarUploaderProps {
   onUploaded?: (photoUrl: string) => void;
   /** Called after a successful removal. */
   onRemoved?: () => void;
+  /** False for delegated admin edits so the admin's own AuthContext photo is not overwritten. */
+  syncAuthContext?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -77,6 +79,7 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
   allowRemove = true,
   onUploaded,
   onRemoved,
+  syncAuthContext = true,
   style,
 }, ref) {
   const { updateUserPhoto } = useAuth();
@@ -88,7 +91,7 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
     setBusy(true);
     try {
       const newUrl = await uploadProfilePhoto(uri);
-      await updateUserPhoto(newUrl);
+      if (syncAuthContext) await updateUserPhoto(newUrl);
       onUploaded?.(newUrl);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
@@ -102,7 +105,7 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
     setBusy(true);
     try {
       await removeProfilePhoto();
-      await updateUserPhoto(null);
+      if (syncAuthContext) await updateUserPhoto(null);
       onRemoved?.();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {

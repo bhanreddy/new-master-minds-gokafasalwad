@@ -486,10 +486,6 @@ export default function UploadMarks() {
   };
 
   const handleSubmit = async () => {
-    if (isViewingAsAdmin) {
-      alertCompat('Read-only', 'Marks can\'t be uploaded while viewing another staff member\'s portal.');
-      return;
-    }
     if (!selectedCategory || !selectedAssignment) return;
     const filledMarks = Object.keys(marks).map((studentId) => ({
       student_id: studentId,
@@ -821,7 +817,7 @@ export default function UploadMarks() {
       <StaffHeader
         title={selectedCategory?.title ?? 'Upload Marks'}
         showBackButton={true} />
-      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
       {selectedCategory && (
         <TouchableOpacity style={styles.backToDash} onPress={handleBackToDashboard} activeOpacity={0.8}>

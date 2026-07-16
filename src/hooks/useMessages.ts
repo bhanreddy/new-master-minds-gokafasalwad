@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { useAuth } from './useAuth';
+import { useEffectiveStaffId } from './useEffectiveStaffId';
 import { usePersistedSWR } from './usePersistedSWR';
 import { persistentQueryCache } from '../services/persistentQueryCache';
 import {
@@ -32,6 +33,13 @@ const THREAD_CACHE_LIMIT = 100;
 const threadMemCache = new Map<string, Message[]>();
 const memKey = (userId: string, conversationId: string) => `${userId}:${conversationId}`;
 
+/** Cache and optimistic sender identity must follow delegated staff access too. */
+export function useMessageUserId(): string | null {
+  const { user } = useAuth();
+  const { userId: delegatedUserId } = useEffectiveStaffId();
+  return delegatedUserId || user?.userId || null;
+}
+
 const sortAsc = (list: Message[]): Message[] =>
   [...list].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
@@ -47,21 +55,21 @@ const mergeUnique = (prev: Message[], incoming: Message[]): Message[] => {
 // ─── Conversations list ───────────────────────────────────────────────────────
 
 export function useConversations() {
-  const { user } = useAuth();
+  const userId = useMessageUserId();
   return usePersistedSWR<Conversation[]>({
     cacheKey: 'messages_convos',
-    userId: user?.userId ?? null,
+    userId,
     ttlMs: TTL_30S,
     fetcher: () => MessagesService.getConversations({ limit: 50 }),
     persist: true,
-    enabled: !!user?.userId,
+    enabled: !!userId,
   });
 }
 
 // ─── Thread messages with delta sync polling ──────────────────────────────────
 
 export function useThreadMessages(conversationId: string | null) {
-  const { user } = useAuth();
+  const userId = useMessageUserId();
   const isFocused = useIsFocused();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,8 +89,8 @@ export function useThreadMessages(conversationId: string | null) {
   // than the last one we have (the unread tail). A full page is fetched once,
   // and only when nothing is cached yet (first-ever open of that thread).
   useEffect(() => {
-    if (!conversationId || !user?.userId) return;
-    const uid = user.userId;
+    if (!conversationId || !userId) return;
+    const uid = userId;
     const mk = memKey(uid, conversationId);
     let cancelled = false;
 
@@ -136,32 +144,32 @@ export function useThreadMessages(conversationId: string | null) {
     })();
 
     return () => { cancelled = true; };
-  }, [conversationId, user?.userId]);
+  }, [conversationId, userId]);
 
   // Persist the thread (memory + local storage) whenever it changes, so the
   // next open hydrates instantly and syncs delta-only. Optimistic (sending /
   // failed) messages are excluded — only server-confirmed rows are stored.
   useEffect(() => {
-    if (!conversationId || !user?.userId) return;
+    if (!conversationId || !userId) return;
     const confirmed = messages.filter((m) => m._status !== 'sending' && m._status !== 'failed');
     if (confirmed.length === 0) return;
     // Guard against writing a previous thread's messages under the new id during
     // the brief switch window before the load effect resets state.
     if (confirmed[0].conversation_id !== conversationId) return;
 
-    threadMemCache.set(memKey(user.userId, conversationId), confirmed);
+    threadMemCache.set(memKey(userId, conversationId), confirmed);
     persistentQueryCache.write(
-      user.userId,
+      userId,
       THREAD_CACHE_SUFFIX,
       confirmed.slice(-THREAD_CACHE_LIMIT),
       Date.now(),
       conversationId,
     );
-  }, [messages, conversationId, user?.userId]);
+  }, [messages, conversationId, userId]);
 
   // Delta sync polling while focused
   useEffect(() => {
-    if (!conversationId || !isFocused || !user?.userId) return;
+    if (!conversationId || !isFocused || !userId) return;
 
     const interval = setInterval(async () => {
       if (!latestTimestampRef.current) return;
@@ -188,12 +196,12 @@ export function useThreadMessages(conversationId: string | null) {
     }, POLL_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [conversationId, isFocused, user?.userId]);
+  }, [conversationId, isFocused, userId]);
 
   // Live poll: delivery/seen receipts + typing + presence (one call). Also marks
   // the caller delivered + refreshes their presence heartbeat, server-side.
   useEffect(() => {
-    if (!conversationId || !isFocused || !user?.userId) return;
+    if (!conversationId || !isFocused || !userId) return;
     let active = true;
     const tick = async () => {
       try {
@@ -209,7 +217,7 @@ export function useThreadMessages(conversationId: string | null) {
       active = false;
       clearInterval(iv);
     };
-  }, [conversationId, isFocused, user?.userId]);
+  }, [conversationId, isFocused, userId]);
 
   // Reset live state when switching conversations.
   useEffect(() => {
@@ -240,7 +248,7 @@ export function useThreadMessages(conversationId: string | null) {
       const optimistic: Message = {
         id: tempId,
         conversation_id: conversationId,
-        sender_user_id: user?.userId ?? '',
+        sender_user_id: userId ?? '',
         sender_name: '',
         body,
         created_at: new Date().toISOString(),
@@ -267,7 +275,7 @@ export function useThreadMessages(conversationId: string | null) {
         return null;
       }
     },
-    [conversationId, user?.userId],
+    [conversationId, userId],
   );
 
   // Retry failed message
@@ -321,14 +329,14 @@ export function useThreadMessages(conversationId: string | null) {
 // ─── Unread total (for badge) ─────────────────────────────────────────────────
 
 export function useUnreadTotal() {
-  const { user } = useAuth();
+  const userId = useMessageUserId();
   return usePersistedSWR<UnreadTotal>({
     cacheKey: 'messages_unread_total',
-    userId: user?.userId ?? null,
+    userId,
     ttlMs: TTL_30S,
     fetcher: () => MessagesService.getUnreadTotal(),
     persist: false,
-    enabled: !!user?.userId,
+    enabled: !!userId,
     revalidateOnMount: true,
   });
 }
@@ -336,14 +344,14 @@ export function useUnreadTotal() {
 // ─── Eligible recipients ──────────────────────────────────────────────────────
 
 export function useEligibleRecipients() {
-  const { user } = useAuth();
+  const userId = useMessageUserId();
   return usePersistedSWR<Recipient[]>({
     cacheKey: 'messages_recipients',
-    userId: user?.userId ?? null,
+    userId,
     ttlMs: TTL_5M,
     fetcher: () => MessagesService.getEligibleRecipients(),
     persist: true,
-    enabled: !!user?.userId,
+    enabled: !!userId,
     // Always re-fetch on open so a stale/empty cache never hides available
     // admins or teachers (cached copy still paints instantly first).
     revalidateOnMount: true,
@@ -351,14 +359,14 @@ export function useEligibleRecipients() {
 }
 
 export function useSupportContact() {
-  const { user } = useAuth();
+  const userId = useMessageUserId();
   return usePersistedSWR<SupportContact>({
     cacheKey: 'messages_support_contact',
-    userId: user?.userId ?? null,
+    userId,
     ttlMs: TTL_5M,
     fetcher: () => MessagesService.getSupportContact(),
     persist: true,
-    enabled: !!user?.userId,
+    enabled: !!userId,
     revalidateOnMount: true,
   });
 }

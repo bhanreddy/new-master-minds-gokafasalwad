@@ -9,7 +9,6 @@ export const SCREEN_FEATURE_MAP: Record<string, FeatureKey> = {
   '/Screen/announcements': 'quick.announcements',
   '/Screen/complaints': 'quick.complaints',
   '/Screen/lifeValues': 'quick.life_values',
-  '/Screen/busMap': 'quick.transport',
   '/Screen/busTracker': 'quick.transport',
   '/Screen/scienceProjects': 'quick.science_projects',
   '/Screen/profile': 'quick.profile',

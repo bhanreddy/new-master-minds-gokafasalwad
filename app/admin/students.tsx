@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, ScrollView, Modal, Alert, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -13,6 +13,10 @@ import { StudentService } from '../../src/services/studentService';
 import { ClassService, ClassInfo, Section } from '../../src/services/classService';
 import { useRouter } from 'expo-router';
 import LogoLoader from '../../src/components/LogoLoader';
+import { exportStudentCsv } from '../../src/utils/studentExport';
+import { SCHOOL_NAME } from '../../src/constants/school';
+import HardDeleteStudentModal from '../../src/components/accounts/HardDeleteStudentModal';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 
 export default function AdminStudentsScreen() {
   const { theme, isDark } = useTheme();
@@ -45,6 +49,16 @@ export default function AdminStudentsScreen() {
     visible: false,
     type: null
   });
+
+  // Export State
+  const [exportModal, setExportModal] = useState(false);
+  const [exportClass, setExportClass] = useState<string | null>(null);
+  const [exportSection, setExportSection] = useState<string | null>(null);
+  const [exportPicker, setExportPicker] = useState<'class' | 'section' | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  // Permanent-delete State
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; subtitle: string } | null>(null);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
@@ -146,6 +160,67 @@ export default function AdminStudentsScreen() {
     setFilterModal({ visible: false, type: null });
   };
 
+  const openExportModal = () => {
+    // Seed the export dialog with any filters already applied on the list.
+    setExportClass(selectedClass);
+    setExportSection(selectedSection);
+    setExportModal(true);
+  };
+
+  const handleExport = async () => {
+    if (exporting) return;
+    try {
+      setExporting(true);
+
+      const rows = await StudentService.getAllPages<any>({
+        search: searchQuery || undefined,
+        class_id: exportClass || undefined,
+        section_id: exportSection || undefined,
+        status_id: selectedStatus || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder
+      });
+
+      if (!rows || rows.length === 0) {
+        Alert.alert('No students', 'No students match the selected filters.');
+        return;
+      }
+
+      const classLabel = exportClass ? classes.find((c) => c.id === exportClass)?.name : null;
+      const sectionLabel = exportSection ? sections.find((s) => s.id === exportSection)?.name : null;
+      const filterNote = [
+        classLabel ? `Class ${classLabel}` : null,
+        sectionLabel ? `Section ${sectionLabel}` : null].
+        filter(Boolean).join(' · ') || 'All classes';
+
+      const fileName = await exportStudentCsv(rows, {
+        schoolName: SCHOOL_NAME,
+        filterNote,
+        dateIso: new Date().toISOString().slice(0, 10)
+      });
+
+      setExportModal(false);
+      if (Platform.OS !== 'web') {
+        Alert.alert('Export ready', `Exported ${rows.length} students to ${fileName}.`);
+      }
+    } catch (err: any) {
+      Alert.alert('Export failed', err?.message || 'Could not export students. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDelete = (item: any) => {
+    const name = item.display_name || [item.first_name, item.last_name].filter(Boolean).join(' ') || 'Student';
+    const e = item.current_enrollment || {};
+    const subtitle = [
+      e.class_name || e.class_code,
+      e.section_name,
+      e.roll_number ? `Roll ${e.roll_number}` : null].
+      filter(Boolean).join(' · ');
+    setDeleteTarget({ id: item.id, name, subtitle });
+  };
+
   const renderItem = ({ item, index }: any) => {
     const fullName = item.display_name || [item.first_name, item.last_name].filter(Boolean).join(' ');
     const enrollment = item.current_enrollment || {};
@@ -173,6 +248,13 @@ export default function AdminStudentsScreen() {
               {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
             </Text>
           </View>
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => handleDelete(item)}>
+
+            <Ionicons name="trash-outline" size={20} color="#DC2626" />
+          </TouchableOpacity>
         </TouchableOpacity>
       </Animated.View>);
 
@@ -264,6 +346,13 @@ export default function AdminStudentsScreen() {
               </Text>
               <Ionicons name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} size={14} color={sortBy !== 'name' ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, styles.exportChip]}
+              onPress={openExportModal}>
+
+              <Ionicons name="download-outline" size={15} color={theme.colors.primary} style={{ marginRight: 5 }} />
+              <Text style={[styles.filterChipText, styles.filterChipTextActive]}>Export</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </View>
@@ -353,6 +442,124 @@ export default function AdminStudentsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+      {/* Export Modal */}
+      <Modal
+        visible={exportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !exporting && setExportModal(false)}>
+
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => !exporting && setExportModal(false)}>
+
+          <TouchableOpacity style={styles.modalContent} activeOpacity={1}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Export to Excel</Text>
+              <TouchableOpacity onPress={() => !exporting && setExportModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.exportHint}>
+              Choose a class and section to filter, or leave as “All” to export every student.
+            </Text>
+
+            <Text style={styles.exportLabel}>Class</Text>
+            <TouchableOpacity
+              style={styles.exportSelect}
+              onPress={() => setExportPicker(exportPicker === 'class' ? null : 'class')}>
+
+              <Text style={styles.exportSelectText}>
+                {exportClass ? classes.find((c) => c.id === exportClass)?.name : 'All Classes'}
+              </Text>
+              <Ionicons name={exportPicker === 'class' ? 'chevron-up' : 'chevron-down'} size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+            {exportPicker === 'class' &&
+              <View style={styles.exportDropdown}>
+                <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
+                  {[{ id: null, name: 'All Classes' }, ...classes].map((c) =>
+                    <TouchableOpacity
+                      key={String(c.id)}
+                      style={styles.exportOption}
+                      onPress={() => {
+                        setExportClass(c.id as string | null);
+                        setExportPicker(null);
+                      }}>
+
+                      <Text style={[styles.optionText, String(exportClass) === String(c.id) && styles.optionTextSelected]}>{c.name}</Text>
+                      {String(exportClass) === String(c.id) &&
+                        <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
+                      }
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              </View>
+            }
+
+            <Text style={styles.exportLabel}>Section</Text>
+            <TouchableOpacity
+              style={styles.exportSelect}
+              onPress={() => setExportPicker(exportPicker === 'section' ? null : 'section')}>
+
+              <Text style={styles.exportSelectText}>
+                {exportSection ? sections.find((s) => s.id === exportSection)?.name : 'All Sections'}
+              </Text>
+              <Ionicons name={exportPicker === 'section' ? 'chevron-up' : 'chevron-down'} size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+            {exportPicker === 'section' &&
+              <View style={styles.exportDropdown}>
+                <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
+                  {[{ id: null, name: 'All Sections' }, ...sections].map((s) =>
+                    <TouchableOpacity
+                      key={String(s.id)}
+                      style={styles.exportOption}
+                      onPress={() => {
+                        setExportSection(s.id as string | null);
+                        setExportPicker(null);
+                      }}>
+
+                      <Text style={[styles.optionText, String(exportSection) === String(s.id) && styles.optionTextSelected]}>{s.name}</Text>
+                      {String(exportSection) === String(s.id) &&
+                        <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
+                      }
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              </View>
+            }
+
+            <TouchableOpacity
+              style={[styles.exportButton, exporting && { opacity: 0.7 }]}
+              onPress={handleExport}
+              disabled={exporting}>
+
+              {exporting ?
+                <ActivityIndicator color="#fff" /> :
+                <>
+                  <Ionicons name="download-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.exportButtonText}>Download Excel</Text>
+                </>
+              }
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+      {/* Permanent Delete Modal (same 3-step flow as the accounts dept) */}
+      <HardDeleteStudentModal
+        visible={!!deleteTarget}
+        studentId={deleteTarget?.id ?? null}
+        studentName={deleteTarget?.name ?? ''}
+        studentSubtitle={deleteTarget?.subtitle}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => {
+          const nm = deleteTarget?.name;
+          setDeleteTarget(null);
+          fetchStudents();
+          alertCompat('Deleted', `${nm ?? 'Student'} and all associated data were permanently deleted.`);
+        }} />
+
       <TouchableOpacity
         style={styles.fab}
         onPress={() => router.push('/admin/addStudent')}>
@@ -419,6 +626,70 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '600'
   },
+  exportChip: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + '10'
+  },
+  exportHint: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 16,
+    lineHeight: 18
+  },
+  exportLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 6,
+    marginTop: 4
+  },
+  exportSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.colors.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12
+  },
+  exportSelectText: {
+    fontSize: 15,
+    color: theme.colors.text,
+    fontWeight: '500'
+  },
+  exportDropdown: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    marginTop: -6,
+    marginBottom: 12,
+    backgroundColor: theme.colors.background,
+    overflow: 'hidden'
+  },
+  exportOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingVertical: 15,
+    marginTop: 8
+  },
+  exportButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700'
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 120
@@ -483,6 +754,12 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10
+  },
+  deleteBtn: {
+    marginLeft: 10,
+    padding: 6,
+    borderRadius: 10,
+    backgroundColor: '#FEF2F2'
   },
   statusActive: {
     backgroundColor: '#ECFDF5'

@@ -1410,6 +1410,29 @@ function admissionYearFallback(admissionDate?: string): string {
   return `${year}-${year + 1}`;
 }
 
+function academicYearStartYear(academicYear?: string): number | null {
+  const match = String(academicYear || '').match(/\b(\d{4})\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function classForAcademicYearGap(
+  currentClass: string,
+  fromYear: string,
+  toYear: string,
+): string {
+  const fromStartYear = academicYearStartYear(fromYear);
+  const toStartYear = academicYearStartYear(toYear);
+  if (fromStartYear === null || toStartYear === null) return currentClass;
+
+  const yearGap = toStartYear - fromStartYear;
+  if (yearGap <= 0) return currentClass;
+
+  return currentClass.replace(/\b(\d+)\b/, (match) => {
+    const inferredClass = Number(match) - yearGap;
+    return inferredClass >= 1 ? String(inferredClass) : match;
+  });
+}
+
 function resolveBonafideStudyPeriod(
   enrollments: Array<{
     class_name?: string;
@@ -1428,12 +1451,18 @@ function resolveBonafideStudyPeriod(
   const firstEnroll = sorted[0];
   const lastEnroll = sorted[sorted.length - 1];
   const admissionYear = admissionYearFallback(admissionDate);
+  const fromYear = admissionDate
+    ? admissionYear
+    : (firstEnroll?.academic_year || currentEnrollment?.academic_year || 'N/A');
+  const toYear = currentEnrollment?.academic_year || lastEnroll?.academic_year || admissionYear || 'N/A';
+  const presentClass = currentClass || classNameFromEnrollment(lastEnroll);
+  const inferredFromClass = classForAcademicYearGap(presentClass, fromYear, toYear);
 
   return {
-    fromClass: classToRoman(classNameFromEnrollment(firstEnroll) || currentClass || 'N/A'),
-    fromYear: admissionDate ? admissionYearFallback(admissionDate) : (firstEnroll?.academic_year || currentEnrollment?.academic_year || 'N/A'),
-    toClass: classToRoman(classNameFromEnrollment(lastEnroll) || currentClass || 'N/A'),
-    toYear: lastEnroll?.academic_year || currentEnrollment?.academic_year || admissionYear || 'N/A',
+    fromClass: classToRoman(inferredFromClass || classNameFromEnrollment(firstEnroll) || 'N/A'),
+    fromYear,
+    toClass: classToRoman(presentClass || 'N/A'),
+    toYear,
   };
 }
 

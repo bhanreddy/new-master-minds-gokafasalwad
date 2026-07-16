@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Dimensions, Platform,
   StatusBar, BackHandler, TouchableOpacity, Pressable, ScrollView,
-  useWindowDimensions,
+  useWindowDimensions, RefreshControl,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons, MaterialIcons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { useAuth } from '@/src/hooks/useAuth';
-import { AttendanceService } from '@/src/services/attendanceService';
+import { AttendanceService, currentSession, localAttendanceDate } from '@/src/services/attendanceService';
 import { LeaveService } from '@/src/services/commonServices';
 import { useTheme } from '@/src/hooks/useTheme';
 import * as Haptics from '@/src/utils/haptics';
@@ -88,6 +88,7 @@ interface DashboardMetrics {
   absentToday: number;
   pendingLeaves: number;
   classId?: string;
+  session?: 'morning' | 'afternoon';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -407,7 +408,12 @@ const AttendanceHero = React.memo(function AttendanceHero({ data, onPress, isDar
     };
   });
 
-  let statusText = total === 0 ? 'No Class Assigned' : unmarked === 0 ? 'Fully Marked' : `${unmarked} student${unmarked !== 1 ? 's' : ''} left to mark`;
+  const sessionLabel = data?.session === 'afternoon' ? 'Afternoon' : 'Morning';
+  let statusText = total === 0
+    ? `No ${sessionLabel.toLowerCase()} class assigned`
+    : unmarked === 0
+      ? `${sessionLabel} fully marked`
+      : `${sessionLabel} · ${unmarked} student${unmarked !== 1 ? 's' : ''} left to mark`;
   let statusColor = total === 0 ? 'rgba(255,255,255,0.6)' : unmarked === 0 ? '#38B289' : '#E8520A';
 
   const cardBg = isDark ? '#111827' : '#FFFFFF';
@@ -463,7 +469,7 @@ const AttendanceHero = React.memo(function AttendanceHero({ data, onPress, isDar
           {/* 1. Header Section */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: textColor, letterSpacing: -0.5 }}>Today's Roll Call</Text>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: textColor, letterSpacing: -0.5 }}>{"Today's Roll Call"}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
                 <Text style={{ fontSize: 14, fontWeight: '600', color: subTextColor }}>{statusText}</Text>
@@ -1184,8 +1190,7 @@ export default function StaffDashboard() {
   const { user } = useAuth();
   const { isDark } = useTheme();
   const t = isDark ? D.dark : D.light;
-  const { staffId, isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
-  const viewAsParams = isViewingAsAdmin ? { staffId, viewAsName } : undefined;
+  const { staffId, isViewingAsAdmin, viewAsName, userId: viewAsUserId } = useEffectiveStaffId();
   const { payslipsEnabled } = useStaffPortalConfig();
   const [viewedStaff, setViewedStaff] = useState<Staff | null>(null);
 
@@ -1194,22 +1199,30 @@ export default function StaffDashboard() {
     StaffService.getById(staffId).then(setViewedStaff).catch(() => setViewedStaff(null));
   }, [isViewingAsAdmin, staffId]);
 
-  const { data, loading: metricsLoading } = usePersistedSWR<DashboardMetrics>({
+  const { data, loading: metricsLoading, isRefreshing: metricsRefreshing, refetch } = usePersistedSWR<DashboardMetrics>({
     cacheKey: `staff-dashboard-${staffId ?? 'self'}`,
     userId: user?.userId,
     ttlMs: 120_000,
     persist: !isViewingAsAdmin,
     enabled: !!user,
+    revalidateOnMount: true,
     fetcher: async () => {
-      const pendingLeaves = isViewingAsAdmin ? [] : await LeaveService.getAll({ status: 'pending' });
+      const session = currentSession();
+      const date = localAttendanceDate();
+      const [pendingLeaves, myClass] = await Promise.all([
+        LeaveService.getAll({ status: 'pending' }),
+        AttendanceService.getMyClass(date, staffId, session),
+      ]);
       let studentCount = 0, presentCount = 0, absentCount = 0;
       let detectedClassId: string | undefined;
-      const myClass = await AttendanceService.getMyClass(undefined, staffId);
       if (myClass) {
         detectedClassId = myClass.class_section_id;
         studentCount = myClass.total_students;
-        presentCount = myClass.students.filter((s: any) => s.status === 'present').length;
-        absentCount = myClass.students.filter((s: any) => s.status === 'absent').length;
+        const sessionKey = myClass.session === 'afternoon' ? 'afternoon_status' : 'morning_status';
+        presentCount = myClass.students.filter((student: any) =>
+          ['present', 'late', 'half_day'].includes(student[sessionKey])
+        ).length;
+        absentCount = myClass.students.filter((student: any) => student[sessionKey] === 'absent').length;
       }
       return {
         totalStudents: studentCount,
@@ -1217,6 +1230,7 @@ export default function StaffDashboard() {
         absentToday: absentCount,
         pendingLeaves: pendingLeaves.length,
         classId: detectedClassId,
+        session,
       };
     },
   });
@@ -1245,18 +1259,43 @@ export default function StaffDashboard() {
     ...(payslipsEnabled ? [{ title: 'Payslips', subtitle: 'Salary & docs', configKey: 'payslips', route: '/staff/payslip' }] : []),
   ], [data?.pendingLeaves, payslipsEnabled]);
 
+  const navigateToStaffRoute = useCallback((route: string) => {
+    const query = isViewingAsAdmin
+      ? [
+          ['staffId', staffId || ''],
+          ['viewAsName', viewAsName || ''],
+          ['viewAsUserId', viewAsUserId || ''],
+        ].map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')
+      : '';
+    const href = query ? `${route}?${query}` : route;
+
+    // Expo Router + MaterialTopTabs resolves hidden staff screens to the wrong
+    // tab during web client-side navigation. A document navigation preserves
+    // the exact route; native navigation does not have that web-only failure.
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.assign(href);
+      return;
+    }
+    router.push(href as any);
+  }, [isViewingAsAdmin, router, staffId, viewAsName, viewAsUserId]);
+
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e: any) => { scrollY.value = e.contentOffset.y; },
   });
 
   const handleLeavesPress = useCallback(() => {
-    router.push('/staff/leaves' as any);
-  }, [router]);
+    navigateToStaffRoute('/staff/leaves');
+  }, [navigateToStaffRoute]);
 
   const handleManageStudentsPress = useCallback(() => {
-    router.push({ pathname: '/staff/manage-students', params: viewAsParams } as any);
-  }, [router, viewAsParams]);
+    navigateToStaffRoute('/staff/manage-students');
+  }, [navigateToStaffRoute]);
+
+  const handleRefresh = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await refetch();
+  }, [refetch]);
 
   const firstName = (isViewingAsAdmin ? viewAsName : user?.displayName)?.split(' ')[0] || 'Teacher';
 
@@ -1290,10 +1329,19 @@ export default function StaffDashboard() {
         scrollEventThrottle={16}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            refreshing={metricsRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={ACCENT.violet}
+            colors={[ACCENT.violet]}
+            progressBackgroundColor={isDark ? '#111827' : '#FFFFFF'}
+          />
+        )}
       >
         {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
         <HeroBanner name={firstName} isDark={isDark} card={headerProfileCard} />
-        {!isViewingAsAdmin && !!data?.pendingLeaves && (
+        {!!data?.pendingLeaves && (
           <LeaveAlert count={data.pendingLeaves} onPress={handleLeavesPress} isDark={isDark} />
         )}
         <SectionLabel label="TODAY'S CLASS" isDark={isDark} />
@@ -1311,7 +1359,7 @@ export default function StaffDashboard() {
               subtitle={item.subtitle}
               configKey={item.configKey}
               badge={(item as any).badge}
-              onPress={() => router.push({ pathname: item.route, params: viewAsParams } as any)}
+              onPress={() => navigateToStaffRoute(item.route)}
               index={index}
               isDark={isDark}
             />

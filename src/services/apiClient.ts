@@ -12,6 +12,7 @@ import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { getOrCreateDeviceId } from './deviceId';
 import { getActiveContextId } from './activeContextStore';
+import { clearStaffPortalSession, getStaffPortalSession } from './staffPortalSession';
 
 /**
  * Resolve the current role for the 401 guard WITHOUT depending on
@@ -126,6 +127,7 @@ export async function setTokens(accessToken: string, refreshToken: string): Prom
 }
 
 export async function clearTokens(): Promise<void> {
+  clearStaffPortalSession();
   await tokenDelete(TOKEN_KEY);
   await tokenDelete(REFRESH_TOKEN_KEY);
   // Also clear additional auth fields
@@ -266,13 +268,15 @@ export interface APIOptions extends RequestInit {
   _multipart?: boolean;
   /** Request timeout in ms (default 60000). Use longer values for bulk uploads. */
   timeoutMs?: number;
+  /** Frozen delegated staff target for retries and GET de-duplication. */
+  _staffPortalId?: string;
 }
 
-function buildGetDedupeKey(endpoint: string, method: string): string | null {
+function buildGetDedupeKey(endpoint: string, method: string, staffPortalId?: string): string | null {
   if (method !== 'GET') return null;
   const sep = endpoint.includes('?') ? '&' : '?';
   const finalEndpoint = `${endpoint}${sep}school_id=${encodeURIComponent(SCHOOL_ID_PARAM)}`;
-  return `GET:${API_BASE_URL}${finalEndpoint}`;
+  return `GET:${API_BASE_URL}${finalEndpoint}:staff=${staffPortalId || 'self'}`;
 }
 
 export async function apiRequest<T>(
@@ -280,9 +284,13 @@ export async function apiRequest<T>(
   options: APIOptions = {})
   : Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
+  const staffPortalId = options._staffPortalId ?? getStaffPortalSession().staffId;
+  const frozenOptions = staffPortalId && !options._staffPortalId
+    ? { ...options, _staffPortalId: staffPortalId }
+    : options;
   const retryCount = options._retryCount ?? 0;
   const dedupeKey = !options._isRetry && retryCount === 0
-    ? buildGetDedupeKey(endpoint, method)
+    ? buildGetDedupeKey(endpoint, method, staffPortalId)
     : null;
 
   if (dedupeKey) {
@@ -290,7 +298,7 @@ export async function apiRequest<T>(
     if (existing) return existing as Promise<T>;
   }
 
-  const promise = apiRequestInner<T>(endpoint, options);
+  const promise = apiRequestInner<T>(endpoint, frozenOptions);
   if (dedupeKey) {
     inflightGets.set(dedupeKey, promise);
     // The cleanup runs off a SEPARATE chain from the `promise` we return. If the
@@ -312,7 +320,7 @@ async function apiRequestInner<T>(
   endpoint: string,
   options: APIOptions = {})
   : Promise<T> {
-  const { silent: rawSilent, sendActiveContext, _isRetry, _retryCount = 0, _multipart, timeoutMs = 60000, ...fetchOptions } = options;
+  const { silent: rawSilent, sendActiveContext, _isRetry, _retryCount = 0, _multipart, timeoutMs = 60000, _staffPortalId, ...fetchOptions } = options;
   // Suppress blocking error dialogs for transient cross-role failures while an
   // account/portal switch is settling (the request still runs and still throws).
   const silent = rawSilent || transientAlertsSuppressed();
@@ -337,6 +345,9 @@ async function apiRequestInner<T>(
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (_staffPortalId) {
+    headers['X-Staff-Portal-Id'] = _staffPortalId;
   }
 
   // A portal switch changes the active server-side authorization scope, not
@@ -623,6 +634,8 @@ export async function downloadFile(endpoint: string, filename: string): Promise<
   const url = `${API_BASE_URL}${finalEndpoint}`;
 
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const staffPortalId = getStaffPortalSession().staffId;
+  if (staffPortalId) headers['X-Staff-Portal-Id'] = staffPortalId;
   try {
     const deviceId = await getOrCreateDeviceId();
     if (deviceId) headers['X-Device-Id'] = deviceId;

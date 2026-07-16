@@ -6,7 +6,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from '@/src/utils/haptics';
 import StaffHeader from '../../src/components/StaffHeader';
 import ViewAsBanner from '../../src/components/ViewAsBanner';
-import Avatar from '../../src/components/Avatar';
 import AvatarUploader from '../../src/components/AvatarUploader';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useEffectiveStaffId } from '../../src/hooks/useEffectiveStaffId';
@@ -69,9 +68,9 @@ const StaffProfileScreen = () => {
   const status = isViewingAsAdmin ? (viewedStaff?.status_name || viewedStaff?.status) : myProfile?.status;
   const email = isViewingAsAdmin ? viewedStaff?.email : (myProfile?.email || user?.email);
   const phone = isViewingAsAdmin ? viewedStaff?.phone : (myProfile?.phone || user?.phone);
-  const dob = isViewingAsAdmin ? undefined : myProfile?.dob;
-  const gender = isViewingAsAdmin ? undefined : myProfile?.gender;
-  const address = isViewingAsAdmin ? undefined : myProfile?.address;
+  const dob = isViewingAsAdmin ? viewedStaff?.dob : myProfile?.dob;
+  const gender = isViewingAsAdmin ? viewedStaff?.gender : myProfile?.gender;
+  const address = isViewingAsAdmin ? viewedStaff?.address : myProfile?.address;
   const joiningDate = isViewingAsAdmin ? viewedStaff?.joining_date : myProfile?.joining_date;
 
   const personalRows = [
@@ -139,17 +138,16 @@ const StaffProfileScreen = () => {
 
         <View style={styles.profileContent}>
           <View style={styles.avatarContainer}>
-            {isViewingAsAdmin ? (
-              <Avatar photoUrl={photoUrl} name={displayName} size={100} ringColor={theme.colors.background} ringWidth={4} />
-            ) : (
-              <AvatarUploader
-                photoUrl={photoUrl}
-                name={displayName}
-                size={100}
-                ringColor={theme.colors.background}
-                ringWidth={4}
-              />
-            )}
+            <AvatarUploader
+              photoUrl={photoUrl}
+              name={displayName}
+              size={100}
+              ringColor={theme.colors.background}
+              ringWidth={4}
+              syncAuthContext={!isViewingAsAdmin}
+              onUploaded={(nextPhoto) => setViewedStaff((current) => current ? { ...current, photo_url: nextPhoto } : current)}
+              onRemoved={() => setViewedStaff((current) => current ? { ...current, photo_url: undefined } : current)}
+            />
             {hasVal(status) && (
               <View style={styles.statusBadge}>
                 <View style={styles.statusDot} />

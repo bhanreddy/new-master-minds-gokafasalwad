@@ -14,21 +14,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import LogoLoader from '../src/components/LogoLoader';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { useAuth } from '../src/hooks/useAuth';
+import { getHomeRouteForRole } from '../src/utils/portalRoutes';
+import { isStudentRole, isStaffPortalRole } from '../src/utils/roleHelpers';
 
 const { width, height } = Dimensions.get('window');
 
 // ─── Route helper ────────────────────────────────────────────────────────────
-
-const getHomeRoute = (role: string) => {
-  switch (role) {
-    case 'admin': return '/admin/dashboard';
-    case 'accountant': return '/accounts/dashboard';
-    case 'staff':
-    case 'teacher': return '/staff/dashboard';
-    case 'driver': return '/driver/dashboard';
-    default: return '/(tabs)/home';
-  }
-};
 
 /** Where a cold start should land, given the restored auth state. */
 const resolveTarget = (user: ReturnType<typeof useAuth>['user']): string => {
@@ -39,13 +30,13 @@ const resolveTarget = (user: ReturnType<typeof useAuth>['user']): string => {
       ? (user.role as any).code
       : user.role;
 
-  if (roleCode === 'student' && user.has_student_profile === false) {
+  if (isStudentRole(roleCode) && user.has_student_profile === false) {
     return '/no-profile';
   }
-  if ((roleCode === 'staff' || roleCode === 'teacher') && user.has_staff_profile === false) {
+  if (isStaffPortalRole(roleCode) && user.has_staff_profile === false) {
     return '/no-profile';
   }
-  return getHomeRoute(roleCode);
+  return getHomeRouteForRole(roleCode);
 };
 
 // ─── Ambient Orb ─────────────────────────────────────────────────────────────

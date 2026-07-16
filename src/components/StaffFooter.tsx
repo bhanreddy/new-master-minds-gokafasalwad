@@ -10,6 +10,7 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../hooks/useTheme';
+import { useEffectiveStaffId } from '../hooks/useEffectiveStaffId';
 
 const { width } = Dimensions.get('window');
 
@@ -34,6 +35,7 @@ const ORDERED_TABS = ['dashboard', 'manage-students', 'timetable', 'results'];
 
 export default function StaffFooter({ state, descriptors, navigation }: any) {
     const { theme, isDark } = useTheme();
+    const { staffId, isViewingAsAdmin, viewAsName, userId: viewAsUserId } = useEffectiveStaffId();
 
     // Filter and sort routes to only show the main 4 tabs
     const visibleRoutes = state.routes
@@ -175,7 +177,9 @@ export default function StaffFooter({ state, descriptors, navigation }: any) {
                             });
 
                             if (!isFocused && !event.defaultPrevented) {
-                                navigation.navigate(route.name, route.params);
+                                navigation.navigate(route.name, isViewingAsAdmin
+                                  ? { ...(route.params || {}), staffId, viewAsName, viewAsUserId }
+                                  : route.params);
                             }
                         };
 

@@ -14,7 +14,9 @@ export default function ScreenSectionLayout() {
 
   return (
     <ErrorBoundary>
-      <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent'}, headerShown: false }} />
+      <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent'}, headerShown: false }}>
+        <Stack.Screen name="messages" options={{ animation: 'slide_from_right', animationDuration: 220 }} />
+      </Stack>
     </ErrorBoundary>
   );
 }
