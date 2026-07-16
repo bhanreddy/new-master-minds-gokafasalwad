@@ -12,8 +12,7 @@ import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
 import ScreenLayout from '@/src/components/ScreenLayout';
-import { useAuth } from '@/src/hooks/useAuth';
-import { useConversations, useEligibleRecipients, useSupportContact } from '@/src/hooks/useMessages';
+import { useConversations, useEligibleRecipients, useMessageUserId, useSupportContact } from '@/src/hooks/useMessages';
 import {
   MessagesService,
   type Conversation,
@@ -50,7 +49,7 @@ const rank = (r: Recipient, pinAdmin?: boolean) =>
 
 export default function MessengerScreen({ title, directoryTabs, pinAdminInDirectory, canCreateGroup, renderHeader }: Props) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const messageUserId = useMessageUserId();
   const router = useRouter();
 
   const [view, setView] = useState<'list' | 'thread' | 'group'>('list');
@@ -183,7 +182,7 @@ export default function MessengerScreen({ title, directoryTabs, pinAdminInDirect
         <ChatThread
           conversation={activeConv}
           recipient={activeRecipient}
-          currentUserId={user?.userId}
+          currentUserId={messageUserId}
           onBack={handleBack}
           onConversationCreated={(c) => setActiveConv(c)}
         />

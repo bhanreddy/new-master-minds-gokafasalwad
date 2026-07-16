@@ -58,6 +58,7 @@ import { patchAccountMetadata } from '../../src/services/accountVault';
 import { StudentDashboardResponse } from '../../src/services/studentService';
 import { isStudentRole } from '../../src/utils/roleHelpers';
 import { AttendanceSummary } from '../../src/types/models';
+import { currentSession, localAttendanceDate } from '../../src/services/attendanceService';
 import { t_field } from '../../src/utils/lang';
 import { getMediaUrl } from '../../src/utils/media';
 
@@ -744,16 +745,14 @@ const tc = StyleSheet.create({
    SNAPSHOT CARD — HERO
 ═══════════════════════════════════════════ */
 const SnapshotCard = ({
-  pct, attColor, todayStatus, presentDays, totalDays, onPress,
+  pct, attColor, todayStatus, presentDays, absentDays, totalDays, onPress,
 }: {
   pct: number; attColor: string; todayStatus: string;
-  presentDays: number; totalDays: number; onPress: () => void;
+  presentDays: number; absentDays: number; totalDays: number; onPress: () => void;
 }) => {
   const { t } = useTranslation();
   const { theme, isDark } = useTheme();
   const P = palette(theme);
-  const absent = Math.max(0, totalDays - presentDays);
-
   return (
     <PressScale onPress={onPress}>
       <ClayView color={isDark ? theme.colors.surface : '#F8FAFC'} radius={28} style={[sn.card, { borderColor: isDark ? theme.colors.border : '#E2E8F0', borderBottomColor: isDark ? theme.colors.borderLight : '#CBD5E1' }]}>
@@ -811,7 +810,7 @@ const SnapshotCard = ({
               </View>
               <View style={[sn.vDiv, { backgroundColor: P.border }]} />
               <View style={sn.statItem}>
-                <Text style={[sn.statNum, { color: P.danger }]}>{absent}</Text>
+                <Text style={[sn.statNum, { color: P.danger }]}>{absentDays}</Text>
                 <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipAbsent')}</Text>
               </View>
               <View style={[sn.vDiv, { backgroundColor: P.border }]} />
@@ -915,9 +914,13 @@ const HomeScreen = () => {
   const attendanceStats = useMemo(() => (dash?.attendance?.summary as AttendanceSummary | null) ?? null, [dash]);
   const notices = useMemo(() => (dash?.notices as any[]) ?? [], [dash]);
   const todaysStatus = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const rec = dash?.attendance?.latest_record as { attendance_date?: string; status?: string } | null;
-    if (rec?.attendance_date?.startsWith(today) && rec.status) return rec.status;
+    const today = localAttendanceDate();
+    const rec = dash?.attendance?.latest_record;
+    if (!rec?.attendance_date?.startsWith(today)) return 'not_marked';
+    const sessionStatus = currentSession() === 'afternoon'
+      ? rec.afternoon_status
+      : rec.morning_status;
+    if (sessionStatus) return sessionStatus;
     return 'not_marked';
   }, [dash]);
 
@@ -928,14 +931,24 @@ const HomeScreen = () => {
   }, [refetch, refreshFeatures]);
 
   const nav = (key: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const r = routeMap[key];
     if (r) router.push(r as any);
   };
 
   const total = Number(attendanceStats?.total || 0);
-  const present = Number(attendanceStats?.present || 0);
-  const pct = total > 0 ? Math.round((present / total) * 100) : 0;
+  const present = Number(
+    attendanceStats?.effective_present
+      ?? (Number(attendanceStats?.present || 0)
+        + Number(attendanceStats?.late || 0)
+        + Number(attendanceStats?.half_day || 0) * 0.5)
+  );
+  const absent = Number(
+    attendanceStats?.effective_absent
+      ?? (Number(attendanceStats?.absent || 0) + Number(attendanceStats?.half_day || 0) * 0.5)
+  );
+  const pct = total > 0
+    ? Math.round(Number(attendanceStats?.attendance_percentage ?? ((present / total) * 100)))
+    : 0;
   const attClr = pct >= 85 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#EF4444';
 
   // ponytail: pinned solid header — light hero bg needs dark chrome, not scrollY=0 transparent+white text
@@ -1064,9 +1077,8 @@ const HomeScreen = () => {
                 <SnapshotCard
                   pct={pct} attColor={attClr}
                   todayStatus={todaysStatus}
-                  presentDays={present} totalDays={total}
+                  presentDays={present} absentDays={absent} totalDays={total}
                   onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     router.push('/Screen/attendance');
                   }}
                 />
@@ -1121,7 +1133,6 @@ const HomeScreen = () => {
                   onContact={() => {
                     const userId = student?.current_enrollment?.class_teacher_user_id;
                     if (userId) {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       router.push({
                         pathname: routeMap['messenger'] as any,
                         params: { preselectUserId: userId },

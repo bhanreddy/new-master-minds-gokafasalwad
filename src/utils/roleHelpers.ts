@@ -18,12 +18,6 @@ export const STAFF_ADD_LOGIN_ROLE_OPTIONS = [
 
 export type StaffAddLoginRoleCode = (typeof STAFF_ADD_LOGIN_ROLE_OPTIONS)[number]['code'];
 
-/** Role codes that may sign in through the Staff portal login screen. */
-export const STAFF_LOGIN_ALLOWED_ROLE_CODES: readonly string[] = [
-  ...STAFF_ADD_LOGIN_ROLE_OPTIONS.map((o) => o.code),
-  'teacher', // legacy alias — DB stores `staff`, some sessions may still report `teacher`
-];
-
 /** Role codes that may access /staff/* routes after login. */
 export const STAFF_PORTAL_ROLE_CODES: readonly string[] = [
   ...STAFF_ADD_LOGIN_ROLE_OPTIONS.filter((o) => o.portal === 'staff').map((o) => o.code),
@@ -32,7 +26,7 @@ export const STAFF_PORTAL_ROLE_CODES: readonly string[] = [
 
 /**
  * Map a staff designation name to the login role assigned on create.
- * Keeps add-staff and staff-login in sync.
+ * Keeps add-staff role assignment in sync with the roles the portals expect.
  */
 export function resolveRoleFromDesignation(designationName: string | null | undefined): StaffAddLoginRoleCode {
   const name = String(designationName || '').trim().toLowerCase();
@@ -68,12 +62,6 @@ export function isStudentRole(roleCode: string | null | undefined): boolean {
 export function isPersistentSessionRole(roleCode: string | null | undefined): boolean {
   if (!roleCode) return true;
   return roleCode !== 'accountant' && roleCode !== 'accounts';
-}
-
-/** Roles allowed to sign in through the Staff portal login screen. */
-export function isStaffLoginAllowedRole(roleCode: string | null | undefined): boolean {
-  if (!roleCode) return false;
-  return STAFF_LOGIN_ALLOWED_ROLE_CODES.includes(roleCode);
 }
 
 /** Roles allowed to access /staff/* app routes. */

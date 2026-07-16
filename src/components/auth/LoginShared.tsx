@@ -87,6 +87,8 @@ export const FloatingInput: React.FC<FloatingInputProps> = ({
   errorText,
   delay = 0,
   rightAction,
+  onFocus,
+  onBlur,
   ...rest
 }) => {
   const C = useLoginTheme();
@@ -99,14 +101,19 @@ export const FloatingInput: React.FC<FloatingInputProps> = ({
     if (value) anim.value = withTiming(1, { duration: 200 });
   }, [anim, value]);
 
-  const handleFocus = () => {
+  // Compose the internal float-label handlers with any forwarded focus/blur
+  // listeners (e.g. the login screen's doodle focus tracking) — a forwarded
+  // handler must never silently replace the label animation.
+  const handleFocus = (e: any) => {
     focused.current = true;
     anim.value = withTiming(1, { duration: 200 });
+    onFocus?.(e);
   };
 
-  const handleBlur = () => {
+  const handleBlur = (e: any) => {
     focused.current = false;
     if (!value) anim.value = withTiming(0, { duration: 200 });
+    onBlur?.(e);
   };
 
   const labelStyle = useAnimatedStyle(() => ({

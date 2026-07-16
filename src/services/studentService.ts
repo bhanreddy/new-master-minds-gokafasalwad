@@ -14,7 +14,12 @@ export interface StudentDashboardResponse {
     notices: unknown[];
     attendance: {
         summary: AttendanceSummary | null;
-        latest_record: { attendance_date: string; status: string } | null;
+        latest_record: {
+            attendance_date: string;
+            status: string;
+            morning_status?: string | null;
+            afternoon_status?: string | null;
+        } | null;
     };
     upcoming_fee: unknown | null;
     timetable_today: unknown[];
@@ -69,21 +74,56 @@ export interface UpdateStudentRequest {
     parents?: Parent[];
 }
 
+export interface StudentListParams {
+    search?: string;
+    limit?: number;
+    page?: number;
+    class_id?: string;
+    section_id?: string;
+    status_id?: number | string;
+    sort_by?: 'name' | 'roll_number' | 'admission_no';
+    sort_order?: 'asc' | 'desc';
+}
+
+export interface StudentListPage<T = Student> {
+    data: T[];
+    meta?: { total: number; page: number; limit: number; total_pages: number };
+}
+
 export const StudentService = {
     /**
      * Get paginated list of students
      */
-    getAll: async <T = Student>(params?: {
-        search?: string;
-        limit?: number;
-        page?: number;
-        class_id?: string;
-        section_id?: string;
-        status_id?: number | string;
-        sort_by?: 'name' | 'roll_number' | 'admission_no';
-        sort_order?: 'asc' | 'desc';
-    }): Promise<{ data: T[]; meta?: { total: number; page: number; limit: number; total_pages: number } }> => {
-        return api.get<{ data: T[]; meta?: any }>('/students', params);
+    getAll: async <T = Student>(params?: StudentListParams): Promise<StudentListPage<T>> => {
+        return api.get<StudentListPage<T>>('/students', params);
+    },
+
+    /** Fetch every page for complete user directories and full-dataset searches. */
+    getAllPages: async <T = Student>(params?: Omit<StudentListParams, 'page'>): Promise<T[]> => {
+        const limit = Math.min(100, Math.max(1, params?.limit ?? 100));
+        const allRows: T[] = [];
+        let page = 1;
+
+        while (true) {
+            const res = await api.get<StudentListPage<T> | T[]>('/students', {
+                ...params,
+                page,
+                limit,
+            });
+            const rows = Array.isArray(res) ? res as T[] : res?.data ?? [];
+            allRows.push(...rows);
+
+            // A bare array is only possible with a legacy backend and represents
+            // the complete response because it has no pagination metadata.
+            if (Array.isArray(res)) break;
+
+            const totalPages = Number(res?.meta?.total_pages) || 1;
+            const total = Number(res?.meta?.total) || allRows.length;
+            if (page >= totalPages || allRows.length >= total || rows.length === 0) break;
+            page += 1;
+        }
+
+        return allRows;
     },
 
     /**

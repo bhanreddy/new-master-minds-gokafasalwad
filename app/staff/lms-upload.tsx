@@ -63,10 +63,6 @@ export default function StaffLMSUpload() {
   }, [selectedAssignment]);
 
   const handleUpload = async () => {
-    if (isViewingAsAdmin) {
-      alertCompat('Read-only', 'Content can\'t be uploaded while viewing another staff member\'s portal.');
-      return;
-    }
     if (!selectedAssignment || !topic || !subTopic || !videoUrl) {
       alertCompat('Error', 'Please fill in all required fields');
       return;
@@ -114,7 +110,7 @@ export default function StaffLMSUpload() {
     <View style={styles.container}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.background} />
       <StaffHeader title="Upload LMS Content" showBackButton={true} />
-      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

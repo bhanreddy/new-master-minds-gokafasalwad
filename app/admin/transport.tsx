@@ -503,6 +503,18 @@ export default function AdminTransport() {
           <View style={styles.busActionsRow}>
             <TouchableOpacity
               style={[styles.editActionBtn, styles.busActionBtn]}
+              onPress={() => router.push({
+                pathname: '/admin/route-calibration' as any,
+                params: { routeId: item.id, routeName: encodeURIComponent(item.name) },
+              })}
+              disabled={creating}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="analytics-outline" size={16} color="#4338CA" />
+              <Text style={styles.editActionText}>Calibration</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.editActionBtn, styles.busActionBtn]}
               onPress={() => openEditRouteModal(item)}
               disabled={creating}
               activeOpacity={0.8}

@@ -9,7 +9,9 @@ import {
   Modal,
   Pressable,
   StatusBar,
+  Platform,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import ScreenLayout from '../../src/components/ScreenLayout';
@@ -22,6 +24,27 @@ import { useTheme } from '../../src/hooks/useTheme';
 /** Legacy trips may still use `active`; canonical live status is `in_progress`. */
 const tripStatusIsActive = (s?: string | null) =>
   s === 'in_progress' || s === 'active';
+
+/**
+ * Best-effort recent GPS fix for calibration capture (Phase A). Native only;
+ * returns {} when permission is missing or no recent fix exists — the mark
+ * still goes through, it just doesn't contribute a calibration sample.
+ */
+const calibrationFixBody = async (): Promise<Record<string, unknown>> => {
+  if (Platform.OS === 'web') return {};
+  try {
+    const pos = await Location.getLastKnownPositionAsync({ maxAge: 120_000 });
+    if (!pos) return {};
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? null,
+      is_mocked: pos.mocked || false,
+    };
+  } catch {
+    return {};
+  }
+};
 
 type TripPayload = {
   trip: {
@@ -121,7 +144,11 @@ export default function DriverTripScreen() {
       });
     }
     try {
-      await api.post(`/transport/driver/trip/${trip.id}/stop/${stopId}/reach`, {});
+      const fix = await calibrationFixBody();
+      await api.post(`/transport/driver/trip/${trip.id}/stop/${stopId}/reach`, {
+        ...fix,
+        source: 'manual',
+      });
       alertCompat('Updated', 'Stop marked — notifications sent');
     } catch (e: any) {
       if (prev) setPayload(prev);
@@ -135,6 +162,11 @@ export default function DriverTripScreen() {
     if (!trip?.id || submitting) return;
     setSubmitting(true);
     try {
+      // Natural moment to ask for GPS: fixes captured on "Mark reached" feed
+      // route calibration (Phase A). Non-blocking; trip starts either way.
+      if (Platform.OS !== 'web') {
+        Location.requestForegroundPermissionsAsync().catch(() => {});
+      }
       await api.post(`/transport/driver/trip/${trip.id}/start`, {});
       await loadTrip(true);
     } catch (e: any) {

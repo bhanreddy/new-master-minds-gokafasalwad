@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useContext, useState, useEffect } from 'react';
 import { View, Text, ScrollView, Platform, StyleSheet, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { toastConfig } from '../src/components/CustomToast';
@@ -26,6 +27,9 @@ import SchoolRibbon, {
 } from '../src/components/SchoolRibbon';
 import { useSchoolHeader } from '../src/hooks/useSchoolHeader';
 import { notificationManager } from '../src/services/notificationManager';
+// Side-effect import: registers the driver background-location task in global
+// scope so a headless OS restart of the foreground service can find it.
+import '../src/services/driverLocationTask';
 
 // NOTE: setNotificationHandler is set once in notificationManager.ts (module-level).
 // NOTE: setBackgroundMessageHandler is registered in index.js (the JS entry point)
@@ -139,9 +143,11 @@ export default function Layout() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <CustomAlertProvider>
-          <ThemeSyncWrapper />
-        </CustomAlertProvider>
+        <KeyboardProvider>
+          <CustomAlertProvider>
+            <ThemeSyncWrapper />
+          </CustomAlertProvider>
+        </KeyboardProvider>
       </ThemeProvider>
     </AuthProvider>);
 

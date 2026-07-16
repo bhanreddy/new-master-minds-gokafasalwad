@@ -121,6 +121,12 @@ export interface AttendanceSummary {
     readonly present: number;
     readonly absent: number;
     readonly late: number;
+    readonly half_day?: number;
+    /** Full-day equivalent: present + late + 0.5 × half-day. */
+    readonly effective_present?: number;
+    /** Full-day equivalent: absent + 0.5 × half-day. */
+    readonly effective_absent?: number;
+    readonly attendance_percentage?: number | null;
     readonly total: number;
 }
 

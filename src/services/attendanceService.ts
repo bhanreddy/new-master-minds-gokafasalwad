@@ -5,6 +5,14 @@ import type { DailyAttendance, AttendanceStatus, AttendanceSession } from '../ty
 export const currentSession = (): AttendanceSession =>
     new Date().getHours() < 13 ? 'morning' : 'afternoon';
 
+/** Local calendar date (not UTC) for attendance and timetable lookups. */
+export const localAttendanceDate = (date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 export interface MarkAttendanceRequest {
     class_section_id: string;
     date: string; // YYYY-MM-DD

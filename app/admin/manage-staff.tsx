@@ -28,12 +28,13 @@ import Animated, {
   withRepeat,
   ZoomIn,
 } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AdminHeader from '../../src/components/AdminHeader';
 import { StaffService } from '../../src/services/staffService';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
 import { usePermissions } from '../../src/hooks/usePermissions';
+import { clearStaffPortalSession, setStaffPortalSession } from '../../src/services/staffPortalSession';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -307,11 +308,14 @@ export default function ManageStaff() {
   const orb2Color = isDark ? 'rgba(0,196,140,0.05)' : 'rgba(0,196,140,0.06)';
 
   useEffect(() => { fetchStaff(); }, []);
+  useFocusEffect(React.useCallback(() => {
+    clearStaffPortalSession();
+  }, []));
 
   const fetchStaff = async () => {
     try {
       setLoading(true);
-      const data = await StaffService.getAll();
+      const data = await StaffService.getAllPages();
       const mapped: StaffMember[] = data.map((item) => ({
         id: item.id,
         first_name: item.first_name || '',
@@ -323,8 +327,9 @@ export default function ManageStaff() {
         phone: item.phone || '',
       }));
       setStaffList(mapped);
-    } catch {
-      alertCompat('Error', 'Failed to load staff list');
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      alertCompat('Error', `Failed to load staff list\n${detail}`);
     } finally {
       setLoading(false);
     }
@@ -352,6 +357,26 @@ export default function ManageStaff() {
     Linking.openURL(url).catch(() =>
       alertCompat('Error', `Unable to place a call to ${name}.`)
     );
+  };
+
+  const handleOpenPortal = async (item: StaffMember) => {
+    try {
+      const staff = await StaffService.getById(item.id);
+      if (!staff.user_id || staff.account_status !== 'active') {
+        alertCompat(
+          'Staff Login Required',
+          'This staff member needs an active login account before the portal can be opened in read/write mode.',
+        );
+        return;
+      }
+      setStaffPortalSession(item.id, item.display_name, staff.user_id);
+      router.push({
+        pathname: '/staff/dashboard',
+        params: { staffId: item.id, viewAsName: item.display_name, viewAsUserId: staff.user_id },
+      } as any);
+    } catch (error: any) {
+      alertCompat('Cannot Open Portal', error?.message || 'Could not validate this staff account.');
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -512,12 +537,7 @@ export default function ManageStaff() {
               avatarBg={avatarBg}
               onCall={() => handleCall(item.phone, item.display_name)}
               onDelete={() => handleDelete(item.id, item.display_name)}
-              onOpenPortal={() =>
-                router.push({
-                  pathname: '/staff/dashboard',
-                  params: { staffId: item.id, viewAsName: item.display_name },
-                } as any)
-              }
+              onOpenPortal={() => handleOpenPortal(item)}
               canEdit={hasPermission('staff.edit')}
               onEdit={() => router.push({ pathname: '/admin/addStaff', params: { id: item.id } } as any)}
             />

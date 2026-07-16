@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,8 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { FeeCollector, FeeService } from '../../src/services/feeService';
 import { generateReceiptPDF } from '../../src/utils/pdfGenerator';
+import { exportCollectionCsv } from '../../src/utils/collectionReport';
+import { SCHOOL_NAME } from '../../src/constants/school';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
@@ -19,6 +21,17 @@ import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 
 const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+
+/**
+ * True only for a complete, real calendar date in strict YYYY-MM-DD form.
+ * Guards the API from partially-typed values like "2026-06-1" that the
+ * backend rejects with a 500 ("Invalid time value").
+ */
+const isValidDateInput = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = new Date(`${value}T00:00:00`).getTime();
+  return !Number.isNaN(time);
+};
 
 const monthStart = () => {
   const now = new Date();
@@ -62,6 +75,7 @@ export default function ReceiptsScreen() {
   const [selectedCollectorId, setSelectedCollectorId] = useState<string | null>(null);
   const [collectionTotal, setCollectionTotal] = useState<number | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const filters = ['All', 'Fees', 'Uniform', 'Transport', 'Other'];
   const canPickCollector = isAdminRole(role);
   const currentUserId = user?.userId || user?.id || null;
@@ -80,6 +94,11 @@ export default function ReceiptsScreen() {
   }, [canPickCollector, currentUserId]);
 
   const loadData = useCallback(async () => {
+    // Skip while a date field is mid-edit / invalid so we never send the
+    // backend a malformed date (which returns a 500 "Invalid time value").
+    if (!isValidDateInput(fromDate) || !isValidDateInput(toDate)) {
+      return;
+    }
     setLoading(true);
     try {
       const receivedBy = selectedCollectorId || (canPickCollector ? undefined : currentUserId || undefined);
@@ -147,6 +166,82 @@ export default function ReceiptsScreen() {
     }
     return list;
   }, [receipts, selectedFilter, searchQuery]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    if (!isValidDateInput(fromDate) || !isValidDateInput(toDate)) {
+      alertCompat('Invalid dates', 'Please enter valid FROM and TO dates (YYYY-MM-DD).');
+      return;
+    }
+    const sameDay = fromDate === toDate;
+    const selectedCollectorName = selectedCollectorId
+      ? collectors.find((c) => c.id === selectedCollectorId)?.name
+      : null;
+    const accountantName =
+      selectedCollectorName ||
+      (canPickCollector
+        ? 'All accountants'
+        : user?.displayName || user?.display_name || user?.name || 'Accountant');
+
+    const filterParts: string[] = [];
+    if (selectedFilter !== 'All') filterParts.push(`Category: ${selectedFilter}`);
+    if (searchQuery.trim()) filterParts.push(`Search: ${searchQuery.trim()}`);
+
+    setExporting(true);
+    try {
+      // Re-fetch the full set for the range (paginated) so the export isn't
+      // capped at the on-screen limit, then re-apply the same client filters.
+      const receivedBy = selectedCollectorId || (canPickCollector ? undefined : currentUserId || undefined);
+      const allRows = await FeeService.getAllTransactions({
+        from_date: fromDate,
+        to_date: `${toDate}T23:59:59`,
+        received_by: receivedBy,
+      });
+
+      const q = searchQuery.trim().toLowerCase();
+      const rows = allRows.filter((tx) => {
+        if (selectedFilter !== 'All' && feeTypeToFilterCategory(tx.fee_type) !== selectedFilter) {
+          return false;
+        }
+        if (q) {
+          const name = (tx.student_name || '').toLowerCase();
+          const adm = String(tx.admission_no ?? '').toLowerCase();
+          const ref = String(tx.transaction_ref ?? '').toLowerCase();
+          const id = String(tx.id ?? '').toLowerCase();
+          if (!(name.includes(q) || adm.includes(q) || ref.includes(q) || id.includes(q))) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      if (rows.length === 0) {
+        alertCompat('Nothing to export', 'There are no transactions in the selected range.');
+        return;
+      }
+
+      await exportCollectionCsv(rows, {
+        schoolName: SCHOOL_NAME,
+        accountantName,
+        dateLabel: sameDay ? fromDate : `${fromDate} → ${toDate}`,
+        dateIso: sameDay ? fromDate : `${fromDate}_to_${toDate}`,
+        filterNote: filterParts.length > 0 ? filterParts.join(' · ') : undefined,
+      });
+    } catch (error) {
+      alertCompat('Error', 'Failed to download the Excel file.');
+    } finally {
+      setExporting(false);
+    }
+  }, [
+    fromDate,
+    toDate,
+    selectedCollectorId,
+    collectors,
+    canPickCollector,
+    currentUserId,
+    user,
+    selectedFilter,
+    searchQuery,
+  ]);
 
   const handlePrint = async (transaction: any) => {
     try {
@@ -515,6 +610,48 @@ export default function ReceiptsScreen() {
         </View>
       ) : null}
 
+      {/* Download Excel */}
+      <Pressable
+        onPress={handleDownloadExcel}
+        disabled={exporting || loading}
+        style={[
+          styles.downloadBtn,
+          {
+            borderTopWidth: 1.5,
+            borderTopColor: 'rgba(255,255,255,0.45)',
+            borderBottomWidth: 3.5,
+            borderBottomColor: 'rgba(4,120,87,0.25)',
+            shadowColor: '#059669',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            elevation: 4,
+            position: 'relative',
+            overflow: 'hidden',
+          },
+          (exporting || loading) && { opacity: 0.65 },
+        ]}
+      >
+        <View style={[StyleSheet.absoluteFill, { borderRadius: 14, overflow: 'hidden' }]}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }} end={{ x: 0.6, y: 0.9 }}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        </View>
+        {exporting ? (
+          <ActivityIndicator size="small" color="#fff" style={{ zIndex: 2 }} />
+        ) : (
+          <>
+            <Ionicons name="download-outline" size={16} color="#fff" style={{ zIndex: 2 }} />
+            <Text style={[styles.downloadBtnText, { zIndex: 2 }]}>
+              {fromDate === toDate ? 'Download Excel (this day)' : 'Download Excel'}
+            </Text>
+          </>
+        )}
+      </Pressable>
+
       {/* Search Bar */}
       <View
         style={[
@@ -703,6 +840,21 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   },
   totalValue: {
     fontSize: 22,
+    fontWeight: '800',
+  },
+  downloadBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#059669',
+  },
+  downloadBtnText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '800',
   },
   searchContainerFrame: {

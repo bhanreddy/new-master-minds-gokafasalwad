@@ -617,10 +617,6 @@ export default function StaffComplaints() {
   };
 
   const handleSubmit = async () => {
-    if (isViewingAsAdmin) {
-      alertCompat('Read-only', 'Complaints can\'t be filed while viewing another staff member\'s portal.');
-      return;
-    }
     if (!title || !desc) {
       alertCompat('Missing Fields', 'Please fill in the title and description.');
       return;
@@ -674,7 +670,7 @@ export default function StaffComplaints() {
       />
 
       <StaffHeader title="Complaints & Remarks" showBackButton />
-      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
       <ScrollView
         showsVerticalScrollIndicator={false}

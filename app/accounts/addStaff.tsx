@@ -201,10 +201,14 @@ const InputField = ({
   const [webReadOnly, setWebReadOnly] = useState(Platform.OS === 'web');
   const isPassword = !!secureTextEntry;
 
+  // Precompute outside the worklet — calling FORM.border() inside useAnimatedStyle
+  // synchronously invokes a non-worklet fn on the UI thread, which hard-crashes
+  // (blank screen) on Android under New Arch + Reanimated.
+  const idleBorder = FORM.border(isDark);
   const borderStyle = useAnimatedStyle(() => ({
     borderColor: focused.value === 1
       ? accentColor
-      : FORM.border(isDark),
+      : idleBorder,
     borderWidth: focused.value === 1 ? 1.5 : 1,
   }));
 
@@ -480,8 +484,11 @@ const secSt = StyleSheet.create({
 const SalaryField = ({ value, onChange, isDark, accentColor }: any) => {
   const focused = useSharedValue(0);
   const [webReadOnly, setWebReadOnly] = useState(Platform.OS === 'web');
+  // Precompute outside the worklet (see InputField note) to avoid the UI-thread
+  // non-worklet crash that blanks the screen on Android.
+  const idleBorder = FORM.border(isDark);
   const borderStyle = useAnimatedStyle(() => ({
-    borderColor: focused.value === 1 ? accentColor : FORM.border(isDark),
+    borderColor: focused.value === 1 ? accentColor : idleBorder,
     borderWidth: focused.value === 1 ? 1.5 : 1,
   }));
 

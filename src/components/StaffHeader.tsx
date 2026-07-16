@@ -10,6 +10,7 @@ import { SCHOOL_NAME } from '../constants/school';
 import { schoolColorWithAlpha } from '../constants/schoolConfig';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
+import { useEffectiveStaffId } from '../hooks/useEffectiveStaffId';
 import { Spacing } from '../theme/themes';
 
 import Animated, { SharedValue, useAnimatedStyle, interpolateColor, interpolate, Extrapolation } from 'react-native-reanimated';
@@ -39,6 +40,8 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
     const { theme, isDark } = useTheme();
     const [menuVisible, setMenuVisible] = useState(false);
     const { user } = useAuth();
+    const { staffId, isViewingAsAdmin, viewAsName, userId: viewAsUserId } = useEffectiveStaffId();
+    const viewAsParams = isViewingAsAdmin ? { staffId, viewAsName, viewAsUserId } : undefined;
 
     const accent = theme.colors.primary;
 
@@ -94,7 +97,7 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
     const runBack = () => {
         if (onBack) onBack();
         else if (router.canGoBack()) router.back();
-        else router.push('/staff/dashboard' as any);
+        else router.push({ pathname: '/staff/dashboard', params: viewAsParams } as any);
     };
 
     return (
@@ -146,7 +149,7 @@ const StaffHeader: React.FC<StaffHeaderProps> = ({
                 <View style={styles.rightSection}>
                     {showProfileButton && (
                         <ClayIconButton
-                            onPress={() => router.push('/staff/settings' as any)}
+                            onPress={() => router.push({ pathname: '/staff/settings', params: viewAsParams } as any)}
                             isDark={isDark}
                             accent={accent}
                             round

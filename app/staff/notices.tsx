@@ -15,6 +15,8 @@ import LogoLoader from '../../src/components/LogoLoader'; // OPT: Loader.
 import { useApiQuery } from '../../src/hooks/useApiQuery'; // OPT: Cached GET layer.
 import { useAuth } from '../../src/hooks/useAuth'; // OPT: userId for cache partition keying in useApiQuery.
 import { ErrorBoundary } from '../../src/components/ErrorBoundary'; // OPT: Same boundary as Screen/_layout export target.
+import ViewAsBanner from '../../src/components/ViewAsBanner';
+import { useEffectiveStaffId } from '../../src/hooks/useEffectiveStaffId';
 
 interface UINotice { // OPT: FlatList row model (UI-only shape).
   id: string; // OPT:
@@ -179,6 +181,7 @@ function AnnouncementsScreenInner() { // OPT: Wrapped by ErrorBoundary in defaul
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]); // OPT: Stylesheet memo.
   const { t } = useTranslation(); // OPT: i18n.
   const { user } = useAuth(); // OPT: userId for hook partition in useApiQuery.
+  const { isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
 
   const { data: noticePayload, loading } = useApiQuery<Notice[]>( // OPT: Network-first notices list with TTL.
     '/notices', // OPT: Backend notices collection route.
@@ -225,6 +228,7 @@ function AnnouncementsScreenInner() { // OPT: Wrapped by ErrorBoundary in defaul
         showBackButton={true}
         title={t('announcements.title', 'Announcements')}
       />
+      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
       <View style={styles.container}>
         {/* Header Introduction Block */}
         <View style={styles.headerSection}>

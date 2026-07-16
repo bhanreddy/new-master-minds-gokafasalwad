@@ -4,7 +4,7 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, StatusBar, KeyboardAvoidingView,
+  TouchableOpacity, StatusBar,
   Platform, Modal, FlatList, Keyboard, Pressable,
   Dimensions
 } from 'react-native';
@@ -32,6 +32,7 @@ import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
 import ClayPasswordToggle from '../../src/components/ClayPasswordToggle';
 import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -618,12 +619,13 @@ export default function AddStudentScreen() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
       {!shellActive && <AdminHeader title={isEditMode ? 'Edit Student' : 'Add Student'} showBackButton />}
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <KeyboardAwareScreen
+        variant="scroll"
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}
+        extraScrollPadding={60}
+      >
 
           {/* ── HERO HEADER CARD ── */}
           <Animated.View entering={FadeInDown.duration(500)}>
@@ -882,8 +884,7 @@ export default function AddStudentScreen() {
             </Pressable>
           </Animated.View>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScreen>
 
       <AdmissionSuccessModal
         visible={!!enrolledForm}

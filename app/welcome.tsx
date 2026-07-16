@@ -1,4 +1,4 @@
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,6 +7,7 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Image,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -33,10 +34,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
+import { WelcomeGuideDoodle } from "../src/components/doodles/WelcomeGuideDoodle";
 import { SCHOOL_NAME } from "../src/constants/school";
 import { SCHOOL_CONFIG, schoolColorWithAlpha } from "../src/constants/schoolConfig";
 import { useAuth } from "../src/hooks/useAuth";
 import { useTheme } from "../src/hooks/useTheme";
+import { useWelcomeGuideAnimation } from "../src/hooks/useWelcomeGuideAnimation";
 import { AuthService } from "../src/services/authService";
 import { isStudentRole } from "../src/utils/roleHelpers";
 
@@ -245,12 +248,12 @@ const HeroOrbitCrest = memo(function HeroOrbitCrest({
   glowSoft: string;
   crestBg: string;
   hubShadow: string;
-  satellites: ReadonlyArray<{
+  satellites: readonly {
     angle: number;
     phase: number;
     colors: readonly [string, string, string];
     icon: keyof typeof Ionicons.glyphMap;
-  }>;
+  }[];
   arcGradient: readonly [string, string, string];
   motionEnabled: boolean;
 }) {
@@ -451,172 +454,6 @@ const HeroOrbitCrest = memo(function HeroOrbitCrest({
   );
 });
 
-/* ─── Secondary portal card (2-up grid tile) ─────────────────────────────── */
-const PortalTile = memo(function PortalTile({
-  icon,
-  title,
-  subtitle,
-  accentColor,
-  onPress,
-  s,
-  borderRadius,
-  tileWidth,
-  surfaceEnd,
-  titleColor,
-  subColor,
-  isDark,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  accentColor: string;
-  onPress: () => void;
-  s: (n: number) => number;
-  borderRadius: number;
-  tileWidth: number;
-  surfaceEnd: string;
-  titleColor: string;
-  subColor: string;
-  isDark: boolean;
-}) {
-  const pressed = useSharedValue(0);
-
-  const onPressIn = useCallback(() => {
-    pressed.value = withTiming(1, { duration: 90 });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [pressed]);
-  const onPressOut = useCallback(() => {
-    pressed.value = withTiming(0, { duration: 120 });
-  }, [pressed]);
-
-  const anim = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.975]) }],
-    opacity: interpolate(pressed.value, [0, 1], [1, 0.94]),
-  }));
-
-  const tint = (a: number) => schoolColorWithAlpha(accentColor, a);
-
-  return (
-    <Animated.View
-      style={[
-        styles.tile,
-        {
-          width: tileWidth,
-          borderRadius,
-          borderColor: tint(isDark ? 0.24 : 0.12),
-          ...(isDark
-            ? Platform.select({
-                ios: {
-                  shadowColor: accentColor,
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.18,
-                  shadowRadius: 12,
-                },
-                android: { elevation: 4 },
-                default: {
-                  shadowColor: accentColor,
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.18,
-                  shadowRadius: 12,
-                },
-              })
-            : null),
-        },
-        anim,
-      ]}
-    >
-      <LinearGradient
-        colors={[surfaceEnd, surfaceEnd, surfaceEnd]}
-        locations={[0, 0.35, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[StyleSheet.absoluteFillObject, { borderRadius }]}
-      />
-      <View
-        pointerEvents="none"
-        style={[
-          styles.tileAccent,
-          {
-            backgroundColor: accentColor,
-            width: s(3),
-            borderTopLeftRadius: borderRadius,
-            borderBottomLeftRadius: borderRadius,
-          },
-        ]}
-      />
-      <Pressable
-        onPress={onPress}
-        onPressIn={onPressIn}
-        onPressOut={onPressOut}
-        style={[
-          styles.tileInner,
-          {
-            flexDirection: "row",
-            alignItems: "center",
-            paddingVertical: s(12),
-            paddingHorizontal: s(14),
-            paddingLeft: s(16),
-            minHeight: s(92),
-            gap: s(11),
-          },
-        ]}
-        android_ripple={{ color: tint(0.08), foreground: true }}
-      >
-        <LinearGradient
-          colors={[tint(isDark ? 0.22 : 0.13), tint(0.04)]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[
-            styles.tileIcon,
-            {
-              width: s(40),
-              height: s(40),
-              borderRadius: s(12),
-              borderColor: tint(isDark ? 0.28 : 0.14),
-            },
-          ]}
-        >
-          {icon}
-        </LinearGradient>
-        <View style={[styles.tileText, { flex: 1, minWidth: 0, gap: s(2) }]}>
-          <Text
-            style={[styles.tileTitle, { fontSize: s(14), color: titleColor }]}
-            numberOfLines={1}
-          >
-            {title}
-          </Text>
-          <Text
-            style={[
-              styles.tileSub,
-              {
-                color: subColor,
-                fontSize: Math.max(s(11), 10),
-                lineHeight: Math.max(s(15), 14),
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {subtitle}
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.tileArrow,
-            {
-              width: s(24),
-              height: s(24),
-              borderRadius: s(12),
-              backgroundColor: tint(isDark ? 0.12 : 0.06),
-            },
-          ]}
-        >
-          <Ionicons name="chevron-forward" size={s(13)} color={accentColor} />
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-});
-
 /* ─── MAIN ───────────────────────────────────────────────────────────────── */
 export default function Index() {
   const router = useRouter();
@@ -634,37 +471,61 @@ export default function Index() {
     winW,
     s,
     pagePad,
-    gridGap,
-    gridColumns,
-    innerW,
-    glowSize,
     isMobile,
   } = useResponsiveLayout();
 
   const tileBorderRadius = s(22);
-  const portalTileW = gridColumns === 2 ? (innerW - gridGap) / 2 : innerW;
-  const ambientGlowSize = Math.min(glowSize, 520);
 
-  /* Portal icon sizes track the tile scale */
-  const tileIconSize = s(22);
-  const tileIconSizeLg = s(23);
-
-  /* Student card illustration — larger on every breakpoint, anchored bottom-right */
-  const studentDoodleW = isMobile ? s(188) : s(280);
+  /* Reference composition: students break through the card's top-left edge,
+     while the guide owns the top-right and targets the CTA arrow below. */
+  const studentDoodleW = isMobile ? s(164) : s(236);
   const studentDoodleH = studentDoodleW * STUDENT_DOODLE_ASPECT;
-  const studentTextGutter = isMobile ? s(148) : 0;
+  const studentTextGutter = isMobile ? s(128) : s(214);
 
-  /* Student card press */
+  /* Animated guide mascot — sits on the Login card's top edge and points at
+     it every ~5s. Size scales with the layout; the overhang reserves layout
+     space above the card so nothing is negative-margin clipped on Android. */
+  const guideSize = isMobile ? s(92) : s(114);
+  const guideOverhang = Math.round(
+    Math.max(guideSize * 0.62, studentDoodleH * 0.42),
+  );
+  const guideRight = isMobile ? s(19) : s(13);
+  const studentCardMinHeight = s(isMobile ? 218 : 232);
+  const arrowCenterFromCardBottom = s(51);
+  const fallbackGuideTargetY =
+    guideOverhang + studentCardMinHeight - arrowCenterFromCardBottom;
+  const [guideTargetY, setGuideTargetY] = useState(fallbackGuideTargetY);
+
+  useEffect(() => {
+    setGuideTargetY(fallbackGuideTargetY);
+  }, [fallbackGuideTargetY]);
+
+  const onStudentCardLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height } = event.nativeEvent.layout;
+    setGuideTargetY(guideOverhang + height - arrowCenterFromCardBottom);
+  }, [arrowCenterFromCardBottom, guideOverhang]);
+
+  /* Student card press + guide timeline (press scale × attention pulse are
+     combined into ONE transform inside the hook — two separate animated
+     styles would overwrite each other's transform). */
   const studentPressed = useSharedValue(0);
+  const { pointProgress, idleFloat, cardAnimatedStyle, stopGuide } =
+    useWelcomeGuideAnimation({ motionEnabled, pressedSV: studentPressed });
+
   const onStudentIn = useCallback(() => {
     studentPressed.value = withTiming(1, { duration: 90 });
+    // First interaction with the card retires the pointing guide this session
+    // (covers both "pause while pressed" and "stop after first interaction").
+    stopGuide();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, [studentPressed]);
+  }, [studentPressed, stopGuide]);
   const onStudentOut = useCallback(() => {
     studentPressed.value = withTiming(0, { duration: 120 });
   }, [studentPressed]);
-  const studentAnim = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(studentPressed.value, [0, 1], [1, 0.975]) }],
+
+  /* Glass sheen brightens subtly while the card is pressed (opacity-only). */
+  const sheenAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(studentPressed.value, [0, 1], [0.85, 1]),
   }));
 
   /* Subtle forward nudge on the primary CTA arrow */
@@ -681,10 +542,38 @@ export default function Index() {
       ),
     );
   }, [arrowNudge, motionEnabled]);
-  const arrowAnim = useAnimatedStyle(() => ({
-    transform: motionEnabled
-      ? [{ translateX: interpolate(arrowNudge.value, [0, 1], [0, 3]) }]
-      : [],
+  const arrowAnim = useAnimatedStyle(() => {
+    const guideTapScale = interpolate(
+      pointProgress.value,
+      [0, 0.63, 0.69, 0.76, 0.84, 1],
+      [1, 1, 0.84, 1.08, 1, 1],
+    );
+    const manualPressScale = interpolate(studentPressed.value, [0, 1], [1, 0.9]);
+    return {
+      transform: motionEnabled
+        ? [
+            { translateX: interpolate(arrowNudge.value, [0, 1], [0, 3]) },
+            { scale: guideTapScale * manualPressScale },
+          ]
+        : [{ scale: manualPressScale }],
+    };
+  });
+
+  const arrowRippleAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      pointProgress.value,
+      [0, 0.66, 0.7, 0.82, 1],
+      [0, 0, 0.7, 0, 0],
+    ),
+    transform: [
+      {
+        scale: interpolate(
+          pointProgress.value,
+          [0, 0.66, 0.7, 0.82, 1],
+          [0.6, 0.6, 0.8, 1.75, 1.75],
+        ),
+      },
+    ],
   }));
 
   /* Time-of-day greeting */
@@ -707,7 +596,7 @@ export default function Index() {
     }).catch(() => {
       setStudentCheckDone(true);
     });
-  }, [loading, user]);
+  }, [loading, router, user]);
 
   if (loading || user || !studentCheckDone) {
     return <View style={{ flex: 1, backgroundColor: C.screenBg }} />;
@@ -859,208 +748,195 @@ export default function Index() {
             entering={motionEnabled ? CARD_ENTER : undefined}
             style={[styles.sectionLabel, { color: C.inkD, marginBottom: s(16) }]}
           >
-            CHOOSE YOUR PORTAL
+            WELCOME
           </Animated.Text>
 
-          {/* ── Primary: Student Portal ─────────────────────────────── */}
-          <Animated.View
-            entering={motionEnabled ? CARD_ENTER.delay(40) : undefined}
-            style={[
-              styles.studentWrap,
-              {
-                width: "100%",
-                borderRadius: s(32),
-                marginBottom: s(24),
-                backgroundColor: C.p,
-                ...Platform.select({
-                  ios: {
-                    shadowColor: C.p,
-                    shadowOffset: { width: 0, height: 20 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 36,
-                  },
-                  android: { elevation: 12 },
-                  default: {
-                    shadowColor: C.p,
-                    shadowOffset: { width: 0, height: 20 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 36,
-                  },
-                }),
-              },
-              studentAnim,
-            ]}
-          >
-            <Pressable
-              onPress={() => router.push("/login")}
-              onPressIn={onStudentIn}
-              onPressOut={onStudentOut}
-              style={[styles.studentPressable, { borderRadius: s(32) }]}
-            >
-              <LinearGradient
-                colors={[...C.studentGradient]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ minHeight: s(isMobile ? 218 : 228), padding: s(24) }}
-              >
-                {/* Soft depth layers */}
-                <View pointerEvents="none" style={styles.studentAura} />
-                <View pointerEvents="none" style={styles.studentAura2} />
-
-                <View style={styles.studentBadge}>
-                  <Text style={styles.studentBadgeText}>✦  PRIMARY PORTAL</Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.studentMiddle,
-                    {
-                      marginTop: s(12),
-                      minHeight: s(isMobile ? 112 : 156),
-                      flexDirection: isMobile ? "column" : "row",
-                      alignItems: isMobile ? "stretch" : "flex-end",
+          {/* ── Primary login card — reference layout, made responsive ── */}
+          <View style={{ width: "100%", position: "relative", paddingTop: guideOverhang }}>
+            <Animated.View
+              onLayout={onStudentCardLayout}
+              entering={motionEnabled ? CARD_ENTER.delay(40) : undefined}
+              style={[
+                styles.studentWrap,
+                {
+                  width: "100%",
+                  borderRadius: s(32),
+                  marginBottom: s(24),
+                  backgroundColor: C.p,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.34)",
+                  borderBottomWidth: 2,
+                  borderBottomColor: "rgba(0,0,0,0.18)",
+                  ...Platform.select({
+                    ios: {
+                      shadowColor: C.p,
+                      shadowOffset: { width: 0, height: 20 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 36,
                     },
-                  ]}
+                    android: { elevation: 12 },
+                    default: {
+                      shadowColor: C.p,
+                      shadowOffset: { width: 0, height: 20 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 36,
+                    },
+                  }),
+                },
+                cardAnimatedStyle,
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Continue to school login"
+                onPress={() => router.push("/login")}
+                onPressIn={onStudentIn}
+                onPressOut={onStudentOut}
+                style={[styles.studentPressable, { borderRadius: s(32) }]}
+              >
+                <LinearGradient
+                  colors={[...C.studentGradient]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ minHeight: studentCardMinHeight, padding: s(22) }}
                 >
+                  <View pointerEvents="none" style={styles.studentAura} />
+                  <View pointerEvents="none" style={styles.studentAura2} />
+
+                  <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, sheenAnim]}>
+                    <LinearGradient
+                      colors={[
+                        "rgba(255,255,255,0.24)",
+                        "rgba(255,255,255,0.05)",
+                        "rgba(0,0,0,0.12)",
+                      ]}
+                      locations={[0, 0.56, 1]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0.9, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </Animated.View>
+
                   <View
                     style={[
-                      styles.studentTextCol,
-                      { paddingRight: studentTextGutter, zIndex: 1 },
+                      styles.studentHeadline,
+                      {
+                        minHeight: s(isMobile ? 104 : 118),
+                        paddingLeft: studentTextGutter,
+                      },
                     ]}
                   >
-                    <Text style={[styles.studentTitle, { fontSize: s(26), lineHeight: s(32) }]}>
-                      {t("index.student_login") || "Student Login"}
+                    <Text
+                      style={[
+                        styles.studentTitle,
+                        { fontSize: s(isMobile ? 34 : 42), lineHeight: s(isMobile ? 40 : 48) },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}
+                    >
+                      {t("index.login") || "Log In"}
                     </Text>
                     <Text
                       style={[
                         styles.studentSub,
-                        { fontSize: Math.max(s(14), 12), lineHeight: Math.max(s(22), 18) },
+                        {
+                          fontSize: Math.max(s(isMobile ? 15 : 18), 13),
+                          lineHeight: Math.max(s(isMobile ? 21 : 25), 18),
+                        },
                       ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
                     >
-                      Grades · Attendance{"\n"}Timetable · And more
+                      Sign in to your school
                     </Text>
                   </View>
 
-                  {!isMobile ? (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.studentDoodle,
-                        {
-                          width: studentDoodleW,
-                          height: studentDoodleH,
-                          marginRight: -s(18),
-                          marginBottom: -s(34),
-                        },
-                      ]}
-                    >
-                      <Image
-                        source={require("../assets/images/studentDoodle.png")}
-                        style={styles.studentDoodleImage}
-                      />
-                    </View>
-                  ) : null}
-                </View>
-
-                {isMobile ? (
                   <View
-                    pointerEvents="none"
                     style={[
-                      styles.studentDoodleHero,
+                      styles.studentCtaRow,
                       {
-                        width: studentDoodleW,
-                        height: studentDoodleH,
-                        right: -s(8),
-                        bottom: s(52),
+                        minHeight: s(58),
+                        marginTop: s(14),
+                        paddingLeft: s(18),
+                        paddingRight: s(8),
+                        paddingVertical: s(7),
+                        borderRadius: s(23),
                       },
                     ]}
                   >
-                    <Image
-                      source={require("../assets/images/studentDoodle.png")}
-                      style={styles.studentDoodleImage}
-                    />
-                  </View>
-                ) : null}
-
-                <View style={[styles.studentCtaRow, { marginTop: s(16) }]}>
-                  <Text style={styles.studentCtaText}>Continue to sign in</Text>
-                  <View
-                    style={[
-                      styles.studentCtaArrow,
-                      { width: s(38), height: s(38), borderRadius: s(19) },
-                    ]}
-                  >
-                    <Animated.View style={arrowAnim}>
-                      <Ionicons name="arrow-forward" size={s(16)} color={C.pD} />
+                    <Text
+                      style={[styles.studentCtaText, { fontSize: Math.max(s(14), 12) }]}
+                      numberOfLines={1}
+                    >
+                      Continue to sign in
+                    </Text>
+                    <Animated.View
+                      testID="welcome-login-arrow"
+                      style={[
+                        styles.studentCtaArrow,
+                        { width: s(44), height: s(44), borderRadius: s(22) },
+                        arrowAnim,
+                      ]}
+                    >
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.studentCtaRipple,
+                          { width: s(44), height: s(44), borderRadius: s(22) },
+                          arrowRippleAnim,
+                        ]}
+                      />
+                      <Ionicons name="arrow-forward" size={s(19)} color={C.pD} />
                     </Animated.View>
                   </View>
-                </View>
-              </LinearGradient>
-            </Pressable>
-          </Animated.View>
+                </LinearGradient>
+              </Pressable>
+            </Animated.View>
 
-          {/* ── Secondary portals ───────────────────────────────────── */}
-          <Animated.View
-            entering={motionEnabled ? TILE_ENTER.delay(60) : undefined}
-            style={[styles.tileGrid, { gap: gridGap, marginBottom: s(24) }]}
-          >
-            <PortalTile
-              borderRadius={tileBorderRadius}
-              tileWidth={portalTileW}
-              surfaceEnd={C.surface}
-              titleColor={C.ink}
-              subColor={C.inkC}
-              isDark={C.isDark}
-              s={s}
-              accentColor={C.portal.staff}
-              icon={<Ionicons name="people-outline" size={tileIconSize} color={C.portal.staff} />}
-              title={t("index.staff_login") || "Staff"}
-              subtitle="Classes & records"
-              onPress={() => router.push("/staff-login")}
-            />
-            <PortalTile
-              borderRadius={tileBorderRadius}
-              tileWidth={portalTileW}
-              surfaceEnd={C.surface}
-              titleColor={C.ink}
-              subColor={C.inkC}
-              isDark={C.isDark}
-              s={s}
-              accentColor={C.portal.admin}
-              icon={<MaterialIcons name="admin-panel-settings" size={tileIconSizeLg} color={C.portal.admin} />}
-              title={t("index.admin_login") || "Admin"}
-              subtitle="School management"
-              onPress={() => router.push("/admin-login")}
-            />
-            <PortalTile
-              borderRadius={tileBorderRadius}
-              tileWidth={portalTileW}
-              surfaceEnd={C.surface}
-              titleColor={C.ink}
-              subColor={C.inkC}
-              isDark={C.isDark}
-              s={s}
-              accentColor={C.portal.accounts}
-              icon={<Ionicons name="wallet-outline" size={tileIconSize} color={C.portal.accounts} />}
-              title={t("index.accounts_login") || "Accounts"}
-              subtitle="Fees & finance"
-              onPress={() => router.push("/accounts-login")}
-            />
-            <PortalTile
-              borderRadius={tileBorderRadius}
-              tileWidth={portalTileW}
-              surfaceEnd={C.surface}
-              titleColor={C.ink}
-              subColor={C.inkC}
-              isDark={C.isDark}
-              s={s}
-              accentColor={C.portal.driver}
-              icon={<Ionicons name="bus-outline" size={tileIconSizeLg} color={C.portal.driver} />}
-              title="Driver"
-              subtitle="Live trip tracking"
-              onPress={() => router.push("/driver-login")}
-            />
-          </Animated.View>
+            {/* The supplied student artwork now breaks through the top-left
+                edge like the reference instead of floating inside the card. */}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.studentDoodleHero,
+                {
+                  width: studentDoodleW,
+                  height: studentDoodleH,
+                  left: s(5),
+                  top: 0,
+                  zIndex: 6,
+                },
+              ]}
+            >
+              <Image
+                source={require("../assets/images/studentDoodle.png")}
+                style={styles.studentDoodleImage}
+              />
+            </View>
+
+            {/* targetY comes from the rendered CTA row, so the fingertip stays
+                aligned with the arrow after resizing or device rotation. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                top: 0,
+                right: guideRight,
+                zIndex: 7,
+              }}
+            >
+              <WelcomeGuideDoodle
+                size={guideSize}
+                primaryColor={C.p}
+                primaryDarkColor={C.pD}
+                motionEnabled={motionEnabled}
+                pointProgress={pointProgress}
+                idleFloat={idleFloat}
+                targetY={guideTargetY}
+              />
+            </View>
+          </View>
 
           {/* ── Support ─────────────────────────────────────────────── */}
           <Animated.View
@@ -1446,30 +1322,10 @@ const styles = StyleSheet.create({
     bottom: -60,
     left: -40,
   },
-  studentBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderRadius: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  studentBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.6,
-    color: "rgba(255,255,255,0.9)",
-  },
-  studentMiddle: {
+  studentHeadline: {
     position: "relative",
-    gap: 8,
-  },
-  studentTextCol: {
-    flex: 1,
-    gap: 4,
-  },
-  studentDoodle: {
-    flexShrink: 0,
-    zIndex: 0,
+    zIndex: 3,
+    justifyContent: "center",
   },
   studentDoodleHero: {
     position: "absolute",
@@ -1495,8 +1351,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
   },
   studentSub: {
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.65)",
+    fontWeight: "700",
+    fontStyle: "italic",
+    color: "rgba(255,255,255,0.82)",
+    ...Platform.select({
+      ios: { fontFamily: "Georgia" },
+      android: { fontFamily: "serif" },
+      web: { fontFamily: "Georgia, 'Times New Roman', serif" },
+    }),
   },
   studentCtaRow: {
     flexDirection: "row",
@@ -1504,17 +1366,35 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     position: "relative",
     zIndex: 3,
+    backgroundColor: "rgba(255,255,255,0.28)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   studentCtaText: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "800",
     letterSpacing: 0.2,
-    color: "rgba(255,255,255,0.9)",
+    color: "rgba(255,255,255,0.96)",
   },
   studentCtaArrow: {
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#23113F",
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: { elevation: 5 },
+      web: { boxShadow: "0 5px 14px rgba(35, 17, 63, 0.2)" } as any,
+    }),
+  },
+  studentCtaRipple: {
+    position: "absolute",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
   },
 
   /* ── Secondary tiles ───────────────────────────────────── */

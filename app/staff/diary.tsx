@@ -251,10 +251,6 @@ export default function StaffDiary() {
     }
   };
   const handlePost = async () => {
-    if (isViewingAsAdmin) {
-      alertCompat('చదవడానికి మాత్రమే', TE.noticeReadOnly);
-      return;
-    }
     try {
       await api.post('/log', {
         msg: 'StaffDiary: handlePost initiated',
@@ -342,7 +338,7 @@ export default function StaffDiary() {
   }]}>
     <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? '#0B1020' : '#EFF2F9'} />
     <StaffHeader title={TE.header} showBackButton={true} />
-    {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+    {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
     <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Animated.View entering={FadeInDown.delay(80).duration(500)} style={styles.tabWrap}>
         <DiaryHistoryTabSwitcher

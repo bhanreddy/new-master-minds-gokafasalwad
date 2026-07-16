@@ -562,7 +562,7 @@ export const AuthService = {
       // 5. If 403 account_not_in_school → signOut(), return { error: "This account does not belong to this school." }
       // 6. If 403 account_locked → signOut(), return { error: "Your account is locked. Contact your admin." }
 
-      // OUT_OF_HOURS: Re-throw so accounts-login.tsx can catch and show the access request modal
+      // OUT_OF_HOURS: Re-throw so the unified login screen (app/login.tsx) can catch and show the access request modal
       const errCode = err?.code;
       const errMsg = err?.message || '';
       

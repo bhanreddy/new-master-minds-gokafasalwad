@@ -155,7 +155,13 @@ function AttendanceScreenInner() { // OPT: Inner tree wrapped by ErrorBoundary b
   const stats: AttendanceSummary = attendance?.summary ?? { present: 0, absent: 0, late: 0, total: 0 }; // OPT: Default stats object.
   const loading = profileLoading || attLoading; // OPT: Single loading gate.
 
-  const percentage = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0; // OPT: Same formula as before.
+  const effectivePresent = Number( // OPT: Late is attended; two half-days equal one full present day.
+    stats.effective_present
+      ?? (Number(stats.present || 0) + Number(stats.late || 0) + Number(stats.half_day || 0) * 0.5)
+  );
+  const percentage = stats.total > 0 // OPT: Prefer the backend's authoritative weighted percentage.
+    ? Math.round(Number(stats.attendance_percentage ?? ((effectivePresent / stats.total) * 100)))
+    : 0;
 
   const tStable = useCallback((k: string, d?: string) => t(k, d as any), [t]); // OPT: Stable function ref for memo child props.
 

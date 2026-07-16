@@ -20,6 +20,11 @@ export interface Staff {
     status?: string;
     phone?: string;
     email?: string;
+    user_id?: string | null;
+    account_status?: string | null;
+    dob?: string | null;
+    gender?: string | null;
+    address?: string | null;
 }
 
 /** GET /staff returns a paginated envelope from the backend. */
@@ -31,6 +36,13 @@ export interface StaffListPage {
         limit: number;
         total_pages: number;
     };
+}
+
+export interface StaffListParams {
+    status_id?: number;
+    search?: string;
+    limit?: number;
+    page?: number;
 }
 
 export interface StaffMyProfile {
@@ -110,9 +122,37 @@ function staffRowsFromListResponse(res: Staff[] | StaffListPage): Staff[] {
 }
 
 export const StaffService = {
-    getAll: async (params?: { status_id?: number; search?: string; limit?: number; page?: number }): Promise<Staff[]> => {
+    getAll: async (params?: StaffListParams): Promise<Staff[]> => {
         const res = await api.get<Staff[] | StaffListPage>('/staff', params);
         return staffRowsFromListResponse(res);
+    },
+
+    /** Fetch every page so directory screens never silently stop at the API page limit. */
+    getAllPages: async (params?: Omit<StaffListParams, 'page'>): Promise<Staff[]> => {
+        const limit = Math.min(200, Math.max(1, params?.limit ?? 200));
+        const allRows: Staff[] = [];
+        let page = 1;
+
+        while (true) {
+            const res = await api.get<Staff[] | StaffListPage>('/staff', {
+                ...params,
+                page,
+                limit,
+            });
+
+            // Compatibility with older backends that returned a bare array.
+            if (Array.isArray(res)) return page === 1 ? res : [...allRows, ...res];
+
+            const rows = staffRowsFromListResponse(res);
+            allRows.push(...rows);
+
+            const totalPages = Number(res?.meta?.total_pages) || 1;
+            const total = Number(res?.meta?.total) || allRows.length;
+            if (page >= totalPages || allRows.length >= total || rows.length === 0) break;
+            page += 1;
+        }
+
+        return allRows;
     },
 
     getById: async (id: string): Promise<Staff> => {

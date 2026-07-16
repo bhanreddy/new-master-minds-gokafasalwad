@@ -24,8 +24,6 @@ import {
   studentEnrollmentSubtitle,
 } from '../../src/utils/displayHelpers';
 
-/** Higher page size than the API default so the un-searched browse list is usable. */
-const LIST_PAGE_SIZE = 100;
 const SEARCH_DEBOUNCE_MS = 400;
 
 function resolvePhotoUrl(row: Record<string, unknown>): string | null {
@@ -77,17 +75,12 @@ export default function ManageUsersScreen() {
         const trimmed = search.trim();
         let list: any[] = [];
         if (tab === 'student') {
-          const response = await StudentService.getAll({
+          list = await StudentService.getAllPages({
             search: trimmed || undefined,
-            limit: LIST_PAGE_SIZE,
-            page: 1,
           });
-          list = Array.isArray(response) ? response : response?.data ?? [];
         } else {
-          list = await StaffService.getAll({
+          list = await StaffService.getAllPages({
             search: trimmed || undefined,
-            limit: LIST_PAGE_SIZE,
-            page: 1,
           });
         }
         // Ignore stale responses from a superseded request.

@@ -1,19 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
-  KeyboardAvoidingView,
   Platform,
   TextInput,
   FlatList,
   ScrollView,
   Image,
+  InteractionManager,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
 import { useRequireRole } from '@/src/hooks/useRequireRole';
@@ -30,6 +31,7 @@ import ScreenLayout from '@/src/components/ScreenLayout';
 import StudentHeader from '@/src/components/StudentHeader';
 import { useTheme } from '@/src/hooks/useTheme';
 import { SchoolBackground } from '@/components/SchoolBackground';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -161,7 +163,7 @@ const ConversationRow = React.memo(({ item, onPress }: { item: Conversation; onP
   );
 });
 
-const MessageBubble = React.memo(({ item, isMine, status, onRetry, theme }: { item: Message; isMine: boolean; status?: string; onRetry: () => void; theme: any }) => {
+const MessageBubble = React.memo(function MessageBubble({ item, isMine, status, onRetry, theme }: { item: Message; isMine: boolean; status?: string; onRetry: () => void; theme: any }) {
   const timeStr = new Date(item.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   return (
@@ -203,15 +205,30 @@ export default function MessagesScreen() {
   const router = useRouter();
   const { preselectUserId } = useLocalSearchParams();
 
-  const [view, setView] = useState<'list' | 'thread' | 'new'>('list');
+  const hasPreselectedRecipient = Array.isArray(preselectUserId)
+    ? Boolean(preselectUserId[0])
+    : Boolean(preselectUserId);
+  const [view, setView] = useState<'list' | 'thread' | 'new' | 'resolving'>(
+    hasPreselectedRecipient ? 'resolving' : 'list'
+  );
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [activeRecipient, setActiveRecipient] = useState<Recipient | null>(null);
   const [inputText, setInputText] = useState('');
   const [search, setSearch] = useState('');
+  const preselectionScheduledRef = useRef(false);
 
-  const { data: conversations, refetch: refetchConvos, loading: loadingConvos } = useConversations();
+  const {
+    data: conversations,
+    refetch: refetchConvos,
+    loading: loadingConvos,
+    isRefreshing: conversationsRefreshing,
+  } = useConversations();
   const { messages, sendMessage, retryMessage, loadOlder, live } = useThreadMessages(activeConv?.id || null);
-  const { data: recipients } = useEligibleRecipients();
+  const {
+    data: recipients,
+    loading: loadingRecipients,
+    isRefreshing: recipientsRefreshing,
+  } = useEligibleRecipients();
   const { data: support } = useSupportContact();
   const supportConversation = useMemo(
     () => support ? conversations?.find((c) => c.other_user_id === support.user_id && c.pair_type === 'support') || null : null,
@@ -314,22 +331,46 @@ export default function MessagesScreen() {
   useEffect(() => {
     // Wait for the conversation list to settle so we can prefer an existing
     // thread instead of racing into a fresh one.
-    if (!preselectUserId || view !== 'list' || loadingConvos) return;
+    if (
+      !preselectUserId
+      || (view !== 'list' && view !== 'resolving')
+      || loadingConvos
+      || loadingRecipients
+      || preselectionScheduledRef.current
+    ) return;
     const targetId = Array.isArray(preselectUserId) ? preselectUserId[0] : preselectUserId;
     if (!targetId) return;
 
     const existing = conversations?.find(c => c.other_user_id === targetId && !c.is_group);
-    if (existing) {
-      setActiveConv(existing);
-      setActiveRecipient(null);
-      setView('thread');
-      return;
-    }
     const target = recipients?.find(r => r.user_id === targetId);
-    if (target) {
-      startWithRecipient(target);
-    }
-  }, [preselectUserId, conversations, recipients, view, loadingConvos, startWithRecipient]);
+    if ((!existing && conversationsRefreshing) || (!target && recipientsRefreshing)) return;
+    preselectionScheduledRef.current = true;
+
+    // Let the router's native screen transition finish before mounting the
+    // message list and SVG backdrop. Competing for the same opening frames was
+    // the main source of the visible stutter from the Contact Teacher shortcut.
+    InteractionManager.runAfterInteractions(() => {
+      if (existing) {
+        setActiveConv(existing);
+        setActiveRecipient(null);
+        setView('thread');
+      } else if (target) {
+        startWithRecipient(target);
+      } else {
+        setView('list');
+      }
+    });
+  }, [
+    preselectUserId,
+    conversations,
+    recipients,
+    view,
+    loadingConvos,
+    loadingRecipients,
+    conversationsRefreshing,
+    recipientsRefreshing,
+    startWithRecipient,
+  ]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
@@ -386,7 +427,7 @@ export default function MessagesScreen() {
 
   // ─── Render list view ───────────────────────────────────────────────────────
   const renderList = () => (
-    <Animated.View entering={FadeInDown.duration(300)} exiting={FadeOut.duration(200)} style={styles.viewContainer}>
+    <Animated.View entering={FadeIn.duration(160)} style={styles.viewContainer}>
       <StudentHeader
         showBackButton
         title={t('messages.title', 'Messages')}
@@ -417,130 +458,144 @@ export default function MessagesScreen() {
 
   // ─── Render thread view (WhatsApp-style, SchoolBackground behind) ─────────────
   const headerName = activeConv?.other_user_name || activeRecipient?.display_name || t('messages.chat', 'Chat');
-  const headerStudent = activeConv?.student_name || activeRecipient?.student_name;
-
   const renderThread = () => (
-    <Animated.View entering={FadeInDown.duration(300)} exiting={FadeOut.duration(200)} style={styles.viewContainer}>
-      <View style={[styles.header, styles.threadHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <PressScaleInline onPress={handleBack} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
-        </PressScaleInline>
-        <Avatar name={headerName} size={38} role={activeRecipient?.role} photoUrl={activeConv?.other_user_photo || activeRecipient?.photo_url} />
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text numberOfLines={1} style={[styles.headerTitle, { color: theme.colors.textStrong }]}>
-            {headerName}
-          </Text>
-        </View>
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <SchoolBackground />
-        <FlatList
-          data={reversedMessages}
-          keyExtractor={(item: Message) => item.id}
-          renderItem={({ item, index }: { item: Message; index: number }) => {
-            const isMine = item.sender_user_id === user?.userId;
-            
-            // Check if date changed
-            const nextItem = reversedMessages[index + 1];
-            let showDateHeader = false;
-            let dateLabel = '';
-            
-            const currentItemDate = new Date(item.created_at);
-            if (nextItem) {
-              const nextItemDate = new Date(nextItem.created_at);
-              if (currentItemDate.toDateString() !== nextItemDate.toDateString()) {
-                showDateHeader = true;
-              }
-            } else {
-              showDateHeader = true; // Oldest message
-            }
-            
-            if (showDateHeader) {
-              const today = new Date();
-              const yesterday = new Date();
-              yesterday.setDate(yesterday.getDate() - 1);
-              
-              if (currentItemDate.toDateString() === today.toDateString()) {
-                dateLabel = t('messages.today', 'Today');
-              } else if (currentItemDate.toDateString() === yesterday.toDateString()) {
-                dateLabel = t('messages.yesterday', 'Yesterday');
-              } else {
-                dateLabel = currentItemDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-              }
-            }
-
-            // Determine read status for mine
-            let deliveryStatus: string | undefined = item._status;
-            if (isMine && !item._status) {
-              const cTime = currentItemDate.getTime();
-              const sTime = live?.receipts?.last_seen_at ? new Date(live.receipts.last_seen_at).getTime() : 0;
-              const dTime = live?.receipts?.last_delivered_at ? new Date(live.receipts.last_delivered_at).getTime() : 0;
-              
-              if (sTime >= cTime) deliveryStatus = 'seen';
-              else if (dTime >= cTime) deliveryStatus = 'delivered';
-              else deliveryStatus = 'sent';
-            }
-
-            return (
-              <View>
-                {showDateHeader && (
-                  <View style={{ alignItems: 'center', marginVertical: 12 }}>
-                    <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
-                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary, fontWeight: '500' }}>{dateLabel}</Text>
-                    </View>
-                  </View>
-                )}
-                <MessageBubble item={item} isMine={isMine} status={deliveryStatus} onRetry={() => retryMessage(item.id)} theme={theme} />
-              </View>
-            );
-          }}
-          inverted
-          style={{ backgroundColor: 'transparent' }}
-          contentContainerStyle={{ padding: 16 }}
-          ListFooterComponent={() => (
-            <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
-              <View style={{ backgroundColor: theme.colors.alertBg, borderWidth: 1, borderColor: theme.colors.alertBorder, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, maxWidth: '85%', flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="lock-closed" size={12} color={theme.colors.alertIcon} style={{ marginRight: 6 }} />
-                <Text style={{ fontSize: 11, color: theme.colors.alertText, textAlign: 'center', flex: 1, lineHeight: 16 }}>
-                  {t('messages.e2ee_notice', 'Messages and calls are end-to-end encrypted. No one outside of this chat can read or listen to them.')}
-                </Text>
-              </View>
+    <Animated.View
+      entering={FadeInRight.duration(230).easing(Easing.out(Easing.cubic))}
+      exiting={FadeOutLeft.duration(160).easing(Easing.in(Easing.quad))}
+      style={styles.viewContainer}
+      renderToHardwareTextureAndroid
+      shouldRasterizeIOS
+    >
+      <KeyboardAwareScreen
+        variant="fixed"
+        stickyContent={
+          <View style={[styles.inputBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+            <View style={[styles.inputWrapper, { backgroundColor: theme.colors.background }]}>
+              <TextInput
+                value={inputText}
+                onChangeText={setInputText}
+                placeholder={t('messages.type_message', 'Type a message...')}
+                placeholderTextColor={theme.colors.textMuted}
+                multiline
+                maxLength={4000}
+                style={[styles.input, { color: theme.colors.textPrimary }]}
+              />
             </View>
-          )}
-          onEndReached={loadOlder}
-          onEndReachedThreshold={0.5}
-        />
-      </View>
-
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[styles.inputBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-          <View style={[styles.inputWrapper, { backgroundColor: theme.colors.background }]}>
-            <TextInput
-              value={inputText}
-              onChangeText={setInputText}
-              placeholder={t('messages.type_message', 'Type a message...')}
-              placeholderTextColor={theme.colors.textMuted}
-              multiline
-              maxLength={4000}
-              style={[styles.input, { color: theme.colors.textPrimary }]}
-            />
+            <PressScaleInline
+              onPress={handleSend}
+              disabled={!inputText.trim()}
+              style={[styles.sendBtn, { backgroundColor: theme.colors.primary, shadowColor: theme.colors.primary }, !inputText.trim() && { opacity: 0.5 }]}
+            >
+              <Ionicons name="send" size={20} color="#FFFFFF" />
+            </PressScaleInline>
           </View>
-          <PressScaleInline
-            onPress={handleSend}
-            disabled={!inputText.trim()}
-            style={[styles.sendBtn, { backgroundColor: theme.colors.primary, shadowColor: theme.colors.primary }, !inputText.trim() && { opacity: 0.5 }]}
-          >
-            <Ionicons name="send" size={20} color="#FFFFFF" />
+        }
+      >
+        <View style={[styles.header, styles.threadHeader, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+          <PressScaleInline onPress={handleBack} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
           </PressScaleInline>
+          <Avatar name={headerName} size={38} role={activeRecipient?.role} photoUrl={activeConv?.other_user_photo || activeRecipient?.photo_url} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text numberOfLines={1} style={[styles.headerTitle, { color: theme.colors.textStrong }]}>
+              {headerName}
+            </Text>
+          </View>
         </View>
-      </KeyboardAvoidingView>
+
+        <View style={{ flex: 1 }}>
+          <SchoolBackground />
+          <FlatList
+            data={reversedMessages}
+            keyExtractor={(item: Message) => item.id}
+            renderItem={({ item, index }: { item: Message; index: number }) => {
+              const isMine = item.sender_user_id === user?.userId;
+              
+              // Check if date changed
+              const nextItem = reversedMessages[index + 1];
+              let showDateHeader = false;
+              let dateLabel = '';
+              
+              const currentItemDate = new Date(item.created_at);
+              if (nextItem) {
+                const nextItemDate = new Date(nextItem.created_at);
+                if (currentItemDate.toDateString() !== nextItemDate.toDateString()) {
+                  showDateHeader = true;
+                }
+              } else {
+                showDateHeader = true; // Oldest message
+              }
+              
+              if (showDateHeader) {
+                const today = new Date();
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                if (currentItemDate.toDateString() === today.toDateString()) {
+                  dateLabel = t('messages.today', 'Today');
+                } else if (currentItemDate.toDateString() === yesterday.toDateString()) {
+                  dateLabel = t('messages.yesterday', 'Yesterday');
+                } else {
+                  dateLabel = currentItemDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+                }
+              }
+
+              // Determine read status for mine
+              let deliveryStatus: string | undefined = item._status;
+              if (isMine && !item._status) {
+                const cTime = currentItemDate.getTime();
+                const sTime = live?.receipts?.last_seen_at ? new Date(live.receipts.last_seen_at).getTime() : 0;
+                const dTime = live?.receipts?.last_delivered_at ? new Date(live.receipts.last_delivered_at).getTime() : 0;
+                
+                if (sTime >= cTime) deliveryStatus = 'seen';
+                else if (dTime >= cTime) deliveryStatus = 'delivered';
+                else deliveryStatus = 'sent';
+              }
+
+              return (
+                <View>
+                  {showDateHeader && (
+                    <View style={{ alignItems: 'center', marginVertical: 12 }}>
+                      <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 12, color: theme.colors.textSecondary, fontWeight: '500' }}>{dateLabel}</Text>
+                      </View>
+                    </View>
+                  )}
+                  <MessageBubble item={item} isMine={isMine} status={deliveryStatus} onRetry={() => retryMessage(item.id)} theme={theme} />
+                </View>
+              );
+            }}
+            inverted
+            style={{ backgroundColor: 'transparent' }}
+            contentContainerStyle={{ padding: 16 }}
+            ListFooterComponent={() => (
+              <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
+                <View style={{ backgroundColor: theme.colors.alertBg, borderWidth: 1, borderColor: theme.colors.alertBorder, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, maxWidth: '85%', flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="lock-closed" size={12} color={theme.colors.alertIcon} style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 11, color: theme.colors.alertText, textAlign: 'center', flex: 1, lineHeight: 16 }}>
+                    {t('messages.e2ee_notice', 'Messages and calls are end-to-end encrypted. No one outside of this chat can read or listen to them.')}
+                  </Text>
+                </View>
+              </View>
+            )}
+            onEndReached={loadOlder}
+            onEndReachedThreshold={0.5}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            removeClippedSubviews={Platform.OS === 'android'}
+            initialNumToRender={16}
+            maxToRenderPerBatch={10}
+            windowSize={7}
+            updateCellsBatchingPeriod={40}
+          />
+        </View>
+      </KeyboardAwareScreen>
     </Animated.View>
   );
 
   // ─── Render new conversation picker (searchable) ──────────────────────────────
   const renderNew = () => (
-    <Animated.View entering={FadeInDown.duration(300)} exiting={FadeOut.duration(200)} style={styles.viewContainer}>
+    <Animated.View entering={FadeInRight.duration(210).easing(Easing.out(Easing.cubic))} exiting={FadeOutLeft.duration(150)} style={styles.viewContainer}>
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
         <PressScaleInline onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.textPrimary} />
@@ -583,6 +638,14 @@ export default function MessagesScreen() {
 
   return (
     <ScreenLayout style={{ backgroundColor: theme.colors.background }}>
+      {view === 'resolving' && (
+        <View style={styles.viewContainer}>
+          <StudentHeader showBackButton title={t('messages.chat', 'Chat')} />
+          <View style={styles.resolvingState}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          </View>
+        </View>
+      )}
       {view === 'list' && renderList()}
       {view === 'thread' && renderThread()}
       {view === 'new' && renderNew()}
@@ -594,6 +657,7 @@ export default function MessagesScreen() {
 
 const styles = StyleSheet.create({
   viewContainer: { flex: 1 },
+  resolvingState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   supportCard: { overflow: 'hidden', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 14, borderRadius: 21, borderWidth: 1, marginBottom: 15 },
   supportTitle: { fontSize: 16, fontWeight: '750' as any },
   supportSub: { fontSize: 12.5, lineHeight: 17, marginTop: 3 },

@@ -1,8 +1,15 @@
 import type { VaultAccount } from '../services/accountVault';
 import { isStudentRole } from './roleHelpers';
 
-/** Home route after switching to a vaulted login (separate credentials per portal). */
-export function getHomeRouteForRole(roleCode: string | null | undefined): string {
+/**
+ * Home route after a successful login / account switch, keyed by role.
+ *
+ * The return type is intentionally left to inference so it resolves to the union
+ * of literal route strings (not the wide `string`), which is what expo-router's
+ * typed `router.replace` / `<Redirect>` require. Do NOT add a `: string`
+ * annotation here — it would widen the type and break every typed call site.
+ */
+export function getHomeRouteForRole(roleCode: string | null | undefined) {
   switch (roleCode) {
     case 'admin':
     case 'principal':

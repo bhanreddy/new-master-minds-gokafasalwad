@@ -3,11 +3,11 @@ import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { useAuth } from './useAuth';
 import { AuthService } from '../services/authService';
 import { isStudentRole, isStaffPortalRole } from '../utils/roleHelpers';
+import { getHomeRouteForRole } from '../utils/portalRoutes';
 
-// List of public routes that don't require authentication
-// Note: '/' is the 4-login-options index page.
-// 'login', 'staff-login' etc are specific login forms.
-const PUBLIC_ROUTES = ['welcome', 'login', 'signup', 'staff-login', 'admin-login', 'accounts-login', 'driver-login'];
+// List of public routes that don't require authentication.
+// 'welcome' is the branded landing; 'login' is the single unified login screen.
+const PUBLIC_ROUTES = ['welcome', 'login', 'signup'];
 
 export function useAuthGuard() {
   const { user, loading } = useAuth();
@@ -37,7 +37,7 @@ export function useAuthGuard() {
     if (user) {
       const roleCode = typeof user.role === 'object' && user.role !== null ? (user.role as any).code : user.role;
       // Strictly prevent loop if already on the correct dashboard
-      const homeRoute = getHomeRoute(roleCode);
+      const homeRoute = getHomeRouteForRole(roleCode);
       const normalizedHome = homeRoute.replace(/^\//, '');
 
       // Check if current route matches home route to avoid infinite replacement
@@ -63,7 +63,7 @@ export function useAuthGuard() {
 
       // `admin` is intentionally NOT a staff-portal role (their home is /admin),
       // but admins ARE allowed into /staff/* to view a staff member's portal
-      // read-only ("view as" from Manage Staff). This mirrors the staff layout's
+      // through server-validated read/write staff-portal access from Manage Staff. This mirrors the staff layout's
       // own useRequireRole('staff','teacher','admin'). Note: we must not add
       // admin to isStaffPortalRole() itself — that gate also drives the
       // /no-profile redirect below, which would wrongly fire for admins.
@@ -131,17 +131,3 @@ export function useAuthGuard() {
 
   }, [user, loading, segments, rootNavigationState?.key]);
 }
-
-const getHomeRoute = (role: string) => {
-  switch (role) {
-    case 'admin':return '/admin/dashboard';
-    case 'principal':return '/admin/dashboard';
-    case 'accountant':return '/accounts/dashboard';
-    case 'staff':
-    case 'teacher':return '/staff/dashboard';
-    case 'driver':return '/driver/dashboard';
-    case 'parent':
-    case 'student':return '/(tabs)/home';
-    default:return '/(tabs)/home';
-  }
-};

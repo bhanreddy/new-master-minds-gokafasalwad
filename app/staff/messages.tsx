@@ -1,8 +1,11 @@
 import React from 'react';
+import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRequireRole } from '@/src/hooks/useRequireRole';
 import MessengerScreen from '@/src/components/messenger/MessengerScreen';
 import StaffHeader from '@/src/components/StaffHeader';
+import ViewAsBanner from '@/src/components/ViewAsBanner';
+import { useEffectiveStaffId } from '@/src/hooks/useEffectiveStaffId';
 
 /**
  * Teacher messenger: admin pinned at the top, plus a school-wide student
@@ -11,6 +14,7 @@ import StaffHeader from '@/src/components/StaffHeader';
 export default function StaffMessages() {
   useRequireRole('staff', 'teacher', 'admin');
   const { t } = useTranslation();
+  const { isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
 
   return (
     <MessengerScreen
@@ -20,12 +24,15 @@ export default function StaffMessages() {
         { key: 'directory', label: t('messages.tab_people', 'People'), roles: ['admin', 'student', 'parent'] },
       ]}
       renderHeader={({ onBack }) => (
-        <StaffHeader
-          title={t('messages.title', 'Messages')}
-          showBackButton
-          showMenuButton={false}
-          onBack={onBack}
-        />
+        <View>
+          <StaffHeader
+            title={t('messages.title', 'Messages')}
+            showBackButton
+            showMenuButton={false}
+            onBack={onBack}
+          />
+          {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
+        </View>
       )}
     />
   );

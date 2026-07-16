@@ -280,10 +280,6 @@ export default function ApplyLeave() {
   };
 
   const handleApply = async () => {
-    if (isViewingAsAdmin) {
-      alertCompat('Read-only', 'Leave applications can\'t be submitted while viewing another staff member\'s portal.');
-      return;
-    }
     if (!fromDate || !toDate || !reason) {
       alertCompat('Missing Fields', 'Please fill in all fields before submitting.');
       return;
@@ -311,7 +307,7 @@ export default function ApplyLeave() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
 
       <StaffHeader title="Apply Leave" showBackButton={true} />
-      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} limited />}
+      {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
       <ScrollView contentContainerStyle={mainStyles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
