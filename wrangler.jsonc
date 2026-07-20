@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "vikasmodelschool",
+	// wrangler.jsonc
+    "name": "new-master-minds-gokafasalwad",
 	"compatibility_date": "2026-07-08",
 	"observability": {
 		"enabled": true
