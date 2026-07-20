@@ -4,7 +4,7 @@ import {
   StatusBar, BackHandler, TouchableOpacity, Pressable, ScrollView,
   useWindowDimensions, RefreshControl,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import { Ionicons, MaterialIcons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Path, Ellipse } from 'react-native-svg';
@@ -1244,7 +1244,9 @@ const MenuCard = React.memo(function MenuCard({
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function StaffDashboard() {
-  const router = useRouter();
+  // The staff area is a single MaterialTopTabs (pager) navigator; this returns
+  // that navigator so we can switch tabs the same way StaffFooter does.
+  const navigation = useNavigation();
   const { user } = useAuth();
   const { isDark } = useTheme();
   const t = isDark ? D.dark : D.light;
@@ -1324,24 +1326,20 @@ export default function StaffDashboard() {
   ], [data?.pendingLeaves, payslipsEnabled]);
 
   const navigateToStaffRoute = useCallback((route: string) => {
-    const query = isViewingAsAdmin
-      ? [
-          ['staffId', staffId || ''],
-          ['viewAsName', viewAsName || ''],
-          ['viewAsUserId', viewAsUserId || ''],
-        ].map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')
-      : '';
-    const href = query ? `${route}?${query}` : route;
+    // Route name = last path segment (e.g. '/staff/manage-students' -> 'manage-students'),
+    // which is the screen name registered in app/staff/_layout.tsx.
+    const screen = route.replace(/^\/staff\//, '').split('?')[0];
+    const params = isViewingAsAdmin
+      ? { staffId: staffId || '', viewAsName: viewAsName || '', viewAsUserId: viewAsUserId || '' }
+      : undefined;
 
-    // Expo Router + MaterialTopTabs resolves hidden staff screens to the wrong
-    // tab during web client-side navigation. A document navigation preserves
-    // the exact route; native navigation does not have that web-only failure.
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.assign(href);
-      return;
-    }
-    router.push(href as any);
-  }, [isViewingAsAdmin, router, staffId, viewAsName, viewAsUserId]);
+    // Switch tabs via the tab navigator's own navigation object — the same call
+    // StaffFooter uses. Expo Router's global router.push('/staff/..') resolves
+    // sibling tabs to the wrong pager index on web; a full document reload was the
+    // old band-aid, but it hard-404s on hosts without SPA fallback. jumpTo-style
+    // navigation stays client-side and lands on the exact screen on every platform.
+    (navigation as any).navigate(screen, params);
+  }, [isViewingAsAdmin, navigation, staffId, viewAsName, viewAsUserId]);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({

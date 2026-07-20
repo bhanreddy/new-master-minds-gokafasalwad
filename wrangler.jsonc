@@ -6,7 +6,11 @@
 		"enabled": true
 	},
 	"assets": {
-		"directory": "dist"
+		"directory": "dist",
+		// SPA fallback: any request that doesn't match a built asset (a hard refresh
+		// or deep link on /staff/*, /admin/*, etc.) is served dist/index.html with a
+		// 200 instead of a 404, so the Expo Router client boots and resolves the route.
+		"not_found_handling": "single-page-application"
 	},
 	"compatibility_flags": [
 		"nodejs_compat"
