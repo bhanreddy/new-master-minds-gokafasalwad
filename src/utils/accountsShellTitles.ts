@@ -10,6 +10,7 @@ const EXACT: Record<string, string> = {
   '/accounts/defaulters': 'Defaulters',
   '/accounts/transport-fees': 'Transport Fees',
   '/accounts/invoices': 'Invoices',
+  '/accounts/certificate-generator': 'Certificates',
   '/accounts/expenses': 'Expense Tracker',
   '/accounts/payroll': 'Payroll',
   '/accounts/addStaff': 'Add Staff',

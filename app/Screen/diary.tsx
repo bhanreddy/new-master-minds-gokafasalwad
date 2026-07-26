@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,10 @@ import {
   Dimensions,
   StatusBar,
   Modal,
+  RefreshControl,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Animated, {
   FadeInDown,
@@ -35,7 +37,7 @@ import { withObservables } from '@nozbe/watermelondb/react';
 import { Q } from '@nozbe/watermelondb';
 import database from '../../src/database';
 import DiaryEntry from '../../src/database/models/DiaryEntry';
-import { sync } from '../../src/database/sync';
+import { sync, hasRemoteDiaryChanges } from '../../src/database/sync';
 import { useTheme, SchoolTheme } from '../../src/hooks/useTheme';
 import { IconBadgeColors, IconBadgeColorsDark } from '../../src/theme/themes';
 import { t_field } from '../../src/utils/lang';
@@ -571,13 +573,18 @@ function DiaryTaskList({ tasks, emptyLabel }: { tasks: DiaryEntry[]; emptyLabel?
 
 const DiaryForDateRaw = ({ tasks }: { tasks: DiaryEntry[] }) => <DiaryTaskList tasks={tasks} />;
 
+// The class filter is ALWAYS applied — never conditionally. The local WatermelonDB is a
+// single device-wide store shared by every account a parent has switched into, so a query
+// without `class_section_id` returns the union of every class ever synced on this device
+// and shows one sibling's homework inside the other sibling's portal. An empty classId
+// therefore has to match nothing (fail closed) rather than match everything.
 const enhanceForDate = withObservables(
   ['date', 'classId'],
-  ({ date, classId }: { date: string; classId: string }) => {
-    const preds = [Q.where('entry_date', date)];
-    if (classId) preds.push(Q.where('class_section_id', classId));
-    return { tasks: database.collections.get<DiaryEntry>('diary_entries').query(...preds) };
-  }
+  ({ date, classId }: { date: string; classId: string }) => ({
+    tasks: database.collections
+      .get<DiaryEntry>('diary_entries')
+      .query(Q.where('entry_date', date), Q.where('class_section_id', classId)),
+  })
 );
 const DiaryListForDate = enhanceForDate(DiaryForDateRaw);
 
@@ -596,11 +603,11 @@ const DiaryHistoryDotsRaw = ({
 
 const enhanceHistoryDots = withObservables(
   ['historyDates', 'classId'],
-  ({ historyDates, classId }: { historyDates: string[]; classId: string }) => {
-    const preds = [Q.where('entry_date', Q.oneOf(historyDates))];
-    if (classId) preds.push(Q.where('class_section_id', classId));
-    return { tasks: database.collections.get<DiaryEntry>('diary_entries').query(...preds) };
-  }
+  ({ historyDates, classId }: { historyDates: string[]; classId: string }) => ({
+    tasks: database.collections
+      .get<DiaryEntry>('diary_entries')
+      .query(Q.where('entry_date', Q.oneOf(historyDates)), Q.where('class_section_id', classId)),
+  })
 );
 const DiaryHistoryDots = enhanceHistoryDots(DiaryHistoryDotsRaw);
 
@@ -621,18 +628,80 @@ export default function DiaryScreen() {
   const [datesWithData, setDatesWithData] = useState<string[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  // Guards against a pull-to-refresh and a probe-triggered sync overlapping.
+  const syncingRef = useRef(false);
+  // Which account the local store was last synced for, so a switch forces a full pull.
+  const syncedOwnerRef = useRef<string | null>(null);
+  // Set once the first sync for this account has finished, so the focus listener
+  // doesn't probe against a store that is still being filled on mount.
+  const didInitialSyncRef = useRef(false);
 
   const winW = Dimensions.get('window').width;
   const hPad = winW >= CONTENT_MAX_WIDTH + 40 ? Math.max(20, (winW - CONTENT_MAX_WIDTH) / 2) : 20;
   const classId = (user as any)?.classId || '';
 
-  useEffect(() => { triggerSync(); }, [user?.userId]);
+  // Automatic refresh is gated on the cheap /diary/sync-state probe: we only spend a
+  // full pull when the live diary has actually changed. On an unchanged window this
+  // costs one tiny request and touches nothing, which matters on a 2G connection.
+  // Anything the probe misses is still recoverable — the parent can pull to refresh.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user) return;
+      // A just-switched account has no rows of its own yet, so sync unconditionally;
+      // the probe would compare against the previous student's data.
+      const isNewOwner = syncedOwnerRef.current !== user.userId;
+      if (isNewOwner) didInitialSyncRef.current = false;
+      syncedOwnerRef.current = user.userId;
+      if (!isNewOwner) {
+        const changed = await hasRemoteDiaryChanges(user.userId, classId).catch(() => false);
+        if (cancelled || !changed) return;
+      }
+      if (!cancelled) await runSync();
+    })();
+    return () => { cancelled = true; };
+  }, [user?.userId]);
 
-  async function triggerSync() {
-    if (!user) return;
+  // Re-check whenever the screen regains focus, so a diary posted while the parent was
+  // elsewhere in the app shows up without them having to pull.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        if (!user || syncedOwnerRef.current !== user.userId) return;
+        // Mount already syncs; without this the focus pass would probe a half-filled
+        // store and fire a second, redundant pull on every cold open.
+        if (!didInitialSyncRef.current || syncingRef.current) return;
+        const changed = await hasRemoteDiaryChanges(user.userId, classId).catch(() => false);
+        if (!cancelled && changed) await runSync();
+      })();
+      return () => { cancelled = true; };
+      // classId is a dependency too: a session refresh can populate it after the
+      // first render, and a stale closure here would keep probing without a class.
+    }, [user?.userId, classId])
+  );
+
+  async function runSync() {
+    if (!user || syncingRef.current) return;
+    syncingRef.current = true;
     setSyncing(true);
-    try { await sync(); } catch (_) { } finally { setSyncing(false); }
+    // Pass the signed-in account so sync can drop another student's rows from the
+    // shared local DB before pulling this one's.
+    try { await sync(user.userId); } catch (_) { } finally {
+      didInitialSyncRef.current = true;
+      syncingRef.current = false;
+      setSyncing(false);
+    }
   }
+
+  // Pull-to-refresh always forces a full pull — the parent asked, so we never let the
+  // probe talk us out of it.
+  const onRefresh = useCallback(async () => {
+    if (!user) return;
+    setRefreshing(true);
+    try { await runSync(); } finally { setRefreshing(false); }
+  }, [user?.userId]);
 
   // Hero metadata
   const monthShort = today.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
@@ -660,7 +729,7 @@ export default function DiaryScreen() {
       )}
 
       {/* Silently observe history dates for calendar dots */}
-      {user ? (
+      {user && classId ? (
         <DiaryHistoryDots
           historyDates={priorDates}
           classId={classId}
@@ -675,6 +744,15 @@ export default function DiaryScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingHorizontal: hPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressBackgroundColor={isDark ? '#161B2E' : '#FFFFFF'}
+          />
+        }
       >
         <View style={{ maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center', width: '100%' }}>
 
@@ -737,11 +815,22 @@ export default function DiaryScreen() {
             key={activeDate}
             entering={FadeInDown.delay(60).duration(360).springify()}
           >
-            {user ? (
+            {user && classId ? (
               <DiaryListForDate
                 key={`${i18n.language}-${activeDate}`}
                 date={activeDate}
                 classId={classId}
+              />
+            ) : user ? (
+              // Class not resolved yet (profile still syncing, or no active enrolment).
+              // Showing the normal "no homework" card here would be a lie, and showing an
+              // unfiltered list would leak another student's diary — so say what's true.
+              <DiaryTaskList
+                tasks={[]}
+                emptyLabel={t(
+                  'diary.no_class_assigned',
+                  "We're still loading this student's class. Pull down or reopen in a moment."
+                )}
               />
             ) : null}
           </Animated.View>

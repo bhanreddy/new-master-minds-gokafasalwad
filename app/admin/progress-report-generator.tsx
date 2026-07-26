@@ -340,30 +340,10 @@ function buildReportHTML(
 // Logo loader — platform-aware base64 conversion
 // -------------------------------------------------------------------
 async function getLogoDataUri(): Promise<string> {
-  // Use expo-asset everywhere — react-native-web's Image has no resolveAssetSource,
-  // which breaks Expo web printing with Image.resolveAssetSource(...).
-  const { Asset } = await import('expo-asset');
-  const asset = Asset.fromModule(require('../../assets/images/icon.png'));
-  await asset.downloadAsync();
-  const uri = asset.localUri || asset.uri;
-  if (!uri) return '';
-
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
-  const FileSystem: any = await import('expo-file-system/legacy');
-  const base64Logo = await FileSystem.readAsStringAsync(uri, {
-    encoding: 'base64',
-  });
-  return `data:image/png;base64,${base64Logo}`;
+  // Android release builds expose bundled icons as bare drawable names
+  // (e.g. assets_images_icon) — use the shared resolver that materializes file://.
+  const { bundledAssetToBase64Uri } = await import('../../src/utils/toBase64Uri');
+  return (await bundledAssetToBase64Uri(require('../../assets/images/icon.png'), 'image/png')) ?? '';
 }
 
 // -------------------------------------------------------------------

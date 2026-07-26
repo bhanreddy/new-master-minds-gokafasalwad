@@ -58,6 +58,11 @@ export interface PartialFeePaymentSetting {
     message?: string;
 }
 
+export interface PartialFeeDirectCollectSetting {
+    enabled: boolean;
+    message?: string;
+}
+
 export interface AdminFinanceStats {
     today_collection: number;
     monthly_collection: number;
@@ -166,6 +171,14 @@ export const AdminService = {
 
     setPartialFeePaymentEnabled: async (enabled: boolean): Promise<PartialFeePaymentSetting> => {
         return api.put<PartialFeePaymentSetting>('/admin/partial-fee-payment', { enabled });
+    },
+
+    getPartialFeeDirectCollectSetting: async (): Promise<PartialFeeDirectCollectSetting> => {
+        return api.get<PartialFeeDirectCollectSetting>('/admin/partial-fee-direct-collect');
+    },
+
+    setPartialFeeDirectCollectEnabled: async (enabled: boolean): Promise<PartialFeeDirectCollectSetting> => {
+        return api.put<PartialFeeDirectCollectSetting>('/admin/partial-fee-direct-collect', { enabled });
     },
 
     getStaffPayslipsSetting: async (): Promise<{ enabled: boolean }> => {

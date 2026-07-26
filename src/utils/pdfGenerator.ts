@@ -120,6 +120,16 @@ export const loadLogoAsBase64 = async (imageAsset: any): Promise<string | null> 
       return imageAsset;
     }
 
+    if (typeof imageAsset === 'string' && imageAsset.startsWith('data:')) {
+      return imageAsset;
+    }
+
+    // Bundled require() module — use shared Android-safe resolver
+    if (typeof imageAsset === 'number') {
+      const { bundledAssetToBase64Uri } = await import('./toBase64Uri');
+      return bundledAssetToBase64Uri(imageAsset, 'image/png');
+    }
+
     const asset = Asset.fromModule(imageAsset);
     await asset.downloadAsync();
     const uri = asset.localUri || asset.uri;
@@ -193,12 +203,19 @@ export const loadLogoAsBase64 = async (imageAsset: any): Promise<string | null> 
       }
     }
 
-    // Read local file as base64 (Native only)
-    const base64 = await FileSystem.readAsStringAsync(uri, {
+    // Native: Android may hand back a bare drawable name — copy to file:// first
+    let readableUri = uri;
+    if (Platform.OS === 'android' && !uri.startsWith('file:') && !uri.includes('://')) {
+      const dest = `${FileSystem.cacheDirectory}ExponentAsset-logo-${Date.now()}.png`;
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      readableUri = dest;
+    }
+
+    const base64 = await FileSystem.readAsStringAsync(readableUri, {
       encoding: 'base64',
     });
 
-    const extension = uri.split('.').pop()?.toLowerCase();
+    const extension = readableUri.split('.').pop()?.toLowerCase();
     const mimeType =
       extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : 'image/png';
 

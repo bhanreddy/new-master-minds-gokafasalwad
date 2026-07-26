@@ -24,6 +24,7 @@ import { FeeService } from '@/src/services/feeService';
 import { SchoolSettingsService, SchoolSettings } from '@/src/services/schoolSettingsService';
 import { SCHOOL_CONFIG, SCHOOL_RECOGNITION_LINE } from '@/src/constants/schoolConfig';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
 import {
@@ -1514,6 +1515,7 @@ function buildStudentDataFromRecord(
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CertificateGenerator() {
   const { theme, isDark } = useTheme();
+  const { shellActive } = useAccountsWebChrome();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
 
   const [studentId, setStudentId] = useState('');
@@ -1749,7 +1751,7 @@ export default function CertificateGenerator() {
   return (
     <View style={styles.root}>
       <LinearGradient colors={isDark ? ['#0F1117', '#0F1117'] : ['#F0F4FF', '#F8FAFC']} style={StyleSheet.absoluteFill} />
-      <AdminHeader title="Certificate Generator" showBackButton />
+      {!shellActive && <AdminHeader title="Certificate Generator" showBackButton />}
       <StepIndicator step={step} isDark={isDark} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">

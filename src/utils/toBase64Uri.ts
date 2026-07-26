@@ -33,6 +33,14 @@ function mimeFromUrl(url: string): string {
   return 'image/png';
 }
 
+function isFileUri(uri: string | null | undefined): uri is string {
+  return !!uri && uri.startsWith('file:');
+}
+
+function hasReadableScheme(uri: string): boolean {
+  return /^(file|content|http|https|data|asset):/i.test(uri);
+}
+
 async function blobToDataUri(blob: Blob): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -40,6 +48,74 @@ async function blobToDataUri(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Resolve a bundled Expo image (`require(...)`) to a FileSystem-readable `file://` URI.
+ *
+ * On Android release builds, expo-asset marks images as already downloaded with a bare
+ * drawable name like `assets_images_icon`. `readAsStringAsync` cannot read those — we
+ * force a real cache copy first (known expo-asset Android quirk).
+ */
+export async function resolveBundledAssetFileUri(assetModule: number): Promise<string | null> {
+  const { Asset } = await import('expo-asset');
+  const asset = Asset.fromModule(assetModule);
+
+  // Android may set downloaded=true with a drawable resource name (no scheme).
+  // Reset so downloadAsync actually copies the bytes into the cache directory.
+  if (asset.downloaded && asset.localUri && !asset.localUri.startsWith('file:')) {
+    (asset as { downloaded: boolean }).downloaded = false;
+  }
+
+  await asset.downloadAsync();
+
+  if (isFileUri(asset.localUri)) {
+    return asset.localUri;
+  }
+
+  const sourceUri = asset.localUri || asset.uri;
+  if (!sourceUri) return null;
+
+  if (Platform.OS === 'web') {
+    return sourceUri;
+  }
+
+  // Already a scheme FileSystem / fetch can use.
+  if (isFileUri(sourceUri)) {
+    return sourceUri;
+  }
+
+  // Bare Android drawable name — copyAsync supports no-scheme sources on Android.
+  if (Platform.OS === 'android' && !hasReadableScheme(sourceUri)) {
+    const FileSystem = await import('expo-file-system/legacy');
+    const ext = asset.type || 'png';
+    const dest = `${FileSystem.cacheDirectory}ExponentAsset-${asset.hash ?? asset.name}.${ext}`;
+    try {
+      const info = await FileSystem.getInfoAsync(dest);
+      if (!info.exists) {
+        await FileSystem.copyAsync({ from: sourceUri, to: dest });
+      }
+      return dest;
+    } catch {
+      // Fall through to image-manipulator
+    }
+  }
+
+  if (hasReadableScheme(sourceUri) && !sourceUri.startsWith('http')) {
+    return sourceUri;
+  }
+
+  // Last resort: image-manipulator materializes a real file:// URI.
+  try {
+    const ImageManipulator = await import('expo-image-manipulator');
+    const input = isFileUri(asset.localUri) ? asset.localUri : sourceUri;
+    const result = await ImageManipulator.manipulateAsync(input, [], {
+      format: ImageManipulator.SaveFormat.PNG,
+    });
+    return result.uri || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Fetch a remote image and return a base64 data-URI, or null on failure. */
@@ -54,7 +130,7 @@ export async function toBase64Uri(url: string): Promise<string | null> {
       return await blobToDataUri(blob);
     }
 
-    const FileSystem: any = await import('expo-file-system');
+    const FileSystem: any = await import('expo-file-system/legacy');
     const tempPath = `${FileSystem.cacheDirectory ?? ''}payslip-logo-${Date.now()}`;
     const downloaded = await FileSystem.downloadAsync(url, tempPath);
     const base64 = await FileSystem.readAsStringAsync(downloaded.uri, {
@@ -69,10 +145,7 @@ export async function toBase64Uri(url: string): Promise<string | null> {
 /** Convert a bundled Expo image asset, such as require('../../assets/images/icon.png'), to a data URI. */
 export async function bundledAssetToBase64Uri(assetModule: number, mimeType = 'image/png'): Promise<string | null> {
   try {
-    const { Asset } = await import('expo-asset');
-    const asset = Asset.fromModule(assetModule);
-    await asset.downloadAsync();
-    const uri = asset.localUri || asset.uri;
+    const uri = await resolveBundledAssetFileUri(assetModule);
     if (!uri) return null;
 
     if (Platform.OS === 'web') {

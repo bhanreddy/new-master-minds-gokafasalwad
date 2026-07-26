@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'expo-router';
 import * as Haptics from '../utils/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
+import { usePermissions } from '../hooks/usePermissions';
 import { SCHOOL_NAME } from '../constants/school';
 import {
   DASHBOARD_SIDEBAR_COLLAPSED,
@@ -27,6 +28,8 @@ export interface AccountsSidebarNavItem {
   gradient: [string, string];
   badge?: number;
   category?: string;
+  /** RBAC permission required to see this entry (optional). */
+  permission?: string;
 }
 
 function routeIsActive(pathname: string, itemRoute: string): boolean {
@@ -66,6 +69,14 @@ const DEFAULT_NAV: AccountsSidebarNavItem[] = [
     category: 'Documents',
   },
   {
+    title: 'Certificates',
+    icon: 'ribbon-outline',
+    route: '/accounts/certificate-generator',
+    gradient: ['#1E40AF', '#06B6D4'],
+    category: 'Documents',
+    permission: 'certificates.issue',
+  },
+  {
     title: 'Users / Clients',
     icon: 'people-outline',
     route: '/accounts/manage-users',
@@ -101,6 +112,7 @@ export default function AccountsWebSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { signOut } = useAuth();
+  const { hasPermission } = usePermissions();
 
   const widthSV = useSharedValue(
     collapsed ? DASHBOARD_SIDEBAR_COLLAPSED : DASHBOARD_SIDEBAR_EXPANDED,
@@ -119,16 +131,18 @@ export default function AccountsWebSidebar({
   }));
 
   const items = useMemo(() => {
-    return DEFAULT_NAV.map((it) =>
-      it.route === '/accounts/pending-enrollments' && pendingEnrollmentsBadge > 0
-        ? { ...it, badge: pendingEnrollmentsBadge }
-        : it,
-    );
-  }, [pendingEnrollmentsBadge]);
+    return DEFAULT_NAV
+      .filter((it) => !it.permission || hasPermission(it.permission))
+      .map((it) =>
+        it.route === '/accounts/pending-enrollments' && pendingEnrollmentsBadge > 0
+          ? { ...it, badge: pendingEnrollmentsBadge }
+          : it,
+      );
+  }, [pendingEnrollmentsBadge, hasPermission]);
 
   const grouped = useMemo(() => {
     const workspace = items.filter((i) =>
-      ['/accounts/dashboard', '/accounts/fees', '/accounts/invoices'].includes(i.route),
+      ['/accounts/dashboard', '/accounts/fees', '/accounts/invoices', '/accounts/certificate-generator'].includes(i.route),
     );
     const people = items.filter((i) =>
       ['/accounts/manage-users', '/accounts/pending-enrollments'].includes(i.route),

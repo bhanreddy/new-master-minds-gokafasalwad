@@ -225,8 +225,10 @@ export default function FeeApprovalsScreen() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [actingId, setActingId] = useState<string | null>(null);
   const [partialEnabled, setPartialEnabled] = useState(true);
+  const [directCollectEnabled, setDirectCollectEnabled] = useState(false);
   const [loadingSetting, setLoadingSetting] = useState(true);
   const [savingSetting, setSavingSetting] = useState(false);
+  const [savingDirectSetting, setSavingDirectSetting] = useState(false);
 
   const loadSetting = useCallback(async () => {
     if (!canManageSchoolSetting) {
@@ -235,8 +237,12 @@ export default function FeeApprovalsScreen() {
     }
     try {
       setLoadingSetting(true);
-      const res = await AdminService.getPartialFeePaymentSetting();
-      setPartialEnabled(!!res.enabled);
+      const [partial, direct] = await Promise.all([
+        AdminService.getPartialFeePaymentSetting(),
+        AdminService.getPartialFeeDirectCollectSetting(),
+      ]);
+      setPartialEnabled(!!partial.enabled);
+      setDirectCollectEnabled(!!direct.enabled);
     } catch {
       alertCompat('Error', 'Failed to load partial fee payment setting');
     } finally {
@@ -328,6 +334,22 @@ export default function FeeApprovalsScreen() {
       alertCompat('Error', message);
     } finally {
       setSavingSetting(false);
+    }
+  };
+
+  const handleDirectCollectToggle = async (nextValue: boolean) => {
+    const previous = directCollectEnabled;
+    setDirectCollectEnabled(nextValue);
+    setSavingDirectSetting(true);
+    try {
+      const res = await AdminService.setPartialFeeDirectCollectEnabled(nextValue);
+      setDirectCollectEnabled(!!res.enabled);
+    } catch (err) {
+      setDirectCollectEnabled(previous);
+      const message = err instanceof APIError ? err.message : 'Failed to update setting';
+      alertCompat('Error', message);
+    } finally {
+      setSavingDirectSetting(false);
     }
   };
 
@@ -473,6 +495,60 @@ export default function FeeApprovalsScreen() {
     </Animated.View>
   ) : null;
 
+  const directCollectCard =
+    canManageSchoolSetting && partialEnabled ? (
+      <Animated.View entering={enter(60)} style={styles.settingCard}>
+        <View style={[styles.settingAccent, { backgroundColor: directCollectEnabled ? '#6366F1' : '#94A3B8' }]} />
+        <View style={styles.settingInner}>
+          <View style={styles.settingTop}>
+            <View
+              style={[
+                styles.settingIcon,
+                directCollectEnabled ? styles.settingIconDirectOn : styles.settingIconOff,
+              ]}
+            >
+              <Ionicons
+                name={directCollectEnabled ? 'flash' : 'shield-checkmark'}
+                size={20}
+                color={directCollectEnabled ? '#4F46E5' : '#E11D48'}
+              />
+            </View>
+            <View style={styles.settingBody}>
+              <Text style={styles.settingTitle}>Direct partial collection</Text>
+              <Text style={styles.settingDesc}>
+                {directCollectEnabled
+                  ? 'Accounts can post partial payments instantly — no approval request is sent to you.'
+                  : 'Each partial payment is sent to you for approval before accounts can post it.'}
+              </Text>
+            </View>
+            {loadingSetting ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Switch
+                value={directCollectEnabled}
+                onValueChange={handleDirectCollectToggle}
+                disabled={savingDirectSetting}
+                trackColor={{ false: isDark ? '#374151' : '#E2E8F0', true: '#A5B4FC' }}
+                thumbColor={directCollectEnabled ? '#4F46E5' : isDark ? '#9CA3AF' : '#F8FAFC'}
+                ios_backgroundColor={isDark ? '#374151' : '#E2E8F0'}
+              />
+            )}
+          </View>
+          <View style={[styles.statusPill, directCollectEnabled ? styles.statusPillIndigo : styles.statusPillOff]}>
+            <View style={[styles.statusDot, { backgroundColor: directCollectEnabled ? '#6366F1' : '#F43F5E' }]} />
+            <Text
+              style={[
+                styles.statusPillText,
+                directCollectEnabled ? styles.statusIndigoText : styles.statusOffText,
+              ]}
+            >
+              {directCollectEnabled ? 'Accounts collect partials directly' : 'Admin approval required for partials'}
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+    ) : null;
+
   const deletionSection = canReviewPaymentDeletions ? (
     <Animated.View entering={enter(80)} style={styles.sectionBlock}>
       <SectionHeader
@@ -575,6 +651,7 @@ export default function FeeApprovalsScreen() {
     <>
       {overview}
       {settingCard}
+      {directCollectCard}
       {deletionSection}
       {canReviewApprovals ? (
         <Animated.View entering={enter(120)}>
@@ -913,6 +990,7 @@ const getStyles = (theme: Theme, isDark: boolean) => {
       justifyContent: 'center',
     },
     settingIconOn: { backgroundColor: isDark ? 'rgba(16,185,129,0.18)' : '#D1FAE5' },
+    settingIconDirectOn: { backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#E0E7FF' },
     settingIconOff: { backgroundColor: isDark ? 'rgba(244,63,94,0.18)' : '#FFE4E6' },
     settingBody: { flex: 1, paddingTop: 2, paddingRight: 4 },
     settingTitle: {
@@ -947,9 +1025,14 @@ const getStyles = (theme: Theme, isDark: boolean) => {
       backgroundColor: isDark ? 'rgba(244,63,94,0.12)' : '#FFF1F2',
       borderColor: isDark ? 'rgba(244,63,94,0.28)' : '#FECDD3',
     },
+    statusPillIndigo: {
+      backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : '#EEF2FF',
+      borderColor: isDark ? 'rgba(99,102,241,0.28)' : '#C7D2FE',
+    },
     statusPillText: { fontSize: 12, fontWeight: '700' },
     statusOnText: { color: isDark ? '#6EE7B7' : '#047857' },
     statusOffText: { color: isDark ? '#FDA4AF' : '#BE123C' },
+    statusIndigoText: { color: isDark ? '#A5B4FC' : '#4338CA' },
     statusDot: { width: 6, height: 6, borderRadius: 3 },
 
     sectionBlock: { marginBottom: 22 },

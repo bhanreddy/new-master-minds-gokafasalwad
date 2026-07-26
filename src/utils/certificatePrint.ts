@@ -70,6 +70,8 @@ export function resolveCertificateElement(ref: RefObject<View | null>): HTMLElem
 }
 
 async function uriToDataUri(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) return uri;
+
   if (Platform.OS === 'web') {
     const response = await fetch(uri);
     const blob = await response.blob();
@@ -79,6 +81,16 @@ async function uriToDataUri(uri: string): Promise<string> {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  }
+
+  // Remote logos: download to cache first (FileSystem cannot read http(s) directly).
+  if (/^https?:\/\//i.test(uri)) {
+    const FileSystem: any = await import('expo-file-system/legacy');
+    const tempPath = `${FileSystem.cacheDirectory ?? ''}cert-logo-${Date.now()}`;
+    const downloaded = await FileSystem.downloadAsync(uri, tempPath);
+    const base64Logo = await FileSystem.readAsStringAsync(downloaded.uri, { encoding: 'base64' });
+    const mime = uri.toLowerCase().includes('.jpg') || uri.toLowerCase().includes('.jpeg') ? 'jpeg' : 'png';
+    return `data:image/${mime};base64,${base64Logo}`;
   }
 
   const FileSystem: any = await import('expo-file-system/legacy');
@@ -97,12 +109,8 @@ export async function getLogoDataUri(logoUrl?: string): Promise<string> {
     }
   }
 
-  const { Asset } = await import('expo-asset');
-  const asset = Asset.fromModule(require('../../assets/images/icon.png'));
-  await asset.downloadAsync();
-  const uri = asset.localUri || asset.uri;
-  if (!uri) return '';
-  return uriToDataUri(uri);
+  const { bundledAssetToBase64Uri } = await import('./toBase64Uri');
+  return (await bundledAssetToBase64Uri(require('../../assets/images/icon.png'), 'image/png')) ?? '';
 }
 
 export type CertificatePdfFormat = 'TC' | 'TC_A4_HALF' | 'BONAFIDE';
