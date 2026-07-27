@@ -78,13 +78,105 @@ export interface AdminFinanceStats {
     }[];
 }
 
+export interface ParentVisit {
+    id: string;
+    student_id: string;
+    parent_id?: string | null;
+    parent_name: string;
+    relationship?: string | null;
+    purpose: string;
+    notes?: string | null;
+    visited_at: string;
+    created_at: string;
+    admission_no: string;
+    student_name: string;
+    class_name?: string | null;
+    section_name?: string | null;
+    recorded_by_name?: string | null;
+}
+
+export interface ParentVisitList {
+    visits: ParentVisit[];
+    summary: {
+        total_visits: number;
+        visits_this_month: number;
+        students_visited: number;
+    };
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        total_pages: number;
+    };
+}
+
+export interface StudentInsightMark {
+    id: string;
+    marks_obtained: number | string | null;
+    is_absent: boolean;
+    subject_name: string;
+    subject_name_te?: string | null;
+    max_marks: number | string;
+    passing_marks: number | string;
+    exam_name: string;
+    exam_name_te?: string | null;
+    exam_type?: string | null;
+    academic_year?: string | null;
+}
+
 // --- Mock Data (Temporary until Backend Endpoints are ready) ---
 
 
 
 export interface TalkingPointsResult {
     points: string[];
-    source: 'ai' | 'fallback';
+    source: 'calculated' | 'ai' | 'fallback';
+    language?: 'te';
+    summary?: {
+        attendance: {
+            total_days: number;
+            present_days: number;
+            full_present_days: number;
+            half_days: number;
+            absent_days: number;
+            percentage: number | null;
+        };
+        complaints: {
+            total: number;
+            open: number;
+            behaviour: number;
+            open_behaviour: number;
+            serious: number;
+        };
+        parent_visits: {
+            total: number;
+            last_visited_on: string | null;
+        };
+        result: {
+            trend: 'improved' | 'declined' | 'unchanged' | 'insufficient_data';
+            change_points: number | null;
+            latest_exam: {
+                exam_id: string;
+                exam_name: string;
+                exam_name_te?: string | null;
+                exam_date?: string | null;
+                avg_pct: number;
+            } | null;
+            previous_exam: {
+                exam_id: string;
+                exam_name: string;
+                exam_name_te?: string | null;
+                exam_date?: string | null;
+                avg_pct: number;
+            } | null;
+            weak_subjects: {
+                name: string;
+                current_pct: number | null;
+                previous_pct: number | null;
+                is_absent: boolean;
+            }[];
+        };
+    };
 }
 
 export const AdminService = {
@@ -126,6 +218,39 @@ export const AdminService = {
             return { points: data, source: isFallback ? 'fallback' : 'ai' };
         }
         return data;
+    },
+
+    getParentVisits: async (params?: {
+        search?: string;
+        student_id?: string;
+        page?: number;
+        limit?: number;
+    }): Promise<ParentVisitList> => {
+        return api.get<ParentVisitList>('/admin/parent-visits', params, { silent: true });
+    },
+
+    recordParentVisit: async (data: {
+        student_id: string;
+        parent_id?: string;
+        parent_name: string;
+        relationship?: string;
+        purpose: string;
+        notes?: string;
+        visited_at?: string;
+    }): Promise<{ visit: ParentVisit; student_visit_count: number; message: string }> => {
+        return api.post('/admin/parent-visits', data, { silent: true });
+    },
+
+    removeParentVisit: async (id: string): Promise<{ message: string }> => {
+        return api.delete(`/admin/parent-visits/${id}`);
+    },
+
+    getStudentInsightMarks: async (studentId: string): Promise<StudentInsightMark[]> => {
+        return api.get<StudentInsightMark[]>(
+            `/results/marks/student/${studentId}`,
+            undefined,
+            { silent: true },
+        );
     },
 
     /**

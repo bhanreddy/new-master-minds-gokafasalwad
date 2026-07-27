@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
@@ -13,6 +13,8 @@ import {
   Platform,
   Share,
   Pressable,
+  Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as Print from 'expo-print';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
@@ -30,9 +32,15 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { AdminService, StudentRiskProfile, HeatmapData } from '../../src/services/adminService';
+import {
+  AdminService,
+  StudentRiskProfile,
+  HeatmapData,
+  TalkingPointsResult,
+  StudentInsightMark,
+} from '../../src/services/adminService';
 import { StudentService } from '../../src/services/studentService';
-import type { Student } from '../../src/types/models';
+import type { AttendanceResponse, Student } from '../../src/types/models';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -100,6 +108,269 @@ const escapeHtml = (value: string) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+
+const formatParentVisitDate = (value?: string | null) => {
+  if (!value) return null;
+  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const SUBJECT_NAMES_TE: Record<string, string> = {
+  english: 'ఆంగ్లం',
+  telugu: 'తెలుగు',
+  hindi: 'హిందీ',
+  mathematics: 'గణితం',
+  maths: 'గణితం',
+  math: 'గణితం',
+  science: 'సైన్స్',
+  social: 'సాంఘిక శాస్త్రం',
+  'social science': 'సాంఘిక శాస్త్రం',
+  'social studies': 'సాంఘిక శాస్త్రం',
+  physics: 'భౌతిక శాస్త్రం',
+  chemistry: 'రసాయన శాస్త్రం',
+  biology: 'జీవ శాస్త్రం',
+  computers: 'కంప్యూటర్ సైన్స్',
+  'computer science': 'కంప్యూటర్ సైన్స్',
+  evs: 'పర్యావరణ శాస్త్రం',
+  sanskrit: 'సంస్కృతం',
+};
+
+const subjectNameTe = (mark: StudentInsightMark) =>
+  mark.subject_name_te?.trim()
+  || SUBJECT_NAMES_TE[mark.subject_name?.trim().toLowerCase()]
+  || mark.subject_name
+  || 'తెలియని విషయం';
+
+const roundOne = (value: number) => Math.round(value * 10) / 10;
+
+type ExamGroup = {
+  key: string;
+  name: string;
+  nameTe?: string | null;
+  marks: StudentInsightMark[];
+  average: number;
+};
+
+function groupInsightMarks(marks: StudentInsightMark[]): ExamGroup[] {
+  const groups = new Map<string, StudentInsightMark[]>();
+  for (const mark of marks) {
+    const max = Number(mark.max_marks);
+    if (!mark.exam_name || !mark.subject_name || !Number.isFinite(max) || max <= 0) continue;
+    const key = `${mark.academic_year || ''}::${mark.exam_name}`;
+    const group = groups.get(key) || [];
+    group.push(mark);
+    groups.set(key, group);
+  }
+
+  return [...groups.entries()].map(([key, examMarks]) => {
+    const percentages = examMarks.map((mark) => (
+      mark.is_absent ? 0 : (Number(mark.marks_obtained) / Number(mark.max_marks)) * 100
+    ));
+    return {
+      key,
+      name: examMarks[0].exam_name,
+      nameTe: examMarks[0].exam_name_te,
+      marks: examMarks,
+      average: roundOne(percentages.reduce((sum, value) => sum + value, 0) / percentages.length),
+    };
+  });
+}
+
+function buildLegacyVerifiedInsights({
+  attendance,
+  marks,
+  riskProfile,
+  parentVisitCount,
+  parentVisitLast,
+}: {
+  attendance: AttendanceResponse | null;
+  marks: StudentInsightMark[];
+  riskProfile?: StudentRiskProfile;
+  parentVisitCount: number | null;
+  parentVisitLast: string | null;
+}): { points: string[]; summary: NonNullable<TalkingPointsResult['summary']> } {
+  const attendanceSummary = attendance?.summary;
+  const totalDays = Number(attendanceSummary?.total) || 0;
+  const halfDays = Number(attendanceSummary?.half_day) || 0;
+  const fullPresentDays =
+    (Number(attendanceSummary?.present) || 0) + (Number(attendanceSummary?.late) || 0);
+  const presentDays = attendanceSummary?.effective_present != null
+    ? Number(attendanceSummary.effective_present)
+    : fullPresentDays + halfDays * 0.5;
+  const absentDays = attendanceSummary?.effective_absent != null
+    ? Number(attendanceSummary.effective_absent)
+    : (Number(attendanceSummary?.absent) || 0) + halfDays * 0.5;
+  const attendancePct = totalDays > 0 ? roundOne((presentDays / totalDays) * 100) : null;
+
+  const points: string[] = [];
+  if (totalDays > 0) {
+    const halfDayText = halfDays > 0 ? `, ${halfDays} అర్ధదినాలు` : '';
+    const action = attendancePct! < 75
+      ? 'హాజరు చాలా తక్కువగా ఉంది; గైర్హాజరు కారణాలను తెలుసుకొని వారపు హాజరు ప్రణాళిక అమలు చేయాలి.'
+      : attendancePct! < 85
+        ? 'హాజరులో మెరుగుదల అవసరం; ప్రతి వారం తల్లిదండ్రులతో సమీక్షించాలి.'
+        : 'హాజరు స్థిరంగా ఉంది; ఇదే క్రమాన్ని కొనసాగించాలి.';
+    points.push(
+      `హాజరు: మొత్తం ${totalDays} రోజులలో లెక్కించిన హాజరు ${presentDays} రోజులు, గైర్హాజరు ${absentDays} రోజులు${halfDayText}; హాజరు శాతం ${attendancePct}%. ${action}`,
+    );
+  } else {
+    points.push(
+      'హాజరు: నమోదు చేసిన హాజరు రోజులు లేవు; శాతాన్ని ఊహించకుండా ముందుగా హాజరు వివరాలను పూర్తిచేయాలి.',
+    );
+  }
+
+  const exams = groupInsightMarks(marks);
+  const latestExam = exams[0] || null;
+  const previousExam = exams[1] || null;
+  const change = latestExam && previousExam
+    ? roundOne(latestExam.average - previousExam.average)
+    : null;
+  const trend = change == null
+    ? 'insufficient_data'
+    : change > 0.5
+      ? 'improved'
+      : change < -0.5
+        ? 'declined'
+        : 'unchanged';
+
+  if (latestExam && previousExam) {
+    const comparison = trend === 'improved'
+      ? `${Math.abs(change!)} శాతం పాయింట్లు మెరుగయ్యారు`
+      : trend === 'declined'
+        ? `${Math.abs(change!)} శాతం పాయింట్లు తగ్గారు`
+        : 'గణనీయమైన మార్పు లేదు';
+    points.push(
+      `ఫలితాల పోలిక: మునుపటి పరీక్ష “${previousExam.nameTe || previousExam.name}”లో సగటు ${previousExam.average}%, తాజా పరీక్ష “${latestExam.nameTe || latestExam.name}”లో ${latestExam.average}%; అందువల్ల ${comparison}.`,
+    );
+  } else if (latestExam) {
+    points.push(
+      `ఫలితాల పోలిక: తాజా పరీక్ష “${latestExam.nameTe || latestExam.name}”లో సగటు ${latestExam.average}%. మెరుగుదల ఉందో లేదో చెప్పడానికి మరో మునుపటి పరీక్ష ఫలితం అవసరం.`,
+    );
+  } else {
+    points.push(
+      'ఫలితాల పోలిక: నమోదు చేసిన మార్కులు లేవు; మెరుగుదల లేదా తగ్గుదల చెప్పడానికి కనీసం రెండు పరీక్షల మార్కులు అవసరం.',
+    );
+  }
+
+  const previousBySubject = new Map(
+    (previousExam?.marks || []).map((mark) => [mark.subject_name.trim().toLowerCase(), mark]),
+  );
+  const weakSubjects = (latestExam?.marks || [])
+    .map((mark) => {
+      const max = Number(mark.max_marks);
+      const obtained = mark.is_absent ? 0 : Number(mark.marks_obtained);
+      const percentage = roundOne((obtained / max) * 100);
+      const previous = previousBySubject.get(mark.subject_name.trim().toLowerCase());
+      const previousPct = previous
+        ? roundOne((previous.is_absent ? 0 : Number(previous.marks_obtained)) / Number(previous.max_marks) * 100)
+        : null;
+      return { mark, percentage, previousPct };
+    })
+    .filter(({ mark, percentage }) => (
+      mark.is_absent || Number(mark.marks_obtained) < Number(mark.passing_marks) || percentage < 50
+    ))
+    .sort((a, b) => a.percentage - b.percentage)
+    .slice(0, 4);
+
+  if (weakSubjects.length > 0) {
+    const details = weakSubjects.map(({ mark, percentage, previousPct }) => {
+      if (mark.is_absent) return `${subjectNameTe(mark)}లో పరీక్షకు గైర్హాజరు`;
+      if (previousPct == null) return `${subjectNameTe(mark)}లో ${percentage}%`;
+      const delta = roundOne(percentage - previousPct);
+      const comparison = delta > 0.5
+        ? `మునుపటి కంటే ${Math.abs(delta)} పాయింట్లు మెరుగుదల`
+        : delta < -0.5
+          ? `మునుపటి కంటే ${Math.abs(delta)} పాయింట్లు తగ్గుదల`
+          : 'మునుపటి స్థాయిలోనే';
+      return `${subjectNameTe(mark)}లో ${percentage}% (${comparison})`;
+    });
+    points.push(
+      `బలహీన విషయాలు: ${details.join('; ')}. ఈ విషయాలకు వారానికి లక్ష్య పునశ్చరణ మరియు చిన్న పరీక్ష పెట్టాలి.`,
+    );
+  } else if (latestExam) {
+    points.push(
+      'బలహీన విషయాలు: తాజా పరీక్షలో ఉత్తీర్ణత మార్కులకు దిగువన లేదా యాభై శాతం కంటే తక్కువగా ఉన్న విషయం కనిపించలేదు.',
+    );
+  } else {
+    points.push('బలహీన విషయాలు: మార్కుల డేటా లేనందున బలహీన విషయాన్ని నిర్ణయించలేదు.');
+  }
+
+  const behaviourFactor = riskProfile?.factors.find((factor) =>
+    /incident|behavio[u]?r|discipline/i.test(factor),
+  );
+  const complaintMatch = behaviourFactor?.match(/(\d+)/);
+  const behaviourCount = complaintMatch ? Number(complaintMatch[1]) : behaviourFactor ? 1 : 0;
+  if (behaviourCount > 0) {
+    points.push(
+      `ప్రవర్తన: ఫిర్యాదు నమోదుల ఆధారంగా ${behaviourCount} ప్రవర్తన సమస్య${behaviourCount > 1 ? 'లు' : ''} గుర్తించబడింది. తరగతి ఉపాధ్యాయుడితో కారణాన్ని నిర్ధారించి, ఇంటి–పాఠశాల సంయుక్త చర్యను రెండు వారాల తర్వాత సమీక్షించాలి.`,
+    );
+  } else {
+    points.push(
+      'ప్రవర్తన: అందుబాటులో ఉన్న ఫిర్యాదు నమోదుల్లో ప్రవర్తన సమస్య కనిపించలేదు; తుది నిర్ణయానికి తరగతి ఉపాధ్యాయుడి ప్రత్యక్ష అభిప్రాయాన్ని కూడా తీసుకోవాలి.',
+    );
+  }
+
+  const visits = parentVisitCount ?? 0;
+  const lastVisit = formatParentVisitDate(parentVisitLast);
+  points.push(
+    visits > 0
+      ? `తల్లిదండ్రుల సంప్రదింపు: ఇప్పటివరకు ${visits} పాఠశాల సందర్శనలు నమోదయ్యాయి${lastVisit ? `; చివరి సందర్శన ${lastVisit}` : ''}. గత సమావేశంలో నిర్ణయించిన చర్యలను ఈసారి సమీక్షించాలి.`
+      : 'తల్లిదండ్రుల సంప్రదింపు: ఇప్పటివరకు సందర్శన నమోదు కాలేదు; ఈ సమావేశాన్ని నమోదు చేసి నిర్ణయించిన చర్యలను భద్రపరచాలి.',
+  );
+
+  return {
+    points,
+    summary: {
+      attendance: {
+        total_days: totalDays,
+        present_days: presentDays,
+        full_present_days: fullPresentDays,
+        half_days: halfDays,
+        absent_days: absentDays,
+        percentage: attendancePct,
+      },
+      complaints: {
+        total: behaviourCount,
+        open: 0,
+        behaviour: behaviourCount,
+        open_behaviour: 0,
+        serious: behaviourFactor && /urgent/i.test(behaviourFactor) ? 1 : 0,
+      },
+      parent_visits: {
+        total: visits,
+        last_visited_on: lastVisit,
+      },
+      result: {
+        trend,
+        change_points: change,
+        latest_exam: latestExam ? {
+          exam_id: latestExam.key,
+          exam_name: latestExam.name,
+          exam_name_te: latestExam.nameTe,
+          avg_pct: latestExam.average,
+        } : null,
+        previous_exam: previousExam ? {
+          exam_id: previousExam.key,
+          exam_name: previousExam.name,
+          exam_name_te: previousExam.nameTe,
+          avg_pct: previousExam.average,
+        } : null,
+        weak_subjects: weakSubjects.map(({ mark, percentage, previousPct }) => ({
+          name: subjectNameTe(mark),
+          current_pct: percentage,
+          previous_pct: previousPct,
+          is_absent: mark.is_absent,
+        })),
+      },
+    },
+  };
+}
 
 // ─── PressScale ───────────────────────────────────────────────────────────────
 
@@ -180,7 +451,7 @@ function AnimatedBar({ value, color }: { value: number; color: string }) {
   const w = useSharedValue(0);
   useEffect(() => {
     w.value = withTiming(Math.max(0, Math.min(100, value)), { duration: 700 });
-  }, [value]);
+  }, [value, w]);
   const style = useAnimatedStyle(() => ({ width: `${w.value}%` as any }));
   return (
     <View style={barStyles.track}>
@@ -542,7 +813,8 @@ export default function SmartInsights() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string; admissionNo: string } | null>(null);
   const [generatedPoints, setGeneratedPoints] = useState<string[] | null>(null);
-  const [insightSource, setInsightSource] = useState<'ai' | 'fallback' | null>(null);
+  const [insightSource, setInsightSource] = useState<TalkingPointsResult['source'] | null>(null);
+  const [insightSummary, setInsightSummary] = useState<TalkingPointsResult['summary'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -550,6 +822,15 @@ export default function SmartInsights() {
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [visitModalOpen, setVisitModalOpen] = useState(false);
+  const [visitParentName, setVisitParentName] = useState('');
+  const [visitRelationship, setVisitRelationship] = useState('');
+  const [visitPurpose, setVisitPurpose] = useState('Student enquiry');
+  const [visitNotes, setVisitNotes] = useState('');
+  const [savingVisit, setSavingVisit] = useState(false);
+  const [parentVisitCount, setParentVisitCount] = useState<number | null>(null);
+  const [parentVisitLast, setParentVisitLast] = useState<string | null>(null);
+  const [parentVisitLoading, setParentVisitLoading] = useState(false);
   const inputRef = useRef<any>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -648,9 +929,61 @@ export default function SmartInsights() {
     setSearchResults([]);
     setGeneratedPoints(null);
     setInsightSource(null);
-    const result = await AdminService.generateTalkingPoints(student.id);
-    setGeneratedPoints(result.points);
-    setInsightSource(result.source);
+    setInsightSummary(null);
+    setParentVisitCount(null);
+    setParentVisitLast(null);
+    setParentVisitLoading(true);
+
+    const attendanceFrom = new Date();
+    attendanceFrom.setDate(attendanceFrom.getDate() - 60);
+
+    const [talkingPointsResult, visitResult, attendanceResult, marksResult] = await Promise.allSettled([
+      AdminService.generateTalkingPoints(student.id),
+      AdminService.getParentVisits({ student_id: student.id, page: 1, limit: 1 }),
+      StudentService.getAttendance(
+        student.id,
+        { from_date: attendanceFrom.toISOString().slice(0, 10), limit: 1 },
+        { silent: true },
+      ),
+      AdminService.getStudentInsightMarks(student.id),
+    ]);
+
+    if (talkingPointsResult.status === 'rejected') {
+      setParentVisitLoading(false);
+      throw talkingPointsResult.reason;
+    }
+
+    const result = talkingPointsResult.value;
+    const visitCount = visitResult.status === 'fulfilled' ? visitResult.value.meta.total : null;
+    const visitLast = visitResult.status === 'fulfilled'
+      ? visitResult.value.visits[0]?.visited_at ?? null
+      : null;
+
+    if (result.summary) {
+      setGeneratedPoints(result.points);
+      setInsightSource(result.source);
+      setInsightSummary(result.summary);
+    } else {
+      const verified = buildLegacyVerifiedInsights({
+        attendance: attendanceResult.status === 'fulfilled' ? attendanceResult.value : null,
+        marks: marksResult.status === 'fulfilled' ? marksResult.value : [],
+        riskProfile: riskData.find((profile) => profile.id === student.id),
+        parentVisitCount: visitCount,
+        parentVisitLast: visitLast,
+      });
+      setGeneratedPoints(verified.points);
+      setInsightSource('calculated');
+      setInsightSummary(verified.summary);
+    }
+
+    if (visitResult.status === 'fulfilled') {
+      setParentVisitCount(visitCount);
+      setParentVisitLast(visitLast);
+    } else if (result.summary?.parent_visits) {
+      setParentVisitCount(result.summary.parent_visits.total);
+      setParentVisitLast(result.summary.parent_visits.last_visited_on);
+    }
+    setParentVisitLoading(false);
   };
 
   const selectStudentAndGenerate = async (student: Student) => {
@@ -665,13 +998,16 @@ export default function SmartInsights() {
       alertCompat('Error', 'Failed to generate talking points.');
       setGeneratedPoints(null);
       setInsightSource(null);
+      setInsightSummary(null);
+      setParentVisitCount(null);
+      setParentVisitLast(null);
       setSelectedStudent(null);
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleStudentPress = useCallback(async (studentId: string, name?: string) => {
+  const handleStudentPress = async (studentId: string, name?: string) => {
     setActiveTab('TALKING_POINTS');
     setGenerating(true);
     try {
@@ -684,14 +1020,87 @@ export default function SmartInsights() {
     } finally {
       setGenerating(false);
     }
-  }, []);
+  };
 
   const handleSearchChange = (text: string) => {
     setSearchQuery(text);
+    setVisitModalOpen(false);
     if (generatedPoints || selectedStudent) {
       setGeneratedPoints(null);
       setInsightSource(null);
+      setInsightSummary(null);
+      setParentVisitCount(null);
+      setParentVisitLast(null);
       setSelectedStudent(null);
+    }
+  };
+
+  const openVisitCounter = async () => {
+    if (!selectedStudent) return;
+    setVisitParentName('');
+    setVisitRelationship('');
+    setVisitPurpose('Student enquiry');
+    setVisitNotes('');
+    setVisitModalOpen(true);
+
+    try {
+      const parents = await StudentService.getParents(selectedStudent.id, { silent: true });
+      const primary = parents.find((parent) => parent.is_primary) || parents[0];
+      if (primary) {
+        const name = [primary.first_name, primary.last_name].filter(Boolean).join(' ').trim();
+        setVisitParentName((current) => current || name);
+        setVisitRelationship((current) => current || primary.relation || '');
+      }
+    } catch {
+      // Parent details are optional for prefilling; admin can enter them.
+    }
+  };
+
+  const incrementParentVisit = async () => {
+    if (!selectedStudent || savingVisit) return;
+    const parentName = visitParentName.trim();
+    const purpose = visitPurpose.trim();
+    if (!parentName) {
+      alertCompat('Parent name required', 'Enter the parent or guardian who visited.');
+      return;
+    }
+    if (!purpose) {
+      alertCompat('Purpose required', 'Enter why the parent visited.');
+      return;
+    }
+
+    setSavingVisit(true);
+    try {
+      const recorded = await AdminService.recordParentVisit({
+        student_id: selectedStudent.id,
+        parent_name: parentName,
+        relationship: visitRelationship.trim() || undefined,
+        purpose,
+        notes: visitNotes.trim() || undefined,
+        visited_at: new Date().toISOString(),
+      });
+      setParentVisitCount(recorded.student_visit_count);
+      setParentVisitLast(new Date().toISOString());
+      setVisitModalOpen(false);
+
+      try {
+        const refreshed = await AdminService.generateTalkingPoints(selectedStudent.id);
+        setGeneratedPoints(refreshed.points);
+        setInsightSource(refreshed.source);
+        setInsightSummary(refreshed.summary ?? null);
+      } catch {
+        // The visit is already safely recorded. Keep the new count even if the
+        // talking-points refresh is temporarily unavailable.
+      }
+
+      alertCompat(
+        'Visit recorded',
+        `Parent visit count increased to ${recorded.student_visit_count}.`,
+      );
+    } catch {
+      alertCompat('Could not record visit', 'Check the details and try again.');
+    } finally {
+      setSavingVisit(false);
     }
   };
 
@@ -727,19 +1136,30 @@ export default function SmartInsights() {
       alertCompat('Not Found', 'No student matched that name, ID, or admission number.');
       setGeneratedPoints(null);
       setInsightSource(null);
+      setInsightSummary(null);
+      setParentVisitCount(null);
+      setParentVisitLast(null);
       setSelectedStudent(null);
       setSearchResults([]);
     } catch {
       alertCompat('Not Found', 'Student not found or analysis failed.');
       setGeneratedPoints(null);
       setInsightSource(null);
+      setInsightSummary(null);
+      setParentVisitCount(null);
+      setParentVisitLast(null);
       setSelectedStudent(null);
     } finally {
       setGenerating(false);
     }
   };
 
-  const getInsightsTitle = () => (insightSource === 'fallback' ? 'Basic Summary' : 'AI Performance Insights');
+  const getInsightsTitle = () =>
+    insightSource === 'calculated'
+      ? 'Verified Student Insights'
+      : insightSource === 'fallback'
+        ? 'Basic Summary'
+        : 'AI Performance Insights';
 
   const getInsightsStudentLabel = () =>
     selectedStudent
@@ -1105,7 +1525,7 @@ export default function SmartInsights() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={tpStyles.resultTitle}>
-                  {insightSource === 'fallback' ? 'Basic Summary' : 'AI Performance Insights'}
+                  {getInsightsTitle()}
                 </Text>
                 <Text style={tpStyles.resultSub}>
                   {selectedStudent
@@ -1113,12 +1533,72 @@ export default function SmartInsights() {
                     : searchQuery}
                 </Text>
               </View>
-              <View style={[tpStyles.aiBadge, insightSource === 'fallback' && { backgroundColor: COLORS.textMuted }]}>
-                <Text style={tpStyles.aiBadgeText}>{insightSource === 'fallback' ? 'STATS' : '✦ AI'}</Text>
+              <View style={[tpStyles.aiBadge, insightSource !== 'ai' && { backgroundColor: COLORS.safe.text }]}>
+                <Text style={tpStyles.aiBadgeText}>
+                  {insightSource === 'calculated' ? '✓ DATA' : insightSource === 'fallback' ? 'STATS' : '✦ AI'}
+                </Text>
               </View>
             </View>
 
             <View style={tpStyles.divider} />
+
+            <View style={tpStyles.metricsGrid}>
+              {insightSummary && (
+                <>
+                <View style={tpStyles.metricCard}>
+                  <Text style={tpStyles.metricLabel}>Present</Text>
+                  <Text style={tpStyles.metricValue}>
+                    {insightSummary.attendance.present_days}/{insightSummary.attendance.total_days}
+                  </Text>
+                </View>
+                <View style={tpStyles.metricCard}>
+                  <Text style={tpStyles.metricLabel}>Absent</Text>
+                  <Text style={tpStyles.metricValue}>
+                    {insightSummary.attendance.absent_days}/{insightSummary.attendance.total_days}
+                  </Text>
+                </View>
+                <View style={tpStyles.metricCard}>
+                  <Text style={tpStyles.metricLabel}>Complaints</Text>
+                  <Text style={tpStyles.metricValue}>{insightSummary.complaints.total}</Text>
+                </View>
+                </>
+              )}
+              <View
+                style={[
+                  tpStyles.metricCard,
+                  tpStyles.visitMetricCard,
+                  !insightSummary && tpStyles.visitMetricCardStandalone,
+                ]}
+              >
+                <Text style={tpStyles.metricLabel}>Parent Visits</Text>
+                <View style={tpStyles.visitCounterRow}>
+                  {parentVisitLoading ? (
+                    <ActivityIndicator size="small" color={COLORS.safe.text} />
+                  ) : (
+                    <Text style={tpStyles.metricValue}>
+                      {parentVisitCount ?? insightSummary?.parent_visits.total ?? '—'}
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={tpStyles.incrementVisitButton}
+                    onPress={() => void openVisitCounter()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase parent visit count"
+                  >
+                    <Ionicons name="add" size={16} color="#FFF" />
+                    <Text style={tpStyles.incrementVisitText}>Visit</Text>
+                  </TouchableOpacity>
+                </View>
+                {formatParentVisitDate(parentVisitLast ?? insightSummary?.parent_visits.last_visited_on) ? (
+                  <Text style={tpStyles.lastVisitText}>
+                    Last visit:{' '}
+                    {formatParentVisitDate(parentVisitLast ?? insightSummary?.parent_visits.last_visited_on)}
+                  </Text>
+                ) : (
+                  <Text style={tpStyles.lastVisitText}>Click + Visit to record a parent visit</Text>
+                )}
+              </View>
+            </View>
 
             {generatedPoints.map((point, i) => (
               <Animated.View key={i} entering={FadeInDown.delay(Math.min(i, 6) * 50).duration(280)} style={tpStyles.pointRow}>
@@ -1274,6 +1754,99 @@ export default function SmartInsights() {
         {activeTab === 'TALKING_POINTS' && renderTalkingPoints()}
         {activeTab === 'HEATMAP' && renderHeatmap()}
       </ScrollView>
+
+      <Modal
+        visible={visitModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !savingVisit && setVisitModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={tpStyles.visitModalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => !savingVisit && setVisitModalOpen(false)}
+          />
+          <View style={tpStyles.visitModalCard}>
+            <View style={tpStyles.visitModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={tpStyles.visitModalTitle}>Record parent visit</Text>
+                <Text style={tpStyles.visitModalSub}>
+                  {selectedStudent?.name} · current count {insightSummary?.parent_visits.total ?? 0}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setVisitModalOpen(false)}
+                disabled={savingVisit}
+                style={tpStyles.visitModalClose}
+              >
+                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 440 }}
+            >
+              <Text style={tpStyles.visitFieldLabel}>Parent / guardian name *</Text>
+              <AppTextInput
+                style={tpStyles.visitInput}
+                value={visitParentName}
+                onChangeText={setVisitParentName}
+                placeholder="Name of the person who visited"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              <Text style={tpStyles.visitFieldLabel}>Relationship</Text>
+              <AppTextInput
+                style={tpStyles.visitInput}
+                value={visitRelationship}
+                onChangeText={setVisitRelationship}
+                placeholder="Father, mother, guardian…"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              <Text style={tpStyles.visitFieldLabel}>Purpose *</Text>
+              <AppTextInput
+                style={tpStyles.visitInput}
+                value={visitPurpose}
+                onChangeText={setVisitPurpose}
+                placeholder="Student enquiry"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              <Text style={tpStyles.visitFieldLabel}>Notes</Text>
+              <AppTextInput
+                style={[tpStyles.visitInput, tpStyles.visitNotesInput]}
+                value={visitNotes}
+                onChangeText={setVisitNotes}
+                placeholder="Discussion and follow-up agreed"
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+                textAlignVertical="top"
+              />
+
+              <TouchableOpacity
+                style={[tpStyles.saveVisitButton, savingVisit && { opacity: 0.6 }]}
+                onPress={() => void incrementParentVisit()}
+                disabled={savingVisit}
+              >
+                {savingVisit ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="add-circle-outline" size={19} color="#FFF" />
+                    <Text style={tpStyles.saveVisitText}>Save and increase count</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1493,6 +2066,116 @@ const tpStyles = StyleSheet.create({
   aiBadge: { backgroundColor: ACCENT, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   aiBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
   divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 16 },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 18,
+  },
+  metricCard: {
+    minWidth: 112,
+    flexGrow: 1,
+    flexBasis: '46%',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: `${ACCENT}0D`,
+    borderWidth: 1,
+    borderColor: `${ACCENT}1F`,
+  },
+  metricLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'web' ? 'Noto Sans Telugu, sans-serif' : undefined,
+  },
+  metricValue: { color: COLORS.textPrimary, fontSize: 17, fontWeight: '800', marginTop: 3 },
+  visitMetricCard: { justifyContent: 'space-between' },
+  visitMetricCardStandalone: {
+    flexBasis: '100%',
+    minHeight: 88,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  visitCounterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  incrementVisitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: COLORS.safe.text,
+    borderRadius: 9,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  incrementVisitText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
+  lastVisitText: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    marginTop: 4,
+    fontFamily: Platform.OS === 'web' ? 'Noto Sans Telugu, sans-serif' : undefined,
+  },
+  visitModalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15,23,42,0.48)',
+    padding: 18,
+  },
+  visitModalCard: {
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '88%',
+    borderRadius: 22,
+    backgroundColor: COLORS.surfaceRaised,
+    padding: 18,
+    ...shadowClay,
+  },
+  visitModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 10,
+  },
+  visitModalTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '800' },
+  visitModalSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 3 },
+  visitModalClose: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+  },
+  visitFieldLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 11,
+    marginBottom: 6,
+  },
+  visitInput: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    color: COLORS.textPrimary,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  visitNotesInput: { minHeight: 82 },
+  saveVisitButton: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 13,
+    backgroundColor: COLORS.safe.text,
+    marginTop: 18,
+  },
+  saveVisitText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   pointRow: { flexDirection: 'row', gap: 12, marginBottom: 14, alignItems: 'flex-start' },
   pointNum: {
     width: 24,

@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   StatusBar,
   TouchableOpacity,
   Platform,
@@ -32,6 +32,7 @@ import type { SchoolTheme } from '../../src/theme/types';
 import LogoLoader from '../../src/components/LogoLoader';
 import ViewAsBanner from '../../src/components/ViewAsBanner';
 import { useEffectiveStaffId } from '../../src/hooks/useEffectiveStaffId';
+import AppDatePicker, { parseYMD } from '../../src/components/AppDatePicker';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -215,8 +216,22 @@ export default function ManageStudents() {
   const [detectedClassLabel, setDetectedClassLabel] = useState<string | null>(null);
   const [session, setSession] = useState<AttendanceSession>(currentSession());
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Defaults to today — same as production. Past dates are opt-in via the picker.
+  const todayYMD = useMemo(() => localAttendanceDate(), []);
+  const [selectedDate, setSelectedDate] = useState(todayYMD);
 
   const tabBarReserve = staffTabBarReserve(theme.spacing);
+  const isToday = selectedDate === todayYMD;
+  const selectedDateLabel = useMemo(
+    () =>
+      parseYMD(selectedDate).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [selectedDate]
+  );
 
   const statusOf = useCallback(
     (s: StudentUI): SessionStatus => (session === 'morning' ? s.morningStatus : s.afternoonStatus),
@@ -249,7 +264,7 @@ export default function ManageStudents() {
     setLoadError(null);
     setLoading(true);
     try {
-      const myClass = await AttendanceService.getMyClass(undefined, staffId, session);
+      const myClass = await AttendanceService.getMyClass(selectedDate, staffId, session);
       if (!myClass) {
         setStudents([]);
         setDetectedClassId(null);
@@ -280,7 +295,17 @@ export default function ManageStudents() {
     } finally {
       setLoading(false);
     }
-  }, [user, staffId, session]);
+  }, [user, staffId, session, selectedDate]);
+
+  const handleDateChange = useCallback((next: string) => {
+    if (!next || next === selectedDate) return;
+    // Guard against future dates even if the native picker misbehaves.
+    const capped = next > todayYMD ? todayYMD : next;
+    triggerHaptic('light');
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSearchQuery('');
+    setSelectedDate(capped);
+  }, [selectedDate, todayYMD]);
 
   useFocusEffect(
     useCallback(() => {
@@ -317,17 +342,17 @@ export default function ManageStudents() {
       setSubmitting(true);
       if (!detectedClassId) throw new Error('No class assigned.');
       
-      const date = localAttendanceDate();
       await AttendanceService.markAttendance({
         class_section_id: detectedClassId,
-        date,
+        date: selectedDate,
         session,
         records: students
           .filter((s) => s.enrollmentId)
           .map((s) => ({ student_id: s.id, status: statusOf(s) as AttendanceStatus })),
       });
       triggerHaptic('success');
-      alertCompat(`Success`, `${session === 'morning' ? 'Morning' : 'Afternoon'} attendance submitted.`);
+      const dayNote = isToday ? '' : ` for ${selectedDateLabel}`;
+      alertCompat(`Success`, `${session === 'morning' ? 'Morning' : 'Afternoon'} attendance submitted${dayNote}.`);
       router.back();
     } catch (error: any) {
       triggerHaptic('warning');
@@ -360,8 +385,48 @@ export default function ManageStudents() {
     );
   };
 
+  const renderDatePicker = () => (
+    <View style={[styles.datePickerCard, claySurface(isDark)]}>
+      <View style={styles.datePickerTop}>
+        <View style={styles.datePickerLabelRow}>
+          <Ionicons name="calendar-outline" size={16} color={ACCENT.indigo} />
+          <Text style={styles.datePickerLabel}>Attendance date</Text>
+        </View>
+        {!isToday && (
+          <TouchableOpacity
+            onPress={() => handleDateChange(todayYMD)}
+            hitSlop={8}
+            style={styles.todayChip}
+            accessibilityRole="button"
+            accessibilityLabel="Jump back to today"
+          >
+            <Text style={styles.todayChipText}>Today</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <AppDatePicker
+        value={selectedDate}
+        onChange={handleDateChange}
+        maximumDate={todayYMD}
+        variant="compact"
+        isDark={isDark}
+        accentColor={ACCENT.indigo}
+        placeholder="Select date"
+        containerStyle={styles.datePickerField}
+      />
+      {!isToday && (
+        <View style={styles.backdateHint}>
+          <Ionicons name="time-outline" size={13} color={ACCENT.amber} />
+          <Text style={styles.backdateHintText}>Marking a previous day · {selectedDateLabel}</Text>
+        </View>
+      )}
+    </View>
+  );
+
   const renderHeader = () => (
     <View style={styles.headerContainer}>
+      {renderDatePicker()}
+
       {/* Session Switcher */}
       <View style={styles.sessionSwitch}>
         <SessionTab value="morning" label="Morning" icon="sunny-outline" />
@@ -475,62 +540,73 @@ export default function ManageStudents() {
 
         <StaffHeader
           title="Attendance"
-          subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+          subtitle={selectedDateLabel}
           showBackButton={true}
           showMenuButton={false}
         />
         {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
         {loading ? (
-          <View style={styles.emptyState}>
-            <LogoLoader size={60} color={ACCENT.violet} />
-            <Text style={styles.loadingText}>Syncing class data...</Text>
+          <View style={styles.emptyWithPicker}>
+            <View style={styles.headerContainer}>{renderDatePicker()}</View>
+            <View style={styles.emptyState}>
+              <LogoLoader size={60} color={ACCENT.violet} />
+              <Text style={styles.loadingText}>Syncing class data...</Text>
+            </View>
           </View>
         ) : students.length === 0 ? (
-          <View style={styles.emptyState}>
-            <LinearGradient
-              colors={isDark ? ['rgba(108,99,255,0.25)', 'rgba(61,142,255,0.12)'] : ['rgba(108,99,255,0.15)', 'rgba(61,142,255,0.08)']}
-              style={styles.emptyIconRing}
-            >
-              <Ionicons
-                name={loadError ? 'cloud-offline-outline' : detectedClassId ? 'people-outline' : 'link-outline'}
-                size={48}
-                color={loadError ? ACCENT.amber : ACCENT.violet}
-              />
-            </LinearGradient>
-            <Text style={styles.emptyTitle}>
-              {loadError ? 'Connection failed' : detectedClassId ? 'No students yet' : 'No class assigned'}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              {loadError
-                ? loadError
-                : detectedClassId
-                  ? `There are no students enrolled in ${detectedClassLabel || 'this class'} for the ${session} session.`
-                  : `You don't have a class assigned for the ${session} session today. Switch sessions or contact admin.`}
-            </Text>
-            {loadError && (
-              <TouchableOpacity style={styles.retryBtn} onPress={loadStudents} activeOpacity={0.85}>
-                <Ionicons name="refresh" size={16} color="#fff" />
-                <Text style={styles.retryBtnText}>Retry</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.emptyWithPicker}>
+            {/* Keep date picker reachable even when the class list is empty */}
+            {renderHeader()}
+            <View style={styles.emptyState}>
+              <LinearGradient
+                colors={isDark ? ['rgba(108,99,255,0.25)', 'rgba(61,142,255,0.12)'] : ['rgba(108,99,255,0.15)', 'rgba(61,142,255,0.08)']}
+                style={styles.emptyIconRing}
+              >
+                <Ionicons
+                  name={loadError ? 'cloud-offline-outline' : detectedClassId ? 'people-outline' : 'link-outline'}
+                  size={48}
+                  color={loadError ? ACCENT.amber : ACCENT.violet}
+                />
+              </LinearGradient>
+              <Text style={styles.emptyTitle}>
+                {loadError ? 'Connection failed' : detectedClassId ? 'No students yet' : 'No class assigned'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {loadError
+                  ? loadError
+                  : detectedClassId
+                    ? `There are no students enrolled in ${detectedClassLabel || 'this class'} for the ${session} session.`
+                    : `You don't have a class assigned for the ${session} session${isToday ? ' today' : ' on this date'}. Try another date/session or contact admin.`}
+              </Text>
+              {loadError && (
+                <TouchableOpacity style={styles.retryBtn} onPress={loadStudents} activeOpacity={0.85}>
+                  <Ionicons name="refresh" size={16} color="#fff" />
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         ) : (
-          <FlatList
-            data={filteredStudents}
-            keyExtractor={(item) => item.id}
-            ListHeaderComponent={renderHeader}
-            ListFooterComponent={renderFooter}
-            renderItem={({ item }) => (
+          <ScrollView
+            style={styles.scrollFlex}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            // One scroll surface: date picker + session + overview scroll away with the cards.
+            nestedScrollEnabled
+          >
+            {renderHeader()}
+            {filteredStudents.map((item) => (
               <SwipeableStudentCard
+                key={item.id}
                 student={{ id: item.id, name: item.name, rollNo: item.rollNo, status: statusOf(item), photoUrl: item.photoUrl }}
                 onStatusChange={handleStatusChange}
                 isDark={isDark}
               />
-            )}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          />
+            ))}
+            {renderFooter()}
+          </ScrollView>
         )}
       </KeyboardAvoidingView>
     </GestureHandlerRootView>
@@ -540,6 +616,7 @@ export default function ManageStudents() {
 const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: isDark ? theme.colors.background : '#F1F5F9' },
   loadingText: { marginTop: 16, fontSize: 16, color: theme.colors.textSecondary, fontWeight: '600' },
+  emptyWithPicker: { flex: 1 },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
   emptyIconRing: { width: 110, height: 110, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 22, fontWeight: '800', color: theme.colors.textPrimary, marginBottom: 8 },
@@ -548,6 +625,21 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
   retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   
   headerContainer: { paddingBottom: 8 },
+
+  datePickerCard: { marginHorizontal: 16, marginTop: 16, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, gap: 10 },
+  datePickerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  datePickerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  datePickerLabel: { fontSize: 13, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: -0.1 },
+  datePickerField: { flex: 0 },
+  todayChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: isDark ? 'rgba(79,70,229,0.22)' : 'rgba(79,70,229,0.12)',
+  },
+  todayChipText: { fontSize: 12, fontWeight: '800', color: ACCENT.indigo },
+  backdateHint: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backdateHintText: { flex: 1, fontSize: 12, fontWeight: '600', color: isDark ? '#FBBF24' : ACCENT.amberDeep },
   
   sessionSwitch: { flexDirection: 'row', marginHorizontal: 16, marginTop: 16, padding: 4, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0', gap: 4 },
   sessionTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 6 },
@@ -580,7 +672,8 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => StyleSheet.create({
   sectionAccent: { width: 4, height: 18, borderRadius: 2 },
   listMetaText: { fontSize: 12, fontWeight: '800', color: theme.colors.textMuted, textTransform: 'uppercase', letterSpacing: 1.5 },
   studentCountLabel: { fontSize: 13, fontWeight: '700', color: theme.colors.textSecondary },
-  listContent: { paddingTop: 4, flexGrow: 1 },
+  scrollFlex: { flex: 1 },
+  listContent: { paddingTop: 4, flexGrow: 1, paddingBottom: 8 },
 
   actionFooter: { marginHorizontal: 16, marginTop: 20, gap: 10, padding: 14 },
   quickActions: { flexDirection: 'row', gap: 10 },

@@ -252,9 +252,10 @@ export const StudentService = {
      */
     getAttendance: async (
         id: string,
-        params?: { from_date?: string; to_date?: string; limit?: number }
+        params?: { from_date?: string; to_date?: string; limit?: number },
+        options?: { silent?: boolean },
     ): Promise<AttendanceResponse> => {
-        return api.get<AttendanceResponse>(`/students/${id}/attendance`, params);
+        return api.get<AttendanceResponse>(`/students/${id}/attendance`, params, options);
     },
 
     /**
