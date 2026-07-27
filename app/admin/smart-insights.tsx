@@ -399,7 +399,14 @@ function PressScale({
       }}
       style={style}
     >
-      <Animated.View style={[anim, style?.flex != null ? { flex: style.flex } : null]}>{children}</Animated.View>
+      {/*
+        Prefer width: '100%' over flex:1 on the animated child.
+        On Android, flex:1 inside an auto-height Pressable often collapses
+        and clips text/icons (seen on Smart Insights tabs).
+      */}
+      <Animated.View style={[anim, style?.flex != null ? { width: '100%' } : null]}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -502,32 +509,46 @@ function TabBar({ active, onChange }: { active: TabType; onChange: (t: TabType) 
       {TABS.map((tab) => {
         const isActive = tab.id === active;
         return (
-          <PressScale key={tab.id} onPress={() => onChange(tab.id)} style={{ flex: 1 }}>
-            <View style={[tabStyles.tab, isActive && tabStyles.tabActive]}>
-              {isActive && (
-                <LinearGradient
-                  colors={[ACCENT, '#7B6BA8']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
-                />
-              )}
-              {isActive && (
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']}
-                  style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
-                  pointerEvents="none"
-                />
-              )}
-              <Feather
-                name={tab.icon as any}
-                size={15}
-                color={isActive ? '#FFF' : COLORS.textMuted}
-                style={{ marginBottom: 3 }}
-              />
-              <Text style={[tabStyles.label, isActive && tabStyles.labelActive]}>{tab.label}</Text>
-            </View>
-          </PressScale>
+          // Outer flex wrapper — do NOT pass flex:1 into PressScale.
+          // On Android, PressScale's Animated.View + flex:1 in an auto-height
+          // row collapses and clips icon/label (empty colored pills).
+          <View key={tab.id} style={tabStyles.slot}>
+            <PressScale onPress={() => onChange(tab.id)}>
+              <View style={[tabStyles.tab, isActive && tabStyles.tabActive]}>
+                {isActive && (
+                  <LinearGradient
+                    colors={[ACCENT, '#7B6BA8']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={tabStyles.tabFill}
+                    pointerEvents="none"
+                  />
+                )}
+                {isActive && (
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']}
+                    style={tabStyles.tabFill}
+                    pointerEvents="none"
+                  />
+                )}
+                <View style={tabStyles.tabContent} pointerEvents="none">
+                  <Feather
+                    name={tab.icon as any}
+                    size={15}
+                    color={isActive ? '#FFF' : COLORS.textMuted}
+                    style={{ marginBottom: 3 }}
+                  />
+                  <Text
+                    style={[tabStyles.label, isActive && tabStyles.labelActive]}
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                  >
+                    {tab.label}
+                  </Text>
+                </View>
+              </View>
+            </PressScale>
+          </View>
         );
       })}
     </View>
@@ -541,24 +562,46 @@ const tabStyles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
+  slot: { flex: 1 },
   tab: {
-    paddingVertical: 11,
+    minHeight: 52,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surfaceRaised,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
+    // Clip gradients to radius without elevation on the same node —
+    // elevation + overflow:'hidden' is unreliable for children on Android.
     overflow: 'hidden',
     borderBottomWidth: 1.5,
     borderBottomColor: COLORS.clayEdge,
-    ...shadowFlat,
   },
   tabActive: {
     borderColor: 'transparent',
     borderBottomColor: 'rgba(0,0,0,0.12)',
   },
-  label: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted, letterSpacing: 0.2 },
+  tabFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+  },
+  // Keep label/icon above absolute gradients (Android draw-order quirk).
+  tabContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+    ...(Platform.OS === 'android' ? { elevation: 1 } : null),
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+  },
   labelActive: { color: '#FFF', fontWeight: '700' },
 });
 
