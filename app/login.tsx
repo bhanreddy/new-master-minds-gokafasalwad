@@ -36,6 +36,16 @@ import {
   getVaultAccountSubtitle,
 } from '@/src/utils/portalRoutes';
 import { isStudentRole, isStaffPortalRole } from '@/src/utils/roleHelpers';
+import { SCHOOL_ID } from '@/src/constants/school';
+import {
+  isFingerprintEnabledForAccount,
+  issueFingerprintTicket,
+  verifyFingerprintForAccount,
+} from '@/src/services/biometricService';
+import {
+  describeFingerprintFailure,
+  getFingerprintPromptCopy,
+} from '@/src/services/fingerprintGate';
 import type { ValidatedUser } from '@/src/types/auth';
 import { LoginFormDoodle } from '@/src/components/doodles/LoginFormDoodle';
 import type { LoginFocusedField } from '@/src/components/doodles/doodleTypes';
@@ -80,6 +90,11 @@ const UnifiedLoginScreen: React.FC = () => {
   // ── Saved logins (multi-account vault) ─────────────────────────────────────
   const [savedAccounts, setSavedAccounts] = useState<VaultAccount[]>([]);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  // userIds of saved accounts that have fingerprint enabled on THIS device.
+  // Only those rows get the fingerprint action — never a global "last user".
+  const [fingerprintAccountIds, setFingerprintAccountIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   // ── Form-reactive doodle state ──────────────────────────────────────────────
   const reduceMotion = useReducedMotion();
@@ -118,9 +133,25 @@ const UnifiedLoginScreen: React.FC = () => {
     try {
       const accts = await accountVault.listAccounts();
       setSavedAccounts(accts);
+
+      // isFingerprintEnabledForAccount re-checks platform and role, so an
+      // ineligible saved login can never light up the fingerprint action.
+      const enabled = await Promise.all(
+        accts.map(async (acct) =>
+          (await isFingerprintEnabledForAccount({
+            schoolId: SCHOOL_ID,
+            userId: acct.userId,
+            roleCode: acct.validatedUser?.role?.code,
+          }))
+            ? acct.userId
+            : null
+        )
+      );
+      setFingerprintAccountIds(new Set(enabled.filter((id): id is string => !!id)));
     } catch {
       // Vault read failures must never block the login form.
       setSavedAccounts([]);
+      setFingerprintAccountIds(new Set());
     }
   }, []);
 
@@ -154,10 +185,10 @@ const UnifiedLoginScreen: React.FC = () => {
     router.replace(getHomeRouteForRole(roleCode));
   };
 
-  // ── One-tap continue with a saved login (seamless, no password) ────────────
-  const handleContinueAs = async (acct: VaultAccount) => {
-    if (switchingId || loading) return;
-    setSwitchingId(acct.userId);
+  // ── Restore a saved login (seamless, no password) ──────────────────────────
+  // switchAccount applies the fingerprint gate itself, so a protected account
+  // tapped through the normal row is still challenged before it is restored.
+  const restoreSavedAccount = async (acct: VaultAccount) => {
     try {
       const res = await switchAccount(acct.userId);
       if (res.error || !res.session) {
@@ -180,6 +211,51 @@ const UnifiedLoginScreen: React.FC = () => {
         title: 'Could not continue',
         message: err?.message || 'Please sign in again below.',
       });
+    }
+  };
+
+  // ── One-tap continue with a saved login ────────────────────────────────────
+  const handleContinueAs = async (acct: VaultAccount) => {
+    if (switchingId || loading) return;
+    setSwitchingId(acct.userId);
+    try {
+      await restoreSavedAccount(acct);
+    } finally {
+      setSwitchingId(null);
+    }
+  };
+
+  // ── Fingerprint sign-in for one specific saved login ───────────────────────
+  // Scoped entirely to `acct`: the scan is verified against that account's own
+  // opt-in record, and success restores that account and no other.
+  const handleFingerprintContinue = async (acct: VaultAccount) => {
+    if (switchingId || loading) return;
+    setSwitchingId(acct.userId);
+    try {
+      const result = await verifyFingerprintForAccount(
+        {
+          schoolId: SCHOOL_ID,
+          userId: acct.userId,
+          roleCode: acct.validatedUser?.role?.code,
+        },
+        getFingerprintPromptCopy()
+      );
+      if (!result.success) {
+        flagLoginError();
+        // A cancelled or failed scan changes nothing: the saved logins stay,
+        // and the password form below remains available.
+        showAlert({
+          type: 'error',
+          title: t('fingerprint.login'),
+          message: describeFingerprintFailure(result.reason),
+        });
+        await loadSavedAccounts();
+        return;
+      }
+      // Hand the gate inside switchAccount a single-use pass so the user is
+      // not asked to scan twice for the same tap.
+      issueFingerprintTicket(acct.userId);
+      await restoreSavedAccount(acct);
     } finally {
       setSwitchingId(null);
     }
@@ -337,6 +413,18 @@ const UnifiedLoginScreen: React.FC = () => {
                           <ActivityIndicator size="small" color={C.accent} />
                         ) : (
                           <View style={styles.savedRight}>
+                            {fingerprintAccountIds.has(acct.userId) && (
+                              <TouchableOpacity
+                                style={styles.savedFingerprintBtn}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                disabled={!!switchingId || loading}
+                                onPress={() => handleFingerprintContinue(acct)}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('fingerprint.signInWith')}
+                              >
+                                <Ionicons name="finger-print" size={17} color={C.accent} />
+                              </TouchableOpacity>
+                            )}
                             <Ionicons name="chevron-forward" size={18} color={C.inkGhost} />
                             <TouchableOpacity
                               style={styles.savedRemoveBtn}
@@ -720,6 +808,16 @@ const getStyles = (C: ReturnType<typeof useLoginTheme>) => StyleSheet.create({
     borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: C.isDark ? 'rgba(255,255,255,0.05)' : C.surfaceAlt,
+  },
+  savedFingerprintBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(107,47,160,0.16)',
     backgroundColor: C.isDark ? 'rgba(255,255,255,0.05)' : C.surfaceAlt,
   },
 

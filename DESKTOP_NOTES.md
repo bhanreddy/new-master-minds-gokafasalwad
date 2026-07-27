@@ -40,14 +40,22 @@ The current build targets **macOS only** (`.app` and `.dmg`). Windows `.exe` and
 
 ---
 
-### 5. Platform-Specific Considerations
+### 5. Fingerprint Login — Not Available
+
+The opt-in fingerprint login / app-unlock feature is native-only. `expo-local-authentication` has no implementation inside the Tauri webview, so on desktop the "Fingerprint Login" row in Settings is hidden, the fingerprint action never appears on saved-account rows, and the lock overlay never mounts. Desktop behaves exactly as it did before the feature existed.
+
+**Workaround:** None. Desktop users sign in with email and password.
+
+---
+
+### 6. Platform-Specific Considerations
 
 | Feature | Mobile | Desktop (Tauri) |
 |---------|--------|-----------------|
 | Push Notifications (FCM) | ✅ Works | ❌ Disabled |
 | File Downloads | Native Share/Save | Default Downloads folder |
 | Auto-Update | OTA via Expo Updates | ❌ Not implemented |
-| Biometric Auth | ✅ Fingerprint/Face | ❌ Not available |
+| Fingerprint Login / App Unlock | ✅ Android/iOS, staff & admin roles only | ❌ Not available |
 | Camera/Gallery | ✅ Native | ❌ Not available |
 | GPS Location | ✅ Native | ⚠️ Browser geolocation only |
 

@@ -21,6 +21,7 @@ import { useNotifications } from '../src/hooks/useNotifications';
 import { useAuthGuard } from '../src/hooks/useAuthGuard';
 import { useNotificationObserver } from '../src/hooks/useNotificationObserver';
 import { AuthGate } from '../src/components/AuthGate';
+import FingerprintLockGate from '../src/components/FingerprintLockGate';
 import SchoolRibbon, {
   MOBILE_RIBBON_CONTENT_HEIGHT,
   SCHOOL_RIBBON_OVERLAP,
@@ -224,6 +225,11 @@ function ThemeSyncWrapper() {
 
         <Toast config={toastConfig} />
         {/* Global Animated Splash Screen Overlay removed - now native AnimatedSplash handles this */}
+
+        {/* Fingerprint lock — last child so it covers every screen, toast, and
+            overlay above. Renders nothing on web/Tauri or for accounts that
+            have not opted in. */}
+        <FingerprintLockGate />
       </GestureHandlerRootView>
     </NavThemeProvider>);
 

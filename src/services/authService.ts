@@ -1,11 +1,10 @@
-import NetInfo from '@react-native-community/netinfo';
 import type { Session } from '@supabase/supabase-js';
 import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { api, APIError } from './apiClient';
 import { SCHOOL_NAME, SCHOOL_ID } from '../constants/school';
-import { isPersistentSessionRole, normalizeLoginEmail } from '../utils/roleHelpers';
+import { normalizeLoginEmail } from '../utils/roleHelpers';
 import * as accountVault from './accountVault';
 import type { VaultAccount } from './accountVault';
 import type { AccessContext, PortalContextsPayload } from '../types/context';
@@ -56,7 +55,6 @@ function isTransientValidationError(err: unknown): boolean {
   if (err instanceof APIError) {
     const c = err.statusCode;
     if (c === 0 || c === 503 || (c !== undefined && c >= 500 && c < 600)) return true;
-    if (c === 401) return true;
     const msg = (err.message || '').toLowerCase();
     if (msg.includes('network') || msg.includes('timeout') || msg.includes('unavailable')) return true;
   }
@@ -66,6 +64,22 @@ function isTransientValidationError(err: unknown): boolean {
 function shouldForceSignOutOnValidateError(err: unknown): boolean {
   if (err instanceof APIError && err.statusCode === 403) return true;
   return false;
+}
+
+function isConfirmedRefreshRejection(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const value = err as { status?: number; code?: string; message?: string };
+  const code = (value.code || '').toLowerCase();
+  const message = (value.message || '').toLowerCase();
+  return (
+    (value.status === 400 || value.status === 401) &&
+    (
+      code.includes('refresh_token') ||
+      code.includes('invalid_grant') ||
+      message.includes('refresh token') ||
+      message.includes('invalid grant')
+    )
+  );
 }
 
 async function persistSessionFromRefresh(
@@ -133,7 +147,7 @@ function mergeRefreshedTokensIntoSession(
 async function resolveTargetSessionTokens(
   target: VaultAccount,
   userId: string
-): Promise<{ accessToken: string; refreshToken: string; prefetchedSession: Session | null }> {
+): Promise<{ accessToken: string; refreshToken: string }> {
   let refreshToken =
     target.supabaseSession?.refresh_token ??
     (await accountVault.getBackupRefreshTokenForUser(userId)) ??
@@ -167,7 +181,7 @@ async function resolveTargetSessionTokens(
     }
   }
 
-  return { accessToken, refreshToken, prefetchedSession };
+  return { accessToken, refreshToken };
 }
 
 async function restorePreviousLiveSession(
@@ -214,68 +228,6 @@ function mapSwitchErrorMessage(message?: string): string {
   return raw;
 }
 
-/** Encrypted credential backup so vault accounts can recover after token rotation. */
-async function saveVaultLoginCredentials(
-  validatedUser: ValidatedUser,
-  email: string,
-  password: string
-): Promise<void> {
-  if (!validatedUser?.userId || !email || !password) return;
-  try {
-    await accountVault.setLoginCredentialsForUser(validatedUser.userId, email, password);
-  } catch (e) {
-    if (__DEV__) console.warn('[AuthService] vault credential backup failed:', e);
-  }
-}
-
-async function signInTargetFromStoredCredentials(
-  target: VaultAccount
-): Promise<{ session?: AuthSession; error?: string }> {
-  const credentials = await accountVault.getLoginCredentialsForUser(target.userId);
-  if (!credentials) {
-    return { error: "Could not restore this account's session" };
-  }
-
-  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-    email: credentials.email,
-    password: credentials.password,
-  });
-  if (signInError || !signInData.session) {
-    return { error: signInError?.message || "Could not restore this account's session" };
-  }
-
-  const validatedUser = await api.post<ValidatedUser>('/auth/validate-school-user', {}, {
-    headers: { Authorization: `Bearer ${signInData.session.access_token}` },
-    silent: true,
-  });
-
-  if (!validatedUser) {
-    return { error: 'Verification failed. Your session could not be validated.' };
-  }
-  if (validatedUser.userId !== target.userId) {
-    return { error: 'Stored credentials do not match this account.' };
-  }
-  if (validatedUser.schoolId !== SCHOOL_ID) {
-    return { error: `This account does not belong to ${SCHOOL_NAME}.\nContact your school administrator.` };
-  }
-
-  const authSession: AuthSession = {
-    supabaseSession: signInData.session,
-    validatedUser,
-    tokenExpiresAt: signInData.session.expires_at ? signInData.session.expires_at * 1000 : Date.now() + 3600000,
-  };
-
-  await setSecureItem(STORAGE_KEY, JSON.stringify(authSession));
-  await accountVault.addAccount(accountVault.buildVaultAccount(authSession));
-  await accountVault.setActiveAccountId(validatedUser.userId);
-  await saveVaultLoginCredentials(validatedUser, credentials.email, credentials.password);
-
-  if (__DEV__) {
-    console.log(`[AuthService] restored account ${validatedUser.userId} using stored credentials`);
-  }
-  return { session: authSession };
-}
-
 const STORAGE_KEY = 'auth_session';
 
 async function setSecureItem(key: string, value: string) {
@@ -297,41 +249,6 @@ export const clearAuthState = async (): Promise<void> => {
 // ─────────────────────────────────────────────────────────────────────────
 // Phase 2 — shared switch core
 // ─────────────────────────────────────────────────────────────────────────
-
-/**
- * Best-effort, non-blocking re-validation of a vaulted account's profile.
- * Uses the SAME validator as post-login (/auth/validate-school-user) but with
- * an explicit Bearer token so it does NOT rotate any refresh token and does NOT
- * emit any supabase auth event. Only refreshes the stored validatedUser/profile
- * fields for `userId` — never touches tokens or the active pointer — so it can
- * never race a subsequent switch into an inconsistent state.
- */
-async function revalidateInBackground(userId: string, accessToken: string): Promise<void> {
-  try {
-    const validatedUser = await api.post<ValidatedUser>('/auth/validate-school-user', {}, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      silent: true,
-    });
-    if (!validatedUser) return;
-    // Same-school build: ignore anything that isn't this school (do not evict).
-    if (validatedUser.schoolId !== SCHOOL_ID) return;
-
-    const accounts = await accountVault.listAccounts();
-    const acct = accounts.find((a) => a.userId === userId);
-    if (!acct) return;
-
-    await accountVault.addAccount({
-      ...acct,
-      validatedUser,
-      displayName: validatedUser.displayName ?? acct.displayName,
-      photoUrl: validatedUser.photoUrl ?? acct.photoUrl,
-      admissionNo: validatedUser.admission_no ?? acct.admissionNo,
-      // tokens/session deliberately preserved as-is
-    });
-  } catch {
-    /* best-effort only */
-  }
-}
 
 /**
  * Shared switch core (NOT enqueued — callers serialize via enqueueSwap).
@@ -365,11 +282,11 @@ async function doSwitchAccount(
     await snapshotLiveAccountToVault(previousActive, previousLiveSession);
   }
 
-  const { accessToken, refreshToken, prefetchedSession } = await resolveTargetSessionTokens(
+  const { accessToken, refreshToken } = await resolveTargetSessionTokens(
     target,
     userId
   );
-  if (!refreshToken) return { error: 'No stored credentials for this account' };
+  if (!refreshToken) return { error: 'No saved session for this account' };
 
   beginInternalSwap();
   try {
@@ -378,17 +295,30 @@ async function doSwitchAccount(
       refresh_token: refreshToken,
     });
     if (error || !data?.session) {
-      // Retry credential sign-in (all portals — credentials saved on every login/add).
-      const credentialRestore = await signInTargetFromStoredCredentials(target);
-      if (credentialRestore.session) return credentialRestore;
-
       await restorePreviousLiveSession(previousActive, previousLiveSession);
-      return { error: mapSwitchErrorMessage(credentialRestore.error || error?.message) };
+      return { error: mapSwitchErrorMessage(error?.message) };
+    }
+
+    const validatedUser = await api.post<ValidatedUser>(
+      '/auth/validate-school-user',
+      {},
+      {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+        silent: true,
+      }
+    );
+    if (
+      !validatedUser ||
+      validatedUser.userId !== target.userId ||
+      validatedUser.schoolId !== SCHOOL_ID
+    ) {
+      await restorePreviousLiveSession(previousActive, previousLiveSession);
+      return { error: 'This saved account is no longer authorized. Sign in again.' };
     }
 
     const newActive: AuthSession = {
       supabaseSession: data.session,
-      validatedUser: target.validatedUser,
+      validatedUser,
       tokenExpiresAt: data.session.expires_at
         ? data.session.expires_at * 1000
         : Date.now() + 3600000,
@@ -404,17 +334,8 @@ async function doSwitchAccount(
     }
     await accountVault.setActiveAccountId(userId);
 
-    // Background re-validation (non-blocking, no rotation, no auth events).
-    void revalidateInBackground(userId, data.session.access_token);
-
     return { session: newActive };
   } catch (e: any) {
-    try {
-      const credentialRestore = await signInTargetFromStoredCredentials(target);
-      if (credentialRestore.session) return credentialRestore;
-    } catch {
-      /* fall through to restoring the previous account */
-    }
     await restorePreviousLiveSession(previousActive, previousLiveSession);
     return { error: mapSwitchErrorMessage(e?.message || 'Account switch failed') };
   } finally {
@@ -424,8 +345,35 @@ async function doSwitchAccount(
 
 export const AuthService = {
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
+    const {
+      data: { session: currentSession },
+    } = await supabase.auth.getSession();
+    const email = currentSession?.user?.email;
+    const userId = currentSession?.user?.id;
+    if (!email || !userId || !currentPassword) {
+      throw new Error('Current password is required.');
+    }
+
+    beginInternalSwap();
+    try {
+      const { data: reauthenticated, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password: currentPassword,
+        });
+      if (
+        signInError ||
+        !reauthenticated.session ||
+        reauthenticated.session.user.id !== userId
+      ) {
+        throw new Error('Current password is incorrect.');
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+    } finally {
+      endInternalSwap();
+    }
   },
 
   /**
@@ -551,7 +499,6 @@ export const AuthService = {
       try {
         await accountVault.addAccount(accountVault.buildVaultAccount(authSession));
         await accountVault.setActiveAccountId(authSession.validatedUser.userId);
-        await saveVaultLoginCredentials(validatedUser, canonicalEmail, password);
       } catch (vaultErr) {
         if (__DEV__) console.warn('[AuthService] vault register (signIn) failed:', vaultErr);
       }
@@ -666,7 +613,6 @@ export const AuthService = {
 
           // Persist the new account into the vault (does not change active yet).
           await accountVault.addAccount(accountVault.buildVaultAccount(authSession));
-          await saveVaultLoginCredentials(validatedUser, canonicalEmail, password);
 
           const newUserId = validatedUser.userId;
           if (previousActiveUserId && previousActiveUserId !== newUserId) {
@@ -728,19 +674,10 @@ export const AuthService = {
 
     try {
       const session = JSON.parse(sessionStr) as AuthSession;
-      // If token expired → check role first
+      // An expired access token is never treated as current authority. Attempt
+      // refresh for every role; transient failures are handled by useAuth
+      // without converting an expired cached token into a valid session.
       if (Date.now() >= session.tokenExpiresAt) {
-        // Persistent roles (parent/student, admin, driver, staff): NEVER enforce
-        // expiry — return the cached session as-is so the user is never bounced
-        // to the login screen at cold start. Supabase auto-refresh renews the
-        // token in the background. Only `accountant` falls through to a blocking
-        // refresh (preserving its school-hours restriction).
-        const roleCode = session.validatedUser?.role?.code;
-        if (isPersistentSessionRole(roleCode)) {
-          if (__DEV__) console.log(`[AuthService] Session token expired for persistent role "${roleCode}" — returning cached session (no expiry enforcement)`);
-          return session;
-        }
-        // accountant: attempt refresh
         return await AuthService.refreshSession();
       }
       return session;
@@ -768,6 +705,11 @@ export const AuthService = {
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
 
       if (refreshError || !refreshData.session) {
+        if (isConfirmedRefreshRejection(refreshError)) {
+          console.log('[AUTH_OUT]', 'refresh_token_rejected', new Date().toISOString());
+          await AuthService.signOut();
+          return null;
+        }
         // Layer A fix: Don't immediately clear auth for ALL roles.
         // If we have a prior session, preserve it — the caller (useAuth handleRefresh)
         // will decide whether to retry or clear based on role and retry count.
@@ -795,54 +737,27 @@ export const AuthService = {
         );
       } catch (err) {
         if (shouldForceSignOutOnValidateError(err)) {
-          // 403 from backend = confirmed rejection (wrong school, locked account).
-          // Persistent roles (everyone except accounts) are NEVER evicted here —
-          // the rejection surfaces as suppressed retry toasts on API calls, but the
-          // cached session is preserved and we fall through to the preserve-prior
-          // path below. Only `accountant`/`accounts` is signed out on a 403.
-          const roleCode = prior?.validatedUser?.role?.code;
-          if (!isPersistentSessionRole(roleCode)) {
-            console.log('[AUTH_OUT]', 'api_403_confirmed', new Date().toISOString());
-            await AuthService.signOut();
-            return null;
-          }
-          console.warn('[AUTH_REFRESH] 403 on validate for persistent role — preserving cached session (no eviction)');
+          console.log('[AUTH_OUT]', 'api_403_confirmed', new Date().toISOString());
+          await AuthService.signOut();
+          return null;
         }
-        // Layer A fix: For ALL roles, preserve prior validated user on transient errors.
-        // Previously only student role got this treatment.
-        if (prior?.validatedUser) {
+        if (isTransientValidationError(err) && prior?.validatedUser) {
           return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
         }
-        // No prior session to fall back to — signal failure
+        await AuthService.signOut();
         console.log('[AUTH_OUT]', 'validation_failed_no_prior', new Date().toISOString());
         return null;
       }
 
-      // Silent API path returns null on 401 without throwing
       if (!validatedUser) {
-        // Layer A fix: always use prior validated user if available, regardless of role
-        if (prior?.validatedUser) {
-          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
-        }
-        console.log('[AUTH_OUT]', 'validation_null_no_prior', new Date().toISOString());
+        console.log('[AUTH_OUT]', 'validation_rejected', new Date().toISOString());
+        await AuthService.signOut();
         return null;
       }
 
       if (validatedUser.schoolId !== SCHOOL_ID) {
-        // Multitenancy guard. Persistent roles (everyone except accounts) are
-        // never evicted: keep the PRIOR (correct-school) cached user + fresh
-        // tokens rather than storing the foreign-school profile. Only
-        // `accountant`/`accounts` is signed out on a school mismatch.
-        const roleCode = prior?.validatedUser?.role?.code;
-        if (!isPersistentSessionRole(roleCode)) {
-          console.log('[AUTH_OUT]', 'school_mismatch', new Date().toISOString());
-          await AuthService.signOut();
-          return null;
-        }
-        console.warn('[AUTH_REFRESH] schoolId mismatch on refresh for persistent role — preserving cached session (no eviction)');
-        if (prior?.validatedUser) {
-          return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
-        }
+        console.log('[AUTH_OUT]', 'school_mismatch', new Date().toISOString());
+        await AuthService.signOut();
         return null;
       }
 

@@ -1468,171 +1468,179 @@ export interface AdjustmentPdfData {
   adjustment_type?: 'waive' | 'add';
 }
 
-export const generateAdjustmentPDF = async (adjustment: AdjustmentPdfData, schoolSettings: any) => {
-  try {
-    const isAdd = adjustment.adjustment_type === 'add';
-    const studentName = adjustment.student_name || 'Student';
-    const admissionNo = adjustment.admission_no || 'N/A';
-    const classSectionText = [adjustment.class_name, adjustment.section_name].filter(Boolean).join(' — ') || 'N/A';
-    const dateObj = new Date(adjustment.created_at || new Date());
-    const dateFull = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    const amountNum = Number(adjustment.amount || 0);
-    const amountFmt = amountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-    const receiptNo = adjustment.receipt_no || 'N/A';
-    const words = amountInWords(amountNum);
-    const schoolName = schoolSettings?.school_name || 'School';
-    const schoolAddress = schoolSettings?.school_address || '';
-    const schoolPhone = schoolSettings?.school_phone || '';
-    const schoolWebsite = schoolSettings?.school_website || '';
+/** Build adjustment voucher HTML for in-app preview or PDF export. */
+export const buildAdjustmentPDFHtml = (
+  adjustment: AdjustmentPdfData,
+  schoolSettings: any,
+): string => {
+  const isAdd = adjustment.adjustment_type === 'add';
+  const studentName = adjustment.student_name || 'Student';
+  const admissionNo = adjustment.admission_no || 'N/A';
+  const classSectionText = [adjustment.class_name, adjustment.section_name].filter(Boolean).join(' — ') || 'N/A';
+  const dateObj = new Date(adjustment.created_at || new Date());
+  const dateFull = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const amountNum = Number(adjustment.amount || 0);
+  const amountFmt = amountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  const receiptNo = adjustment.receipt_no || 'N/A';
+  const words = amountInWords(amountNum);
+  const schoolName = schoolSettings?.school_name || 'School';
+  const schoolAddress = schoolSettings?.school_address || '';
+  const schoolPhone = schoolSettings?.school_phone || '';
+  const schoolWebsite = schoolSettings?.school_website || '';
 
-    const typeLabel = isAdd ? 'Fee Addition' : 'Fee Waiver';
-    const voucherTitle = isAdd ? 'Fee Addition Voucher' : 'Fee Waiver Voucher';
-    const bannerLabel = isAdd ? 'Fee Amount Added' : 'Waiver Amount Applied';
-    const amountSign = isAdd ? '+' : '−';
-    const badgeLabel = isAdd ? 'Fee Addition' : 'Discount / Waiver';
-    const primaryColor = isAdd ? '#D97706' : '#DC2626';
-    const primaryDark = isAdd ? '#B45309' : '#B91C1C';
-    const bannerGradient = isAdd
-      ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
-      : 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)';
-    const highlightBg = isAdd ? '#FFFBEB' : '#FEF2F2';
-    const highlightBorder = isAdd ? '#FCD34D' : '#FCA5A5';
-    const wordsBg = isAdd ? '#FFFBEB' : '#FEF2F2';
-    const wordsBorder = isAdd ? '#FCD34D' : '#FCA5A5';
-    const wordsColor = isAdd ? '#92400E' : '#991B1B';
-    const badgeBg = isAdd ? '#FFEDD5' : '#FEE2E2';
-    const badgeColor = isAdd ? '#9A3412' : '#991B1B';
+  const typeLabel = isAdd ? 'Fee Addition' : 'Fee Waiver';
+  const voucherTitle = isAdd ? 'Fee Addition Voucher' : 'Fee Waiver Voucher';
+  const bannerLabel = isAdd ? 'Fee Amount Added' : 'Waiver Amount Applied';
+  const amountSign = isAdd ? '+' : '−';
+  const badgeLabel = isAdd ? 'Fee Addition' : 'Discount / Waiver';
+  const primaryColor = isAdd ? '#D97706' : '#DC2626';
+  const primaryDark = isAdd ? '#B45309' : '#B91C1C';
+  const bannerGradient = isAdd
+    ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+    : 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)';
+  const highlightBg = isAdd ? '#FFFBEB' : '#FEF2F2';
+  const highlightBorder = isAdd ? '#FCD34D' : '#FCA5A5';
+  const wordsBg = isAdd ? '#FFFBEB' : '#FEF2F2';
+  const wordsBorder = isAdd ? '#FCD34D' : '#FCA5A5';
+  const wordsColor = isAdd ? '#92400E' : '#991B1B';
+  const badgeBg = isAdd ? '#FFEDD5' : '#FEE2E2';
+  const badgeColor = isAdd ? '#9A3412' : '#991B1B';
 
-    const html = `
-      <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-          <style>
-            ${BASE_CSS}
-            .adjustment-badge {
-              background-color: ${badgeBg};
-              color: ${badgeColor};
-              font-size: 8px;
-              font-weight: 700;
-              padding: 3px 8px;
-              border-radius: 20px;
-              text-transform: uppercase;
-              letter-spacing: 0.4px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="page receipt-page">
-            <!-- Header -->
-            <div class="doc-header">
-              <div class="school-brand">
-                <div class="school-info">
-                  <div class="school-name">${escapeHtml(schoolName)}</div>
-                  ${schoolAddress ? `<div class="school-sub">${escapeHtml(schoolAddress)}</div>` : ''}
-                  ${SCHOOL_RECOGNITION_LINE ? `<div class="school-reg">${SCHOOL_RECOGNITION_LINE}</div>` : ''}
-                  ${schoolPhone || schoolWebsite ? `
-                    <div class="school-sub">
-                      ${schoolPhone ? `Phone: ${escapeHtml(schoolPhone)}` : ''}
-                      ${schoolPhone && schoolWebsite ? ' &nbsp;|&nbsp; ' : ''}
-                      ${schoolWebsite ? `Web: ${escapeHtml(schoolWebsite)}` : ''}
-                    </div>
-                  ` : ''}
-                </div>
-              </div>
-              <div class="doc-title-block">
-                <div class="doc-title" style="color: ${primaryColor};">${escapeHtml(voucherTitle)}</div>
-                <div class="doc-no">Voucher No: ${escapeHtml(receiptNo)}</div>
+  return `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+        <style>
+          ${BASE_CSS}
+          .adjustment-badge {
+            background-color: ${badgeBg};
+            color: ${badgeColor};
+            font-size: 8px;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page receipt-page">
+          <!-- Header -->
+          <div class="doc-header">
+            <div class="school-brand">
+              <div class="school-info">
+                <div class="school-name">${escapeHtml(schoolName)}</div>
+                ${schoolAddress ? `<div class="school-sub">${escapeHtml(schoolAddress)}</div>` : ''}
+                ${SCHOOL_RECOGNITION_LINE ? `<div class="school-reg">${SCHOOL_RECOGNITION_LINE}</div>` : ''}
+                ${schoolPhone || schoolWebsite ? `
+                  <div class="school-sub">
+                    ${schoolPhone ? `Phone: ${escapeHtml(schoolPhone)}` : ''}
+                    ${schoolPhone && schoolWebsite ? ' &nbsp;|&nbsp; ' : ''}
+                    ${schoolWebsite ? `Web: ${escapeHtml(schoolWebsite)}` : ''}
+                  </div>
+                ` : ''}
               </div>
             </div>
-
-            <!-- Info grid -->
-            <div class="info-grid">
-              <div class="info-box">
-                <div class="info-label">Student Details</div>
-                <div class="info-value">${escapeHtml(studentName)}</div>
-                <div class="info-sub">Adm No: ${escapeHtml(admissionNo)} | Class: ${escapeHtml(classSectionText)}</div>
-              </div>
-              <div class="info-box highlight" style="background: ${highlightBg}; border-color: ${highlightBorder};">
-                <div class="info-label" style="color: ${primaryDark};">Voucher Details</div>
-                <div class="info-value">Date: ${escapeHtml(dateFull)}</div>
-                <div class="info-sub">Adjustment Type: ${escapeHtml(typeLabel)}</div>
-                <div class="info-sub">Status: Approved by Higher Authority</div>
-              </div>
-            </div>
-
-            <!-- Receipt Banner -->
-            <div class="receipt-banner" style="background: ${bannerGradient};">
-              <div>
-                <div class="receipt-banner-label">${escapeHtml(bannerLabel)}</div>
-                <div class="receipt-banner-amount">${amountSign} ₹${amountFmt}</div>
-              </div>
-              <div class="receipt-banner-right">
-                <div class="receipt-banner-label">Authorized by</div>
-                <div class="receipt-banner-date" style="font-weight: 700;">Admin: ${escapeHtml(adjustment.adjusted_by_name)}</div>
-              </div>
-            </div>
-
-            <!-- Amount in words -->
-            <div class="amount-words" style="background: ${wordsBg}; border: 1px solid ${wordsBorder}; color: ${wordsColor};">
-              <strong>Adjustment Amount in Words:</strong> Rupees ${words}
-            </div>
-
-            <!-- Table of adjusted items -->
-            <table style="margin-top: 15px;">
-              <thead>
-                <tr>
-                  <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Fee Component</th>
-                  <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Adjustment Type</th>
-                  <th style="text-align: right; color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Amount Adjusted</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="td-desc-main">${escapeHtml(adjustment.fee_component)}</td>
-                  <td><span class="adjustment-badge">${escapeHtml(badgeLabel)}</span></td>
-                  <td style="text-align: right; color: ${primaryColor};">${amountSign} ₹${amountFmt}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; margin-top: 15px; margin-bottom: 20px;">
-              <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #4B5563; margin-bottom: 4px;">Reason for Adjustment</div>
-              <div style="font-size: 11px; color: #1F2937; line-height: 1.5; font-style: italic;">
-                "${escapeHtml(adjustment.reason)}"
-              </div>
-            </div>
-
-            <!-- Signature row -->
-            <div class="signature-row" style="margin-top: 25px;">
-              <div>
-                <div style="font-size: 9px; color: #9CA3AF; margin-bottom: 4px;">SCAN TO VERIFY</div>
-                <div class="qr-placeholder">QR<br/>Verify</div>
-              </div>
-              <div class="sig-block">
-                <div class="sig-line">Authorized Signatory</div>
-              </div>
-              <div class="sig-block">
-                <div class="sig-line">Higher Authority Stamp</div>
-              </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="doc-footer">
-              <p>📄 This is a secure system-generated document. No manual signature is required.</p>
-              <p style="margin-top: 3px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+            <div class="doc-title-block">
+              <div class="doc-title" style="color: ${primaryColor};">${escapeHtml(voucherTitle)}</div>
+              <div class="doc-no">Voucher No: ${escapeHtml(receiptNo)}</div>
             </div>
           </div>
-        </body>
-      </html>
-    `;
 
-    if (Platform.OS === 'web') {
-      await printHtmlOnWeb(html);
-      return;
-    }
-    const { uri } = await Print.printToFileAsync({ html });
-    await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-  } catch (error) {
-    throw error;
+          <!-- Info grid -->
+          <div class="info-grid">
+            <div class="info-box">
+              <div class="info-label">Student Details</div>
+              <div class="info-value">${escapeHtml(studentName)}</div>
+              <div class="info-sub">Adm No: ${escapeHtml(admissionNo)} | Class: ${escapeHtml(classSectionText)}</div>
+            </div>
+            <div class="info-box highlight" style="background: ${highlightBg}; border-color: ${highlightBorder};">
+              <div class="info-label" style="color: ${primaryDark};">Voucher Details</div>
+              <div class="info-value">Date: ${escapeHtml(dateFull)}</div>
+              <div class="info-sub">Adjustment Type: ${escapeHtml(typeLabel)}</div>
+              <div class="info-sub">Status: Approved by Higher Authority</div>
+            </div>
+          </div>
+
+          <!-- Receipt Banner -->
+          <div class="receipt-banner" style="background: ${bannerGradient};">
+            <div>
+              <div class="receipt-banner-label">${escapeHtml(bannerLabel)}</div>
+              <div class="receipt-banner-amount">${amountSign} ₹${amountFmt}</div>
+            </div>
+            <div class="receipt-banner-right">
+              <div class="receipt-banner-label">Authorized by</div>
+              <div class="receipt-banner-date" style="font-weight: 700;">Admin: ${escapeHtml(adjustment.adjusted_by_name)}</div>
+            </div>
+          </div>
+
+          <!-- Amount in words -->
+          <div class="amount-words" style="background: ${wordsBg}; border: 1px solid ${wordsBorder}; color: ${wordsColor};">
+            <strong>Adjustment Amount in Words:</strong> Rupees ${words}
+          </div>
+
+          <!-- Table of adjusted items -->
+          <table style="margin-top: 15px;">
+            <thead>
+              <tr>
+                <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Fee Component</th>
+                <th style="color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Adjustment Type</th>
+                <th style="text-align: right; color: ${primaryDark}; border-bottom-color: ${highlightBorder}; background: ${highlightBg};">Amount Adjusted</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="td-desc-main">${escapeHtml(adjustment.fee_component)}</td>
+                <td><span class="adjustment-badge">${escapeHtml(badgeLabel)}</span></td>
+                <td style="text-align: right; color: ${primaryColor};">${amountSign} ₹${amountFmt}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 12px; margin-top: 15px; margin-bottom: 20px;">
+            <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #4B5563; margin-bottom: 4px;">Reason for Adjustment</div>
+            <div style="font-size: 11px; color: #1F2937; line-height: 1.5; font-style: italic;">
+              "${escapeHtml(adjustment.reason)}"
+            </div>
+          </div>
+
+          <!-- Signature row -->
+          <div class="signature-row" style="margin-top: 25px;">
+            <div>
+              <div style="font-size: 9px; color: #9CA3AF; margin-bottom: 4px;">SCAN TO VERIFY</div>
+              <div class="qr-placeholder">QR<br/>Verify</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-line">Authorized Signatory</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-line">Higher Authority Stamp</div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="doc-footer">
+            <p>📄 This is a secure system-generated document. No manual signature is required.</p>
+            <p style="margin-top: 3px;">Generated on ${new Date().toLocaleString('en-IN')}</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+/** Print / share HTML as a PDF (used after in-app preview confirms download). */
+export const shareHtmlAsPdf = async (html: string) => {
+  if (Platform.OS === 'web') {
+    await printHtmlOnWeb(html);
+    return;
   }
+  const { uri } = await Print.printToFileAsync({ html });
+  await shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+};
+
+export const generateAdjustmentPDF = async (adjustment: AdjustmentPdfData, schoolSettings: any) => {
+  const html = buildAdjustmentPDFHtml(adjustment, schoolSettings);
+  await shareHtmlAsPdf(html);
 };

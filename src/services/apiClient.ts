@@ -3,38 +3,13 @@ import NetInfo from '@react-native-community/netinfo';
 import * as SecureStore from 'expo-secure-store';
 import type { Session } from '@supabase/supabase-js';
 import { Alert, Platform } from 'react-native';
-import Toast from 'react-native-toast-message';
 import { showAlert } from '../components/CustomAlert';
 import { API_URL, SCHOOL_ID, SUPABASE_ANON_KEY, SUPABASE_URL } from '../constants/school';
-import { isPersistentSessionRole } from '../utils/roleHelpers';
-import { SessionPolicy } from './sessionPolicyService';
 import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { getOrCreateDeviceId } from './deviceId';
 import { getActiveContextId } from './activeContextStore';
 import { clearStaffPortalSession, getStaffPortalSession } from './staffPortalSession';
-
-/**
- * Resolve the current role for the 401 guard WITHOUT depending on
- * SessionPolicy being populated. The persisted auth_session (written by
- * authService on every login/refresh) is the single source of truth for role.
- * SessionPolicy.startSession() was historically never called, which left the
- * student logout-suppression guard dead — this reads the role directly so
- * parent (student-role) sessions are never dropped on a transient 401.
- */
-async function resolveStoredRole(): Promise<string | null> {
-  try {
-    const raw = await SecureTokenStore.getItem('auth_session');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const code = parsed?.validatedUser?.role?.code;
-      if (code) return code;
-    }
-  } catch {
-    // fall through to SessionPolicy
-  }
-  return SessionPolicy.getStoredRole();
-}
 
 /**
  * Cross-platform alert helper.
@@ -225,6 +200,7 @@ async function restoreLiveSessionFromStoredAuth(): Promise<Session | null> {
 
 // Global Logout Callback to avoid circular dependency
 let logoutCallback: (() => Promise<void>) | null = null;
+let confirmedLogoutInFlight = false;
 
 export const registerLogoutCallback = (fn: () => Promise<void>) => {
   logoutCallback = fn;
@@ -478,30 +454,23 @@ async function apiRequestInner<T>(
           throw new APIError('Network unavailable. Logging suspended.', 0, undefined, requestId);
         }
 
-        // Silent requests (e.g. background token sync) should NOT trigger logout
+        // Silent changes presentation only. A confirmed online 401 after a
+        // refresh attempt is still an authentication failure and must reach
+        // the caller instead of being converted to a successful null result.
         if (silent) {
-          return null as T;
+          throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
         }
 
-        // ── Persistent-role 401 guard ──────────────────────────────────
-        // Parent/student, admin, driver and staff sessions NEVER expire. A 401
-        // for these roles means a server/network/token-refresh hiccup, NOT a
-        // real auth failure. Show a retry toast and reject WITHOUT triggering
-        // any logout flow. Only `accountant` propagates a session-expired error.
-        const storedRole = await resolveStoredRole();
-        if (isPersistentSessionRole(storedRole)) {
-          if (__DEV__) console.log(`[apiClient] 401 for persistent role "${storedRole}" — suppressing logout, showing retry toast`);
-          Toast.show({
-            type: 'error',
-            text1: 'Connection issue',
-            text2: 'Please try again.',
-            visibilityTime: 3000,
-          });
-          throw new APIError('Connection issue. Please try again.', 401, undefined, requestId);
+        // A retry with a freshly requested token also failed while online.
+        // This is confirmed rejection, not a transient connectivity failure.
+        if (logoutCallback && !confirmedLogoutInFlight) {
+          confirmedLogoutInFlight = true;
+          try {
+            await logoutCallback();
+          } finally {
+            confirmedLogoutInFlight = false;
+          }
         }
-
-        // accountant: propagate 401 as session-expired error. The caller (or
-        // useAuth's handleRefresh via TOKEN_REFRESHED event) decides next steps.
         throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
       }
 

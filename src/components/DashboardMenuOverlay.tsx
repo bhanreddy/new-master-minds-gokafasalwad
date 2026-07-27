@@ -1,9 +1,26 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, FlatList, Modal, Platform, Dimensions, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Modal,
+  Platform,
+  Dimensions,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
-  FadeInLeft, FadeOutLeft, SlideInLeft, SlideOutLeft, FadeIn, FadeOut,
-  useSharedValue, useAnimatedStyle, withSpring, withTiming,
-  interpolate, Extrapolation, interpolateColor
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  SlideInLeft,
+  SlideOutLeft,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -19,6 +36,8 @@ export interface MenuActionItem {
   icon: any;
   route: string;
   gradient?: [string, string];
+  category?: string;
+  badge?: number;
 }
 
 interface DashboardMenuOverlayProps {
@@ -29,17 +48,444 @@ interface DashboardMenuOverlayProps {
   onItemPress: (route: string) => void;
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CATEGORY_ORDER = [
+  'Academic',
+  'Finance',
+  'Analytics',
+  'AI',
+  'Comms',
+  'Support',
+  'Ops',
+  'HR',
+  'Security',
+] as const;
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+type CategoryMeta = {
+  icon: IconName;
+  accent: string;
+  accentDeep: string;
+  soft: string;
+  softDark: string;
+  label: string;
+  gradient: [string, string];
+};
+
+const CATEGORY_META: Record<string, CategoryMeta> = {
+  Academic: {
+    icon: 'school-outline',
+    accent: '#3B82F6',
+    accentDeep: '#1D4ED8',
+    soft: 'rgba(59,130,246,0.12)',
+    softDark: 'rgba(59,130,246,0.18)',
+    label: 'Academic',
+    gradient: ['#60A5FA', '#2563EB'],
+  },
+  Finance: {
+    icon: 'wallet-outline',
+    accent: '#14B8A6',
+    accentDeep: '#0F766E',
+    soft: 'rgba(20,184,166,0.12)',
+    softDark: 'rgba(20,184,166,0.18)',
+    label: 'Finance',
+    gradient: ['#2DD4BF', '#0D9488'],
+  },
+  Analytics: {
+    icon: 'bar-chart-outline',
+    accent: '#38BDF8',
+    accentDeep: '#0284C7',
+    soft: 'rgba(56,189,248,0.12)',
+    softDark: 'rgba(56,189,248,0.18)',
+    label: 'Analytics',
+    gradient: ['#7DD3FC', '#0EA5E9'],
+  },
+  AI: {
+    icon: 'bulb-outline',
+    accent: '#22D3EE',
+    accentDeep: '#0891B2',
+    soft: 'rgba(34,211,238,0.12)',
+    softDark: 'rgba(34,211,238,0.18)',
+    label: 'Insights',
+    gradient: ['#67E8F9', '#06B6D4'],
+  },
+  Comms: {
+    icon: 'megaphone-outline',
+    accent: '#FB923C',
+    accentDeep: '#C2410C',
+    soft: 'rgba(251,146,60,0.14)',
+    softDark: 'rgba(251,146,60,0.18)',
+    label: 'Comms',
+    gradient: ['#FDBA74', '#EA580C'],
+  },
+  Support: {
+    icon: 'chatbubble-ellipses-outline',
+    accent: '#FB7185',
+    accentDeep: '#E11D48',
+    soft: 'rgba(251,113,133,0.14)',
+    softDark: 'rgba(251,113,133,0.18)',
+    label: 'Support',
+    gradient: ['#FDA4AF', '#F43F5E'],
+  },
+  Ops: {
+    icon: 'bus-outline',
+    accent: '#FBBF24',
+    accentDeep: '#B45309',
+    soft: 'rgba(251,191,36,0.16)',
+    softDark: 'rgba(251,191,36,0.18)',
+    label: 'Operations',
+    gradient: ['#FCD34D', '#D97706'],
+  },
+  HR: {
+    icon: 'people-outline',
+    accent: '#F472B6',
+    accentDeep: '#BE185D',
+    soft: 'rgba(244,114,182,0.14)',
+    softDark: 'rgba(244,114,182,0.18)',
+    label: 'People',
+    gradient: ['#F9A8D4', '#DB2777'],
+  },
+  Security: {
+    icon: 'shield-checkmark-outline',
+    accent: '#F87171',
+    accentDeep: '#B91C1C',
+    soft: 'rgba(248,113,113,0.14)',
+    softDark: 'rgba(248,113,113,0.18)',
+    label: 'Security',
+    gradient: ['#FCA5A5', '#DC2626'],
+  },
+};
+
+function getCategoryMeta(category: string): CategoryMeta {
+  return (
+    CATEGORY_META[category] ?? {
+      icon: 'grid-outline' as IconName,
+      accent: '#3B82F6',
+      accentDeep: '#1D4ED8',
+      soft: 'rgba(59,130,246,0.12)',
+      softDark: 'rgba(59,130,246,0.18)',
+      label: category,
+      gradient: ['#60A5FA', '#2563EB'],
+    }
+  );
+}
+
+function routeIsActive(pathname: string, itemRoute: string): boolean {
+  if (pathname === itemRoute) return true;
+  if (itemRoute === '/admin' || itemRoute === '/admin/dashboard') return false;
+  return pathname.startsWith(`${itemRoute}/`);
+}
+
+function MobileSubItem({
+  item,
+  isActive,
+  isDark,
+  meta,
+  styles,
+  onPress,
+}: {
+  item: MenuActionItem;
+  isActive: boolean;
+  isDark: boolean;
+  meta: CategoryMeta;
+  styles: ReturnType<typeof createStyles>;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const showBadge = item.badge !== undefined && item.badge > 0;
+  const [g0, g1] = item.gradient?.length === 2 ? item.gradient : meta.gradient;
+
+  return (
+    <Pressable
+      onPressIn={() => {
+        scale.value = withSpring(0.98, { damping: 16 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1);
+      }}
+      onPress={onPress}
+    >
+      <Animated.View style={[styles.subItem, animStyle, isActive && styles.subItemActiveShell]}>
+        {isActive ? (
+          <LinearGradient
+            colors={[g0, g1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[StyleSheet.absoluteFill, { borderRadius: 13 }]}
+            pointerEvents="none"
+          />
+        ) : null}
+
+        <View
+          style={[
+            styles.subIcon,
+            {
+              backgroundColor: isActive
+                ? 'rgba(255,255,255,0.22)'
+                : isDark
+                  ? meta.softDark
+                  : meta.soft,
+              borderColor: isActive
+                ? 'rgba(255,255,255,0.28)'
+                : isDark
+                  ? 'rgba(255,255,255,0.06)'
+                  : 'rgba(255,255,255,0.7)',
+            },
+          ]}
+        >
+          <Ionicons
+            name={item.icon}
+            size={15}
+            color={isActive ? '#FFFFFF' : meta.accentDeep}
+          />
+        </View>
+
+        <Text
+          style={[
+            styles.subTitle,
+            {
+              color: isActive
+                ? '#FFFFFF'
+                : isDark
+                  ? 'rgba(248,250,252,0.88)'
+                  : 'rgba(15,23,42,0.8)',
+            },
+            isActive && { fontWeight: '700' },
+          ]}
+          numberOfLines={1}
+        >
+          {item.title}
+        </Text>
+
+        {showBadge ? (
+          <View
+            style={[
+              styles.badge,
+              {
+                backgroundColor: isActive
+                  ? 'rgba(255,255,255,0.24)'
+                  : meta.accentDeep,
+              },
+            ]}
+          >
+            <Text style={styles.badgeText}>{item.badge! > 99 ? '99+' : item.badge}</Text>
+          </View>
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function MobileCategorySection({
+  category,
+  items,
+  expanded,
+  onToggle,
+  isDark,
+  activeRoute,
+  onItemPress,
+  styles,
+}: {
+  category: string;
+  items: MenuActionItem[];
+  expanded: boolean;
+  onToggle: () => void;
+  isDark: boolean;
+  activeRoute: string;
+  onItemPress: (route: string) => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const meta = getCategoryMeta(category);
+  const hasActive = items.some((it) => routeIsActive(activeRoute, it.route));
+  const badgeTotal = items.reduce((sum, it) => sum + (it.badge && it.badge > 0 ? it.badge : 0), 0);
+  const chevron = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    chevron.value = withTiming(expanded ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [expanded, chevron]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 90}deg` }],
+  }));
+
+  return (
+    <View
+      style={[
+        styles.categoryWrap,
+        expanded && {
+          backgroundColor: isDark ? meta.softDark : meta.soft,
+          borderColor: isDark ? `${meta.accent}44` : `${meta.accent}33`,
+        },
+        !expanded &&
+          hasActive && {
+            borderColor: isDark ? `${meta.accent}40` : `${meta.accent}28`,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+          },
+      ]}
+    >
+      <Pressable
+        onPress={onToggle}
+        style={styles.categoryHeader}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+      >
+        <LinearGradient
+          colors={meta.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.categoryOrb}
+        >
+          <Ionicons name={meta.icon} size={16} color="#FFFFFF" />
+        </LinearGradient>
+
+        <View style={styles.categoryTextCol}>
+          <Text
+            style={[
+              styles.categoryTitle,
+              {
+                color:
+                  expanded || hasActive
+                    ? isDark
+                      ? '#F8FAFC'
+                      : '#0F172A'
+                    : isDark
+                      ? 'rgba(248,250,252,0.55)'
+                      : 'rgba(15,23,42,0.48)',
+              },
+            ]}
+            numberOfLines={1}
+          >
+            {meta.label}
+          </Text>
+          {expanded ? (
+            <Text style={[styles.categoryHint, { color: meta.accentDeep }]}>
+              {items.length} modules
+            </Text>
+          ) : null}
+        </View>
+
+        {badgeTotal > 0 ? (
+          <View style={[styles.badge, { backgroundColor: meta.accentDeep }]}>
+            <Text style={styles.badgeText}>{badgeTotal > 99 ? '99+' : badgeTotal}</Text>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.countPill,
+              expanded && {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.85)',
+                borderColor: `${meta.accent}33`,
+              },
+            ]}
+          >
+            <Text style={[styles.countText, expanded && { color: meta.accentDeep }]}>
+              {items.length}
+            </Text>
+          </View>
+        )}
+
+        <Animated.View style={chevronStyle}>
+          <Ionicons
+            name="chevron-forward"
+            size={15}
+            color={
+              expanded
+                ? meta.accentDeep
+                : isDark
+                  ? 'rgba(255,255,255,0.3)'
+                  : 'rgba(15,23,42,0.28)'
+            }
+          />
+        </Animated.View>
+      </Pressable>
+
+      {expanded ? (
+        <Animated.View entering={FadeInDown.duration(200).springify().damping(18)} style={styles.subList}>
+          {items.map((item) => (
+            <MobileSubItem
+              key={item.route}
+              item={item}
+              isActive={routeIsActive(activeRoute, item.route)}
+              isDark={isDark}
+              meta={meta}
+              styles={styles}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onItemPress(item.route);
+              }}
+            />
+          ))}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
 
 export default function DashboardMenuOverlay({
-  isOpen, onClose, activeRoute: propActiveRoute, items, onItemPress
+  isOpen,
+  onClose,
+  activeRoute: propActiveRoute,
+  items,
+  onItemPress,
 }: DashboardMenuOverlayProps) {
   const { theme, isDark } = useTheme();
   const pathname = usePathname();
   const { width: windowWidth } = useWindowDimensions();
   const activeRoute = propActiveRoute || pathname;
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
+
+  const grouped = useMemo(() => {
+    const buckets = new Map<string, MenuActionItem[]>();
+    items.forEach((item) => {
+      const key = item.category || 'Academic';
+      const list = buckets.get(key) ?? [];
+      list.push(item);
+      buckets.set(key, list);
+    });
+
+    const ordered = CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+      key,
+      items: buckets.get(key)!,
+    }));
+
+    buckets.forEach((list, key) => {
+      if (!CATEGORY_ORDER.includes(key as (typeof CATEGORY_ORDER)[number])) {
+        ordered.push({ key, items: list });
+      }
+    });
+
+    return ordered;
+  }, [items]);
+
+  const activeCategory = useMemo(() => {
+    for (const group of grouped) {
+      if (group.items.some((it) => routeIsActive(activeRoute, it.route))) return group.key;
+    }
+    return grouped[0]?.key ?? 'Academic';
+  }, [grouped, activeRoute]);
+
+  const [openKey, setOpenKey] = useState<string | null>(activeCategory);
+  const lastAuto = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (lastAuto.current === activeCategory) return;
+    lastAuto.current = activeCategory;
+    setOpenKey(activeCategory);
+  }, [activeCategory, isOpen]);
+
+  const toggleCategory = useCallback((key: string) => {
+    Haptics.selectionAsync();
+    setOpenKey((prev) => (prev === key ? null : key));
+  }, []);
 
   if (Platform.OS === 'web' && windowWidth >= 768) return null;
   if (!isOpen) return null;
@@ -53,87 +499,107 @@ export default function DashboardMenuOverlay({
       statusBarTranslucent
     >
       <View style={StyleSheet.absoluteFill}>
-        {/* Dark Backdrop */}
         <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(300)}
+          entering={FadeIn.duration(280)}
+          exiting={FadeOut.duration(220)}
           style={StyleSheet.absoluteFill}
         >
-          <BlurView
-            tint="dark"
-            intensity={60}
-            style={StyleSheet.absoluteFill}
-          >
+          <BlurView tint="dark" intensity={64} style={StyleSheet.absoluteFill}>
             <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           </BlurView>
         </Animated.View>
 
-        {/* Side Drawer Wrapper to properly animate */}
         <Animated.View
-          entering={SlideInLeft.duration(350)}
-          exiting={SlideOutLeft.duration(250)}
-          style={[styles.drawerContainer]}
+          entering={SlideInLeft.duration(340)}
+          exiting={SlideOutLeft.duration(240)}
+          style={styles.drawerContainer}
         >
-          {/* Glass Drawer Surface */}
+          <LinearGradient
+            colors={isDark ? ['#070B14', '#0F172A'] : ['#E8EEF8', '#F3F6FC']}
+            style={StyleSheet.absoluteFill}
+          />
           <BlurView
-            tint={isDark ? "dark" : "light"}
-            intensity={isDark ? 85 : 95}
+            tint={isDark ? 'dark' : 'light'}
+            intensity={isDark ? 40 : 50}
             style={[
               StyleSheet.absoluteFill,
               styles.drawerSurface,
-              { backgroundColor: isDark ? 'rgba(8, 10, 15, 0.85)' : 'rgba(255, 255, 255, 0.92)' }
+              { backgroundColor: isDark ? 'rgba(8,12,20,0.55)' : 'rgba(255,255,255,0.35)' },
             ]}
           />
 
           <View style={styles.drawerInner}>
-            <View style={[styles.header, { borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}>
-              <View style={styles.headerTextWrap}>
-                <LinearGradient
-                  colors={['#6366F1', '#8B5CF6']}
-                  style={styles.logoOrb}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="school" size={22} color="#FFFFFF" />
-                </LinearGradient>
-                <View>
-                  <Text style={[styles.appName, { color: isDark ? '#FFFFFF' : '#0F172A' }]} numberOfLines={1}>
+            <View style={styles.header}>
+              <LinearGradient
+                colors={['#1E40AF', '#2563EB', '#0D9488']}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.brandPill}
+              >
+                <View style={styles.logoOrb}>
+                  <Ionicons name="school" size={18} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.appName} numberOfLines={1}>
                     {SCHOOL_NAME || 'SchoolIMS'}
                   </Text>
-                  <Text style={styles.appSubtitle}>Admin Workspace</Text>
+                  <View style={styles.brandSubRow}>
+                    <View style={styles.brandLiveDot} />
+                    <Text style={styles.appSubtitle}>Admin Console</Text>
+                  </View>
                 </View>
-              </View>
+              </LinearGradient>
+
               <Pressable
                 onPress={onClose}
-                style={[styles.closeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' }, Platform.OS === 'web' && { cursor: 'pointer' }]}
+                style={[
+                  styles.closeBtn,
+                  { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' },
+                ]}
               >
-                <Ionicons name="close" size={22} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                <Ionicons name="close" size={18} color={isDark ? '#FFFFFF' : '#0F172A'} />
               </Pressable>
             </View>
 
-            <FlatList
-              data={items}
-              keyExtractor={(item) => item.route}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
-              renderItem={({ item, index }) => {
-                // Match prefix if necessary, but exact match is usually better for highlighting current page
-                const isActive = activeRoute === item.route;
-                return (
-                  <MenuItem
-                    item={item}
-                    isActive={isActive}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+              <View style={styles.sectionHead}>
+                <Text
+                  style={[
+                    styles.sectionHeadLabel,
+                    { color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.4)' },
+                  ]}
+                >
+                  Workspace
+                </Text>
+                <View
+                  style={[
+                    styles.sectionHeadLine,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255,255,255,0.08)'
+                        : 'rgba(15,23,42,0.08)',
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.categoriesStack}>
+                {grouped.map((group) => (
+                  <MobileCategorySection
+                    key={group.key}
+                    category={group.key}
+                    items={group.items}
+                    expanded={openKey === group.key}
+                    onToggle={() => toggleCategory(group.key)}
                     isDark={isDark}
+                    activeRoute={activeRoute}
+                    onItemPress={onItemPress}
                     styles={styles}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      onItemPress(item.route);
-                    }}
-                    index={index}
                   />
-                );
-              }}
-            />
+                ))}
+              </View>
+            </ScrollView>
           </View>
         </Animated.View>
       </View>
@@ -141,224 +607,230 @@ export default function DashboardMenuOverlay({
   );
 }
 
-function MenuItem({ item, isActive, isDark, onPress, index, styles }: any) {
-  const scale = useSharedValue(1);
-  const glow = useSharedValue(0);
-
-  const animStyle = useAnimatedStyle(() => ({ 
-    transform: [{ scale: scale.value }],
-    backgroundColor: interpolateColor(
-      glow.value,
-      [0, 1],
-      ['rgba(255,255,255,0)', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)']
-    )
-  }));
-
-  const gradient = item.gradient || ['#6366F1', '#4F46E5'];
-  const textColor = isDark ? '#FFFFFF' : '#0F172A';
-  const mutedTextColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.45)';
-
-  return (
-    <Animated.View entering={FadeInLeft.delay(index * 15).duration(300)}>
-      <Pressable
-        onPressIn={() => { 
-          scale.value = withSpring(0.98, { damping: 15 }); 
-          glow.value = withTiming(1, { duration: 150 });
-        }}
-        onPressOut={() => { 
-          scale.value = withSpring(1); 
-          glow.value = withTiming(0, { duration: 250 });
-        }}
-        onPress={onPress}
-      >
-        <Animated.View
-          style={[
-            styles.menuItem,
-            animStyle,
-            isActive && styles.menuItemActive
-          ]}
-        >
-          {isActive && (
-            <LinearGradient
-              colors={gradient}
-              style={styles.activeIndicator}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          )}
-          
-          <LinearGradient
-            colors={gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.iconWrapper, isActive && styles.iconWrapperActive]}
-          >
-            <Ionicons
-              name={item.icon}
-              size={20}
-              color="#FFFFFF"
-              style={styles.iconShadow}
-            />
-          </LinearGradient>
-
-          <View style={styles.itemTextContent}>
-            <Text style={[
-              styles.itemTitle, 
-              { color: textColor },
-              isActive && { fontWeight: '800' }
-            ]}>
-              {item.title}
-            </Text>
-            {item.description ? (
-              <Text style={[styles.itemSub, { color: mutedTextColor }]} numberOfLines={1}>
-                {item.description}
-              </Text>
-            ) : null}
-          </View>
-        </Animated.View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-const createStyles = (theme: any, isDark: boolean) => StyleSheet.create({
-  drawerContainer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: SCREEN_WIDTH * 0.85,
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: -15, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 30,
-    elevation: 24,
-  },
-  drawerSurface: {
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 32,
-    overflow: 'hidden',
-  },
-  drawerInner: {
-    flex: 1,
-    overflow: 'hidden',
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 32,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? 60 : 70,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-  },
-  headerTextWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  logoOrb: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  appName: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    marginBottom: 2,
-    paddingRight: 10,
-  },
-  appSubtitle: {
-    fontSize: 12,
-    color: '#6366F1',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    paddingTop: 12,
-    paddingBottom: 60,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginVertical: 4,
-    marginHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  menuItemActive: {
-    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.05)',
-    borderColor: isDark ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.12)',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: isDark ? 0.25 : 0.08,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  activeIndicator: {
-    position: 'absolute',
-    left: 0,
-    top: '25%',
-    bottom: '25%',
-    width: 3.5,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-  },
-  iconWrapper: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-    marginRight: 16,
-    opacity: 0.85,
-  },
-  iconWrapperActive: {
-    opacity: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  iconShadow: {
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  itemTextContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: 2,
-  },
-  itemSub: {
-    fontSize: 12,
-    fontWeight: '500',
-    letterSpacing: 0.1,
-    opacity: 0.7,
-  },
-});
+const createStyles = (_theme: any, isDark: boolean) =>
+  StyleSheet.create({
+    drawerContainer: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: Math.min(SCREEN_WIDTH * 0.9, 390),
+      shadowColor: '#000',
+      shadowOffset: { width: -12, height: 0 },
+      shadowOpacity: 0.3,
+      shadowRadius: 28,
+      elevation: 26,
+      overflow: 'hidden',
+      borderTopRightRadius: 28,
+      borderBottomRightRadius: 28,
+    },
+    drawerSurface: {
+      borderTopRightRadius: 28,
+      borderBottomRightRadius: 28,
+      overflow: 'hidden',
+    },
+    drawerInner: {
+      flex: 1,
+      overflow: 'hidden',
+      borderTopRightRadius: 28,
+      borderBottomRightRadius: 28,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingTop: Platform.OS === 'android' ? 52 : 60,
+      paddingBottom: 12,
+      gap: 10,
+    },
+    brandPill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 16,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      gap: 10,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.2)',
+    },
+    logoOrb: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+    },
+    appName: {
+      fontSize: 15,
+      fontWeight: '800',
+      letterSpacing: -0.3,
+      color: '#FFFFFF',
+      paddingRight: 4,
+    },
+    brandSubRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 2,
+    },
+    brandLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: '#5EEAD4',
+    },
+    appSubtitle: {
+      fontSize: 10,
+      color: 'rgba(255,255,255,0.78)',
+      fontWeight: '700',
+      letterSpacing: 1.1,
+      textTransform: 'uppercase',
+    },
+    closeBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    listContent: {
+      paddingTop: 6,
+      paddingBottom: 48,
+      paddingHorizontal: 12,
+    },
+    sectionHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 12,
+      paddingHorizontal: 4,
+    },
+    sectionHeadLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.6,
+      textTransform: 'uppercase',
+    },
+    sectionHeadLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+    },
+    categoriesStack: {
+      gap: 9,
+    },
+    categoryWrap: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.75)',
+      backgroundColor: isDark ? 'rgba(15,23,42,0.55)' : 'rgba(255,255,255,0.7)',
+      overflow: 'hidden',
+    },
+    categoryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      gap: 11,
+    },
+    categoryOrb: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+    },
+    categoryTextCol: {
+      flex: 1,
+      minWidth: 0,
+    },
+    categoryTitle: {
+      fontSize: 14.5,
+      fontWeight: '700',
+      letterSpacing: -0.2,
+    },
+    categoryHint: {
+      fontSize: 11,
+      fontWeight: '600',
+      marginTop: 1,
+    },
+    countPill: {
+      minWidth: 24,
+      height: 22,
+      paddingHorizontal: 7,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.05)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
+    },
+    countText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(15,23,42,0.4)',
+    },
+    subList: {
+      paddingHorizontal: 10,
+      paddingBottom: 12,
+      gap: 6,
+    },
+    subItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 13,
+      minHeight: 44,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      gap: 10,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.6)',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.65)',
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    subItemActiveShell: {
+      borderColor: 'rgba(255,255,255,0.25)',
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.16,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+    subIcon: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      zIndex: 1,
+    },
+    subTitle: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '600',
+      letterSpacing: -0.15,
+      zIndex: 1,
+    },
+    badge: {
+      minWidth: 22,
+      height: 22,
+      paddingHorizontal: 6,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1,
+    },
+    badgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '800',
+    },
+  });

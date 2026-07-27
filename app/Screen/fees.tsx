@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, StatusBar, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, Platform, StatusBar, RefreshControl, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import HtmlPreview from '../../src/components/HtmlPreview';
 import { FeeService } from '../../src/services/feeService';
 import { SchoolSettingsService, SchoolSettings } from '../../src/services/schoolSettingsService';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
@@ -33,6 +34,9 @@ const FeesScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
   const [loadingReceipts, setLoadingReceipts] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [downloadingPreview, setDownloadingPreview] = useState(false);
 
   useEffect(() => {
     loadFees();
@@ -86,6 +90,41 @@ const FeesScreen = () => {
     return `${label}: ${sign}₹${adj.amount.toLocaleString()} (${new Date(adj.created_at).toLocaleDateString()})`;
   };
 
+  const openAdjustmentPreview = async (adj: { id: string }) => {
+    try {
+      setLoadingReceipts(true);
+      const details = await FeeService.getAdjustment(adj.id);
+      const { buildAdjustmentPDFHtml } = await import('../../src/utils/pdfGenerator');
+      const html = buildAdjustmentPDFHtml(details, schoolSettings);
+      setPreviewHtml(html);
+      setPreviewVisible(true);
+    } catch {
+      alert('Failed to load receipt preview.');
+    } finally {
+      setLoadingReceipts(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (downloadingPreview) return;
+    setPreviewVisible(false);
+    setPreviewHtml(null);
+  };
+
+  const handleDownloadFromPreview = async () => {
+    if (!previewHtml) return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setDownloadingPreview(true);
+      const { shareHtmlAsPdf } = await import('../../src/utils/pdfGenerator');
+      await shareHtmlAsPdf(previewHtml);
+    } catch {
+      alert('Failed to download adjustment receipt.');
+    } finally {
+      setDownloadingPreview(false);
+    }
+  };
+
   const handleDownloadAdjustmentReceipt = async (item: StudentFee) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -95,32 +134,29 @@ const FeesScreen = () => {
 
       if (adjustments.length === 0) {
         alert('No adjustment records found for this fee component.');
+        setLoadingReceipts(false);
         return;
       }
 
-      const generatePdf = async (adj: any) => {
-        const details = await FeeService.getAdjustment(adj.id);
-        const { generateAdjustmentPDF } = await import('../../src/utils/pdfGenerator');
-        await generateAdjustmentPDF(details, schoolSettings);
-      };
-
       if (adjustments.length === 1) {
-        await generatePdf(adjustments[0]);
-      } else {
-        const options = adjustments.map((a: any) => ({
-          text: formatAdjustmentOption(a),
-          onPress: () => void generatePdf(a)
-        }));
-        options.push({ text: 'Cancel', style: 'cancel' } as any);
-        alertCompat(
-          'Multiple Adjustments Found',
-          'Please select which adjustment receipt to download:',
-          options
-        );
+        // openAdjustmentPreview manages loadingReceipts
+        await openAdjustmentPreview(adjustments[0]);
+        return;
       }
+
+      setLoadingReceipts(false);
+      const options = adjustments.map((a: any) => ({
+        text: formatAdjustmentOption(a),
+        onPress: () => void openAdjustmentPreview(a)
+      }));
+      options.push({ text: 'Cancel', style: 'cancel' } as any);
+      alertCompat(
+        'Multiple Adjustments Found',
+        'Please select which adjustment receipt to preview:',
+        options
+      );
     } catch (error) {
-      alert('Failed to download adjustment receipt.');
-    } finally {
+      alert('Failed to load adjustment receipt.');
       setLoadingReceipts(false);
     }
   };
@@ -179,9 +215,10 @@ const FeesScreen = () => {
           <TouchableOpacity 
             style={[styles.downloadBtn, { backgroundColor: '#eef2ff', paddingVertical: 6 }]} 
             onPress={() => handleDownloadAdjustmentReceipt(item)}
+            disabled={loadingReceipts}
           >
-            <Ionicons name="download-outline" size={14} color="#4F46E5" />
-            <Text style={[styles.downloadText, { color: '#4F46E5', fontSize: 12 }]}>Adjustment Receipt</Text>
+            <Ionicons name="eye-outline" size={14} color="#4F46E5" />
+            <Text style={[styles.downloadText, { color: '#4F46E5', fontSize: 12 }]}>Preview Receipt</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -233,6 +270,64 @@ const FeesScreen = () => {
       <Ionicons name="wallet-outline" size={64} color="#ccc" />
       <Text style={styles.emptyText}>No fee records found.</Text>
     </View>} />
+
+    {loadingReceipts && (
+      <View style={styles.loadingOverlay} pointerEvents="auto">
+        <LogoLoader size={48} color="#4F46E5" />
+        <Text style={styles.loadingOverlayText}>Preparing preview…</Text>
+      </View>
+    )}
+
+    <Modal
+      visible={previewVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={closePreview}
+    >
+      <SafeAreaView style={styles.previewContainer}>
+        <View style={styles.previewHeader}>
+          <TouchableOpacity
+            onPress={closePreview}
+            style={styles.previewCloseBtn}
+            disabled={downloadingPreview}
+            accessibilityRole="button"
+            accessibilityLabel="Close preview"
+          >
+            <Ionicons name="close" size={22} color="#1F2937" />
+          </TouchableOpacity>
+          <Text style={styles.previewTitle}>Receipt Preview</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.previewBody}>
+          {previewHtml ? <HtmlPreview html={previewHtml} style={styles.previewWebView} /> : null}
+        </View>
+
+        <View style={styles.previewFooter}>
+          <TouchableOpacity
+            style={styles.previewSecondaryBtn}
+            onPress={closePreview}
+            disabled={downloadingPreview}
+          >
+            <Text style={styles.previewSecondaryText}>Close</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.previewPrimaryBtn, downloadingPreview && styles.previewPrimaryBtnDisabled]}
+            onPress={handleDownloadFromPreview}
+            disabled={downloadingPreview || !previewHtml}
+          >
+            {downloadingPreview ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="download-outline" size={18} color="#fff" />
+            )}
+            <Text style={styles.previewPrimaryText}>
+              {downloadingPreview ? 'Downloading…' : 'Download PDF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
   </SafeAreaView>;
 };
 export default FeesScreen;
@@ -404,5 +499,105 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     marginTop: 16,
     color: theme.colors.textTertiary,
     fontSize: 16
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+    gap: 12
+  },
+  loadingOverlayText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4F46E5'
+  },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: '#F3F4F6'
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB'
+  },
+  previewCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  previewTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1F2937'
+  },
+  previewBody: {
+    flex: 1,
+    margin: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  previewWebView: {
+    flex: 1,
+    backgroundColor: '#fff'
+  },
+  previewWebLoading: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff'
+  },
+  previewFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 8 : 16,
+    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E7EB'
+  },
+  previewSecondaryBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  previewSecondaryText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151'
+  },
+  previewPrimaryBtn: {
+    flex: 1.4,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#4F46E5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  previewPrimaryBtnDisabled: {
+    opacity: 0.7
+  },
+  previewPrimaryText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff'
   }
 });

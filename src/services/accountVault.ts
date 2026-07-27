@@ -1,6 +1,8 @@
 import type { Session } from '@supabase/supabase-js';
 import { SecureTokenStore, getBackupRefreshToken } from './secureTokenStore';
 import { AuthSession, ValidatedUser } from '../types/auth';
+import { SCHOOL_ID } from '../constants/school';
+import { disableFingerprintForAccount } from './biometricService';
 
 /**
  * accountVault.ts — Phase 1 multi-account ("Instagram-style") session vault.
@@ -12,11 +14,10 @@ import { AuthSession, ValidatedUser } from '../types/auth';
  *   them. No switching, no setSession, no FCM, no useAuth changes happen here
  *   — those are later phases and are out of scope.
  *
- * STORAGE STRATEGY (reusing existing crypto — no new crypto introduced)
- *   All vault blobs are persisted through the existing `SecureTokenStore`
- *   adapter (which encrypts via the SecureStore-backed key). We do NOT import
- *   the private encrypt/decrypt helpers (they are not exported); routing through
- *   SecureTokenStore.getItem/setItem reuses the exact same primitives.
+ * STORAGE STRATEGY
+ *   All vault blobs are persisted through `SecureTokenStore`, which chunks
+ *   values into the native OS keychain/Keystore. No password is retained;
+ *   account restoration uses revocable refresh tokens.
  *
  *   Namespaced keys (clearly separated from the single-session keys
  *   `auth_session` / `supabase_session_enc` / `sb_secure_refresh_token`):
@@ -25,16 +26,8 @@ import { AuthSession, ValidatedUser } from '../types/auth';
  *     - vault_refresh_tokens_v1    → per-userId backup refresh-token MAP
  *     - vault_migration_v1_done    → one-time migration flag
  *
- * TWO ADAPTER QUIRKS THIS MODULE DEFENDS AGAINST
- *   1. SecureTokenStore.getItem() returns a synthetic `{refresh_token:...}`
- *      JSON as a last resort when a key is missing. Every value we store is
- *      wrapped in a `{ __vault: <marker> }` envelope, and reads reject any
- *      payload lacking the matching marker — so that fallback can never be
- *      mistaken for vault data.
- *   2. SecureTokenStore.removeItem() calls clearBackupRefreshToken(), which
- *      deletes the ACTIVE account's `sb_secure_refresh_token`. We therefore
- *      NEVER call removeItem for vault keys — "delete" overwrites with an
- *      empty envelope instead.
+ * Every value is wrapped in a `{ __vault: <marker> }` envelope so malformed,
+ * foreign, or partially migrated data cannot be mistaken for a valid vault.
  */
 
 // ── Namespaced storage keys ──────────────────────────────────────────────
@@ -75,10 +68,6 @@ interface ActiveEnvelope {
 interface RefreshMapEnvelope {
   __vault: 'refresh_v1';
   tokens: Record<string, string>;
-}
-interface LoginCredentialsEnvelope {
-  __vault: 'login_credentials_v1';
-  credentials: Record<string, { email: string; password: string }>;
 }
 interface MigrationEnvelope {
   __vault: 'migration_v1';
@@ -133,15 +122,6 @@ async function _readRefreshMap(): Promise<Record<string, string>> {
 async function _writeRefreshMap(tokens: Record<string, string>): Promise<void> {
   await writeEnvelope(VAULT_REFRESH_MAP_KEY, { __vault: 'refresh_v1', tokens });
 }
-async function _readLoginCredentials(): Promise<Record<string, { email: string; password: string }>> {
-  const env = await readEnvelope<LoginCredentialsEnvelope>(VAULT_LOGIN_CREDENTIALS_KEY, 'login_credentials_v1');
-  return env?.credentials && typeof env.credentials === 'object' ? env.credentials : {};
-}
-async function _writeLoginCredentials(
-  credentials: Record<string, { email: string; password: string }>
-): Promise<void> {
-  await writeEnvelope(VAULT_LOGIN_CREDENTIALS_KEY, { __vault: 'login_credentials_v1', credentials });
-}
 async function _readMigrationFlag(): Promise<boolean> {
   const env = await readEnvelope<MigrationEnvelope>(VAULT_MIGRATION_FLAG_KEY, 'migration_v1');
   return env?.done === true;
@@ -186,6 +166,10 @@ export async function runVaultMigrationIfNeeded(): Promise<void> {
 
   migrationPromise = (async () => {
     try {
+      // Older builds retained reusable email/password pairs. Refresh tokens
+      // are sufficient for account switching and are server-revocable, so
+      // purge the credential blob even on installations already migrated.
+      await SecureTokenStore.removeItem(VAULT_LOGIN_CREDENTIALS_KEY);
       if (await _readMigrationFlag()) return; // already migrated on this install
 
       // Read the existing single-session blob (written by authService via
@@ -284,35 +268,6 @@ export async function removeBackupRefreshTokenForUser(userId: string): Promise<v
   }
 }
 
-export async function setLoginCredentialsForUser(
-  userId: string,
-  email: string,
-  password: string
-): Promise<void> {
-  await ensureMigrated();
-  if (!userId || !email || !password) return;
-  const credentials = await _readLoginCredentials();
-  credentials[userId] = { email, password };
-  await _writeLoginCredentials(credentials);
-}
-
-export async function getLoginCredentialsForUser(
-  userId: string
-): Promise<{ email: string; password: string } | null> {
-  await ensureMigrated();
-  const credentials = await _readLoginCredentials();
-  return credentials[userId] ?? null;
-}
-
-export async function removeLoginCredentialsForUser(userId: string): Promise<void> {
-  await ensureMigrated();
-  const credentials = await _readLoginCredentials();
-  if (userId in credentials) {
-    delete credentials[userId];
-    await _writeLoginCredentials(credentials);
-  }
-}
-
 // ── CRUD ─────────────────────────────────────────────────────────────────
 
 /**
@@ -359,7 +314,14 @@ export async function removeAccount(userId: string): Promise<void> {
   }
 
   await removeBackupRefreshTokenForUser(userId);
-  await removeLoginCredentialsForUser(userId);
+  // This is the single choke point for account removal (manual logout and the
+  // "remove saved login" UI both reach it), so it is where the account's
+  // fingerprint opt-in record is dropped. Scoped to this userId — siblings
+  // keep their own opt-in.
+  const biometricRemoved = await disableFingerprintForAccount(SCHOOL_ID, userId);
+  if (!biometricRemoved && __DEV__) {
+    console.warn('[accountVault] fingerprint cleanup failed for removed account');
+  }
 }
 
 /** List all accounts in the vault (empty array if none). */

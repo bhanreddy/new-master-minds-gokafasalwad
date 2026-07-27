@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform, useWindowDimensions, Modal, SafeAreaView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
+import HtmlPreview from '../../src/components/HtmlPreview';
 import { StudentService } from '../../src/services/studentService';
 import { useStudentQuery } from '../../src/hooks/useStudentQuery';
 import type { Student } from '../../src/types/models';
@@ -10,7 +11,7 @@ import { FeeService } from '../../src/services/feeService';
 import { StudentFee, FeeReceipt } from '../../src/types/models';
 import { useAuth } from '../../src/hooks/useAuth';
 import * as Haptics from '@/src/utils/haptics';
-import { escapeHtml, printHtmlOnWeb } from '../../src/utils/pdfGenerator';
+import { escapeHtml, shareHtmlAsPdf } from '../../src/utils/pdfGenerator';
 import { useTheme, type SchoolTheme } from '../../src/hooks/useTheme';
 import { SchoolSettingsService, SchoolSettings } from '../../src/services/schoolSettingsService';
 import LogoLoader from '../../src/components/LogoLoader';
@@ -54,6 +55,10 @@ export default function FeesScreen() {
     balance: 0
   });
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [preparingPreview, setPreparingPreview] = useState(false);
+  const [downloadingPreview, setDownloadingPreview] = useState(false);
   useEffect(() => {
     const run = async () => {
       if (!user?.userId || !isStudent || !profile?.id) {
@@ -119,128 +124,142 @@ export default function FeesScreen() {
     }
   };
 
+  const buildFeeReceiptHtml = (receipt: FeeReceipt) => `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; }
+          .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #4F46E5; padding-bottom: 20px; }
+          .school-name { font-size: 24px; font-weight: bold; color: #4F46E5; margin-bottom: 5px; }
+          .school-address { font-size: 12px; color: #64748b; margin-bottom: 5px; }
+          .school-contact { font-size: 12px; color: #64748b; margin-bottom: 10px; }
+          .receipt-title { font-size: 18px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 15px; }
+          .details-container { display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 15px; border-radius: 8px; }
+          .detail-col { flex: 1; }
+          .label { font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+          .value { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 12px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+          th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+          th { background-color: #f8fafc; font-weight: 600; color: #475569; font-size: 14px; }
+          td { font-size: 14px; color: #1e293b; }
+          .total-row { font-weight: bold; background-color: #f8fafc; }
+          .total-amount { font-size: 18px; color: #4F46E5; }
+          .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="school-name">${escapeHtml(schoolSettings?.school_name || 'School')}</div>
+          ${schoolSettings?.school_address ? `<div class="school-address">${escapeHtml(schoolSettings.school_address)}</div>` : ''}
+          ${schoolSettings?.school_phone || schoolSettings?.school_website ?
+    `<div class="school-contact">
+              ${schoolSettings?.school_phone ? `Phone: ${escapeHtml(schoolSettings.school_phone)}` : ''}
+              ${schoolSettings?.school_phone && schoolSettings?.school_website ? ' &nbsp;|&nbsp; ' : ''}
+              ${schoolSettings?.school_website ? `Web: ${escapeHtml(schoolSettings.school_website)}` : ''}
+            </div>` :
+    ''}
+          <div class="receipt-title">Fee Receipt</div>
+        </div>
+
+        <div class="details-container">
+          <div class="detail-col">
+            <div class="label">Receipt No</div>
+            <div class="value">#${escapeHtml(String(receipt.receipt_no || ''))}</div>
+            <div class="label">Date</div>
+            <div class="value">${new Date(receipt.issued_at).toLocaleDateString()}</div>
+          </div>
+          <div class="detail-col">
+            <div class="label">Student Name</div>
+            <div class="value">${escapeHtml(receipt.student_name || 'Student')}</div>
+            ${receipt.father_name ? `
+            <div class="label">Father's Name</div>
+            <div class="value">${escapeHtml(receipt.father_name)}</div>
+            ` : ''}
+            ${receipt.father_mobile ? `
+            <div class="label">Father Mobile</div>
+            <div class="value">${escapeHtml(receipt.father_mobile)}</div>
+            ` : ''}
+            <div class="label">Admission No</div>
+            <div class="value">${escapeHtml(receipt.admission_no || 'N/A')}</div>
+            ${receipt.class_name || receipt.section_name ? `
+            <div class="label">Class &amp; Section</div>
+            <div class="value">${escapeHtml([receipt.class_name, receipt.section_name].filter(Boolean).join(' — ') || 'N/A')}</div>
+            ` : ''}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Fee Type</th>
+              <th>Payment Method</th>
+              <th>Date</th>
+              <th style="text-align: right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${receipt.items?.map((item) => `
+              <tr>
+                <td>${escapeHtml(item.fee_type || 'Fee Payment')}</td>
+                <td>${escapeHtml((item.payment_method || 'online').toUpperCase())}
+                    ${item.transaction_ref ? `<br><small style="color: #64748b">Ref: ${escapeHtml(item.transaction_ref)}</small>` : ''}
+                </td>
+                <td>${item.paid_at ? new Date(item.paid_at).toLocaleDateString() : 'N/A'}</td>
+                <td style="text-align: right">₹${item.amount.toLocaleString()}</td>
+              </tr>
+            `).join('') || ''}
+            <tr class="total-row">
+              <td colspan="3" style="text-align: right">Total Amount</td>
+              <td class="total-amount" style="text-align: right">₹${receipt.total_amount.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <p>This is a computer-generated document. No signature is required.</p>
+          ${receipt.issued_by_name ? `<p>Generated by: ${escapeHtml(receipt.issued_by_name)}</p>` : ''}
+        </div>
+      </body>
+    </html>
+  `;
+
+  const closePreview = () => {
+    if (downloadingPreview) return;
+    setPreviewVisible(false);
+    setPreviewHtml(null);
+  };
+
+  const handleDownloadFromPreview = async () => {
+    if (!previewHtml) return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setDownloadingPreview(true);
+      await shareHtmlAsPdf(previewHtml);
+    } catch {
+      alert(t('failedToGenerateReceipt', 'Failed to generate receipt'));
+    } finally {
+      setDownloadingPreview(false);
+    }
+  };
+
   const handleDownloadReceipt = async (receiptSummary: FeeReceipt) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setPreparingPreview(true);
 
-      // Fetch full receipt details including items and student info
       const receipt = await FeeService.getReceipt(receiptSummary.id);
-
       if (!receipt) {
-        alert('Could not fetch receipt details');
+        alert(t('couldNotFetchReceipt', 'Could not fetch receipt details'));
         return;
       }
 
-      const html = `
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-            <style>
-              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #333; }
-              .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #4F46E5; padding-bottom: 20px; }
-              .school-name { font-size: 24px; font-weight: bold; color: #4F46E5; margin-bottom: 5px; }
-              .school-address { font-size: 12px; color: #64748b; margin-bottom: 5px; }
-              .school-contact { font-size: 12px; color: #64748b; margin-bottom: 10px; }
-              .receipt-title { font-size: 18px; color: #666; letter-spacing: 2px; text-transform: uppercase; margin-top: 15px; }
-              .details-container { display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 15px; border-radius: 8px; }
-              .detail-col { flex: 1; }
-              .label { font-size: 12px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
-              .value { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 12px; }
-              table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-              th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-              th { background-color: #f8fafc; font-weight: 600; color: #475569; font-size: 14px; }
-              td { font-size: 14px; color: #1e293b; }
-              .total-row { font-weight: bold; background-color: #f8fafc; }
-              .total-amount { font-size: 18px; color: #4F46E5; }
-              .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="school-name">${schoolSettings?.school_name || 'School'}</div>
-              ${schoolSettings?.school_address ? `<div class="school-address">${schoolSettings.school_address}</div>` : ''}
-              ${schoolSettings?.school_phone || schoolSettings?.school_website ?
-      `<div class="school-contact">
-                  ${schoolSettings?.school_phone ? `Phone: ${schoolSettings.school_phone}` : ''}
-                  ${schoolSettings?.school_phone && schoolSettings?.school_website ? ' &nbsp;|&nbsp; ' : ''}
-                  ${schoolSettings?.school_website ? `Web: ${schoolSettings.school_website}` : ''}
-                </div>` :
-      ''}
-              <div class="receipt-title">Fee Receipt</div>
-            </div>
-
-            <div class="details-container">
-              <div class="detail-col">
-                <div class="label">Receipt No</div>
-                <div class="value">#${receipt.receipt_no}</div>
-                <div class="label">Date</div>
-                <div class="value">${new Date(receipt.issued_at).toLocaleDateString()}</div>
-              </div>
-              <div class="detail-col">
-                <div class="label">Student Name</div>
-                <div class="value">${receipt.student_name || 'Student'}</div>
-                ${receipt.father_name ? `
-                <div class="label">Father's Name</div>
-                <div class="value">${escapeHtml(receipt.father_name)}</div>
-                ` : ''}
-                ${receipt.father_mobile ? `
-                <div class="label">Father Mobile</div>
-                <div class="value">${escapeHtml(receipt.father_mobile)}</div>
-                ` : ''}
-                <div class="label">Admission No</div>
-                <div class="value">${receipt.admission_no || 'N/A'}</div>
-                ${receipt.class_name || receipt.section_name ? `
-                <div class="label">Class &amp; Section</div>
-                <div class="value">${[receipt.class_name, receipt.section_name].filter(Boolean).join(' — ') || 'N/A'}</div>
-                ` : ''}
-              </div>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Fee Type</th>
-                  <th>Payment Method</th>
-                  <th>Date</th>
-                  <th style="text-align: right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items?.map((item) => `
-                  <tr>
-                    <td>${item.fee_type || 'Fee Payment'}</td>
-                    <td>${(item.payment_method || 'online').toUpperCase()}
-                        ${item.transaction_ref ? `<br><small style="color: #64748b">Ref: ${item.transaction_ref}</small>` : ''}
-                    </td>
-                    <td>${item.paid_at ? new Date(item.paid_at).toLocaleDateString() : 'N/A'}</td>
-                    <td style="text-align: right">₹${item.amount.toLocaleString()}</td>
-                  </tr>
-                `).join('') || ''}
-                <tr class="total-row">
-                  <td colspan="3" style="text-align: right">Total Amount</td>
-                  <td class="total-amount" style="text-align: right">₹${receipt.total_amount.toLocaleString()}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="footer">
-              <p>This is a computer-generated document. No signature is required.</p>
-              ${receipt.issued_by_name ? `<p>Generated by: ${receipt.issued_by_name}</p>` : ''}
-            </div>
-          </body>
-        </html>
-      `;
-
-      if (Platform.OS === 'web') {
-        await printHtmlOnWeb(html);
-        return;
-      }
-      const [Print, Sharing] = await Promise.all([import('expo-print'), import('expo-sharing')]);
-      const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      setPreviewHtml(buildFeeReceiptHtml(receipt));
+      setPreviewVisible(true);
     } catch {
-
-      alert('Failed to generate receipt');
+      alert(t('failedToGenerateReceipt', 'Failed to generate receipt'));
+    } finally {
+      setPreparingPreview(false);
     }
   };
 
@@ -491,15 +510,79 @@ export default function FeesScreen() {
                 </View>
                 <Text style={styles.receiptAmount}>{formatCurrency(receipt.total_amount)}</Text>
               </View>
-              <TouchableOpacity style={styles.downloadBtn} onPress={() => handleDownloadReceipt(receipt)}>
-                <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
-                <Text style={styles.downloadText}>{t('downloadReceipt', 'Download Receipt')}</Text>
+              <TouchableOpacity
+                style={styles.downloadBtn}
+                onPress={() => handleDownloadReceipt(receipt)}
+                disabled={preparingPreview}
+              >
+                <Ionicons name="eye-outline" size={16} color={theme.colors.primary} />
+                <Text style={styles.downloadText}>{t('previewReceipt', 'Preview Receipt')}</Text>
               </TouchableOpacity>
             </View>;
         })}</View>)}
       </View>
       </View>
     </ScrollView>
+
+    {preparingPreview && (
+      <View style={styles.previewLoadingOverlay} pointerEvents="auto">
+        <LogoLoader size={48} color="#4F46E5" />
+        <Text style={styles.previewLoadingText}>{t('preparingPreview', 'Preparing preview…')}</Text>
+      </View>
+    )}
+
+    <Modal
+      visible={previewVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={closePreview}
+    >
+      <SafeAreaView style={styles.previewContainer}>
+        <View style={styles.previewHeader}>
+          <TouchableOpacity
+            onPress={closePreview}
+            style={styles.previewCloseBtn}
+            disabled={downloadingPreview}
+            accessibilityRole="button"
+            accessibilityLabel="Close preview"
+          >
+            <Ionicons name="close" size={22} color={theme.colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.previewTitle}>{t('receiptPreview', 'Receipt Preview')}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.previewBody}>
+          {previewHtml ? <HtmlPreview html={previewHtml} style={styles.previewWebView} /> : null}
+        </View>
+
+        <View style={styles.previewFooter}>
+          <TouchableOpacity
+            style={styles.previewSecondaryBtn}
+            onPress={closePreview}
+            disabled={downloadingPreview}
+          >
+            <Text style={styles.previewSecondaryText}>{t('close', 'Close')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.previewPrimaryBtn, downloadingPreview && styles.previewPrimaryBtnDisabled]}
+            onPress={handleDownloadFromPreview}
+            disabled={downloadingPreview || !previewHtml}
+          >
+            {downloadingPreview ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="download-outline" size={18} color="#fff" />
+            )}
+            <Text style={styles.previewPrimaryText}>
+              {downloadingPreview
+                ? t('downloading', 'Downloading…')
+                : t('downloadPdf', 'Download PDF')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
   </ScreenLayout>;
 }
 const getStyles = (theme: SchoolTheme) => {
@@ -950,6 +1033,106 @@ const getStyles = (theme: SchoolTheme) => {
       fontSize: 13,
       fontWeight: '600',
       color: c.primary,
+    },
+    previewLoadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: isDark ? 'rgba(15,23,42,0.55)' : 'rgba(255,255,255,0.72)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 20,
+      gap: 12,
+    },
+    previewLoadingText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.primary,
+    },
+    previewContainer: {
+      flex: 1,
+      backgroundColor: isDark ? c.background : '#F3F4F6',
+    },
+    previewHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: c.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    previewCloseBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(148,163,184,0.12)' : '#F3F4F6',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    previewTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    previewBody: {
+      flex: 1,
+      margin: 12,
+      borderRadius: 12,
+      overflow: 'hidden',
+      backgroundColor: '#fff',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    previewWebView: {
+      flex: 1,
+      backgroundColor: '#fff',
+    },
+    previewWebLoading: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+    },
+    previewFooter: {
+      flexDirection: 'row',
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: Platform.OS === 'ios' ? 8 : 16,
+      backgroundColor: c.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    previewSecondaryBtn: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(148,163,184,0.12)' : '#F3F4F6',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    previewSecondaryText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    previewPrimaryBtn: {
+      flex: 1.4,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: c.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    previewPrimaryBtnDisabled: {
+      opacity: 0.7,
+    },
+    previewPrimaryText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#fff',
     },
     emptyState: {
       width: '100%',

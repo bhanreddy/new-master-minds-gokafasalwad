@@ -8,13 +8,15 @@ import { useTheme } from '../src/hooks/useTheme';
 import { ThemeColors } from '../src/theme/themes';
 import { AuthService } from '../src/services/authService';
 import { useAuth } from '../src/hooks/useAuth';
+import { SCHOOL_ID } from '../src/constants/school';
+import { disableFingerprintForAccount } from '../src/services/biometricService';
 import AnimatedInput from '../src/components/AnimatedInput';
 import PremiumButton from '../src/components/PremiumButton';
 
 export default function ChangePasswordScreen() {
     const router = useRouter();
     const { theme } = useTheme();
-    const { signOut } = useAuth();
+    const { user, signOut } = useAuth();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
 
     const [currentPassword, setCurrentPassword] = useState('');
@@ -64,6 +66,11 @@ export default function ChangePasswordScreen() {
         setLoading(true);
         try {
             await AuthService.changePassword(currentPassword, newPassword);
+            // A credential change invalidates the fingerprint opt-in: the next
+            // sign-in must be with the new password before it can be re-enabled.
+            if (user?.userId) {
+                await disableFingerprintForAccount(SCHOOL_ID, user.userId);
+            }
             alertCompat("Success", "Password changed successfully. Please log in again.", [
                 {
                     text: 'OK', onPress: async () => {

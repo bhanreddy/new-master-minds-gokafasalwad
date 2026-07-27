@@ -1,197 +1,290 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 /**
- * SecureTokenStore — Hybrid encrypted storage adapter for Supabase Auth.
+ * Native auth storage.
  *
- * Strategy:
- * - Encryption key → SecureStore (small, hardware-encrypted, protected by TEE)
- * - Full session JSON → AsyncStorage, AES-encrypted with the key above
- * - Refresh token backup → SecureStore (small, hardware-encrypted)
+ * New writes are split into small chunks and stored entirely in SecureStore.
+ * SecureStore supplies authenticated encryption through the OS keychain /
+ * Android Keystore, so this adapter does not implement cryptography itself and
+ * never falls back to plaintext when native secure storage is unavailable.
  *
- * The encryption key in SecureStore is what protects the data.
- * The AsyncStorage payload alone is useless without the key.
- *
- * Fallback: If AsyncStorage fails on read, attempts to recover using the
- * SecureStore-backed refresh token via Supabase's refreshSession().
+ * The old XOR payload reader remains only to migrate existing installations.
+ * Successfully migrated legacy blobs are immediately removed.
  */
 
-const ENC_KEY_STORE_KEY = 'session_enc_key';
+const LEGACY_ENC_KEY_STORE_KEY = 'session_enc_key';
+const LEGACY_ENC_STORAGE_PREFIX = 'supabase_session_enc';
 const SECURE_REFRESH_TOKEN_KEY = 'sb_secure_refresh_token';
 const SECURE_SESSION_STARTED_KEY = 'sb_session_started_at';
 const SESSION_HEARTBEAT_KEY = 'sb_last_session_write';
-const ENC_SESSION_STORAGE_KEY = 'supabase_session_enc';
 
-// ── Encryption helpers ───────────────────────────────────────────────
+const V2_PREFIX = 'secure_store_v2';
+const CHUNK_BYTES = 1_200;
+const keyWriteChains = new Map<string, Promise<void>>();
+const migrationsInFlight = new Map<string, Promise<string | null>>();
 
-/**
- * Get or create the encryption key stored in SecureStore.
- * On first use, generates a random 32-byte hex key.
- */
-async function getOrCreateEncKey(): Promise<string | null> {
+interface ChunkManifest {
+  v: 2;
+  generation: string;
+  count: number;
+  digest: string;
+}
+
+function enqueueKeyWrite(key: string, operation: () => Promise<void>): Promise<void> {
+  const previous = keyWriteChains.get(key) ?? Promise.resolve();
+  const current = previous.then(operation, operation);
+  keyWriteChains.set(key, current);
+  const cleanup = () => {
+    if (keyWriteChains.get(key) === current) keyWriteChains.delete(key);
+  };
+  void current.then(cleanup, cleanup);
+  return current;
+}
+
+function migrateLegacyValueOnce(key: string): Promise<string | null> {
+  const existing = migrationsInFlight.get(key);
+  if (existing) return existing;
+  const current = migrateLegacyValue(key).finally(() => {
+    if (migrationsInFlight.get(key) === current) migrationsInFlight.delete(key);
+  });
+  migrationsInFlight.set(key, current);
+  return current;
+}
+
+function safeKey(key: string): string {
+  return String(key).replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+function manifestKey(key: string): string {
+  return `${V2_PREFIX}_${safeKey(key)}_manifest`;
+}
+
+function chunkKey(key: string, generation: string, index: number): string {
+  return `${V2_PREFIX}_${safeKey(key)}_${generation}_${index}`;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function digest(value: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value);
+}
+
+function parseManifest(raw: string | null): ChunkManifest | null {
+  if (!raw) return null;
   try {
-    if (Platform.OS === 'web') return null;
-    let key = await SecureStore.getItemAsync(ENC_KEY_STORE_KEY);
-    if (!key) {
-      // Generate 32 random bytes → 64-char hex string
-      const randomBytes = await Crypto.getRandomBytes(32);
-      key = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-      await SecureStore.setItemAsync(ENC_KEY_STORE_KEY, key);
+    const parsed = JSON.parse(raw) as ChunkManifest;
+    if (
+      parsed?.v !== 2 ||
+      !/^[A-Za-z0-9_-]+$/.test(parsed.generation) ||
+      !Number.isInteger(parsed.count) ||
+      parsed.count < 1 ||
+      parsed.count > 10_000 ||
+      !/^[a-f0-9]{64}$/i.test(parsed.digest)
+    ) {
+      return null;
     }
-    return key;
-  } catch (error) {
-    if (__DEV__) console.error('[SecureTokenStore] Failed to get/create enc key:', error);
+    return parsed;
+  } catch {
     return null;
   }
 }
 
-/**
- * XOR-based encryption using a key derived from SHA-256 digest.
- * This provides confidentiality for the AsyncStorage payload.
- * The security relies on the key being in SecureStore (hardware-backed).
- */
-async function encrypt(plaintext: string, key: string): Promise<string> {
-  // Derive a key stream from the encryption key using SHA-256
-  const textBytes = new TextEncoder().encode(plaintext);
-  const result = new Uint8Array(textBytes.length);
+async function readSecureChunks(key: string): Promise<string | null> {
+  const rawManifest = await SecureStore.getItemAsync(manifestKey(key));
+  if (!rawManifest) return null;
+  const manifest = parseManifest(rawManifest);
+  if (!manifest) throw new Error('Invalid secure storage manifest');
 
-  // Generate key stream by hashing key + block index
-  for (let offset = 0; offset < textBytes.length; offset += 32) {
-    const blockIndex = Math.floor(offset / 32);
-    const blockKey = `${key}:${blockIndex}`;
-    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, blockKey);
-    const hashBytes = new Uint8Array(
-      hash.match(/.{2}/g)!.map(byte => parseInt(byte, 16))
-    );
-
-    for (let i = 0; i < 32 && offset + i < textBytes.length; i++) {
-      result[offset + i] = textBytes[offset + i] ^ hashBytes[i];
-    }
+  const encodedChunks = await Promise.all(
+    Array.from({ length: manifest.count }, (_, index) =>
+      SecureStore.getItemAsync(chunkKey(key, manifest.generation, index))
+    )
+  );
+  if (encodedChunks.some((chunk) => chunk === null)) {
+    throw new Error('Incomplete secure storage value');
   }
 
-  // Encode as base64 for storage
-  return btoa(String.fromCharCode(...result));
+  const byteChunks = encodedChunks.map((chunk) => base64ToBytes(chunk!));
+  const total = byteChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of byteChunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const value = new TextDecoder().decode(bytes);
+  if ((await digest(value)) !== manifest.digest) {
+    throw new Error('Secure storage integrity check failed');
+  }
+  return value;
 }
 
-async function decrypt(ciphertext: string, key: string): Promise<string> {
-  // Decode from base64
-  const raw = atob(ciphertext);
-  const encBytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    encBytes[i] = raw.charCodeAt(i);
+async function deleteGeneration(key: string, manifest: ChunkManifest | null): Promise<void> {
+  if (!manifest) return;
+  await Promise.all(
+    Array.from({ length: manifest.count }, (_, index) =>
+      SecureStore.deleteItemAsync(chunkKey(key, manifest.generation, index))
+    )
+  );
+}
+
+async function writeSecureChunks(key: string, value: string): Promise<void> {
+  const oldManifest = parseManifest(await SecureStore.getItemAsync(manifestKey(key)));
+  const generation = Crypto.randomUUID().replace(/-/g, '');
+  const bytes = new TextEncoder().encode(value);
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < bytes.length; offset += CHUNK_BYTES) {
+    chunks.push(bytes.slice(offset, offset + CHUNK_BYTES));
   }
+  if (chunks.length === 0) chunks.push(new Uint8Array());
 
-  const result = new Uint8Array(encBytes.length);
-
-  // Generate same key stream
-  for (let offset = 0; offset < encBytes.length; offset += 32) {
-    const blockIndex = Math.floor(offset / 32);
-    const blockKey = `${key}:${blockIndex}`;
-    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, blockKey);
-    const hashBytes = new Uint8Array(
-      hash.match(/.{2}/g)!.map(byte => parseInt(byte, 16))
+  try {
+    await Promise.all(
+      chunks.map((chunk, index) =>
+        SecureStore.setItemAsync(
+          chunkKey(key, generation, index),
+          bytesToBase64(chunk),
+          { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
+        )
+      )
     );
 
-    for (let i = 0; i < 32 && offset + i < encBytes.length; i++) {
+    const manifest: ChunkManifest = {
+      v: 2,
+      generation,
+      count: chunks.length,
+      digest: await digest(value),
+    };
+    // Commit last. Until this succeeds, readers continue using the prior
+    // generation and can never observe a half-written value.
+    await SecureStore.setItemAsync(manifestKey(key), JSON.stringify(manifest), {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+  } catch (error) {
+    await Promise.all(
+      chunks.map((_, index) =>
+        SecureStore.deleteItemAsync(chunkKey(key, generation, index)).catch(() => undefined)
+      )
+    );
+    throw error;
+  }
+
+  await deleteGeneration(key, oldManifest).catch(() => undefined);
+}
+
+async function deleteSecureChunks(key: string): Promise<void> {
+  const rawManifest = await SecureStore.getItemAsync(manifestKey(key));
+  const manifest = parseManifest(rawManifest);
+  await deleteGeneration(key, manifest);
+  await SecureStore.deleteItemAsync(manifestKey(key));
+}
+
+// Legacy reader only. It is deliberately not used for new writes.
+async function decryptLegacy(ciphertext: string, key: string): Promise<string> {
+  const raw = atob(ciphertext);
+  const encBytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) encBytes[i] = raw.charCodeAt(i);
+
+  const result = new Uint8Array(encBytes.length);
+  for (let offset = 0; offset < encBytes.length; offset += 32) {
+    const blockIndex = Math.floor(offset / 32);
+    const hash = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      `${key}:${blockIndex}`
+    );
+    const hashBytes = new Uint8Array(
+      hash.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+    for (let i = 0; i < 32 && offset + i < encBytes.length; i += 1) {
       result[offset + i] = encBytes[offset + i] ^ hashBytes[i];
     }
   }
-
   return new TextDecoder().decode(result);
 }
 
-// ── Refresh token backup ─────────────────────────────────────────────
+async function migrateLegacyValue(key: string): Promise<string | null> {
+  const perKeyLegacy = `${LEGACY_ENC_STORAGE_PREFIX}_${key}`;
+  let encrypted = await AsyncStorage.getItem(perKeyLegacy);
+  let encryptedStorageKey = perKeyLegacy;
+
+  // A historic bug used one global key for auth_session only.
+  if (!encrypted && key === 'auth_session') {
+    encrypted = await AsyncStorage.getItem(LEGACY_ENC_STORAGE_PREFIX);
+    encryptedStorageKey = LEGACY_ENC_STORAGE_PREFIX;
+  }
+
+  let value: string | null = null;
+  if (encrypted) {
+    const legacyKey = await SecureStore.getItemAsync(LEGACY_ENC_KEY_STORE_KEY);
+    if (!legacyKey) throw new Error('Legacy encrypted value has no secure key');
+    value = await decryptLegacy(encrypted, legacyKey);
+  } else {
+    // Migrate the prior plaintext fallback only if it can first be committed
+    // to SecureStore. It is never returned directly on a secure-store failure.
+    value = await AsyncStorage.getItem(key);
+  }
+
+  if (value === null) return null;
+  await enqueueKeyWrite(key, () => writeSecureChunks(key, value));
+  await AsyncStorage.multiRemove([key, perKeyLegacy, encryptedStorageKey]);
+  return value;
+}
 
 function extractRefreshToken(sessionJson: string): string | null {
   try {
-    const parsed = JSON.parse(sessionJson);
-    return parsed?.refresh_token || null;
+    return JSON.parse(sessionJson)?.refresh_token ?? null;
   } catch {
     return null;
   }
 }
 
 async function backupRefreshToken(refreshToken: string): Promise<void> {
-  try {
-    if (Platform.OS === 'web') return;
-    await SecureStore.setItemAsync(SECURE_REFRESH_TOKEN_KEY, refreshToken);
-  } catch (error) {
-    if (__DEV__) console.error('[SecureTokenStore] Backup refresh token failed:', error);
-  }
+  if (Platform.OS === 'web') return;
+  await SecureStore.setItemAsync(SECURE_REFRESH_TOKEN_KEY, refreshToken, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
 }
 
 async function getBackupRefreshToken(): Promise<string | null> {
   try {
     if (Platform.OS === 'web') return null;
     return await SecureStore.getItemAsync(SECURE_REFRESH_TOKEN_KEY);
-  } catch (error) {
-    if (__DEV__) console.error('[SecureTokenStore] Get backup refresh token failed:', error);
+  } catch {
     return null;
   }
 }
 
 async function clearBackupRefreshToken(): Promise<void> {
-  try {
-    if (Platform.OS === 'web') return;
-    await SecureStore.deleteItemAsync(SECURE_REFRESH_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(SECURE_SESSION_STARTED_KEY);
-  } catch (error) {
-    if (__DEV__) console.error('[SecureTokenStore] Clear backup failed:', error);
-  }
+  if (Platform.OS === 'web') return;
+  await Promise.all([
+    SecureStore.deleteItemAsync(SECURE_REFRESH_TOKEN_KEY),
+    SecureStore.deleteItemAsync(SECURE_SESSION_STARTED_KEY),
+  ]);
 }
-
-// ── Storage adapter ──────────────────────────────────────────────────
 
 export const SecureTokenStore = {
   getItem: async (key: string): Promise<string | null> => {
     try {
       if (Platform.OS === 'web') return await AsyncStorage.getItem(key);
-
-      const encKey = await getOrCreateEncKey();
-      if (!encKey) {
-        // Fallback: try unencrypted AsyncStorage (migration path)
-        return await AsyncStorage.getItem(key);
-      }
-
-      // Primary: encrypted payload in AsyncStorage
-      const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
-      let encrypted = await AsyncStorage.getItem(encStorageKey);
-      
-      // Migration: fallback for old single-key bug
-      if (!encrypted) {
-        encrypted = await AsyncStorage.getItem(ENC_SESSION_STORAGE_KEY);
-      }
-
-      if (encrypted) {
-        try {
-          return await decrypt(encrypted, encKey);
-        } catch {
-          if (__DEV__) console.warn('[SecureTokenStore] Decrypt failed, trying unencrypted fallback');
-        }
-      }
-
-      // Migration: check old unencrypted key
-      const unencrypted = await AsyncStorage.getItem(key);
-      if (unencrypted) {
-        // Migrate: re-encrypt and store
-        const enc = await encrypt(unencrypted, encKey);
-        await AsyncStorage.setItem(ENC_SESSION_STORAGE_KEY, enc);
-        await AsyncStorage.removeItem(key);
-        return unencrypted;
-      }
-
-      // Last resort: recover from backup refresh token
-      const backupToken = await getBackupRefreshToken();
-      if (backupToken) {
-        if (__DEV__) console.log('[SecureTokenStore] Recovering session from backup refresh token...');
-        return JSON.stringify({ refresh_token: backupToken });
-      }
-
-      return null;
+      const current = await readSecureChunks(key);
+      return current ?? (await migrateLegacyValueOnce(key));
     } catch (error) {
-      if (__DEV__) console.error('[SecureTokenStore] Error reading session:', error);
+      if (__DEV__) console.error('[SecureTokenStore] Secure read failed:', error);
       return null;
     }
   },
@@ -203,29 +296,21 @@ export const SecureTokenStore = {
         return;
       }
 
-      const encKey = await getOrCreateEncKey();
-      if (encKey) {
-        // Encrypt and store
-        const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
-        const encrypted = await encrypt(value, encKey);
-        await AsyncStorage.setItem(encStorageKey, encrypted);
-        // Remove any old unencrypted entry
-        await AsyncStorage.removeItem(key).catch(() => {});
-      } else {
-        // Fallback: unencrypted (web or SecureStore failure)
-        await AsyncStorage.setItem(key, value);
-      }
+      await enqueueKeyWrite(key, async () => {
+        await writeSecureChunks(key, value);
+        await AsyncStorage.multiRemove([
+          key,
+          `${LEGACY_ENC_STORAGE_PREFIX}_${key}`,
+          ...(key === 'auth_session' ? [LEGACY_ENC_STORAGE_PREFIX] : []),
+        ]);
 
-      // Backup the refresh token in SecureStore (small, fits in 2048 limit)
-      const refreshToken = extractRefreshToken(value);
-      if (refreshToken) {
-        await backupRefreshToken(refreshToken);
-      }
-
-      // Heartbeat for diagnostics
-      await AsyncStorage.setItem(SESSION_HEARTBEAT_KEY, Date.now().toString());
+        const refreshToken = extractRefreshToken(value);
+        if (refreshToken) await backupRefreshToken(refreshToken);
+        await AsyncStorage.setItem(SESSION_HEARTBEAT_KEY, Date.now().toString());
+      });
     } catch (error) {
-      if (__DEV__) console.error('[SecureTokenStore] Error writing session:', error);
+      if (__DEV__) console.error('[SecureTokenStore] Secure write failed:', error);
+      throw error;
     }
   },
 
@@ -233,46 +318,51 @@ export const SecureTokenStore = {
     try {
       if (Platform.OS === 'web') {
         await AsyncStorage.removeItem(key);
-      } else {
-        const encStorageKey = `${ENC_SESSION_STORAGE_KEY}_${key}`;
-        await AsyncStorage.removeItem(encStorageKey);
-        await AsyncStorage.removeItem(ENC_SESSION_STORAGE_KEY); // Cleanup old bug key
-        await AsyncStorage.removeItem(key);
-        await SecureStore.deleteItemAsync(key).catch(() => {});
-        await clearBackupRefreshToken();
+        return;
       }
+
+      await enqueueKeyWrite(key, async () => {
+        const existing = await readSecureChunks(key).catch(() => null);
+        await deleteSecureChunks(key);
+        await AsyncStorage.multiRemove([
+          key,
+          `${LEGACY_ENC_STORAGE_PREFIX}_${key}`,
+          ...(key === 'auth_session' ? [LEGACY_ENC_STORAGE_PREFIX] : []),
+        ]);
+        if (key === 'auth_session' || (existing && extractRefreshToken(existing))) {
+          await clearBackupRefreshToken();
+        }
+      });
     } catch (error) {
-      if (__DEV__) console.error('[SecureTokenStore] Error removing session:', error);
+      if (__DEV__) console.error('[SecureTokenStore] Secure delete failed:', error);
+      throw error;
     }
-  }
+  },
 };
 
-// ── Utility exports ──────────────────────────────────────────────────
-
 export async function setSessionStartTimestamp(): Promise<void> {
-  try {
-    if (Platform.OS === 'web') {
-      await AsyncStorage.setItem(SECURE_SESSION_STARTED_KEY, Date.now().toString());
-      return;
-    }
-    await SecureStore.setItemAsync(SECURE_SESSION_STARTED_KEY, Date.now().toString());
-  } catch (error) {
-    if (__DEV__) console.error('[SecureTokenStore] setSessionStartTimestamp failed:', error);
+  const value = Date.now().toString();
+  if (Platform.OS === 'web') {
+    await AsyncStorage.setItem(SECURE_SESSION_STARTED_KEY, value);
+    return;
   }
+  await SecureStore.setItemAsync(SECURE_SESSION_STARTED_KEY, value, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
 }
 
 export async function getSessionStartTimestamp(): Promise<number | null> {
   try {
-    let value: string | null;
-    if (Platform.OS === 'web') {
-      value = await AsyncStorage.getItem(SECURE_SESSION_STARTED_KEY);
-    } else {
-      value = await SecureStore.getItemAsync(SECURE_SESSION_STARTED_KEY);
-    }
-    return value ? parseInt(value, 10) : null;
+    const value =
+      Platform.OS === 'web'
+        ? await AsyncStorage.getItem(SECURE_SESSION_STARTED_KEY)
+        : await SecureStore.getItemAsync(SECURE_SESSION_STARTED_KEY);
+    if (!value) return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export { getBackupRefreshToken, clearBackupRefreshToken };
+export { clearBackupRefreshToken, getBackupRefreshToken };

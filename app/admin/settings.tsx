@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { AuthService } from '../../src/services/authService';
 import { useAuth } from '../../src/hooks/useAuth';
+import { useFingerprintAuth } from '../../src/hooks/useFingerprintAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import { useTranslation } from 'react-i18next';
@@ -112,14 +113,22 @@ const GS = StyleSheet.create({
 export default function AdminSettings() {
     const { theme, isDark, toggleTheme } = useTheme();
     const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-    const { i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
     const router = useRouter();
     const { user, signOut } = useAuth();
+    const fingerprint = useFingerprintAuth();
     const [updating, setUpdating] = useState(false);
     const { switcherOpen, openSwitcher, closeSwitcher } = useSettingsAccountSwitcher();
 
     const handlePress = (item: string) =>
         alertCompat(item, 'This feature will be available in the next update.');
+
+    const handleFingerprintToggle = async (next: boolean) => {
+        const result = await fingerprint.setEnabled(next);
+        if (!result.ok && next) {
+            alertCompat(t('fingerprint.login'), result.error || t('fingerprint.failed'));
+        }
+    };
 
     const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
     const redChevron = <MaterialIcons name="chevron-right" size={18} color="#EF4444" />;
@@ -224,6 +233,25 @@ export default function AdminSettings() {
 
                 {/* ── Security ── */}
                 <Group title="Security" delay={250} theme={theme}>
+                    {/* Principals sign in through this portal too, so visibility is
+                        decided by the centralized role helper (inside the hook), not
+                        by the portal. Hidden on web/Tauri and on phones without an
+                        enrolled strong fingerprint. */}
+                    {fingerprint.showRow && (
+                        <SettingRow
+                            icon="finger-print" iconColor="#0EA5E9" iconBg="#E0F2FE"
+                            label={t('fingerprint.login')}
+                            rightElement={
+                                <Switch
+                                    trackColor={{ false: theme.colors.border, true: '#38BDF8' }}
+                                    thumbColor="#fff"
+                                    disabled={fingerprint.busy}
+                                    onValueChange={handleFingerprintToggle}
+                                    value={fingerprint.enabled}
+                                />
+                            }
+                        />
+                    )}
                     <SettingRow
                         icon="lock-closed" iconColor="#3B82F6" iconBg="#EFF6FF"
                         label="Change Password"

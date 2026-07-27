@@ -7,6 +7,11 @@ import { SCHOOL_ID } from '../constants/school';
 import { registerLogoutCallback, suppressTransientApiAlerts } from '../services/apiClient';
 import { isStudentRole, isPersistentSessionRole } from '../utils/roleHelpers';
 import { getBackupRefreshToken, clearBackupRefreshToken } from '../services/secureTokenStore';
+import { requireFingerprintForVaultAccount } from '../services/fingerprintGate';
+import {
+  clearFingerprintTickets,
+  disableFingerprintForAccount,
+} from '../services/biometricService';
 import { SessionPolicy } from '../services/sessionPolicyService';
 import { notificationManager } from '../services/notificationManager';
 import { fetchFeatures, resetFeatures } from '../services/featuresStore';
@@ -41,6 +46,12 @@ interface AuthContextType {
 
   signIn: typeof AuthService.signIn;
   signOut: () => Promise<void>;
+  /**
+   * End the live session but keep this account (and every sibling) in the
+   * vault. Used by the fingerprint lock's "Use email and password" escape so a
+   * cancelled scan can never cost the user their saved logins.
+   */
+  signOutKeepAccount: () => Promise<void>;
   refreshSession: () => Promise<void>;
   /** Update the active user's profile picture URL in-memory + persisted storage. */
   updateUserPhoto: (photoUrl: string | null) => Promise<void>;
@@ -65,6 +76,7 @@ const AuthContext = createContext<AuthContextType>({
 
   signIn: async () => ({ error: 'Not initialized' }),
   signOut: async () => {},
+  signOutKeepAccount: async () => {},
   refreshSession: async () => {},
   updateUserPhoto: async () => {},
   switchAccount: async () => ({ error: 'Not initialized' }),
@@ -83,10 +95,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const backoffDelay = useRef(1000); // Start at 1s
   const justSignedIn = useRef(false); // Guard against TOKEN_REFRESHED race after sign-in
-  // Raised only during an explicit user-initiated signOut(). The Supabase
-  // SIGNED_OUT event also fires when a refresh token is rejected — we must NOT
-  // honor that for persistent roles, only when the user actually tapped Logout.
-  const manualSignOut = useRef(false);
   const sessionRef = useRef<AuthSession | null>(null);
   sessionRef.current = session;
   authSessionSnapshotRef.current = session;
@@ -107,9 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Mark this as a deliberate logout so the onAuthStateChange SIGNED_OUT
     // handler is allowed to clear state. Reset shortly after the supabase
     // signOut()'s event has been processed.
-    manualSignOut.current = true;
-    setTimeout(() => { manualSignOut.current = false; }, 5000);
     setLoading(true);
+    // Drop any unlock ticket so it cannot authorize a later switch.
+    // The account's fingerprint opt-in record is deleted by the vault removal
+    // below (accountVault.removeAccount owns that cleanup for every caller).
+    clearFingerprintTickets();
     // Clear cached feature flags so the next account doesn't inherit them.
     resetFeatures().catch(() => {});
     // Capture the signing-out account's userId BEFORE the session is cleared —
@@ -181,12 +191,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   };
 
-  // Persistent roles (parent/student, admin, driver, staff) NEVER auto-logout on
-  // a failed refresh — they retry forever with capped backoff and keep the
-  // cached session untouched. Only `accountant` (Accounts dept) is cleared after
-  // a few retries, preserving its school-hours restriction. See
-  // isPersistentSessionRole().
+  // Sign out of the live session WITHOUT removing anything from the vault.
+  // Deliberately narrower than signOut(): no push unregister and no vault
+  // removal. Active-user caches are still purged so the signed-out login screen
+  // cannot retain privileged data.
+  const signOutKeepAccount = async () => {
+    const signingOutUserId = sessionRef.current?.validatedUser?.userId ?? null;
+    clearFingerprintTickets();
+    resetFeatures().catch(() => {});
+    invalidateApiQueryCache();
+    if (signingOutUserId) {
+      await persistentQueryCache.removeMatching(signingOutUserId).catch(() => undefined);
+    }
+    await clearActiveContextStore().catch(() => undefined);
+    setPortalContexts(null);
+    try {
+      await AuthService.signOut();
+    } catch (e) {
+      if (__DEV__) console.warn('[useAuth] signOutKeepAccount failed (non-fatal):', e);
+    }
+    setSession(null);
+  };
+
+  // Known long-lived roles retry transient connectivity/server failures with
+  // capped backoff. Confirmed token rejection and SIGNED_OUT are handled
+  // separately and always clear authority.
   const handleRefreshFailure = (currentRole: string | null) => {
+    if (!sessionRef.current) return;
     if (isPersistentSessionRole(currentRole)) {
       // Infinite retry, capped at 60s. Session is preserved untouched.
       const nextDelay = Math.min(backoffDelay.current * 2, 60000);
@@ -219,7 +250,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {
             if (__DEV__) console.warn('[useAuth] StorageService.clear on auto-logout failed (non-fatal):', e);
           }
+          // The session was rejected outright, so its fingerprint opt-in must
+          // not survive to unlock a dead session on the next launch.
+          await disableFingerprintForAccount(SCHOOL_ID, expiredUserId);
         }
+        clearFingerprintTickets();
         await clearAuthState();
         setSession(null);
         backoffDelay.current = 1000; // Reset for next login
@@ -370,20 +405,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         if (event === 'SIGNED_OUT') {
-          // Supabase fires SIGNED_OUT both on a real user logout AND when it
-          // gives up on a rejected/expired refresh token. We must only honor it
-          // when the user actually tapped Logout (manualSignOut). For persistent
-          // roles (parent/admin/driver/staff) an unsolicited SIGNED_OUT is
-          // treated as a transient token problem: keep the cached session and
-          // let handleRefresh's infinite backoff recover it — never evict.
-          const roleCode = sessionRef.current?.validatedUser?.role?.code || null;
-          if (manualSignOut.current || !isPersistentSessionRole(roleCode)) {
-            await clearAuthState();
-            setSession(null);
-          } else {
-            console.warn(`[useAuth] Ignoring unsolicited SIGNED_OUT for persistent role "${roleCode}" — preserving session, scheduling recovery.`);
-            void handleRefresh(roleCode);
-          }
+          // A Supabase SIGNED_OUT event can mean explicit logout or confirmed
+          // refresh-token rejection. Neither is safe to ignore based on a
+          // cached role.
+          await clearAuthState();
+          setSession(null);
         } else if (event === 'TOKEN_REFRESHED') {
           // Skip if we just signed in — Supabase fires TOKEN_REFRESHED
           // immediately after sign-in which races with the sign-in flow
@@ -456,6 +482,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // full-screen flash, defeating the "seamless" goal; the session swap itself is
   // what the UI re-renders against.
   const switchAccount = async (userId: string) => {
+    // Fingerprint gate. Every route into another account — the login screen's
+    // saved-account rows, the account switcher, quick switch, and
+    // notification-triggered switching — lands here, so this one check covers
+    // them all. It re-reads the target's role from the vault immediately
+    // before the swap, and returns "allowed" without prompting for any account
+    // that is not an eligible, opted-in staff/admin login.
+    const gate = await requireFingerprintForVaultAccount(userId);
+    if (!gate.allowed) {
+      // Refusing a switch leaves the current session and every saved account
+      // exactly as they were.
+      return { error: gate.message || 'Fingerprint verification failed' };
+    }
+
     // While the session flips to the new account, the outgoing portal's screens
     // are still mounted+focused and briefly refetch under the new identity,
     // producing expected cross-role 4xx (e.g. 404 "Staff profile not found").
@@ -555,7 +594,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, loading, authChecked, user, role, isStudent, schoolId,
-      signIn, signOut, refreshSession, updateUserPhoto, switchAccount, addAccount,
+      signIn, signOut, signOutKeepAccount, refreshSession, updateUserPhoto, switchAccount, addAccount,
       portalContexts, refreshPortalContexts, switchPortalContext,
     }}>
       {children}

@@ -1,0 +1,83 @@
+/* eslint-disable import/first -- jest.mock() calls are written above the imports they replace. */
+jest.mock('../constants/school', () => ({ SCHOOL_ID: 12 }));
+
+jest.mock('./biometricService', () => ({
+  disableFingerprintForAccount: jest.fn(async () => true),
+}));
+
+jest.mock('./secureTokenStore', () => {
+  const store = new Map<string, string>();
+  return {
+    __store: store,
+    SecureTokenStore: {
+      getItem: jest.fn(async (key: string) => store.get(key) ?? null),
+      setItem: jest.fn(async (key: string, value: string) => {
+        store.set(key, value);
+      }),
+      removeItem: jest.fn(async (key: string) => {
+        store.delete(key);
+      }),
+    },
+    getBackupRefreshToken: jest.fn(async () => null),
+  };
+});
+
+import * as accountVault from './accountVault';
+import type { VaultAccount } from './accountVault';
+
+/* Handles on the mocks above, for assertions. */
+/* eslint-disable @typescript-eslint/no-require-imports */
+const biometricService = require('./biometricService');
+const secureTokenStore = require('./secureTokenStore');
+/* eslint-enable @typescript-eslint/no-require-imports */
+
+const SCHOOL = 12;
+
+function account(userId: string, roleCode: string): VaultAccount {
+  return {
+    userId,
+    displayName: userId,
+    photoUrl: null,
+    admissionNo: null,
+    supabaseSession: { refresh_token: `refresh-${userId}` } as any,
+    validatedUser: { userId, role: { code: roleCode } } as any,
+  };
+}
+
+beforeEach(async () => {
+  jest.clearAllMocks();
+  secureTokenStore.__store.clear();
+});
+
+describe('accountVault.removeAccount fingerprint cleanup', () => {
+  it('deletes the removed account\'s fingerprint opt-in and nothing else', async () => {
+    await accountVault.addAccount(account('admin-1', 'admin'));
+    await accountVault.addAccount(account('staff-2', 'staff'));
+
+    await accountVault.removeAccount('admin-1');
+
+    expect(biometricService.disableFingerprintForAccount).toHaveBeenCalledTimes(1);
+    expect(biometricService.disableFingerprintForAccount).toHaveBeenCalledWith(SCHOOL, 'admin-1');
+  });
+
+  it('leaves the sibling account and its tokens in the vault', async () => {
+    await accountVault.addAccount(account('admin-1', 'admin'));
+    await accountVault.addAccount(account('staff-2', 'staff'));
+
+    await accountVault.removeAccount('admin-1');
+
+    const remaining = await accountVault.listAccounts();
+    expect(remaining.map((a) => a.userId)).toEqual(['staff-2']);
+    await expect(accountVault.getBackupRefreshTokenForUser('staff-2')).resolves.toBe(
+      'refresh-staff-2'
+    );
+    await expect(accountVault.getBackupRefreshTokenForUser('admin-1')).resolves.toBeNull();
+  });
+
+  it('runs the cleanup for an account that never opted in', async () => {
+    await accountVault.addAccount(account('student-3', 'student'));
+    await accountVault.removeAccount('student-3');
+
+    expect(biometricService.disableFingerprintForAccount).toHaveBeenCalledWith(SCHOOL, 'student-3');
+  });
+});

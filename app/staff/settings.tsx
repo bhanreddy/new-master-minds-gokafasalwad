@@ -11,6 +11,8 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useEffectiveStaffId } from '../../src/hooks/useEffectiveStaffId';
+import { useFingerprintAuth } from '../../src/hooks/useFingerprintAuth';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../src/hooks/useTheme';
 import { ThemeColors } from '../../src/theme/themes';
 import { Staff, StaffService } from '../../src/services/staffService';
@@ -138,7 +140,9 @@ const SP = StyleSheet.create({
 
 export default function StaffSettings() {
     const router = useRouter();
+    const { t } = useTranslation();
     const { user, signOut } = useAuth();
+    const fingerprint = useFingerprintAuth();
     const { theme, isDark, toggleTheme } = useTheme();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
     const [updating, setUpdating] = useState(false);
@@ -174,6 +178,15 @@ export default function StaffSettings() {
                 router.replace('/welcome');
             } },
         ]);
+    };
+
+    const showFingerprintRow = fingerprint.showRow && !isViewingAsAdmin;
+
+    const handleFingerprintToggle = async (next: boolean) => {
+        const result = await fingerprint.setEnabled(next);
+        if (!result.ok && next) {
+            alertCompat(t('fingerprint.login'), result.error || t('fingerprint.failed'));
+        }
     };
 
     const chevron = <MaterialIcons name="chevron-right" size={18} color="#D1D5DB" />;
@@ -263,6 +276,30 @@ export default function StaffSettings() {
 
                 {/* ── Security ── */}
                 <Group title="Security" delay={250} colors={theme.colors}>
+                    {/* Fingerprint row is hidden on web/Tauri, for roles outside the
+                        eligible staff/admin list, and on phones with no enrolled
+                        strong fingerprint. It applies to the signed-in account, so
+                        it is also hidden while viewing another staff member. */}
+                    {showFingerprintRow && (
+                        <SettingRow
+                            icon="finger-print" iconColor="#0EA5E9" iconBg="#E0F2FE"
+                            label={t('fingerprint.login')}
+                            sublabel={
+                                fingerprint.enabled
+                                    ? t('fingerprint.enabledSublabel')
+                                    : t('fingerprint.disabledSublabel')
+                            }
+                            rightElement={
+                                <Switch
+                                    trackColor={{ false: theme.colors.border, true: '#38BDF8' }}
+                                    thumbColor="#fff"
+                                    disabled={fingerprint.busy}
+                                    onValueChange={handleFingerprintToggle}
+                                    value={fingerprint.enabled}
+                                />
+                            }
+                        />
+                    )}
                     <SettingRow
                         icon="lock-closed" iconColor="#3B82F6" iconBg="#EFF6FF"
                         label="Change Password" sublabel="Update your login credentials"

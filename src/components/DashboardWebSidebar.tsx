@@ -1,16 +1,21 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withTiming, withSpring, withSequence
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  FadeInDown,
+  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from '../utils/haptics';
 import { useTheme } from '../hooks/useTheme';
 import { SCHOOL_NAME } from '../constants/school';
 
-export const DASHBOARD_SIDEBAR_EXPANDED = 240;
-export const DASHBOARD_SIDEBAR_COLLAPSED = 68;
+export const DASHBOARD_SIDEBAR_EXPANDED = 272;
+export const DASHBOARD_SIDEBAR_COLLAPSED = 74;
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -23,36 +28,132 @@ export interface WebSidebarActionItem {
   category?: string;
 }
 
+const CATEGORY_ORDER = [
+  'Academic',
+  'Finance',
+  'Analytics',
+  'AI',
+  'Comms',
+  'Support',
+  'Ops',
+  'HR',
+  'Security',
+] as const;
+
+type CategoryKey = (typeof CATEGORY_ORDER)[number] | string;
+
+type CategoryMeta = {
+  icon: IconName;
+  accent: string;
+  accentDeep: string;
+  soft: string;
+  softDark: string;
+  label: string;
+  gradient: [string, string];
+};
+
+const CATEGORY_META: Record<string, CategoryMeta> = {
+  Academic: {
+    icon: 'school-outline',
+    accent: '#3B82F6',
+    accentDeep: '#1D4ED8',
+    soft: 'rgba(59,130,246,0.12)',
+    softDark: 'rgba(59,130,246,0.18)',
+    label: 'Academic',
+    gradient: ['#60A5FA', '#2563EB'],
+  },
+  Finance: {
+    icon: 'wallet-outline',
+    accent: '#14B8A6',
+    accentDeep: '#0F766E',
+    soft: 'rgba(20,184,166,0.12)',
+    softDark: 'rgba(20,184,166,0.18)',
+    label: 'Finance',
+    gradient: ['#2DD4BF', '#0D9488'],
+  },
+  Analytics: {
+    icon: 'bar-chart-outline',
+    accent: '#38BDF8',
+    accentDeep: '#0284C7',
+    soft: 'rgba(56,189,248,0.12)',
+    softDark: 'rgba(56,189,248,0.18)',
+    label: 'Analytics',
+    gradient: ['#7DD3FC', '#0EA5E9'],
+  },
+  AI: {
+    icon: 'bulb-outline',
+    accent: '#22D3EE',
+    accentDeep: '#0891B2',
+    soft: 'rgba(34,211,238,0.12)',
+    softDark: 'rgba(34,211,238,0.18)',
+    label: 'Insights',
+    gradient: ['#67E8F9', '#06B6D4'],
+  },
+  Comms: {
+    icon: 'megaphone-outline',
+    accent: '#FB923C',
+    accentDeep: '#C2410C',
+    soft: 'rgba(251,146,60,0.14)',
+    softDark: 'rgba(251,146,60,0.18)',
+    label: 'Comms',
+    gradient: ['#FDBA74', '#EA580C'],
+  },
+  Support: {
+    icon: 'chatbubble-ellipses-outline',
+    accent: '#FB7185',
+    accentDeep: '#E11D48',
+    soft: 'rgba(251,113,133,0.14)',
+    softDark: 'rgba(251,113,133,0.18)',
+    label: 'Support',
+    gradient: ['#FDA4AF', '#F43F5E'],
+  },
+  Ops: {
+    icon: 'bus-outline',
+    accent: '#FBBF24',
+    accentDeep: '#B45309',
+    soft: 'rgba(251,191,36,0.16)',
+    softDark: 'rgba(251,191,36,0.18)',
+    label: 'Operations',
+    gradient: ['#FCD34D', '#D97706'],
+  },
+  HR: {
+    icon: 'people-outline',
+    accent: '#F472B6',
+    accentDeep: '#BE185D',
+    soft: 'rgba(244,114,182,0.14)',
+    softDark: 'rgba(244,114,182,0.18)',
+    label: 'People',
+    gradient: ['#F9A8D4', '#DB2777'],
+  },
+  Security: {
+    icon: 'shield-checkmark-outline',
+    accent: '#F87171',
+    accentDeep: '#B91C1C',
+    soft: 'rgba(248,113,113,0.14)',
+    softDark: 'rgba(248,113,113,0.18)',
+    label: 'Security',
+    gradient: ['#FCA5A5', '#DC2626'],
+  },
+};
+
 function routeIsActive(pathname: string, itemRoute: string): boolean {
   if (pathname === itemRoute) return true;
   if (itemRoute === '/admin' || itemRoute === '/admin/dashboard') return false;
   return pathname.startsWith(`${itemRoute}/`);
 }
 
-function getSidebarSection(route: string): 'navigation' | 'manage' | 'reports' {
-  if (
-    route.includes('/reports') ||
-    route.includes('smart-insights') ||
-    route.includes('progress-report') ||
-    route.includes('certificate')
-  ) {
-    return 'reports';
-  }
-  if (
-    route.includes('/expenses') ||
-    route.includes('/finance') ||
-    route.includes('/manage-staff') ||
-    route.includes('/addStaff') ||
-    route.includes('/staff-form') ||
-    route.includes('/access-requests') ||
-    route.includes('/leaves') ||
-    route.includes('/fees') ||
-    route.includes('/add-accounts') ||
-    route.includes('/complaints')
-  ) {
-    return 'manage';
-  }
-  return 'navigation';
+function getCategoryMeta(category: string): CategoryMeta {
+  return (
+    CATEGORY_META[category] ?? {
+      icon: 'grid-outline' as IconName,
+      accent: '#3B82F6',
+      accentDeep: '#1D4ED8',
+      soft: 'rgba(59,130,246,0.12)',
+      softDark: 'rgba(59,130,246,0.18)',
+      label: category,
+      gradient: ['#60A5FA', '#2563EB'],
+    }
+  );
 }
 
 interface DashboardWebSidebarProps {
@@ -60,48 +161,12 @@ interface DashboardWebSidebarProps {
   items: WebSidebarActionItem[];
 }
 
-const SECTION_LABELS: Record<'navigation' | 'manage' | 'reports', string> = {
-  navigation: 'NAVIGATION',
-  manage: 'MANAGE',
-  reports: 'REPORTS',
-};
-
-function getCategoryClayColors(category: string, isDark: boolean) {
-  let bg = '#4A72E6';
-  let shadowColor = '#253FA3';
-  if (category === 'Academic' || category === 'AI') {
-    bg = isDark ? '#3053C4' : '#4A72E6';
-    shadowColor = isDark ? '#1C318F' : '#253FA3';
-  } else if (category === 'Finance') {
-    bg = isDark ? '#1B7F5F' : '#2CB288';
-    shadowColor = isDark ? '#0D4E3A' : '#136146';
-  } else if (category === 'Analytics') {
-    bg = isDark ? '#5033B3' : '#825AE6';
-    shadowColor = isDark ? '#2F187A' : '#4925A3';
-  } else if (category === 'Comms') {
-    bg = isDark ? '#9B531C' : '#E58539';
-    shadowColor = isDark ? '#5C2D0B' : '#75390E';
-  } else if (category === 'Support') {
-    bg = isDark ? '#9E4437' : '#E06D5E';
-    shadowColor = isDark ? '#5B1E16' : '#7D2F23';
-  } else if (category === 'Ops') {
-    bg = isDark ? '#9E731D' : '#E6AE3C';
-    shadowColor = isDark ? '#5A3E08' : '#7D550A';
-  } else if (category === 'HR') {
-    bg = isDark ? '#9E333C' : '#E65A65';
-    shadowColor = isDark ? '#5E1015' : '#7D1B22';
-  } else if (category === 'Security') {
-    bg = isDark ? '#9E2833' : '#E64A57';
-    shadowColor = isDark ? '#5E0B11' : '#7D161F';
-  }
-  return { bg, shadowColor };
-}
-
-function SidebarRow({
+function SubItem({
   item,
   collapsed,
   active,
   isDark,
+  meta,
   onNavigate,
   styles,
 }: {
@@ -109,161 +174,268 @@ function SidebarRow({
   collapsed: boolean;
   active: boolean;
   isDark: boolean;
+  meta: CategoryMeta;
   onNavigate: (route: string) => void;
-  styles: any;
+  styles: ReturnType<typeof createStyles>;
 }) {
-  const scale = useSharedValue(1);
-  const translateY = useSharedValue(0);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: scale.value },
-      { translateY: translateY.value }
-    ]
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withTiming(0.98, { duration: 150 });
-    translateY.value = withTiming(1, { duration: 150 });
-  };
-
-  const handlePressOut = () => {
-    scale.value = withTiming(1, { duration: 150 });
-    translateY.value = withTiming(0, { duration: 150 });
-  };
-
-  const category = item.category ?? 'Academic';
+  const [hovered, setHovered] = useState(false);
   const showBadge = item.badge !== undefined && item.badge > 0;
-  
-  const clayStyle = useMemo(() => {
-    if (!active) {
-      return {
-        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(15, 23, 42, 0.02)',
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(15, 23, 42, 0.04)',
-      };
-    }
-
-    const { bg, shadowColor } = getCategoryClayColors(category, isDark);
-    const borderRadius = 14;
-
-    if (Platform.OS === 'web') {
-      return {
-        backgroundColor: bg,
-        borderRadius,
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.45)',
-        boxShadow:
-          `0px 6px 14px ${shadowColor}26, ` +
-          `-4px -4px 10px ${isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.85)'}, ` +
-          `inset 2px 2px 4px rgba(255, 255, 255, 0.45), ` +
-          `inset -2.5px -2.5px 5px rgba(0, 0, 0, 0.16)`
-      };
-    }
-
-    return {
-      backgroundColor: bg,
-      borderRadius,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.45)',
-      shadowColor,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: isDark ? 0.45 : 0.28,
-      shadowRadius: 10,
-      elevation: 4,
-    };
-  }, [category, active, isDark]);
+  const [g0, g1] = item.gradient?.length === 2 ? item.gradient : meta.gradient;
 
   return (
     <Pressable
       onPress={() => onNavigate(item.route)}
-      onHoverIn={() => {
-        scale.value = withTiming(1.02, { duration: 180 });
-        translateY.value = withTiming(-2, { duration: 180 });
-      }}
-      onHoverOut={() => {
-        scale.value = withTiming(1, { duration: 180 });
-        translateY.value = withTiming(0, { duration: 180 });
-      }}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       style={[Platform.OS === 'web' && { cursor: 'pointer' }]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
     >
-      <Animated.View
+      <View
         style={[
-          styles.row,
-          collapsed && styles.rowCollapsed,
-          animStyle,
-          clayStyle,
+          styles.subItem,
+          collapsed && styles.subItemCollapsed,
+          active && styles.subItemActiveShell,
+          !active &&
+            hovered && {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
+              transform: [{ translateX: 2 }],
+            },
+          !active &&
+            !hovered && {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.55)',
+            },
         ]}
       >
-        <View style={[
-          styles.iconWrap, 
-          collapsed && styles.iconWrapCollapsed, 
-          active && styles.iconWrapActive,
-          active && (Platform.OS === 'web' ? {
-            boxShadow: '1px 2px 4px rgba(0,0,0,0.12), inset 1px 1px 2px rgba(255,255,255,0.35)'
-          } : {
-            shadowColor: '#000000',
-            shadowOffset: { width: 0, height: 1.5 },
-            shadowOpacity: 0.1,
-            shadowRadius: 2,
-            elevation: 1.5
-          })
-        ]}>
+        {active ? (
+          <LinearGradient
+            colors={[g0, g1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
+            pointerEvents="none"
+          />
+        ) : null}
+
+        <View
+          style={[
+            styles.subIcon,
+            collapsed && styles.subIconCollapsed,
+            active
+              ? {
+                  backgroundColor: 'rgba(255,255,255,0.22)',
+                  borderColor: 'rgba(255,255,255,0.28)',
+                }
+              : {
+                  backgroundColor: isDark ? meta.softDark : meta.soft,
+                  borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)',
+                },
+          ]}
+        >
           <Ionicons
             name={item.icon}
-            size={20}
-            color={
-              active
-                ? '#FFFFFF'
-                : isDark
-                  ? 'rgba(255,255,255,0.45)'
-                  : 'rgba(15,23,42,0.48)'
-            }
+            size={collapsed ? 17 : 14}
+            color={active ? '#FFFFFF' : meta.accentDeep}
           />
           {collapsed && showBadge ? <View style={styles.badgeDot} /> : null}
         </View>
 
         {!collapsed ? (
-          <View style={styles.meta}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.itemTitle, active && styles.itemTitleActive]} numberOfLines={2}>
-                {item.title}
-              </Text>
-              {showBadge ? (
-                <View style={[
-                  styles.badge, 
-                  { 
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.9)',
-                    borderColor: isDark ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.85)',
-                    borderWidth: 1,
-                    ...(Platform.OS === 'web' ? {
-                      boxShadow: '1px 1.5px 3px rgba(0,0,0,0.08), inset 1px 1px 1.5px rgba(255,255,255,0.35)'
-                    } : {
-                      shadowColor: '#000000',
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.08,
-                      shadowRadius: 2,
-                      elevation: 1
-                    })
-                  }
-                ]}>
-                  <Text style={[styles.badgeText, { color: active ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#0F172A') }]}>
-                    {item.badge! > 99 ? '99+' : item.badge}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            {item.category ? (
-              <Text style={[styles.category, active && styles.categoryActive]} numberOfLines={1}>
-                {item.category.toUpperCase()}
-              </Text>
-            ) : null}
+          <Text style={[styles.subTitle, active && styles.subTitleActive]} numberOfLines={1}>
+            {item.title}
+          </Text>
+        ) : null}
+
+        {!collapsed && showBadge ? (
+          <View
+            style={[
+              styles.badge,
+              {
+                backgroundColor: active
+                  ? 'rgba(255,255,255,0.24)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.12)'
+                    : meta.accentDeep,
+              },
+            ]}
+          >
+            <Text style={styles.badgeText}>{item.badge! > 99 ? '99+' : item.badge}</Text>
           </View>
         ) : null}
-      </Animated.View>
+      </View>
     </Pressable>
+  );
+}
+
+function CategorySection({
+  category,
+  items,
+  expanded,
+  onToggle,
+  collapsed,
+  isDark,
+  pathname,
+  onNavigate,
+  styles,
+}: {
+  category: CategoryKey;
+  items: WebSidebarActionItem[];
+  expanded: boolean;
+  onToggle: () => void;
+  collapsed: boolean;
+  isDark: boolean;
+  pathname: string;
+  onNavigate: (route: string) => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const meta = getCategoryMeta(String(category));
+  const hasActive = items.some((it) => routeIsActive(pathname, it.route));
+  const badgeTotal = items.reduce((sum, it) => sum + (it.badge && it.badge > 0 ? it.badge : 0), 0);
+  const [headerHovered, setHeaderHovered] = useState(false);
+  const chevron = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    chevron.value = withTiming(expanded ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [expanded, chevron]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevron.value * 90}deg` }],
+  }));
+
+  if (collapsed) {
+    return (
+      <View style={styles.collapsedGroup}>
+        {items.map((item) => (
+          <SubItem
+            key={item.route}
+            item={item}
+            collapsed
+            active={routeIsActive(pathname, item.route)}
+            isDark={isDark}
+            meta={meta}
+            onNavigate={onNavigate}
+            styles={styles}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.categoryWrap,
+        expanded && {
+          backgroundColor: isDark ? meta.softDark : meta.soft,
+          borderColor: isDark ? `${meta.accent}44` : `${meta.accent}33`,
+          ...(Platform.OS === 'web'
+            ? ({
+                boxShadow: `0 10px 28px ${meta.accent}18, inset 0 1px 0 rgba(255,255,255,0.55)`,
+              } as any)
+            : {}),
+        },
+        !expanded && hasActive && {
+          borderColor: isDark ? `${meta.accent}40` : `${meta.accent}28`,
+          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.55)',
+        },
+      ]}
+    >
+      <Pressable
+        onPress={onToggle}
+        onHoverIn={() => setHeaderHovered(true)}
+        onHoverOut={() => setHeaderHovered(false)}
+        style={[
+          styles.categoryHeader,
+          !expanded &&
+            headerHovered && {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)',
+            },
+          Platform.OS === 'web' && { cursor: 'pointer' },
+        ]}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+      >
+        <LinearGradient
+          colors={meta.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.categoryOrb,
+            Platform.OS === 'web' &&
+              ({
+                boxShadow: `0 6px 14px ${meta.accent}44, inset 0 1px 0 rgba(255,255,255,0.35)`,
+              } as any),
+          ]}
+        >
+          <Ionicons name={meta.icon} size={15} color="#FFFFFF" />
+        </LinearGradient>
+
+        <View style={styles.categoryTextCol}>
+          <Text
+            style={[
+              styles.categoryTitle,
+              (expanded || hasActive) && { color: isDark ? '#F8FAFC' : '#0F172A' },
+            ]}
+            numberOfLines={1}
+          >
+            {meta.label}
+          </Text>
+          {expanded ? (
+            <Text style={[styles.categoryHint, { color: meta.accentDeep }]}>
+              {items.length} modules
+            </Text>
+          ) : null}
+        </View>
+
+        {badgeTotal > 0 ? (
+          <View style={[styles.badge, { backgroundColor: meta.accentDeep }]}>
+            <Text style={styles.badgeText}>{badgeTotal > 99 ? '99+' : badgeTotal}</Text>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.countPill,
+              expanded && {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.85)',
+                borderColor: `${meta.accent}33`,
+              },
+            ]}
+          >
+            <Text style={[styles.countText, expanded && { color: meta.accentDeep }]}>
+              {items.length}
+            </Text>
+          </View>
+        )}
+
+        <Animated.View style={[styles.chevronWrap, chevronStyle]}>
+          <Ionicons
+            name="chevron-forward"
+            size={14}
+            color={expanded ? meta.accentDeep : isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.3)'}
+          />
+        </Animated.View>
+      </Pressable>
+
+      {expanded ? (
+        <Animated.View entering={FadeInDown.duration(200).springify().damping(18)} style={styles.subList}>
+          {items.map((item) => (
+            <SubItem
+              key={item.route}
+              item={item}
+              collapsed={false}
+              active={routeIsActive(pathname, item.route)}
+              isDark={isDark}
+              meta={meta}
+              onNavigate={onNavigate}
+              styles={styles}
+            />
+          ))}
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -272,32 +444,52 @@ export default function DashboardWebSidebar({ collapsed, items }: DashboardWebSi
   const pathname = usePathname();
   const router = useRouter();
   const width = collapsed ? DASHBOARD_SIDEBAR_COLLAPSED : DASHBOARD_SIDEBAR_EXPANDED;
-
   const styles = useMemo(() => createStyles(isDark, collapsed), [isDark, collapsed]);
 
   const grouped = useMemo(() => {
-    const buckets: Record<'navigation' | 'manage' | 'reports', WebSidebarActionItem[]> = {
-      navigation: [],
-      manage: [],
-      reports: [],
-    };
+    const buckets = new Map<string, WebSidebarActionItem[]>();
     items.forEach((item) => {
-      buckets[getSidebarSection(item.route)].push(item);
+      const key = item.category || 'Academic';
+      const list = buckets.get(key) ?? [];
+      list.push(item);
+      buckets.set(key, list);
     });
-    return (['navigation', 'manage', 'reports'] as const)
-      .map((key) => ({ key, label: SECTION_LABELS[key], items: buckets[key] }))
-      .filter((g) => g.items.length > 0);
+
+    const ordered = CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+      key,
+      items: buckets.get(key)!,
+    }));
+
+    buckets.forEach((list, key) => {
+      if (!CATEGORY_ORDER.includes(key as (typeof CATEGORY_ORDER)[number])) {
+        ordered.push({ key, items: list });
+      }
+    });
+
+    return ordered;
   }, [items]);
 
-  const flatForCollapsed = useMemo(() => grouped.flatMap((g) => g.items), [grouped]);
+  const activeCategory = useMemo(() => {
+    for (const group of grouped) {
+      if (group.items.some((it) => routeIsActive(pathname, it.route))) return group.key;
+    }
+    return grouped[0]?.key ?? 'Academic';
+  }, [grouped, pathname]);
+
+  const [openKey, setOpenKey] = useState<string | null>(activeCategory);
+  const lastAuto = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (lastAuto.current === activeCategory) return;
+    lastAuto.current = activeCategory;
+    setOpenKey(activeCategory);
+  }, [activeCategory]);
 
   const onNavigate = useCallback(
     (route: string) => {
-      console.debug('[DashboardWebSidebar] onNavigate start', { route });
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push(route as any);
-        console.debug('[DashboardWebSidebar] onNavigate end', { route });
       } catch (e) {
         console.error('Button action failed:', e);
       }
@@ -305,98 +497,58 @@ export default function DashboardWebSidebar({ collapsed, items }: DashboardWebSi
     [router],
   );
 
-  const clayBrandPillStyle = useMemo(() => {
-    const bg = isDark ? '#3053C4' : '#4A72E6'; // Vibrant clay periwinkle blue
-    const shadowColor = isDark ? '#1C318F' : '#253FA3';
-    
-    if (Platform.OS === 'web') {
-      return {
-        backgroundColor: bg,
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.45)',
-        boxShadow:
-          `0px 8px 18px ${shadowColor}33, ` +
-          `-4px -4px 10px ${isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.85)'}, ` +
-          `inset 2px 2px 4px rgba(255, 255, 255, 0.45), ` +
-          `inset -2.5px -2.5px 5px rgba(0, 0, 0, 0.16)`
-      };
-    }
-
-    return {
-      backgroundColor: bg,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.45)',
-      shadowColor,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: isDark ? 0.45 : 0.28,
-      shadowRadius: 12,
-      elevation: 6,
-    };
-  }, [isDark]);
-
-  const clayBrandOrbStyle = useMemo(() => {
-    if (Platform.OS === 'web') {
-      return {
-        backgroundColor: 'rgba(255, 255, 255, 0.22)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.32)',
-        boxShadow: '1px 2px 4px rgba(0,0,0,0.12), inset 1px 1px 2px rgba(255,255,255,0.35)'
-      };
-    }
-    return {
-      backgroundColor: 'rgba(255, 255, 255, 0.22)',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.32)',
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 1.5 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 1.5
-    };
+  const toggleCategory = useCallback((key: string) => {
+    Haptics.selectionAsync();
+    setOpenKey((prev) => (prev === key ? null : key));
   }, []);
-
-  const renderRow = (item: WebSidebarActionItem) => {
-    const active = routeIsActive(pathname, item.route);
-    return (
-      <SidebarRow
-        key={item.route}
-        item={item}
-        collapsed={collapsed}
-        active={active}
-        isDark={isDark}
-        onNavigate={onNavigate}
-        styles={styles}
-      />
-    );
-  };
 
   return (
     <View style={[styles.shell, { width }]}>
-      <View
-        style={[StyleSheet.absoluteFill, { 
-          backgroundColor: isDark ? '#0D1120' : '#F8FAFF',
-          borderRightWidth: 1,
-          borderRightColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-          ...(Platform.OS === 'web' ? {
-            boxShadow: isDark ? '3px 0px 10px rgba(0,0,0,0.25)' : '3px 0px 10px rgba(100,116,139,0.08)'
-          } : {})
-        }]}
+      <LinearGradient
+        colors={isDark ? ['#070B14', '#0F172A', '#111827'] : ['#E8EEF8', '#F3F6FC', '#EEF2F9']}
+        locations={[0, 0.45, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
       />
+      {Platform.OS === 'web' ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundImage: isDark
+                ? 'radial-gradient(80% 45% at 10% 0%, rgba(59,130,246,0.22) 0%, transparent 55%), radial-gradient(70% 40% at 100% 100%, rgba(20,184,166,0.12) 0%, transparent 50%)'
+                : 'radial-gradient(90% 50% at 0% 0%, rgba(59,130,246,0.16) 0%, transparent 52%), radial-gradient(70% 40% at 100% 85%, rgba(20,184,166,0.10) 0%, transparent 48%), radial-gradient(50% 30% at 50% 100%, rgba(251,146,60,0.06) 0%, transparent 55%)',
+            } as any,
+          ]}
+        />
+      ) : null}
 
       <View style={[styles.topBrand, !collapsed && styles.topBrandExpanded]}>
-        <View style={[styles.brandPill, clayBrandPillStyle]}>
-          <View style={[styles.brandOrbInner, clayBrandOrbStyle]}>
-            <Ionicons name="school" size={collapsed ? 20 : 22} color="#FFFFFF" />
+        <LinearGradient
+          colors={isDark ? ['#1E3A8A', '#1D4ED8', '#0F766E'] : ['#1E40AF', '#2563EB', '#0D9488']}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.brandPill}
+        >
+          <View style={styles.brandSheen} pointerEvents="none" />
+          <View style={styles.brandOrb}>
+            <Ionicons name="school" size={collapsed ? 17 : 19} color="#FFFFFF" />
           </View>
           {!collapsed ? (
             <View style={styles.brandTextWrap}>
               <Text style={styles.brandName} numberOfLines={1}>
                 {SCHOOL_NAME || 'SchoolIMS'}
               </Text>
-              <Text style={styles.brandSub}>Admin</Text>
+              <View style={styles.brandSubRow}>
+                <View style={styles.brandLiveDot} />
+                <Text style={styles.brandSub}>Admin Console</Text>
+              </View>
             </View>
           ) : null}
-        </View>
+        </LinearGradient>
       </View>
 
       <ScrollView
@@ -404,38 +556,75 @@ export default function DashboardWebSidebar({ collapsed, items }: DashboardWebSi
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
       >
-        {collapsed
-          ? flatForCollapsed.map((item) => renderRow(item))
-          : grouped.map((group) => (
-              <View key={group.key} style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>{group.label}</Text>
-                {group.items.map((item) => renderRow(item))}
-              </View>
-            ))}
+        {!collapsed ? (
+          <>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionHeadLabel}>Workspace</Text>
+              <View style={styles.sectionHeadLine} />
+            </View>
+            <View style={styles.categoriesStack}>
+              {grouped.map((group) => (
+                <CategorySection
+                  key={group.key}
+                  category={group.key}
+                  items={group.items}
+                  expanded={openKey === group.key}
+                  onToggle={() => toggleCategory(group.key)}
+                  collapsed={false}
+                  isDark={isDark}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                  styles={styles}
+                />
+              ))}
+            </View>
+          </>
+        ) : (
+          grouped.map((group) => (
+            <CategorySection
+              key={group.key}
+              category={group.key}
+              items={group.items}
+              expanded={false}
+              onToggle={() => {}}
+              collapsed
+              isDark={isDark}
+              pathname={pathname}
+              onNavigate={onNavigate}
+              styles={styles}
+            />
+          ))
+        )}
       </ScrollView>
     </View>
   );
 }
 
 function createStyles(isDark: boolean, collapsed: boolean) {
-  const fg = isDark ? '#F8FAFC' : '#0F172A';
-  const fgMuted = isDark ? 'rgba(248,250,252,0.5)' : 'rgba(15,23,42,0.45)';
+  const fgMuted = isDark ? 'rgba(248,250,252,0.45)' : 'rgba(15,23,42,0.42)';
 
   return StyleSheet.create({
     shell: {
       alignSelf: 'stretch',
       flexShrink: 0,
       position: 'relative',
-      overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
+      overflow: 'hidden',
+      borderRightWidth: 1,
+      borderRightColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(148,163,184,0.25)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow: isDark
+              ? '4px 0 24px rgba(0,0,0,0.35)'
+              : '4px 0 24px rgba(15,23,42,0.05)',
+          } as any)
+        : {}),
     },
     topBrand: {
-      paddingHorizontal: collapsed ? 8 : 12,
-      paddingVertical: 14,
+      paddingHorizontal: collapsed ? 10 : 14,
+      paddingTop: 16,
+      paddingBottom: 8,
       justifyContent: 'center',
       alignItems: 'center',
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-      minHeight: 72,
       zIndex: 2,
     },
     topBrandExpanded: {
@@ -444,20 +633,44 @@ function createStyles(isDark: boolean, collapsed: boolean) {
     brandPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 16,
-      paddingVertical: 10,
-      paddingHorizontal: collapsed ? 10 : 12,
-      gap: 12,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: collapsed ? 12 : 13,
+      gap: 11,
       overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.2)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow:
+              '0 14px 32px rgba(29,78,216,0.32), 0 2px 0 rgba(255,255,255,0.2) inset',
+          } as any)
+        : {
+            shadowColor: '#1D4ED8',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            elevation: 8,
+          }),
     },
-    brandOrbInner: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
+    brandSheen: {
+      ...StyleSheet.absoluteFillObject,
+      ...(Platform.OS === 'web'
+        ? ({
+            backgroundImage:
+              'linear-gradient(115deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 38%, transparent 55%)',
+          } as any)
+        : { backgroundColor: 'rgba(255,255,255,0.08)' }),
+    },
+    brandOrb: {
+      width: 38,
+      height: 38,
+      borderRadius: 13,
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden',
-      backgroundColor: 'rgba(0,0,0,0.15)',
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.3)',
     },
     brandTextWrap: {
       flex: 1,
@@ -467,119 +680,232 @@ function createStyles(isDark: boolean, collapsed: boolean) {
       fontSize: 14,
       fontWeight: '800',
       color: '#FFFFFF',
-      letterSpacing: -0.2,
+      letterSpacing: -0.3,
+    },
+    brandSubRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 3,
+    },
+    brandLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: '#5EEAD4',
     },
     brandSub: {
-      fontSize: 10,
+      fontSize: 9.5,
       fontWeight: '700',
-      letterSpacing: 1.2,
-      color: 'rgba(255,255,255,0.8)',
-      marginTop: 2,
+      letterSpacing: 1.3,
+      color: 'rgba(255,255,255,0.78)',
       textTransform: 'uppercase',
     },
     scroll: { flex: 1, minHeight: 0, zIndex: 2 },
     scrollContent: {
-      paddingVertical: 12,
-      paddingHorizontal: collapsed ? 8 : 10,
-      paddingBottom: 28,
+      paddingHorizontal: collapsed ? 10 : 12,
+      paddingBottom: 32,
+      paddingTop: 6,
     },
-    sectionBlock: {
-      marginBottom: 8,
-    },
-    sectionLabel: {
-      fontSize: 10,
-      fontWeight: '800',
-      letterSpacing: 2,
-      color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.4)',
-      marginBottom: 8,
-      marginTop: 4,
+    sectionHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 12,
       paddingHorizontal: 4,
     },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderRadius: 14,
-      marginBottom: 6,
-      minHeight: 48,
-      position: 'relative',
+    sectionHeadLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.8,
+      color: fgMuted,
+      textTransform: 'uppercase',
     },
-    rowCollapsed: {
-      justifyContent: 'center',
-      paddingHorizontal: 0,
-    },
-    iconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginLeft: 8,
-      marginRight: 10,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)',
-      zIndex: 2,
-    },
-    iconWrapActive: {
-      backgroundColor: 'rgba(255,255,255,0.18)',
-    },
-    iconWrapCollapsed: {
-      marginLeft: 0,
-      marginRight: 0,
-    },
-    badgeDot: {
-      position: 'absolute',
-      top: 6,
-      right: 6,
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: '#EF4444',
-      borderWidth: 1.5,
-      borderColor: isDark ? '#0D1120' : '#F8FAFF',
-    },
-    meta: {
+    sectionHeadLine: {
       flex: 1,
-      minWidth: 0,
-      paddingRight: 10,
-      paddingVertical: 6,
-      zIndex: 2,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
     },
-    titleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    categoriesStack: {
       gap: 8,
     },
-    itemTitle: {
-      flex: 1,
-      fontSize: 13,
-      fontWeight: '700',
-      color: fg,
-      letterSpacing: -0.2,
+    categoryWrap: {
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)',
+      backgroundColor: isDark ? 'rgba(15,23,42,0.55)' : 'rgba(255,255,255,0.62)',
+      overflow: 'hidden',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow: isDark
+              ? '0 6px 16px rgba(0,0,0,0.2)'
+              : '0 6px 18px rgba(15,23,42,0.04), inset 0 1px 0 rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(12px)',
+            transition: 'background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease',
+          } as any)
+        : {
+            shadowColor: '#0F172A',
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            elevation: 2,
+          }),
     },
-    itemTitleActive: {
-      color: '#FFFFFF',
+    categoryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      gap: 10,
+      borderRadius: 16,
     },
-    category: {
-      fontSize: 9,
-      fontWeight: '800',
-      letterSpacing: 1,
-      color: fgMuted,
-      marginTop: 4,
-    },
-    categoryActive: {
-      color: 'rgba(255,255,255,0.75)',
-    },
-    badge: {
-      minWidth: 22,
-      height: 22,
-      paddingHorizontal: 6,
+    categoryOrb: {
+      width: 32,
+      height: 32,
       borderRadius: 11,
       alignItems: 'center',
       justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+    },
+    categoryTextCol: {
+      flex: 1,
+      minWidth: 0,
+    },
+    categoryTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: fgMuted,
+      letterSpacing: -0.2,
+    },
+    categoryHint: {
+      fontSize: 10,
+      fontWeight: '600',
+      marginTop: 1,
+      letterSpacing: 0.1,
+    },
+    countPill: {
+      minWidth: 22,
+      height: 20,
+      paddingHorizontal: 7,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.05)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
+    },
+    countText: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      color: fgMuted,
+    },
+    chevronWrap: {
+      width: 20,
+      height: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subList: {
+      paddingHorizontal: 8,
+      paddingBottom: 10,
+      gap: 5,
+    },
+    subItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 12,
+      minHeight: 38,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      gap: 9,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.55)',
+      overflow: 'hidden',
+      position: 'relative',
+      ...(Platform.OS === 'web'
+        ? ({
+            transition: 'transform 140ms ease, background-color 140ms ease, box-shadow 160ms ease',
+          } as any)
+        : {}),
+    },
+    subItemCollapsed: {
+      justifyContent: 'center',
+      minHeight: 44,
+      marginBottom: 5,
+      paddingHorizontal: 0,
+      borderRadius: 13,
+    },
+    subItemActiveShell: {
+      borderColor: 'rgba(255,255,255,0.25)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow: '0 8px 18px rgba(15,23,42,0.18)',
+          } as any)
+        : {
+            shadowColor: '#0F172A',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.18,
+            shadowRadius: 10,
+            elevation: 4,
+          }),
+    },
+    subIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      zIndex: 1,
+    },
+    subIconCollapsed: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+    },
+    subTitle: {
+      flex: 1,
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: isDark ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.78)',
+      letterSpacing: -0.15,
+      zIndex: 1,
+    },
+    subTitleActive: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+    },
+    badge: {
+      minWidth: 20,
+      height: 20,
+      paddingHorizontal: 6,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1,
     },
     badgeText: {
       color: '#FFFFFF',
       fontSize: 10,
-      fontWeight: '900',
+      fontWeight: '800',
+    },
+    badgeDot: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#FB7185',
+      borderWidth: 1.5,
+      borderColor: isDark ? '#070B14' : '#E8EEF8',
+    },
+    collapsedGroup: {
+      marginBottom: 8,
+      paddingBottom: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
     },
   });
 }
