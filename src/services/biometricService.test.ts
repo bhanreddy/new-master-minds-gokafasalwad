@@ -146,11 +146,13 @@ describe('getFingerprintCapability', () => {
     });
   });
 
-  it('rejects hybrid fingerprint/face hardware because the OS prompt cannot select a modality', async () => {
+  it('accepts hybrid fingerprint/face hardware when a strong fingerprint is enrolled', async () => {
+    // Android reports Face + Fingerprint whenever both sensors exist, even if
+    // the user only enrolled a fingerprint. Do not hide the feature for that.
     LA.supportedAuthenticationTypesAsync.mockResolvedValue([1, 2]);
     await expect(getFingerprintCapability()).resolves.toMatchObject({
-      available: false,
-      reason: 'mixed_biometrics',
+      available: true,
+      reason: null,
     });
   });
 

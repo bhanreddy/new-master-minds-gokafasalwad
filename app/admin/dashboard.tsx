@@ -1304,15 +1304,24 @@ export default function AdminDashboard() {
   );
 
   const sidebarItems = useMemo<WebSidebarActionItem[]>(
-    () => visibleQuickActions.map((item) => ({
-      title: item.title,
-      icon: item.icon,
-      route: item.route,
-      gradient: item.gradient ?? TIER[item.tier].g,
-      badge: item.badge,
-      category: item.category,
-    })),
-    [visibleQuickActions],
+    () => [
+      {
+        title: t('Dashboard', 'Dashboard'),
+        icon: 'grid-outline',
+        route: '/admin/dashboard',
+        gradient: ['#3B82F6', '#1D4ED8'],
+        category: 'Overview',
+      },
+      ...visibleQuickActions.map((item) => ({
+        title: item.title,
+        icon: item.icon,
+        route: item.route,
+        gradient: item.gradient ?? TIER[item.tier].g,
+        badge: item.badge,
+        category: item.category,
+      })),
+    ],
+    [t, visibleQuickActions],
   );
 
   /** ⚡PERF: chunk quick actions into rows so Android only mounts ~2 rows at a time */
@@ -1881,7 +1890,7 @@ export default function AdminDashboard() {
             isOpen={isMenuOpen}
             onClose={() => setIsMenuOpen(false)}
             activeRoute={null}
-            items={visibleQuickActions}
+            items={sidebarItems}
             onItemPress={(route) => { setIsMenuOpen(false); setTimeout(() => router.push(route as any), 300); }}
           />
         </>

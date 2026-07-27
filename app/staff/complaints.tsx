@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import { clayCard, clayInset } from '@/src/theme/clayStyles';
 
 import {
@@ -931,10 +932,12 @@ export default function StaffComplaints() {
       <StaffHeader title="Complaints & Remarks" showBackButton />
       {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
+      <KeyboardAwareScreen
+        variant="scroll"
+        bottomOffset={28}
+        extraScrollPadding={48}
         contentContainerStyle={ms.scroll}
-        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         {/* Hero — compact on File New so the form stays above the fold */}
         <Animated.View entering={FadeInDown.delay(40).duration(320)} style={[ms.pageHeader, activeTab === 'FILE_NEW' && { marginBottom: 8 }]}>
@@ -1482,7 +1485,7 @@ export default function StaffComplaints() {
         )}
 
         <View style={{ height: activeTab === 'MY_REPORTS' ? 100 : 80 }} />
-      </ScrollView>
+      </KeyboardAwareScreen>
 
       {/* Thumb-zone FAB — History only */}
       {activeTab === 'MY_REPORTS' && !loading && (

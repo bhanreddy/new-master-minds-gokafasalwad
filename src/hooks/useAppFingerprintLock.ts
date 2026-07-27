@@ -21,9 +21,9 @@ import { useAuth } from './useAuth';
  *   - Cold start begins in `resolving`, which the overlay renders as an
  *     opaque cover, so nothing protected is on screen while we work out
  *     whether this account is locked.
- *   - Returning to the foreground after more than BACKGROUND_LOCK_MS away
- *     re-locks. A quick trip to the notification shade or a permission dialog
- *     does not.
+ *   - Returning from a true `background` state always re-locks and re-prompts
+ *     (BACKGROUND_LOCK_MS = 0). Brief `inactive` only (notification shade,
+ *     permission dialog) still gets a privacy cover but does not re-prompt.
  *   - A refused or cancelled scan leaves the app locked with "Try again" and
  *     "Use email and password". It never signs the user out on its own and
  *     never touches sibling saved accounts.
@@ -33,8 +33,8 @@ import { useAuth } from './useAuth';
  * exactly as it was.
  */
 
-/** Time in the background before the app re-locks. */
-export const BACKGROUND_LOCK_MS = 30_000;
+/** Minimum time in `background` before resume re-locks. 0 = every resume. */
+export const BACKGROUND_LOCK_MS = 0;
 
 export type FingerprintLockStatus = 'resolving' | 'unlocked' | 'locked';
 
@@ -64,6 +64,8 @@ export function useAppFingerprintLock(): AppFingerprintLock {
   const mountedRef = useRef(true);
   /** Serializes lock evaluation so two triggers cannot both open a dialog. */
   const busyRef = useRef(false);
+  /** True while the system biometric sheet is up — its AppState blips must not re-lock. */
+  const promptingRef = useRef(false);
   /** userId currently behind the lock, so a scan can only unlock that account. */
   const lockedUserIdRef = useRef<string | null>(null);
   const lastEvaluatedTargetRef = useRef<string | null>(null);
@@ -88,6 +90,7 @@ export function useAppFingerprintLock(): AppFingerprintLock {
   /** Prompt for the account already behind the lock. */
   const runPrompt = useCallback(
     async (target: { userId: string; roleCode: string | null | undefined }) => {
+      promptingRef.current = true;
       setPrompting(true);
       try {
         const result = await verifyFingerprintForAccount(
@@ -117,6 +120,7 @@ export function useAppFingerprintLock(): AppFingerprintLock {
         setPrivacyCovered(false);
         setFailureMessage(describeFingerprintFailure(result.reason));
       } finally {
+        promptingRef.current = false;
         if (mountedRef.current) setPrompting(false);
       }
     },
@@ -212,33 +216,45 @@ export function useAppFingerprintLock(): AppFingerprintLock {
 
     const onChange = (nextState: AppStateStatus) => {
       // Android and iOS both emit repeats of the same state; only transitions
-      // matter here, so an echoed 'active' can never queue a second prompt.
+      // matter here, so an echoed 'active' can never open a second prompt.
       if (nextState === lastState) return;
       const previousState = lastState;
       lastState = nextState;
 
-      if (nextState === 'background' || nextState === 'inactive') {
-        // iOS passes through 'inactive' on its way to 'background'; keep the
-        // first timestamp so the away time is measured from when the user
-        // actually left.
+      // Paint the cover on inactive/background before the OS captures the
+      // app-switcher snapshot. Covering every eligible live role is
+      // intentionally conservative and avoids an async SecureStore read here.
+      const shouldCover =
+        !!lockedUserIdRef.current ||
+        isFingerprintEligibleRole(user?.role?.code);
+
+      if (nextState === 'inactive') {
+        if (shouldCover) setPrivacyCovered(true);
+        return;
+      }
+
+      if (nextState === 'background') {
+        // System biometric UI can briefly background the app; ignore that so a
+        // successful unlock does not immediately re-lock.
+        if (promptingRef.current) return;
+        // Only a true background counts toward re-lock. iOS inactive-only
+        // (notification shade / permission sheet) must not re-prompt.
         if (backgroundedAt === null) backgroundedAt = Date.now();
-        // Paint the cover synchronously before the OS captures the app-switcher
-        // snapshot. Covering every eligible live role is intentionally
-        // conservative and avoids an async SecureStore read at this boundary.
-        if (
-          lockedUserIdRef.current ||
-          isFingerprintEligibleRole(user?.role?.code)
-        ) {
-          setPrivacyCovered(true);
-        }
+        if (shouldCover) setPrivacyCovered(true);
         return;
       }
 
       if (nextState !== 'active') return;
-      const awayFor = backgroundedAt === null ? 0 : Date.now() - backgroundedAt;
+      const wasBackgrounded = backgroundedAt !== null;
+      const awayFor = wasBackgrounded ? Date.now() - (backgroundedAt as number) : 0;
       backgroundedAt = null;
       if (previousState === 'unknown') return;
-      if (awayFor < BACKGROUND_LOCK_MS) {
+      if (promptingRef.current) {
+        setPrivacyCovered(false);
+        return;
+      }
+      // inactive → active without ever hitting background: drop the cover only.
+      if (!wasBackgrounded || awayFor < BACKGROUND_LOCK_MS) {
         setPrivacyCovered(false);
         return;
       }

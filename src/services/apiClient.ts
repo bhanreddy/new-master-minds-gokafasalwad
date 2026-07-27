@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import * as SecureStore from 'expo-secure-store';
 import type { Session } from '@supabase/supabase-js';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { showAlert } from '../components/CustomAlert';
 import { API_URL, SCHOOL_ID, SUPABASE_ANON_KEY, SUPABASE_URL } from '../constants/school';
 import { SecureTokenStore } from './secureTokenStore';
@@ -12,16 +12,10 @@ import { getActiveContextId } from './activeContextStore';
 import { clearStaffPortalSession, getStaffPortalSession } from './staffPortalSession';
 
 /**
- * Cross-platform alert helper.
- * On web, Alert.alert() is a no-op, so we use CustomAlert (showAlert).
- * On native, Alert.alert() works fine and is used as the primary.
+ * Cross-platform error alert — always uses the illustrated CustomAlert popup.
  */
 function alertFn(title: string, message: string) {
-  if (Platform.OS === 'web') {
-    showAlert({ type: 'error', title, message });
-  } else {
-    Alert.alert(title, message);
-  }
+  showAlert({ type: 'error', title, message });
 }
 
 // ─── Transient alert suppression during account / portal switches ─────────────

@@ -12,7 +12,7 @@ import {
   UIManager,
   ViewStyle,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -241,9 +241,10 @@ export default function ManageStudents() {
   const present = students.filter((s) => statusOf(s) === 'present').length;
   const absent = students.filter((s) => statusOf(s) === 'absent').length;
   const unmarked = students.filter((s) => statusOf(s) === 'unmarked').length;
+  const marked = present + absent;
   const total = students.length;
-  const completionPct = total > 0 ? Math.round(((present + absent) / total) * 100) : 0;
-  const canSubmit = total > 0 && unmarked === 0;
+  const completionPct = total > 0 ? Math.round((marked / total) * 100) : 0;
+  const canSubmit = total > 0 && marked > 0;
 
   const otherSessionMarked = students.filter((s) =>
     (session === 'morning' ? s.afternoonStatus : s.morningStatus) !== 'unmarked'
@@ -332,10 +333,13 @@ export default function ManageStudents() {
     );
   }, [session]);
 
-  const handleSubmit = async () => {
-    if (students.length === 0 || unmarked > 0) {
+  const submitMarkedAttendance = async () => {
+    const markedStudents = students.filter(
+      (student) => student.enrollmentId && statusOf(student) !== 'unmarked'
+    );
+    if (markedStudents.length === 0) {
       triggerHaptic('warning');
-      alertCompat('Incomplete', `${unmarked} student${unmarked > 1 ? 's' : ''} still unmarked.`);
+      alertCompat('Nothing to submit', 'Mark at least one student present or absent.');
       return;
     }
     try {
@@ -346,20 +350,54 @@ export default function ManageStudents() {
         class_section_id: detectedClassId,
         date: selectedDate,
         session,
-        records: students
-          .filter((s) => s.enrollmentId)
+        records: markedStudents
           .map((s) => ({ student_id: s.id, status: statusOf(s) as AttendanceStatus })),
       });
       triggerHaptic('success');
       const dayNote = isToday ? '' : ` for ${selectedDateLabel}`;
-      alertCompat(`Success`, `${session === 'morning' ? 'Morning' : 'Afternoon'} attendance submitted${dayNote}.`);
+      const pendingNote = unmarked > 0
+        ? ` ${unmarked} student${unmarked === 1 ? '' : 's'} left unmarked.`
+        : '';
+      alertCompat(
+        'Success',
+        `${markedStudents.length} ${session} attendance record${markedStudents.length === 1 ? '' : 's'} submitted${dayNote}.${pendingNote}`
+      );
       router.back();
     } catch (error: any) {
       triggerHaptic('warning');
-      alertCompat('Error', 'Failed to submit attendance.');
+      alertCompat('Error', error?.message || 'Failed to submit attendance.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = () => {
+    if (!canSubmit) {
+      triggerHaptic('warning');
+      alertCompat('Nothing to submit', 'Mark at least one student present or absent.');
+      return;
+    }
+
+    if (unmarked > 0) {
+      triggerHaptic('warning');
+      const pendingNames = students
+        .filter((student) => statusOf(student) === 'unmarked')
+        .slice(0, 3)
+        .map((student) => student.name);
+      const extraPending = unmarked - pendingNames.length;
+      const pendingList = `${pendingNames.join(', ')}${extraPending > 0 ? ` and ${extraPending} more` : ''}`;
+      alertCompat(
+        'Submit partial attendance?',
+        `${pendingList} ${unmarked === 1 ? 'is' : 'are'} still unmarked and will be skipped. Submit the ${marked} marked student${marked === 1 ? '' : 's'}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Submit Marked', onPress: () => void submitMarkedAttendance() },
+        ]
+      );
+      return;
+    }
+
+    void submitMarkedAttendance();
   };
 
   const SessionTab = ({ value, label, icon }: { value: AttendanceSession; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }) => {
@@ -516,7 +554,9 @@ export default function ManageStudents() {
         disabled={submitting || !canSubmit}
         accessibilityRole="button"
         accessibilityState={{ disabled: submitting || !canSubmit }}
-        accessibilityLabel={canSubmit ? `Submit ${session} attendance` : `${unmarked} students still pending`}
+        accessibilityLabel={canSubmit
+          ? `Submit ${marked} marked ${session} attendance record${marked === 1 ? '' : 's'}`
+          : 'Mark at least one student to submit attendance'}
         style={[styles.submitBtn, clayButton(isDark, canSubmit ? 'violet' : 'amber')]}
       >
         {submitting ? (
@@ -524,7 +564,9 @@ export default function ManageStudents() {
         ) : (
           <>
             <Text style={[styles.submitText, { color: canSubmit ? '#fff' : (isDark ? '#FDE68A' : ACCENT.amberDeep) }]}>
-              {canSubmit ? `Submit ${session} Attendance` : `${unmarked} Pending Student${unmarked !== 1 ? 's' : ''}`}
+              {canSubmit
+                ? (unmarked > 0 ? `Submit ${marked} Marked · ${unmarked} Pending` : `Submit ${session} Attendance`)
+                : `${unmarked} Pending Student${unmarked !== 1 ? 's' : ''}`}
             </Text>
             {canSubmit && <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />}
           </>
@@ -535,7 +577,7 @@ export default function ManageStudents() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.container}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
         <StaffHeader
@@ -588,27 +630,38 @@ export default function ManageStudents() {
             </View>
           </View>
         ) : (
-          <ScrollView
-            style={styles.scrollFlex}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            // One scroll surface: date picker + session + overview scroll away with the cards.
-            nestedScrollEnabled
-          >
-            {renderHeader()}
-            {filteredStudents.map((item) => (
-              <SwipeableStudentCard
-                key={item.id}
-                student={{ id: item.id, name: item.name, rollNo: item.rollNo, status: statusOf(item), photoUrl: item.photoUrl }}
-                onStatusChange={handleStatusChange}
-                isDark={isDark}
-              />
-            ))}
-            {renderFooter()}
-          </ScrollView>
+          (() => {
+            const listBody = (
+              <>
+                {renderHeader()}
+                {filteredStudents.map((item) => (
+                  <SwipeableStudentCard
+                    key={item.id}
+                    student={{ id: item.id, name: item.name, rollNo: item.rollNo, status: statusOf(item), photoUrl: item.photoUrl }}
+                    onStatusChange={handleStatusChange}
+                    isDark={isDark}
+                  />
+                ))}
+                {renderFooter()}
+              </>
+            );
+            const listProps = {
+              style: styles.scrollFlex,
+              contentContainerStyle: styles.listContent,
+              showsVerticalScrollIndicator: false as const,
+              keyboardShouldPersistTaps: 'handled' as const,
+              nestedScrollEnabled: true,
+            };
+            return Platform.OS === 'web' ? (
+              <ScrollView {...listProps}>{listBody}</ScrollView>
+            ) : (
+              <KeyboardAwareScrollView {...listProps} bottomOffset={24}>
+                {listBody}
+              </KeyboardAwareScrollView>
+            );
+          })()
         )}
-      </KeyboardAvoidingView>
+      </View>
     </GestureHandlerRootView>
   );
 }

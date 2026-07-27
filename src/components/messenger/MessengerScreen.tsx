@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput, FlatList, Platform, LayoutChangeEvent } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -280,129 +281,131 @@ export default function MessengerScreen({ title, directoryTabs, pinAdminInDirect
     const canCreate = !!groupName.trim() && selectedCount > 0 && !creating;
     return (
       <ScreenLayout style={{ backgroundColor: CLAY_BG }}>
-        <Animated.View entering={FadeInDown.duration(280)} style={{ flex: 1 }}>
-          <View style={styles.groupHeader}>
-            <PressScale onPress={handleBack} style={styles.clayIconBtn}>
-              <Ionicons name="arrow-back" size={22} color={INK} />
-            </PressScale>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.groupHeaderTitle}>{t('messages.new_group', 'New Group')}</Text>
-              <Text style={styles.groupHeaderSub}>
-                {selectedCount > 0
-                  ? `${selectedCount} ${t('messages.selected', 'selected')}`
-                  : t('messages.add_members_hint', 'Name it, pick members, create')}
-              </Text>
-            </View>
-            <PressScale
-              onPress={handleCreateGroup}
-              disabled={!canCreate}
-              style={[styles.createBtn, !canCreate && styles.createBtnDisabled]}
-            >
-              <LinearGradient
-                colors={canCreate ? ['#6366F1', '#4F46E5'] : ['#CBD5E1', '#94A3B8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.createBtnGrad}
-              >
-                <Text style={styles.createBtnText}>{creating ? '…' : t('messages.create', 'Create')}</Text>
-              </LinearGradient>
-            </PressScale>
-          </View>
-
-          <FlatList
-            data={groupCandidates}
-            keyExtractor={(r: Recipient) => r.user_id}
-            keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              <View style={{ paddingHorizontal: Spacing.md, paddingTop: Spacing.sm }}>
-                <View style={styles.clayField}>
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                    pointerEvents="none"
-                  />
-                  <Ionicons name="people" size={18} color={ACCENT} style={{ marginRight: 10 }} />
-                  <TextInput
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    placeholder={t('messages.group_name', 'Group name')}
-                    placeholderTextColor="#94A3B8"
-                    style={styles.groupNameInput}
-                    maxLength={120}
-                  />
-                </View>
-
-                <View style={styles.modeRow}>
-                  {(['chat', 'broadcast'] as GroupMode[]).map((m) => {
-                    const active = groupMode === m;
-                    return (
-                      <Pressable
-                        key={m}
-                        onPress={() => setGroupMode(m)}
-                        style={[styles.modeChip, active && styles.modeChipActive]}
-                      >
-                        <Ionicons
-                          name={m === 'chat' ? 'chatbubbles' : 'megaphone'}
-                          size={15}
-                          color={active ? ACCENT : MUTED}
-                        />
-                        <Text style={[styles.modeChipText, active && { color: ACCENT }]}>
-                          {m === 'chat' ? t('messages.mode_chat', 'Group chat') : t('messages.mode_broadcast', 'Broadcast')}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={styles.searchBar}>
-                  <Ionicons name="search" size={18} color="#94A3B8" />
-                  <TextInput
-                    value={search}
-                    onChangeText={setSearch}
-                    placeholder={t('messages.search_members', 'Search teachers or students...')}
-                    placeholderTextColor="#94A3B8"
-                    style={styles.searchInput}
-                  />
-                  {!!search && (
-                    <Pressable onPress={() => setSearch('')} hitSlop={10}>
-                      <Ionicons name="close-circle" size={18} color="#CBD5E1" />
-                    </Pressable>
-                  )}
-                </View>
-
-                <Text style={styles.sectionLabel}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+          <Animated.View entering={FadeInDown.duration(280)} style={{ flex: 1 }}>
+            <View style={styles.groupHeader}>
+              <PressScale onPress={handleBack} style={styles.clayIconBtn}>
+                <Ionicons name="arrow-back" size={22} color={INK} />
+              </PressScale>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.groupHeaderTitle}>{t('messages.new_group', 'New Group')}</Text>
+                <Text style={styles.groupHeaderSub}>
                   {selectedCount > 0
                     ? `${selectedCount} ${t('messages.selected', 'selected')}`
-                    : t('messages.add_members', 'Add members')}
+                    : t('messages.add_members_hint', 'Name it, pick members, create')}
                 </Text>
               </View>
-            }
-            renderItem={({ item }: { item: Recipient }) => {
-              const isSel = !!selected[item.user_id];
-              return (
-                <Pressable onPress={() => toggleMember(item)} style={[styles.memberRow, isSel && styles.memberRowSel]}>
-                  <Avatar name={item.display_name} size={42} role={item.role} uri={item.photo_url} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text numberOfLines={1} style={styles.memberName}>{item.display_name}</Text>
-                    <Text style={styles.memberSub}>
-                      {item.role === 'teacher' || item.role === 'staff'
-                        ? t('roles.teacher_singular', 'Teacher')
-                        : t('roles.student_singular', 'Student')}
-                    </Text>
+              <PressScale
+                onPress={handleCreateGroup}
+                disabled={!canCreate}
+                style={[styles.createBtn, !canCreate && styles.createBtnDisabled]}
+              >
+                <LinearGradient
+                  colors={canCreate ? ['#6366F1', '#4F46E5'] : ['#CBD5E1', '#94A3B8']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.createBtnGrad}
+                >
+                  <Text style={styles.createBtnText}>{creating ? '…' : t('messages.create', 'Create')}</Text>
+                </LinearGradient>
+              </PressScale>
+            </View>
+
+            <FlatList
+              data={groupCandidates}
+              keyExtractor={(r: Recipient) => r.user_id}
+              keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={
+                <View style={{ paddingHorizontal: Spacing.md, paddingTop: Spacing.sm }}>
+                  <View style={styles.clayField}>
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                    />
+                    <Ionicons name="people" size={18} color={ACCENT} style={{ marginRight: 10 }} />
+                    <TextInput
+                      value={groupName}
+                      onChangeText={setGroupName}
+                      placeholder={t('messages.group_name', 'Group name')}
+                      placeholderTextColor="#94A3B8"
+                      style={styles.groupNameInput}
+                      maxLength={120}
+                    />
                   </View>
-                  <View style={[styles.checkRing, isSel && styles.checkRingOn]}>
-                    {isSel ? (
-                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                    ) : null}
+
+                  <View style={styles.modeRow}>
+                    {(['chat', 'broadcast'] as GroupMode[]).map((m) => {
+                      const active = groupMode === m;
+                      return (
+                        <Pressable
+                          key={m}
+                          onPress={() => setGroupMode(m)}
+                          style={[styles.modeChip, active && styles.modeChipActive]}
+                        >
+                          <Ionicons
+                            name={m === 'chat' ? 'chatbubbles' : 'megaphone'}
+                            size={15}
+                            color={active ? ACCENT : MUTED}
+                          />
+                          <Text style={[styles.modeChipText, active && { color: ACCENT }]}>
+                            {m === 'chat' ? t('messages.mode_chat', 'Group chat') : t('messages.mode_broadcast', 'Broadcast')}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
-                </Pressable>
-              );
-            }}
-            contentContainerStyle={{ paddingBottom: 48 }}
-          />
-        </Animated.View>
+
+                  <View style={styles.searchBar}>
+                    <Ionicons name="search" size={18} color="#94A3B8" />
+                    <TextInput
+                      value={search}
+                      onChangeText={setSearch}
+                      placeholder={t('messages.search_members', 'Search teachers or students...')}
+                      placeholderTextColor="#94A3B8"
+                      style={styles.searchInput}
+                    />
+                    {!!search && (
+                      <Pressable onPress={() => setSearch('')} hitSlop={10}>
+                        <Ionicons name="close-circle" size={18} color="#CBD5E1" />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  <Text style={styles.sectionLabel}>
+                    {selectedCount > 0
+                      ? `${selectedCount} ${t('messages.selected', 'selected')}`
+                      : t('messages.add_members', 'Add members')}
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }: { item: Recipient }) => {
+                const isSel = !!selected[item.user_id];
+                return (
+                  <Pressable onPress={() => toggleMember(item)} style={[styles.memberRow, isSel && styles.memberRowSel]}>
+                    <Avatar name={item.display_name} size={42} role={item.role} uri={item.photo_url} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text numberOfLines={1} style={styles.memberName}>{item.display_name}</Text>
+                      <Text style={styles.memberSub}>
+                        {item.role === 'teacher' || item.role === 'staff'
+                          ? t('roles.teacher_singular', 'Teacher')
+                          : t('roles.student_singular', 'Student')}
+                      </Text>
+                    </View>
+                    <View style={[styles.checkRing, isSel && styles.checkRingOn]}>
+                      {isSel ? (
+                        <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              }}
+              contentContainerStyle={{ paddingBottom: 48 }}
+            />
+          </Animated.View>
+        </KeyboardAvoidingView>
       </ScreenLayout>
     );
   }

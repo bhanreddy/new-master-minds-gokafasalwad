@@ -11,6 +11,14 @@ export interface AdminNavBadges {
   pendingRequests?: number;
 }
 
+const ADMIN_DASHBOARD_SIDEBAR_ITEM: WebSidebarActionItem = {
+  title: 'Dashboard',
+  icon: 'grid-outline',
+  route: '/admin/dashboard',
+  gradient: ['#3B82F6', '#1D4ED8'],
+  category: 'Overview',
+};
+
 /**
  * Builds the persistent web-sidebar entries for the admin portal from the
  * canonical nav list, filtered by RBAC and decorated with live badges. Shared
@@ -21,8 +29,12 @@ export function useAdminSidebarItems(badges?: AdminNavBadges): WebSidebarActionI
   const { hasPermission } = usePermissions();
 
   return useMemo<WebSidebarActionItem[]>(
-    () =>
-      buildAdminNavActions(t)
+    () => [
+      {
+        ...ADMIN_DASHBOARD_SIDEBAR_ITEM,
+        title: t('Dashboard', 'Dashboard'),
+      },
+      ...buildAdminNavActions(t)
         .filter((item) => !item.permission || hasPermission(item.permission))
         .map((item) => ({
           title: item.title,
@@ -37,6 +49,7 @@ export function useAdminSidebarItems(badges?: AdminNavBadges): WebSidebarActionI
                 ? badges?.pendingRequests
                 : undefined,
         })),
+    ],
     [t, hasPermission, badges?.diaryToday, badges?.pendingRequests],
   );
 }

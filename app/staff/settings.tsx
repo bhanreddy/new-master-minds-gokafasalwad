@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../src/hooks/useTheme';
 import { ThemeColors } from '../../src/theme/themes';
 import { Staff, StaffService } from '../../src/services/staffService';
+import { describeFingerprintFailure } from '../../src/services/fingerprintGate';
 
 /** Returns the first human-readable ID (not a UUID) from the user object */
 function getHumanId(user: any): string {
@@ -276,10 +277,9 @@ export default function StaffSettings() {
 
                 {/* ── Security ── */}
                 <Group title="Security" delay={250} colors={theme.colors}>
-                    {/* Fingerprint row is hidden on web/Tauri, for roles outside the
-                        eligible staff/admin list, and on phones with no enrolled
-                        strong fingerprint. It applies to the signed-in account, so
-                        it is also hidden while viewing another staff member. */}
+                    {/* Fingerprint Login is staff/teacher (and other eligible) roles
+                        only. Hidden on web/Tauri and while viewing another staff
+                        member; capability errors surface on enable. */}
                     {showFingerprintRow && (
                         <SettingRow
                             icon="finger-print" iconColor="#0EA5E9" iconBg="#E0F2FE"
@@ -287,7 +287,11 @@ export default function StaffSettings() {
                             sublabel={
                                 fingerprint.enabled
                                     ? t('fingerprint.enabledSublabel')
-                                    : t('fingerprint.disabledSublabel')
+                                    : fingerprint.deviceReady
+                                      ? t('fingerprint.disabledSublabel')
+                                      : (fingerprint.unavailableReason
+                                          ? describeFingerprintFailure(fingerprint.unavailableReason)
+                                          : t('fingerprint.unavailable'))
                             }
                             rightElement={
                                 <Switch

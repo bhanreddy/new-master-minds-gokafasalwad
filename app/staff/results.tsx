@@ -641,7 +641,7 @@ export default function UploadMarks() {
         variant="scroll"
         contentContainerStyle={styles.uploadScroll}
         showsVerticalScrollIndicator={false}
-        bottomOffset={24}>
+        bottomOffset={120}>
 
         {selectedAssignment && (
           <Animated.View entering={FadeInRight.duration(300)} style={styles.breadcrumb}>

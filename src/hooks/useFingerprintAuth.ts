@@ -21,15 +21,18 @@ import { useAuth } from './useAuth';
  * in the staff and admin Security sections.
  *
  * `showRow` is the only thing a settings screen needs to decide visibility: it
- * is false on web/Tauri, false for every role outside the eligible list
+ * is false on web/Tauri and false for every role outside the eligible list
  * (principals sign in through the admin portal and teachers through the staff
- * portal, so the role — not the portal — is what decides), and false on a
- * phone with no enrolled strong fingerprint. The service repeats each of these
- * checks, so hiding the row is presentation, not the security boundary.
+ * portal, so the role — not the portal — is what decides). The row stays
+ * visible even when the device cannot enrol yet, so the user sees the option
+ * and gets a clear error if they try to turn it on. The service repeats each
+ * of these checks, so hiding the row is presentation, not the security boundary.
  */
 export interface UseFingerprintAuth {
   /** Render the settings row at all? */
   showRow: boolean;
+  /** Device currently has a strong enrolled fingerprint. */
+  deviceReady: boolean;
   /** Opted in for the active account. */
   enabled: boolean;
   /** Initial capability/opt-in probe or a toggle is running. */
@@ -156,7 +159,10 @@ export function useFingerprintAuth(): UseFingerprintAuth {
   );
 
   return {
-    showRow: isFingerprintPlatformSupported() && eligibleRole && deviceReady,
+    // Eligible admin/staff accounts always see the Security row on native.
+    // Capability failures surface when the user flips the switch on.
+    showRow: isFingerprintPlatformSupported() && eligibleRole,
+    deviceReady,
     enabled,
     busy,
     unavailableReason,

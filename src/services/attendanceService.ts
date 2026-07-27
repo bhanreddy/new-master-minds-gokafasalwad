@@ -56,7 +56,9 @@ export const AttendanceService = {
      * Mark attendance (bulk)
      */
     markAttendance: async (data: MarkAttendanceRequest): Promise<{ success: boolean; count: number }> => {
-        return api.post<{ success: boolean; count: number }>('/attendance', data);
+        // The screen owns the submit error dialog so users see one actionable
+        // message instead of the API client alert followed by a generic alert.
+        return api.post<{ success: boolean; count: number }>('/attendance', data, { silent: true });
     },
 
     /**

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,10 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAvoidingView,
+  KeyboardAwareScrollView,
+} from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -142,6 +145,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
   const [addError, setAddError] = useState<string | null>(null);
   const [addBusy, setAddBusy] = useState(false);
   const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const primary = theme.colors.primary as string;
 
@@ -178,6 +182,14 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
       load();
     }
   }, [visible, load]);
+
+  useEffect(() => {
+    if (!addMode) return;
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [addMode]);
 
   const onSwitch = async (userId: string) => {
     if (busyId) return;
@@ -265,13 +277,20 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
   const sheetMinHeight = Math.min(Math.round(height * 0.52), 540);
   const sheetMaxHeight = Math.round(height * 0.88);
   const iconMuted = isDark ? '#64748B' : '#94A3B8';
+  const isWeb = Platform.OS === 'web';
+
+  const scrollFocusedFieldIntoView = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <Animated.View entering={FadeIn.duration(180)} style={s.backdrop}>
         <Pressable style={s.backdropPress} onPress={onClose} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={s.kav}
           pointerEvents="box-none"
         >
@@ -279,7 +298,13 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
             style={[
               s.sheet,
               clay(isDark, 'lg'),
-              { paddingBottom: 20 + insets.bottom, minHeight: sheetMinHeight, maxHeight: sheetMaxHeight },
+              {
+                paddingBottom: 20 + insets.bottom,
+                // Drop rigid min-height while adding a login so the sheet can
+                // shrink above the keyboard instead of trapping inputs under it.
+                minHeight: addMode ? undefined : sheetMinHeight,
+                maxHeight: sheetMaxHeight,
+              },
             ]}
           >
             {/* Outer clay sheet — sheen only (no overflow clip so shadows survive) */}
@@ -340,11 +365,11 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                 <ActivityIndicator color={primary} />
               </View>
             ) : (
-              <ScrollView
+              <AccountListScroll
+                isWeb={isWeb}
+                scrollRef={scrollRef}
                 style={s.list}
                 contentContainerStyle={s.listContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
               >
                 {accounts.map((acct, idx) => {
                   const isActive = acct.userId === activeId;
@@ -485,7 +510,10 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                           value={addEmail}
                           onChangeText={setAddEmail}
                           editable={!addBusy}
-                          onFocus={() => setFocusedField('email')}
+                          onFocus={() => {
+                            setFocusedField('email');
+                            scrollFocusedFieldIntoView();
+                          }}
                           onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
                         />
                       </View>
@@ -507,7 +535,10 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                           onChangeText={setAddPassword}
                           editable={!addBusy}
                           onSubmitEditing={onAdd}
-                          onFocus={() => setFocusedField('password')}
+                          onFocus={() => {
+                            setFocusedField('password');
+                            scrollFocusedFieldIntoView();
+                          }}
                           onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
                         />
                         <ClayPasswordToggle
@@ -565,12 +596,55 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                     </View>
                   </Animated.View>
                 )}
-              </ScrollView>
+              </AccountListScroll>
             )}
           </View>
         </KeyboardAvoidingView>
       </Animated.View>
     </Modal>
+  );
+}
+
+/** Scroll host that lifts focused inputs above the keyboard on native. */
+function AccountListScroll({
+  isWeb,
+  scrollRef,
+  style,
+  contentContainerStyle,
+  children,
+}: {
+  isWeb: boolean;
+  scrollRef: React.RefObject<ScrollView | null>;
+  style: object;
+  contentContainerStyle: object;
+  children: React.ReactNode;
+}) {
+  if (isWeb) {
+    return (
+      <ScrollView
+        ref={scrollRef}
+        style={style}
+        contentContainerStyle={contentContainerStyle}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {children}
+      </ScrollView>
+    );
+  }
+
+  return (
+    <KeyboardAwareScrollView
+      ref={scrollRef}
+      style={style}
+      contentContainerStyle={contentContainerStyle}
+      bottomOffset={28}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      extraKeyboardSpace={12}
+    >
+      {children}
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -582,11 +656,16 @@ const getStyles = (colors: any, isDark: boolean, primary: string) =>
       justifyContent: 'flex-end',
     },
     backdropPress: { ...StyleSheet.absoluteFillObject },
-    kav: { width: '100%' },
+    kav: {
+      width: '100%',
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
     sheet: {
       width: '100%',
       maxWidth: 540,
       alignSelf: 'center',
+      flexShrink: 1,
       // Soft clay base — slightly darker than row fills so raised cards pop
       backgroundColor: isDark ? '#121826' : '#E7EBF4',
       borderTopLeftRadius: 32,
@@ -661,8 +740,8 @@ const getStyles = (colors: any, isDark: boolean, primary: string) =>
       marginLeft: 2,
     },
     loadingBox: { flex: 1, paddingVertical: 60, alignItems: 'center', justifyContent: 'center' },
-    list: { flexGrow: 0 },
-    listContent: { paddingTop: 2, paddingBottom: 12, paddingHorizontal: 2 },
+    list: { flexGrow: 0, flexShrink: 1 },
+    listContent: { paddingTop: 2, paddingBottom: 20, paddingHorizontal: 2 },
 
     rowOuter: {
       marginBottom: 12,

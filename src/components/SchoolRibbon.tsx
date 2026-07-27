@@ -52,6 +52,9 @@ export const SCHOOL_RIBBON_OVERLAP = Math.round(WAVE_H * 0.78);
 /** Mobile ribbon logo frame size (used by root layout for content inset). */
 export const MOBILE_RIBBON_LOGO_SIZE = 48;
 
+/** Web viewports below this width use the same ribbon as the Android app. */
+export const WEB_DESKTOP_RIBBON_MIN_WIDTH = 768;
+
 const MOBILE_RIBBON_ROW_PADDING_TOP = 3;
 const MOBILE_RIBBON_ROW_PADDING_BOTTOM = 2;
 const MOBILE_RIBBON_BOTTOM_PAD = 0;
@@ -767,7 +770,11 @@ const headerStyles = StyleSheet.create({
 /* ------------------------------------------------------------------ */
 
 export default function SchoolRibbon() {
-  if (Platform.OS === 'web') {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb =
+    Platform.OS === 'web' && width >= WEB_DESKTOP_RIBBON_MIN_WIDTH;
+
+  if (isDesktopWeb) {
     return (
       <SafeAreaView
         style={shellStyles.safeTop}

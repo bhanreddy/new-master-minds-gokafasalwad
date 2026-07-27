@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Platform, Pressable, Modal, ScrollView, TouchableOpacity } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAvoidingView,
+  KeyboardAwareScrollView,
+} from 'react-native-keyboard-controller';
 import AppTextInput from '../../src/components/AppTextInput';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import {
@@ -1377,10 +1380,51 @@ function SyllabusEditorModal({
     }
   };
 
+  const syllabusRows = (
+    <>
+      {rows.map((row, i) => (
+        <View key={i} style={editorStyles.row}>
+          <View style={{ flex: 1 }}>
+            <AppTextInput
+              value={row.topic}
+              onChangeText={(v: string) => setField(i, 'topic', v)}
+              placeholder={`Topic ${i + 1} — e.g. Chapter ${i + 1}`}
+            />
+          </View>
+          <View style={{ width: 84 }}>
+            <AppTextInput
+              value={row.marks}
+              onChangeText={(v: string) => setField(i, 'marks', v)}
+              placeholder="Marks"
+              keyboardType="numeric"
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Ionicons name="close-circle" size={18} color={textMuted} />
+          </TouchableOpacity>
+        </View>
+      ))}
+      <TouchableOpacity
+        style={[editorStyles.addBtn, { borderColor: `${category.color}66` }]}
+        activeOpacity={0.7}
+        onPress={() => setRows((prev) => [...prev, { topic: '', marks: '' }])}
+      >
+        <Ionicons name="add" size={15} color={category.color} />
+        <Text style={[editorStyles.addBtnText, { color: category.color, fontFamily: FONT_FAMILY }]}>Add topic</Text>
+      </TouchableOpacity>
+      <Text style={[editorStyles.helper, { color: textMuted, fontFamily: FONT_FAMILY }]}>
+        Students see these topics with the exam timetable. Weightage is optional per topic.
+      </Text>
+    </>
+  );
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={editorStyles.backdrop}
       >
         <View style={[editorStyles.card, { backgroundColor: cardBg }]}>
@@ -1414,44 +1458,20 @@ function SyllabusEditorModal({
             )}
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
-            {rows.map((row, i) => (
-              <View key={i} style={editorStyles.row}>
-                <View style={{ flex: 1 }}>
-                  <AppTextInput
-                    value={row.topic}
-                    onChangeText={(v: string) => setField(i, 'topic', v)}
-                    placeholder={`Topic ${i + 1} — e.g. Chapter ${i + 1}`}
-                  />
-                </View>
-                <View style={{ width: 84 }}>
-                  <AppTextInput
-                    value={row.marks}
-                    onChangeText={(v: string) => setField(i, 'marks', v)}
-                    placeholder="Marks"
-                    keyboardType="numeric"
-                  />
-                </View>
-                <TouchableOpacity
-                  onPress={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Ionicons name="close-circle" size={18} color={textMuted} />
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity
-              style={[editorStyles.addBtn, { borderColor: `${category.color}66` }]}
-              activeOpacity={0.7}
-              onPress={() => setRows((prev) => [...prev, { topic: '', marks: '' }])}
+          {Platform.OS === 'web' ? (
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }}>
+              {syllabusRows}
+            </ScrollView>
+          ) : (
+            <KeyboardAwareScrollView
+              keyboardShouldPersistTaps="handled"
+              style={{ maxHeight: 320 }}
+              bottomOffset={88}
+              extraKeyboardSpace={12}
             >
-              <Ionicons name="add" size={15} color={category.color} />
-              <Text style={[editorStyles.addBtnText, { color: category.color, fontFamily: FONT_FAMILY }]}>Add topic</Text>
-            </TouchableOpacity>
-            <Text style={[editorStyles.helper, { color: textMuted, fontFamily: FONT_FAMILY }]}>
-              Students see these topics with the exam timetable. Weightage is optional per topic.
-            </Text>
-          </ScrollView>
+              {syllabusRows}
+            </KeyboardAwareScrollView>
+          )}
 
           <TouchableOpacity
             style={[editorStyles.saveBtn, { backgroundColor: category.color }, busy && { opacity: 0.5 }]}

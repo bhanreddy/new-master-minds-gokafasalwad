@@ -10,7 +10,7 @@ import { ThemeProvider, ThemeContext } from '../src/context/ThemeContext';
 import { ThemeProvider as NavThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useContext, useState, useEffect } from 'react';
-import { View, Text, ScrollView, Platform, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, Platform, StyleSheet, Alert, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import FingerprintLockGate from '../src/components/FingerprintLockGate';
 import SchoolRibbon, {
   MOBILE_RIBBON_CONTENT_HEIGHT,
   SCHOOL_RIBBON_OVERLAP,
+  WEB_DESKTOP_RIBBON_MIN_WIDTH,
 } from '../src/components/SchoolRibbon';
 import { useSchoolHeader } from '../src/hooks/useSchoolHeader';
 import { notificationManager } from '../src/services/notificationManager';
@@ -158,10 +159,7 @@ function ThemeSyncWrapper() {
   const { theme, isDark } = useContext(ThemeContext);
   const getSchoolHeader = useSchoolHeader();
   const insets = useSafeAreaInsets();
-
-  // Content row + small bottom pad; overlap pulls page under the wave cutout.
-  const stackTopInset =
-    insets.top + MOBILE_RIBBON_CONTENT_HEIGHT - SCHOOL_RIBBON_OVERLAP;
+  const { width } = useWindowDimensions();
 
   // Convert our custom SchoolTheme to React Navigation theme format
   const baseNavTheme = isDark ? DarkTheme : DefaultTheme;
@@ -180,6 +178,13 @@ function ThemeSyncWrapper() {
   };
 
   const isWeb = Platform.OS === 'web';
+  const isMobileWeb = isWeb && width < WEB_DESKTOP_RIBBON_MIN_WIDTH;
+  const usesMobileRibbon = !isWeb || isMobileWeb;
+
+  // The Android-style ribbon is absolutely positioned, so its content needs
+  // an explicit inset on native platforms and narrow web viewports.
+  const stackTopInset =
+    insets.top + MOBILE_RIBBON_CONTENT_HEIGHT - SCHOOL_RIBBON_OVERLAP;
 
   return (
     <NavThemeProvider value={navTheme}>
@@ -191,11 +196,11 @@ function ThemeSyncWrapper() {
       >
         <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
         <View style={styles.appFrame}>
-          {isWeb ? <SchoolRibbon /> : null}
+          {isWeb && !isMobileWeb ? <SchoolRibbon /> : null}
           <View
             style={[
               styles.stackShell,
-              !isWeb && { paddingTop: stackTopInset },
+              usesMobileRibbon && { paddingTop: stackTopInset },
               { backgroundColor: theme.colors.background },
             ]}
           >
@@ -216,7 +221,7 @@ function ThemeSyncWrapper() {
               </Stack>
             </AuthGate>
           </View>
-          {!isWeb ? <SchoolRibbon /> : null}
+          {usesMobileRibbon ? <SchoolRibbon /> : null}
         </View>
         {/* Auth guard and hooks run AFTER the Stack navigator has mounted */}
         <NavigationReady />

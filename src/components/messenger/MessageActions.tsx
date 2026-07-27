@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
@@ -312,7 +313,10 @@ export function ForwardMessageModal({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={[styles.forwardModalRoot, !isWeb && styles.forwardModalRootMobile]}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={[styles.forwardModalRoot, !isWeb && styles.forwardModalRootMobile]}
+      >
         {isWeb && (
           <Pressable
             accessibilityRole="button"
@@ -452,7 +456,7 @@ export function ForwardMessageModal({
           }}
         />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

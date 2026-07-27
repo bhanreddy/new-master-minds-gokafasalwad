@@ -233,10 +233,9 @@ export default function AdminSettings() {
 
                 {/* ── Security ── */}
                 <Group title="Security" delay={250} theme={theme}>
-                    {/* Principals sign in through this portal too, so visibility is
-                        decided by the centralized role helper (inside the hook), not
-                        by the portal. Hidden on web/Tauri and on phones without an
-                        enrolled strong fingerprint. */}
+                    {/* Fingerprint Login is admin/staff (and principal) only.
+                        Visibility is role + native platform; capability errors
+                        surface when the user tries to enable. */}
                     {fingerprint.showRow && (
                         <SettingRow
                             icon="finger-print" iconColor="#0EA5E9" iconBg="#E0F2FE"

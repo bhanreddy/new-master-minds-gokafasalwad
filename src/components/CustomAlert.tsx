@@ -4,6 +4,7 @@ import {
   Dimensions, Platform, BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import BrokenErrorDoodle from './doodles/BrokenErrorDoodle';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 export type AlertType = 'success' | 'error' | 'warning' | 'confirm' | 'info';
@@ -26,11 +27,16 @@ export interface AlertConfig {
 // ─── Icon SVGs (inline for zero dependencies) ───────────────────────────────
 const iconConfig: Record<AlertType, { emoji: string; bg: string; ring: string; text: string }> = {
   success: { emoji: '✓', bg: '#D1FAE5', ring: '#34D399', text: '#059669' },
-  error:   { emoji: '✕', bg: '#FEE2E2', ring: '#F87171', text: '#DC2626' },
+  error:   { emoji: '✕', bg: '#FEE2E2', ring: '#F5C542', text: '#DC2626' },
   warning: { emoji: '!', bg: '#FEF3C7', ring: '#FBBF24', text: '#D97706' },
   confirm: { emoji: '?', bg: '#DBEAFE', ring: '#60A5FA', text: '#2563EB' },
   info:    { emoji: 'i', bg: '#E0E7FF', ring: '#818CF8', text: '#4F46E5' },
 };
+
+const ERROR_DEFAULT_TITLE = 'Oops! Something went wrong';
+const ERROR_DEFAULT_MESSAGE = 'We are working hard to fix this, please check back later!';
+const ERROR_AMBER = '#F5C542';
+const ERROR_AMBER_EDGE = '#D4A017';
 
 // ─── Portal ID constant ─────────────────────────────────────────────────────────
 const PORTAL_ROOT_ID = 'custom-alert-portal-root';
@@ -49,10 +55,8 @@ export function ensurePortalRoot(): void {
   document.body.appendChild(el);
 }
 
-// ─── Alert content (shared between Modal wrapper and Portal wrapper) ─────────
-function AlertContent({
-  visible, type = 'info', title, message, buttons, onDismiss,
-}: AlertConfig) {
+// ─── Shared entrance / dismiss animation hooks ───────────────────────────────
+function useAlertMotion(visible: boolean, onDismiss?: () => void) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.75)).current;
   const iconBounce = useRef(new Animated.Value(0)).current;
@@ -60,12 +64,11 @@ function AlertContent({
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, tension: 100, friction: 9, useNativeDriver: true }),
       ]).start(() => {
-        // Bounce the icon
         Animated.sequence([
-          Animated.timing(iconBounce, { toValue: 1.2, duration: 150, useNativeDriver: true }),
+          Animated.timing(iconBounce, { toValue: 1.15, duration: 140, useNativeDriver: true }),
           Animated.spring(iconBounce, { toValue: 1, tension: 200, friction: 10, useNativeDriver: true }),
         ]).start();
       });
@@ -74,18 +77,17 @@ function AlertContent({
       scaleAnim.setValue(0.75);
       iconBounce.setValue(0);
     }
-  }, [visible]);
+  }, [visible, fadeAnim, scaleAnim, iconBounce]);
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 0.85, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.88, duration: 150, useNativeDriver: true }),
     ]).start(() => {
       onDismiss?.();
     });
-  }, [onDismiss]);
+  }, [fadeAnim, scaleAnim, onDismiss]);
 
-  // Android back button
   useEffect(() => {
     if (Platform.OS !== 'android' || !visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -94,6 +96,131 @@ function AlertContent({
     });
     return () => sub.remove();
   }, [visible, handleDismiss]);
+
+  return { fadeAnim, scaleAnim, iconBounce, handleDismiss };
+}
+
+function AlertButtons({
+  buttons,
+  onPressButton,
+  primaryColor,
+  primaryTextDark,
+  fullWidth,
+}: {
+  buttons: AlertButton[];
+  onPressButton: (btn: AlertButton) => void;
+  primaryColor: string;
+  primaryTextDark?: boolean;
+  fullWidth?: boolean;
+}) {
+  const stacked = buttons.length > 2;
+  return (
+    <View style={[
+      styles.buttonRow,
+      buttons.length === 1 && styles.buttonRowSingle,
+      stacked && styles.buttonColumn,
+      fullWidth && styles.buttonRowError,
+    ]}>
+      {buttons.map((btn, i) => {
+        const isCancel = btn.style === 'cancel';
+        const isDestructive = btn.style === 'destructive';
+        const isPrimary = !isCancel && !isDestructive && (buttons.length === 1 || i === buttons.length - 1);
+
+        return (
+          <Pressable
+            key={i}
+            style={({ pressed }) => [
+              styles.btn,
+              stacked && styles.btnStacked,
+              isCancel && styles.btnCancel,
+              isDestructive && styles.btnDestructive,
+              isPrimary && [styles.btnPrimary, { backgroundColor: primaryColor }],
+              isPrimary && primaryTextDark && styles.btnPrimaryAmber,
+              (buttons.length === 1 || fullWidth) && styles.btnFull,
+              fullWidth && styles.btnErrorFull,
+              Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+              pressed && styles.btnPressed,
+            ]}
+            onPress={() => onPressButton(btn)}
+          >
+            {isPrimary ? (
+              <LinearGradient
+                colors={['rgba(255,255,255,0.42)', 'rgba(255,255,255,0)']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            ) : null}
+            <Text style={[
+              styles.btnText,
+              isCancel && styles.btnTextCancel,
+              isDestructive && styles.btnTextDestructive,
+              isPrimary && (primaryTextDark ? styles.btnTextAmber : styles.btnTextPrimary),
+            ]}>
+              {btn.text}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Friendly illustrated error sheet — matches the enhanced "Oops" popup. */
+function ErrorAlertContent({
+  visible, title, message, buttons, onDismiss,
+}: AlertConfig) {
+  const { fadeAnim, scaleAnim, handleDismiss } = useAlertMotion(visible, onDismiss);
+
+  const resolvedTitle = title?.trim() || ERROR_DEFAULT_TITLE;
+  const resolvedMessage = message?.trim() || ERROR_DEFAULT_MESSAGE;
+  const resolvedButtons: AlertButton[] = buttons && buttons.length > 0
+    ? buttons
+    : [{ text: 'Okay', style: 'default' }];
+
+  return (
+    <Animated.View style={[styles.overlay, styles.overlayError, { opacity: fadeAnim }]}>
+      <Pressable style={styles.backdrop} onPress={handleDismiss} />
+      <Animated.View style={[styles.card, styles.cardError, { transform: [{ scale: scaleAnim }] }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
+        <View style={styles.errorBody}>
+          <Text style={styles.errorTitle}>{resolvedTitle}</Text>
+
+          <View style={styles.errorArt}>
+            <BrokenErrorDoodle size={152} motionEnabled={visible} />
+          </View>
+
+          <Text style={styles.errorMessage}>{resolvedMessage}</Text>
+        </View>
+
+        <AlertButtons
+          buttons={resolvedButtons}
+          onPressButton={(btn) => {
+            btn.onPress?.();
+            handleDismiss();
+          }}
+          primaryColor={ERROR_AMBER}
+          primaryTextDark
+          fullWidth
+        />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+// ─── Alert content (shared between Modal wrapper and Portal wrapper) ─────────
+function StandardAlertContent({
+  visible, type = 'info', title, message, buttons, onDismiss,
+}: AlertConfig) {
+  const { fadeAnim, scaleAnim, iconBounce, handleDismiss } = useAlertMotion(visible, onDismiss);
 
   const resolvedButtons: AlertButton[] = buttons && buttons.length > 0
     ? buttons
@@ -105,7 +232,6 @@ function AlertContent({
     <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
       <Pressable style={styles.backdrop} onPress={handleDismiss} />
       <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
-        {/* Clay sheen — single top-left highlight gradient (the inflated read) */}
         <LinearGradient
           colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
           start={{ x: 0, y: 0 }}
@@ -114,10 +240,8 @@ function AlertContent({
           pointerEvents="none"
         />
 
-        {/* Accent stripe */}
         <View style={[styles.accentStripe, { backgroundColor: icon.ring }]} />
 
-        {/* Icon disc — raised clay pebble with a soft colored glow */}
         <Animated.View
           style={[
             styles.iconCircle,
@@ -139,62 +263,29 @@ function AlertContent({
           <Text style={[styles.iconText, { color: icon.text }]}>{icon.emoji}</Text>
         </Animated.View>
 
-        {/* Content */}
         <View style={styles.body}>
           {title ? <Text style={styles.title}>{title}</Text> : null}
           {message ? <Text style={styles.message}>{message}</Text> : null}
         </View>
 
-        {/* Buttons — stack vertically past two options so long labels
-            (e.g. a list of filter choices) don't overflow the row. */}
-        {(() => {
-          const stacked = resolvedButtons.length > 2;
-          return (
-        <View style={[
-          styles.buttonRow,
-          resolvedButtons.length === 1 && styles.buttonRowSingle,
-          stacked && styles.buttonColumn,
-        ]}>
-          {resolvedButtons.map((btn, i) => {
-            const isCancel = btn.style === 'cancel';
-            const isDestructive = btn.style === 'destructive';
-            const isPrimary = !isCancel && !isDestructive && (resolvedButtons.length === 1 || i === resolvedButtons.length - 1);
-
-            return (
-              <Pressable
-                key={i}
-                style={({ pressed }) => [
-                  styles.btn,
-                  stacked && styles.btnStacked,
-                  isCancel && styles.btnCancel,
-                  isDestructive && styles.btnDestructive,
-                  isPrimary && [styles.btnPrimary, { backgroundColor: icon.ring }],
-                  resolvedButtons.length === 1 && styles.btnFull,
-                  Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
-                  pressed && styles.btnPressed,
-                ]}
-                onPress={() => {
-                  btn.onPress?.();
-                  handleDismiss();
-                }}
-              >
-                <Text style={[
-                  styles.btnText,
-                  isCancel && styles.btnTextCancel,
-                  isDestructive && styles.btnTextDestructive,
-                  isPrimary && styles.btnTextPrimary,
-                ]}>
-                  {btn.text}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-          );
-        })()}
+        <AlertButtons
+          buttons={resolvedButtons}
+          onPressButton={(btn) => {
+            btn.onPress?.();
+            handleDismiss();
+          }}
+          primaryColor={icon.ring}
+        />
       </Animated.View>
     </Animated.View>
   );
+}
+
+function AlertContent(props: AlertConfig) {
+  if (props.type === 'error') {
+    return <ErrorAlertContent {...props} />;
+  }
+  return <StandardAlertContent {...props} />;
 }
 
 // ─── Web Portal wrapper ─────────────────────────────────────────────────────────
@@ -317,8 +408,13 @@ export async function showSuccess(title: string, message?: string, buttons?: Ale
   return showAlert({ type: 'success', title, message, buttons });
 }
 
-export async function showError(title: string, message?: string): Promise<number> {
-  return showAlert({ type: 'error', title, message });
+export async function showError(title?: string, message?: string, buttons?: AlertButton[]): Promise<number> {
+  return showAlert({
+    type: 'error',
+    title: title || ERROR_DEFAULT_TITLE,
+    message: message || ERROR_DEFAULT_MESSAGE,
+    buttons: buttons || [{ text: 'Okay' }],
+  });
 }
 
 // ─── Provider (mount once at app root) ──────────────────────────────────────
@@ -350,6 +446,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  overlayError: {
+    backgroundColor: 'rgba(8, 10, 18, 0.72)',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -392,6 +491,24 @@ const styles = StyleSheet.create({
       } as any,
     }),
   },
+  cardError: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 32,
+    borderColor: 'rgba(255,255,255,0.9)',
+    borderBottomColor: 'rgba(76,90,120,0.10)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0B0F19',
+        shadowOffset: { width: 0, height: 22 },
+        shadowOpacity: 0.32,
+        shadowRadius: 40,
+      },
+      android: { elevation: 18 },
+      web: {
+        boxShadow: '0 34px 80px -20px rgba(8,10,18,0.55)',
+      } as any,
+    }),
+  },
   accentStripe: {
     height: 3,
     width: '100%',
@@ -417,6 +534,34 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     alignItems: 'center',
   },
+  errorBody: {
+    paddingHorizontal: 28,
+    paddingTop: 28,
+    paddingBottom: 4,
+    alignItems: 'center',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'center',
+    letterSpacing: -0.4,
+    marginBottom: 8,
+  },
+  errorArt: {
+    marginVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorMessage: {
+    fontSize: 15,
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
+    paddingHorizontal: 4,
+    marginTop: 4,
+  },
   title: {
     fontSize: 18,
     fontWeight: '800',
@@ -439,6 +584,11 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 10,
   },
+  buttonRowError: {
+    paddingHorizontal: 24,
+    paddingTop: 18,
+    paddingBottom: 26,
+  },
   buttonRowSingle: {
     justifyContent: 'center',
   },
@@ -460,6 +610,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.8)',
     borderBottomWidth: 2,
     borderBottomColor: 'rgba(76,90,120,0.14)',
+    overflow: 'hidden',
   },
   btnStacked: {
     flex: undefined,
@@ -469,6 +620,14 @@ const styles = StyleSheet.create({
     flex: undefined,
     minWidth: 160,
     alignSelf: 'center',
+  },
+  btnErrorFull: {
+    flex: 1,
+    width: '100%',
+    minWidth: undefined,
+    alignSelf: 'stretch',
+    borderRadius: 18,
+    minHeight: 54,
   },
   btnPressed: {
     transform: [{ scale: 0.97 }],
@@ -501,6 +660,21 @@ const styles = StyleSheet.create({
       android: {},
     }),
   },
+  btnPrimaryAmber: {
+    borderColor: 'rgba(255,255,255,0.55)',
+    borderBottomColor: ERROR_AMBER_EDGE,
+    borderBottomWidth: 3,
+    ...Platform.select({
+      web: { boxShadow: '0 10px 22px -8px rgba(212,160,23,0.45)' } as any,
+      ios: {
+        shadowColor: '#D4A017',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 12,
+      },
+      android: { elevation: 3 },
+    }),
+  },
   btnText: {
     fontSize: 15,
     fontWeight: '700',
@@ -515,5 +689,10 @@ const styles = StyleSheet.create({
   },
   btnTextPrimary: {
     color: '#FFFFFF',
+  },
+  btnTextAmber: {
+    color: '#1F2937',
+    fontWeight: '800',
+    letterSpacing: 0.15,
   },
 });

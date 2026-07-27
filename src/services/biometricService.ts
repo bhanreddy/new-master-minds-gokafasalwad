@@ -36,10 +36,14 @@ import { isFingerprintEligibleRole } from '../utils/roleHelpers';
  *   exposes more than one Class 3 / strong modality (for example a strong
  *   fingerprint sensor plus a strong 3D face unlock), the OS decides which
  *   sensor that prompt ultimately accepts — expo-local-authentication exposes
- *   no API to pin the prompt to the fingerprint sensor. What this module can
- *   and does guarantee is that the feature is offered only when a strong
- *   fingerprint is actually enrolled, and that weak biometrics and the device
- *   PIN/pattern/passcode are never accepted as a fallback.
+ *   no API to pin the prompt to the fingerprint sensor.
+ *
+ *   Modern Android phones almost always report Face + Fingerprint in
+ *   `supportedAuthenticationTypesAsync` (hardware capability, not enrolment),
+ *   so we do NOT refuse hybrid hardware. We require fingerprint hardware to be
+ *   present and the enrolled level to be BIOMETRIC_STRONG, and we set
+ *   `biometricsSecurityLevel: 'strong'` + `disableDeviceFallback` so weak face
+ *   unlock and the device PIN/pattern/passcode are never accepted.
  */
 
 /** Namespaced, per-account key. SecureStore keys allow [A-Za-z0-9._-] only. */
@@ -58,7 +62,10 @@ export type FingerprintUnavailableReason =
   | 'not_enrolled'
   /** Enrolled, but no fingerprint — e.g. a face-only device. */
   | 'no_fingerprint'
-  /** Fingerprint exists, but another strong modality could satisfy the prompt. */
+  /**
+   * Legacy reason kept for stored/translated error paths. Hybrid Face +
+   * Fingerprint hardware is no longer rejected (see getFingerprintCapability).
+   */
   | 'mixed_biometrics'
   /** Enrolled fingerprint is not Class 3 / BIOMETRIC_STRONG. */
   | 'weak_biometric'
@@ -128,6 +135,9 @@ export function isFingerprintPlatformSupported(): boolean {
  * something is enrolled, the supported modalities include FINGERPRINT, and the
  * enrolled level is BIOMETRIC_STRONG. A face-only phone, a weak (2D image)
  * face unlock, and a PIN/pattern-only device all fail here.
+ *
+ * Hybrid Face + Fingerprint hardware is allowed: Android reports both whenever
+ * the chipset has both sensors, even if the user only enrolled a fingerprint.
  */
 export async function getFingerprintCapability(): Promise<FingerprintCapability> {
   if (!isFingerprintPlatformSupported()) {
@@ -148,18 +158,6 @@ export async function getFingerprintCapability(): Promise<FingerprintCapability>
     const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
     if (!types?.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
       return { available: false, reason: 'no_fingerprint', signature: null };
-    }
-
-    // Expo exposes the biometric types supported by the device, but it cannot
-    // restrict authenticateAsync to one modality. If face/iris is also
-    // available, a "strong" prompt could accept it. Refuse that ambiguous
-    // configuration instead of calling a face scan "fingerprint".
-    if (
-      types.some(
-        (type) => type !== LocalAuthentication.AuthenticationType.FINGERPRINT
-      )
-    ) {
-      return { available: false, reason: 'mixed_biometrics', signature: null };
     }
 
     const level = await LocalAuthentication.getEnrolledLevelAsync();

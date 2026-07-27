@@ -29,6 +29,7 @@ export interface WebSidebarActionItem {
 }
 
 const CATEGORY_ORDER = [
+  'Overview',
   'Academic',
   'Finance',
   'Analytics',
@@ -53,6 +54,15 @@ type CategoryMeta = {
 };
 
 const CATEGORY_META: Record<string, CategoryMeta> = {
+  Overview: {
+    icon: 'grid-outline',
+    accent: '#3B82F6',
+    accentDeep: '#1D4ED8',
+    soft: 'rgba(59,130,246,0.12)',
+    softDark: 'rgba(59,130,246,0.18)',
+    label: 'Overview',
+    gradient: ['#60A5FA', '#2563EB'],
+  },
   Academic: {
     icon: 'school-outline',
     accent: '#3B82F6',
