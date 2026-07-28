@@ -86,6 +86,10 @@ const SwipeableStudentCard: React.FC<Props> = ({ student, onStatusChange, isDark
 
     const panGesture = Gesture.Pan()
         .activeOffsetX([-20, 20])
+        // This card lives inside a vertical ScrollView. Fail the horizontal
+        // swipe as soon as the user's intent is vertical so slow drags are
+        // handed back to the page instead of being trapped by the card.
+        .failOffsetY([-12, 12])
         .onUpdate((event) => {
             translateX.value = event.translationX;
         })
@@ -126,7 +130,7 @@ const SwipeableStudentCard: React.FC<Props> = ({ student, onStatusChange, isDark
 
     return (
         <View style={styles.container}>
-            <GestureDetector gesture={panGesture}>
+            <GestureDetector gesture={panGesture} touchAction="pan-y">
                 <Animated.View style={[styles.card, clayCard(isDark), animatedStyle]}>
                     <LinearGradient
                         colors={isDark ? ['rgba(255,255,255,0.06)', 'transparent'] : ['rgba(255,255,255,0.65)', 'transparent']}
