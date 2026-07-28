@@ -109,7 +109,7 @@ export function buildCollectionCsv(rows: FeeTransaction[], meta: CollectionRepor
     '',
     [
       'Fee type',
-      'Collection mode',
+      'Receipt no',
       'Student name',
       'Father name',
       'Admission no',
@@ -123,7 +123,7 @@ export function buildCollectionCsv(rows: FeeTransaction[], meta: CollectionRepor
     lines.push(
       [
         row.fee_type ?? '—',
-        formatPaymentMethod(row.payment_method),
+        row.receipt_no ?? '—',
         row.student_name ?? '—',
         row.father_name ?? '—',
         row.admission_no ?? '—',
@@ -196,7 +196,7 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
     .map(
       (row) => `<tr>
         <td>${escapeHtml(row.fee_type ?? '—')}</td>
-        <td>${escapeHtml(formatPaymentMethod(row.payment_method))}</td>
+        <td>${escapeHtml(row.receipt_no ?? '—')}</td>
         <td>${escapeHtml(row.student_name ?? '—')}</td>
         <td>${escapeHtml(row.father_name ?? '—')}</td>
         <td>${escapeHtml(row.admission_no ?? '—')}</td>
@@ -276,7 +276,7 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
       <thead>
         <tr>
           <th>Fee type</th>
-          <th>Mode</th>
+          <th>Receipt no</th>
           <th>Student</th>
           <th>Father</th>
           <th>Adm no</th>
