@@ -91,6 +91,7 @@
     "attendance_trends": "అటెండెన్స్ ట్రెండ్స్",
     "featureSubtitles": {
       "school_updates": "స్కూల్ అప్డేట్స్",
+      "daily_diary": "రోజువారీ డైరీ",
       "raise_concern": "మీ సమస్యను తెలియజేయండి",
       "character_growth": "అక్షరాలు & పెరుగుదల",
       "stay_services": "వసతి సేవలు",
@@ -98,7 +99,8 @@
       "lab_innovation": "ల్యాబ్ & ఆవిష్కరణ",
       "assessments": "మూల్యాంకనాలు",
       "personal_details": "వ్యక్తిగత వివరాలు",
-      "in_app_chat": "యాప్‌లో చాట్"
+      "in_app_chat": "యాప్‌లో చాట్",
+      "learning_resources": "అభ్యాస వనరులు"
     }
   },
   "busTracker": {
@@ -616,7 +618,33 @@
   "appLocked": "యాప్ లాక్ చేయబడింది",
   "pleaseUnlockWithBiometrics": "కొనసాగడానికి మీ వేలిముద్రతో అన్‌లాక్ చేయండి.",
   "settings": {
-    "biometric_login": "వేలిముద్ర లాగిన్"
+    "title": "సెట్టింగ్స్",
+    "accounts": "ఖాతాలు",
+    "switch_account": "ఖాతాను మార్చండి",
+    "switch_account_hint": "లింక్ చేసిన స్కూల్ ప్రొఫైల్స్ మధ్య మారండి",
+    "general": "సాధారణం",
+    "dark_mode": "డార్క్ మోడ్",
+    "dark_mode_hint": "తక్కువ వెలుతురులో సౌకర్యవంతమైన రూపాన్ని ఉపయోగించండి",
+    "dark_mode_on_hint": "తక్కువ వెలుతురుకు అనువైన రూపం ఆన్‌లో ఉంది",
+    "language_telugu": "భాష (తెలుగు)",
+    "language_hint": "యాప్‌ను ఇంగ్లీష్ మరియు తెలుగు మధ్య మార్చండి",
+    "security": "భద్రత",
+    "biometric_login": "వేలిముద్ర లాగిన్",
+    "change_password": "పాస్‌వర్డ్ మార్చండి",
+    "change_password_hint": "మీ లాగిన్ వివరాలను సురక్షితంగా మార్చండి",
+    "support": "సహాయం",
+    "help_center": "సహాయ కేంద్రం",
+    "help_center_hint": "మా సహాయక బృందం నుంచి సహాయం పొందండి",
+    "privacy_policy": "గోప్యతా విధానం",
+    "privacy_policy_hint": "మీ సమాచారం ఎలా రక్షించబడుతుందో తెలుసుకోండి",
+    "why_ads": "ప్రకటనలు ఎందుకు చూపిస్తాము",
+    "why_ads_hint": "మా పారదర్శక ప్రకటన విధానాన్ని తెలుసుకోండి",
+    "contact_us": "మమ్మల్ని సంప్రదించండి",
+    "contact_us_hint": "వాట్సాప్‌లో సంభాషణ ప్రారంభించండి",
+    "dev_contact": "డెవలపర్ సంప్రదింపు",
+    "dev_contact_hint": "ఉత్పత్తి మరియు సాంకేతిక సమాచారం",
+    "log_out": "లాగ్ అవుట్",
+    "edit_profile": "ఫోటో మార్చండి"
   },
   "fingerprint": {
     "login": "వేలిముద్ర లాగిన్",

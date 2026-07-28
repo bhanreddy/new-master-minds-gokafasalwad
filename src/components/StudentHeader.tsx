@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable, Platform, Switch, ViewStyle, TextStyle, useWindowDimensions } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { View, StyleSheet, Platform, Pressable, ViewStyle, TextStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from '../utils/haptics';
@@ -13,7 +13,6 @@ import MenuOverlay from './MenuOverlay';
 import ClayIconButton from './ClayIconButton';
 import { Shadows, Spacing } from '../theme/themes';
 import { useTheme } from '../hooks/useTheme';
-import { useFeatures } from '../hooks/useFeatures';
 import { useAuth } from '../hooks/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { schoolColorWithAlpha } from '../constants/schoolConfig';
@@ -35,74 +34,29 @@ interface StudentHeaderProps {
 
 const isWeb = Platform.OS === 'web';
 
-type HeaderQuickCardProps = {
-    label: string;
-    colors: readonly [string, string];
-    shadowColor: string;
-    icon: React.ReactNode;
-    compact: boolean;
-    onPress: () => void;
-};
-
-/** Small navigation card that stays legible over both hero and scrolled headers. */
-function HeaderQuickCard({ label, colors, shadowColor, icon, compact, onPress }: HeaderQuickCardProps) {
-    return (
-        <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={label}
-            hitSlop={4}
-            onPress={onPress}
-            style={({ pressed }) => [
-                styles.quickCardPressable,
-                compact && styles.quickCardPressableCompact,
-                { shadowColor },
-                Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
-                pressed && styles.quickCardPressed,
-            ]}
-        >
-            <LinearGradient
-                colors={colors}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.quickCardGradient, compact && styles.quickCardGradientCompact]}
-            >
-                <View style={styles.quickCardGlow} />
-                <View style={[styles.tabIconBox, compact && styles.tabIconBoxCompact]}>{icon}</View>
-                <Animated.Text style={[styles.tabText, compact && styles.tabTextCompact]} numberOfLines={1}>
-                    {label}
-                </Animated.Text>
-                {!compact && (
-                    <View style={styles.quickCardArrow}>
-                        <Ionicons name="chevron-forward" size={12} color="#FFFFFF" />
-                    </View>
-                )}
-            </LinearGradient>
-        </Pressable>
-    );
-}
-
 const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, title?: string, showSettingsButton?: boolean, rightAction?: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void } }> = ({ onMenuPress, showBackButton = false, title, showSettingsButton = true, rightAction, scrollY, menuUserType = 'student', style: containerStyleOverride, titleStyle: titleStyleOverride }) => {
     const router = useRouter();
     const { isDark } = useTheme();
-    const { isEnabled } = useFeatures();
-    const { t, i18n } = useTranslation();
+    const { i18n } = useTranslation();
     const [isTeluguLang, setIsTeluguLang] = useState(isTeluguCheck(i18n.language));
     const [menuVisible, setMenuVisible] = useState(false);
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
-    const { width: viewportWidth } = useWindowDimensions();
-    const useCompactQuickCards = viewportWidth < 720;
 
     React.useEffect(() => {
         setIsTeluguLang(isTeluguCheck(i18n.language));
     }, [i18n.language]);
 
-    const toggleLanguage = async () => {
-        const newLang = isTeluguLang ? 'en' : 'te';
-        setIsTeluguLang(!isTeluguLang);
-        i18n.changeLanguage(newLang);
-        await AsyncStorage.setItem('appLanguage', newLang);
+    const setLanguage = async (language: 'en' | 'te') => {
+        const nextIsTelugu = language === 'te';
+        if (nextIsTelugu === isTeluguLang) return;
+
+        setIsTeluguLang(nextIsTelugu);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        await Promise.all([
+            i18n.changeLanguage(language),
+            AsyncStorage.setItem('appLanguage', language),
+        ]);
     };
 
     const handleMenuPress = () => {
@@ -111,15 +65,6 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
         } else {
             setMenuVisible(true);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
-    };
-
-    const handleTabPress = (tabName: string) => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (tabName === 'Diary') {
-            router.push('/Screen/diary' as any);
-        } else if (tabName === 'LMS') {
-            router.push('/Screen/lms' as any);
         }
     };
 
@@ -169,7 +114,10 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     const showNavBack = menuUserType === 'driver'
       ? showBackButton
       : (showBackButton || isWeb);
-    const showNavMenu = !showBackButton || isWeb || menuUserType === 'driver';
+    // Student navigation now lives in the bottom dock. Keep the drawer trigger
+    // only for driver screens that still use MenuOverlay.
+    const showNavMenu = menuUserType !== 'student'
+      && (!showBackButton || isWeb || menuUserType === 'driver');
 
     const fontColorStyle = useAnimatedStyle(() => {
         if (!scrollY) return { color: '#FFFFFF' };
@@ -221,75 +169,69 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 ) : null}
             </View>
 
-            {/* Center: title (sub-pages) OR school name + Diary/LMS (home). Single flex:1 region avoids overlap with rightActions. */}
+            {/* Center: sub-page title. Home quick actions live in the dashboard grid. */}
             <View style={styles.centerRegion}>
-                {title ? (
+                {title && (
                     <Animated.Text style={[styles.headerTitle, fontColorStyle, titleStyleOverride]} numberOfLines={1}>
                         {title}
                     </Animated.Text>
-                ) : !showBackButton ? (
-                    <View style={styles.homeTitleRow}>
-
-                        <View style={styles.tabsContainer}>
-                            {isEnabled('topbar.diary') && (
-                            <HeaderQuickCard
-                                label={t('diary', 'Diary')}
-                                colors={['#38BDF8', '#2563EB']}
-                                shadowColor="#2563EB"
-                                compact={useCompactQuickCards}
-                                onPress={() => handleTabPress('Diary')}
-                                icon={<Ionicons name="book" size={17} color="#FFFFFF" />}
-                            />
-                            )}
-
-                            {isEnabled('topbar.lms') && (
-                            <HeaderQuickCard
-                                label={t('lMS', 'LMS')}
-                                colors={['#34D399', '#059669']}
-                                shadowColor="#059669"
-                                compact={useCompactQuickCards}
-                                onPress={() => handleTabPress('LMS')}
-                                icon={<MaterialIcons name="computer" size={17} color="#FFFFFF" />}
-                            />
-                            )}
-                        </View>
-                    </View>
-                ) : null}
+                )}
             </View>
 
             <View style={styles.rightActions}>
-                {/* Language Switch (Native Toggle) */}
-                <View style={styles.langSwitch}>
-                    <Animated.Text
-                        style={[
-                            styles.langLabelBase,
-                            fontColorStyle,
-                            { opacity: !isTeluguLang ? 1 : 0.42, fontWeight: !isTeluguLang ? '800' : '600' },
-                        ]}
-                    >
-                        En
-                    </Animated.Text>
-                    <Switch
-                        value={isTeluguLang}
-                        onValueChange={toggleLanguage}
-                        trackColor={
-                            isDark
-                                ? { false: 'rgba(255,255,255,0.25)', true: 'rgba(255,255,255,0.25)' }
-                                : { false: 'rgba(15,23,42,0.22)', true: 'rgba(15,23,42,0.22)' }
-                        }
-                        thumbColor={isTeluguLang ? '#FFFFFF' : '#FFFFFF'}
-                        ios_backgroundColor={isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.12)'}
-                        style={{ transform: [{ scaleX: menuUserType === 'driver' ? 0.95 : 0.75 }, { scaleY: menuUserType === 'driver' ? 0.95 : 0.75 }] }}
-                    />
-                    <Animated.Text
-                        style={[
-                            styles.langLabelBase,
-                            fontColorStyle,
-                            { opacity: isTeluguLang ? 1 : 0.42, fontWeight: isTeluguLang ? '800' : '600' },
-                        ]}
-                    >
-                        Te
-                    </Animated.Text>
+                {/* Compact segmented language control with an unambiguous active state. */}
+                <View
+                    accessibilityRole="radiogroup"
+                    style={[
+                        styles.langSwitch,
+                        {
+                            backgroundColor: isDark
+                                ? 'rgba(255,255,255,0.08)'
+                                : 'rgba(124,107,184,0.12)',
+                        },
+                    ]}
+                >
+                    {([
+                        { code: 'en' as const, label: 'EN', accessibilityLabel: 'English' },
+                        { code: 'te' as const, label: 'తె', accessibilityLabel: 'Telugu' },
+                    ]).map(({ code, label, accessibilityLabel }) => {
+                        const isActive = code === (isTeluguLang ? 'te' : 'en');
+
+                        return (
+                            <Pressable
+                                key={code}
+                                accessibilityRole="radio"
+                                accessibilityLabel={accessibilityLabel}
+                                accessibilityState={{ checked: isActive }}
+                                hitSlop={4}
+                                onPress={() => void setLanguage(code)}
+                                style={({ pressed }) => [
+                                    styles.langOption,
+                                    Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
+                                    pressed && styles.langOptionPressed,
+                                ]}
+                            >
+                                {isActive && (
+                                    <LinearGradient
+                                        colors={['#9486E8', '#6656C7']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.langOptionActive}
+                                    />
+                                )}
+                                <Animated.Text
+                                    style={[
+                                        styles.langLabelBase,
+                                        fontColorStyle,
+                                        !isActive && styles.langLabelInactive,
+                                        isActive && styles.langLabelActive,
+                                    ]}
+                                >
+                                    {label}
+                                </Animated.Text>
+                            </Pressable>
+                        );
+                    })}
                 </View>
 
                 {/* Optional page-specific action (e.g. compose a new message) */}
@@ -325,7 +267,9 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 )}
             </View>
 
-            <MenuOverlay visible={menuVisible} onClose={() => setMenuVisible(false)} userType={menuUserType} photoUrl={user?.photoUrl} />
+            {menuUserType !== 'student' && (
+                <MenuOverlay visible={menuVisible} onClose={() => setMenuVisible(false)} userType={menuUserType} photoUrl={user?.photoUrl} />
+            )}
         </Animated.View>
     );
 };
@@ -360,96 +304,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 6,
     },
-    homeTitleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
-        minWidth: 0,
-        maxWidth: '100%',
-    },
-    tabsContainer: {
-        flexDirection: 'row',
-        flexShrink: 0,
-        gap: 10,
-    },
-    quickCardPressable: {
-        minWidth: 124,
-        borderRadius: 16,
-        shadowOffset: { width: 0, height: 7 },
-        shadowOpacity: 0.3,
-        shadowRadius: 10,
-        elevation: 6,
-    },
-    quickCardPressableCompact: {
-        minWidth: 0,
-        borderRadius: 14,
-    },
-    quickCardPressed: {
-        transform: [{ translateY: 2 }, { scale: 0.98 }],
-        shadowOpacity: 0.16,
-        shadowRadius: 5,
-        elevation: 3,
-    },
-    quickCardGradient: {
-        height: 48,
-        paddingHorizontal: 10,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.28)',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        overflow: 'hidden',
-    },
-    quickCardGradientCompact: {
-        height: 42,
-        paddingHorizontal: 9,
-        borderRadius: 14,
-        gap: 7,
-    },
-    quickCardGlow: {
-        position: 'absolute',
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        top: -40,
-        right: -12,
-        backgroundColor: 'rgba(255,255,255,0.22)',
-    },
-    tabIconBox: {
-        width: 30,
-        height: 30,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.18)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.22)',
-    },
-    tabIconBoxCompact: {
-        width: 26,
-        height: 26,
-        borderRadius: 8,
-    },
-    tabText: {
-        fontSize: 14,
-        fontWeight: '800',
-        letterSpacing: 0.2,
-        color: '#FFFFFF',
-        flexGrow: 1,
-    },
-    tabTextCompact: {
-        fontSize: 13,
-    },
-    quickCardArrow: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.12)',
-    },
     rightActions: {
         flexShrink: 0,
         flexDirection: 'row',
@@ -461,21 +315,50 @@ const styles = StyleSheet.create({
     langSwitch: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 2,
+        padding: 3,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(148,134,232,0.32)',
+        shadowColor: CLAY_ACCENT,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 8,
+        elevation: 3,
+    },
+    langOption: {
+        width: 36,
+        height: 30,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+    langOptionPressed: {
+        opacity: 0.84,
+        transform: [{ scale: 0.96 }],
+    },
+    langOptionActive: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 11,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.34)',
     },
     langLabelBase: {
-        fontSize: 11,
-        letterSpacing: 0.3,
+        fontSize: 10.5,
+        fontWeight: '800',
+        letterSpacing: 0.55,
+    },
+    langLabelInactive: {
+        opacity: 0.52,
+    },
+    langLabelActive: {
+        color: '#FFFFFF',
+        opacity: 1,
     },
     headerTitle: {
         fontSize: 18,
         fontWeight: '800',
         letterSpacing: 0.2,
-    },
-    headerTitleHome: {
-        flexShrink: 1,
-        marginLeft: 0,
-        textAlign: 'center',
     },
     absoluteHeader: {
         position: 'absolute',

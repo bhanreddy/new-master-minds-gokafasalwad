@@ -23,6 +23,7 @@ import { AttendanceService } from '../../src/services/attendanceService';
 import { StudentWithDetails } from '../../src/types/schema';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
+import StudentPhoto from '../../src/components/StudentPhoto';
 
 const { width: WIN_W } = Dimensions.get('window');
 const FONT = Platform.OS === 'ios' ? 'SF Pro Display' : 'sans-serif';
@@ -44,6 +45,7 @@ interface Student {
   id: string;
   display_name: string;
   admission_no: string;
+  photo_url?: string | null;
 }
 interface ClassSectionOption {
   class_section_id: string;
@@ -70,12 +72,20 @@ function getUniqueClassSections(assignments: TeacherClassAssignment[]): ClassSec
 }
 
 function mapStudentRows(
-  rows: Array<{ student_id?: string; id?: string; student_name?: string; display_name?: string; admission_no: string }>
+  rows: Array<{
+    student_id?: string;
+    id?: string;
+    student_name?: string;
+    display_name?: string;
+    admission_no: string;
+    photo_url?: string | null;
+  }>
 ): Student[] {
   return rows.map((row) => ({
     id: row.student_id || row.id || '',
     display_name: row.student_name || row.display_name || 'Unknown',
     admission_no: row.admission_no,
+    photo_url: row.photo_url,
   }));
 }
 
@@ -775,11 +785,14 @@ export default function StaffComplaints() {
           class_id: section.class_id,
           section_id: section.section_id,
           limit: 200,
+          sort_by: 'roll_number',
+          sort_order: 'asc',
         });
         setClassStudents(response.data.map((student) => ({
           id: student.id,
           display_name: student.person.display_name || `${student.person.first_name} ${student.person.last_name}`,
           admission_no: student.admission_no,
+          photo_url: student.person.photo_url,
         })));
         return;
       }
@@ -842,6 +855,7 @@ export default function StaffComplaints() {
         id: s.id,
         display_name: s.person.display_name || `${s.person.first_name} ${s.person.last_name}`,
         admission_no: s.admission_no,
+        photo_url: s.person.photo_url,
       })));
     } catch { /* noop */ } finally {
       setIsSearching(false);
@@ -1209,11 +1223,20 @@ export default function StaffComplaints() {
                         backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(5,150,105,0.08)',
                         borderColor: isDark ? 'rgba(52,211,153,0.30)' : 'rgba(5,150,105,0.28)',
                       }]}>
-                        <View style={[ms.selectedAvatar, { backgroundColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(5,150,105,0.16)' }]}>
-                          <Text style={[ms.selectedInitial, { color: isDark ? '#34D399' : EM, fontFamily: FONT }]}>
-                            {(selectedStudent.display_name?.[0] ?? '?').toUpperCase()}
-                          </Text>
-                        </View>
+                        <StudentPhoto
+                          photoUrl={selectedStudent.photo_url}
+                          displayName={selectedStudent.display_name}
+                          size={36}
+                          borderRadius={11}
+                          style={[
+                            ms.selectedAvatar,
+                            { backgroundColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(5,150,105,0.16)' },
+                          ]}
+                          fallbackTextStyle={[
+                            ms.selectedInitial,
+                            { color: isDark ? '#34D399' : EM, fontFamily: FONT },
+                          ]}
+                        />
                         <View style={{ flex: 1 }}>
                           <Text style={[ms.selectedName, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>
                             {selectedStudent.display_name}
@@ -1253,11 +1276,21 @@ export default function StaffComplaints() {
                                 }]}
                                 onPress={() => { setSelectedStudent(s); setStudentsList([]); setStudentSearch(''); }}
                               >
-                                <View style={[ms.suggestAvatar, { backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(5,150,105,0.08)' }]}>
-                                  <Text style={{ color: isDark ? '#34D399' : EM, fontWeight: '800', fontSize: 12 }}>
-                                    {(s.display_name?.[0] ?? '?').toUpperCase()}
-                                  </Text>
-                                </View>
+                                <StudentPhoto
+                                  photoUrl={s.photo_url}
+                                  displayName={s.display_name}
+                                  size={30}
+                                  borderRadius={9}
+                                  style={[
+                                    ms.suggestAvatar,
+                                    { backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(5,150,105,0.08)' },
+                                  ]}
+                                  fallbackTextStyle={{
+                                    color: isDark ? '#34D399' : EM,
+                                    fontWeight: '800',
+                                    fontSize: 12,
+                                  }}
+                                />
                                 <View style={{ flex: 1 }}>
                                   <Text style={[ms.suggestName, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>{s.display_name}</Text>
                                   <Text style={[ms.suggestAdm, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>#{s.admission_no}</Text>
@@ -1350,7 +1383,6 @@ export default function StaffComplaints() {
                         >
                           {classStudents.map((s) => {
                             const checked = selectedStudentIds.includes(s.id);
-                            const initial = (s.display_name?.[0] ?? '?').toUpperCase();
                             return (
                               <PressScale key={s.id} onPress={() => toggleStudentSelection(s)}>
                                 <View style={[
@@ -1364,17 +1396,20 @@ export default function StaffComplaints() {
                                       <Ionicons name="checkmark" size={11} color="#fff" />
                                     </View>
                                   ) : null}
-                                  <View style={[ms.studentCardAvatar, {
-                                    backgroundColor: checked
-                                      ? (isDark ? 'rgba(16,185,129,0.24)' : 'rgba(5,150,105,0.14)')
-                                      : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.10)'),
-                                  }]}>
-                                    <Text style={[ms.studentCardInitial, {
+                                  <StudentPhoto
+                                    photoUrl={s.photo_url}
+                                    displayName={s.display_name}
+                                    size={40}
+                                    borderRadius={12}
+                                    style={[ms.studentCardAvatar, {
+                                      backgroundColor: checked
+                                        ? (isDark ? 'rgba(16,185,129,0.24)' : 'rgba(5,150,105,0.14)')
+                                        : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.10)'),
+                                    }]}
+                                    fallbackTextStyle={[ms.studentCardInitial, {
                                       color: checked ? (isDark ? '#34D399' : EM) : (isDark ? '#CBD5E1' : '#6366F1'),
-                                    }]}>
-                                      {initial}
-                                    </Text>
-                                  </View>
+                                    }]}
+                                  />
                                   <Text style={[ms.studentCardName, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]} numberOfLines={2}>
                                     {s.display_name}
                                   </Text>

@@ -28,6 +28,7 @@ import { Student } from '../../src/types/models';
 import { StudentWithDetails } from '../../src/types/schema';
 import { useTranslation } from 'react-i18next';
 import { t_field } from '../../src/utils/lang';
+import StudentPhoto from '../../src/components/StudentPhoto';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS — Mode A clay · rose support accent (matches admin complaints brand)
@@ -75,6 +76,7 @@ interface PickStudent {
   id: string;
   display_name: string;
   admission_no: string;
+  photo_url?: string | null;
 }
 
 const EMPTY_COMPLAINT = {
@@ -269,6 +271,7 @@ export default function AdminComplaints() {
   const [newComplaint, setNewComplaint] = useState({ ...EMPTY_COMPLAINT });
   const [studentMode, setStudentMode] = useState<'single' | 'multiple'>('single');
   const [studentSearch, setStudentSearch] = useState('');
+  const [selectedStudentPhotoUrl, setSelectedStudentPhotoUrl] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -301,6 +304,7 @@ export default function AdminComplaints() {
   const resetStudentPicker = useCallback(() => {
     setStudentMode('single');
     setStudentSearch('');
+    setSelectedStudentPhotoUrl(null);
     setSearchResults([]);
     setClassSections([]);
     setSelectedClassSectionId(null);
@@ -352,11 +356,14 @@ export default function AdminComplaints() {
         class_id: section.class_id,
         section_id: section.section_id,
         limit: 200,
+        sort_by: 'roll_number',
+        sort_order: 'asc',
       });
       setClassStudents(response.data.map((student) => ({
         id: student.id,
         display_name: student.person.display_name || `${student.person.first_name} ${student.person.last_name}`,
         admission_no: student.admission_no,
+        photo_url: student.person.photo_url,
       })));
     } catch {
       setClassStudents([]);
@@ -369,6 +376,7 @@ export default function AdminComplaints() {
   const switchStudentMode = (mode: 'single' | 'multiple') => {
     setStudentMode(mode);
     setStudentSearch('');
+    setSelectedStudentPhotoUrl(null);
     setSearchResults([]);
     setSelectedStudentIds([]);
     setClassStudents([]);
@@ -461,6 +469,7 @@ export default function AdminComplaints() {
     } else {
       setSearchResults([]);
       setNewComplaint((prev) => ({ ...prev, raised_for_student_id: '' }));
+      setSelectedStudentPhotoUrl(null);
     }
   };
 
@@ -848,14 +857,20 @@ export default function AdminComplaints() {
                   <View>
                     {newComplaint.raised_for_student_id ? (
                       <View style={styles.selectedStudentChip}>
-                        <View style={styles.selectedStudentAvatar}>
-                          <Ionicons name="person" size={14} color={ROSE} />
-                        </View>
+                        <StudentPhoto
+                          photoUrl={selectedStudentPhotoUrl}
+                          displayName={studentSearch}
+                          size={32}
+                          borderRadius={10}
+                          style={styles.selectedStudentAvatar}
+                          fallbackTextStyle={styles.selectedStudentInitial}
+                        />
                         <Text style={styles.selectedStudentName} numberOfLines={1}>{studentSearch}</Text>
                         <TouchableOpacity
                           onPress={() => {
                             setNewComplaint((prev) => ({ ...prev, raised_for_student_id: '' }));
                             setStudentSearch('');
+                            setSelectedStudentPhotoUrl(null);
                           }}
                           style={styles.clearStudentBtn}
                         >
@@ -883,14 +898,23 @@ export default function AdminComplaints() {
                                 onPress={() => {
                                   setNewComplaint((prev) => ({ ...prev, raised_for_student_id: student.id }));
                                   setStudentSearch(`${[student.first_name, student.last_name].filter(Boolean).join(' ')} (${student.admission_no})`);
+                                  setSelectedStudentPhotoUrl(
+                                    student.photo_url ?? (student as any).person?.photo_url ?? null
+                                  );
                                   setSearchResults([]);
                                 }}
                               >
-                                <View style={styles.searchItemAvatar}>
-                                  <Text style={styles.searchItemInitial}>
-                                    {(student.first_name?.[0] || '?').toUpperCase()}
-                                  </Text>
-                                </View>
+                                <StudentPhoto
+                                  photoUrl={student.photo_url ?? (student as any).person?.photo_url}
+                                  displayName={
+                                    student.display_name ??
+                                    [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(' ')
+                                  }
+                                  size={34}
+                                  borderRadius={10}
+                                  style={styles.searchItemAvatar}
+                                  fallbackTextStyle={styles.searchItemInitial}
+                                />
                                 <View style={{ flex: 1 }}>
                                   <Text style={styles.searchItemText}>{student.first_name} {student.last_name}</Text>
                                   <Text style={styles.searchItemSub}>{student.admission_no}</Text>
@@ -963,7 +987,6 @@ export default function AdminComplaints() {
                           >
                             {classStudents.map((student) => {
                               const checked = selectedStudentIds.includes(student.id);
-                              const initial = (student.display_name?.[0] ?? '?').toUpperCase();
                               return (
                                 <PressScale key={student.id} onPress={() => toggleStudentSelection(student)}>
                                   <View style={[styles.studentCard, checked && styles.studentCardSelected]}>
@@ -972,11 +995,17 @@ export default function AdminComplaints() {
                                         <Ionicons name="checkmark" size={11} color="#fff" />
                                       </View>
                                     )}
-                                    <View style={[styles.studentCardAvatar, checked && styles.studentCardAvatarSelected]}>
-                                      <Text style={[styles.studentCardInitial, checked && styles.studentCardInitialSelected]}>
-                                        {initial}
-                                      </Text>
-                                    </View>
+                                    <StudentPhoto
+                                      photoUrl={student.photo_url}
+                                      displayName={student.display_name}
+                                      size={44}
+                                      borderRadius={14}
+                                      style={[styles.studentCardAvatar, checked && styles.studentCardAvatarSelected]}
+                                      fallbackTextStyle={[
+                                        styles.studentCardInitial,
+                                        checked && styles.studentCardInitialSelected,
+                                      ]}
+                                    />
                                     <Text style={styles.studentCardName} numberOfLines={2}>{student.display_name}</Text>
                                     <Text style={styles.studentCardAdm}>#{student.admission_no}</Text>
                                   </View>
@@ -1336,6 +1365,7 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     width: 30, height: 30, borderRadius: 10,
     backgroundColor: ROSE_MID, alignItems: 'center', justifyContent: 'center',
   },
+  selectedStudentInitial: { fontSize: 13, fontWeight: '800', color: ROSE_DEEP },
   selectedStudentName: { flex: 1, fontSize: 14, fontWeight: '600', color: theme.colors.text },
   clearStudentBtn: {
     width: 28, height: 28, borderRadius: 8,

@@ -88,6 +88,7 @@
     "attendance_trends": "Attendance Trends",
     "featureSubtitles": {
       "school_updates": "School updates",
+      "daily_diary": "Daily diary",
       "raise_concern": "Raise a concern",
       "character_growth": "Character & growth",
       "stay_services": "Stay services",
@@ -95,7 +96,8 @@
       "lab_innovation": "Lab & innovation",
       "assessments": "Assessments",
       "personal_details": "Personal details",
-      "in_app_chat": "In-app chat"
+      "in_app_chat": "In-app chat",
+      "learning_resources": "Learning resources"
     }
   },
   "busTracker": {
@@ -459,20 +461,34 @@
   },
   "settings": {
     "title": "Settings",
+    "accounts": "Accounts",
+    "switch_account": "Switch account",
+    "switch_account_hint": "Move between your linked school profiles",
     "general": "General",
     "dark_mode": "Dark Mode",
+    "dark_mode_hint": "Use a softer appearance in low light",
+    "dark_mode_on_hint": "A softer low-light appearance is on",
     "notifications": "Notifications",
     "data_saving": "Data Saving Mode",
     "language_telugu": "Language (Telugu)",
+    "language_hint": "Switch the app between English and Telugu",
     "security": "Security",
     "biometric_login": "Fingerprint Login",
     "change_password": "Change Password",
+    "change_password_hint": "Update your login credentials securely",
     "support": "Support",
     "help_center": "Help Center",
+    "help_center_hint": "Get help from our support team",
     "privacy_policy": "Privacy Policy",
+    "privacy_policy_hint": "Learn how your information is protected",
+    "why_ads": "Why do we show ads",
+    "why_ads_hint": "Understand our transparent advertising model",
     "contact_us": "Contact Us",
+    "contact_us_hint": "Start a conversation on WhatsApp",
+    "dev_contact": "Dev Contact",
+    "dev_contact_hint": "Product and technical information",
     "log_out": "Log Out",
-    "edit_profile": "Edit Profile"
+    "edit_profile": "Change Photo"
   },
   "languageEnglish": "EN",
   "languageTelugu": "తె",

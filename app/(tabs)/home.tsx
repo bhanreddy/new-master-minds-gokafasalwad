@@ -2,7 +2,7 @@
  * HomeScreen.tsx — Premium v7.1
  * ─────────────────────────────────────────────────────────
  * v7.1 changes:
- * • FeatureCard: subtitle removed, height 168 → 128, icon chip 44 → 50, glyph 22 → 24
+ * • FeatureCard: OpenMoji doodle illustrations in fitted paper-sticker badges
  * • homeTabs data preserved (subtitleKey untouched for future reuse)
  * ─────────────────────────────────────────────────────────
  * Design philosophy (rural-UX aware):
@@ -10,15 +10,23 @@
  * ✦ Premium comes from EXECUTION:
  *   • 3-stop jewel-tone gradients
  *   • Top-left radial light highlight
- *   • Frosted-glass icon chip with 1px inner border
+ *   • Hand-drawn, multicolour illustrations with consistent visual weight
  *   • Colored shadow tight + dark ambient layered
- *
- * REQUIRES: npx expo install expo-blur
+ * Illustrations: OpenMoji (CC BY-SA 4.0), imported individually through Iconify.
  */
 
 import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import type { IconifyIcon } from '@iconify/types';
+import announcementsIcon from '@iconify-icons/openmoji/megaphone';
+import complaintsIcon from '@iconify-icons/openmoji/warning';
+import diaryIcon from '@iconify-icons/openmoji/open-book';
+import lifeValuesIcon from '@iconify-icons/openmoji/heart-hands';
+import lmsIcon from '@iconify-icons/openmoji/laptop';
+import messagesIcon from '@iconify-icons/openmoji/speech-balloon';
+import profileIcon from '@iconify-icons/openmoji/student';
+import scienceIcon from '@iconify-icons/openmoji/microscope';
+import transportIcon from '@iconify-icons/openmoji/oncoming-bus';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -45,6 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AdminHeaderCard from '../../src/components/AdminHeaderCard';
 import DashboardHero from '../../src/components/DashboardHero';
+import IconifyIllustration from '../../src/components/IconifyIllustration';
 import LogoLoader from '../../src/components/LogoLoader';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
@@ -103,7 +112,10 @@ interface HomeTab {
   title: string;
   translationKey?: string;
   subtitleKey: string;
-  ionIcon: keyof typeof Ionicons.glyphMap;
+  /** Self-coloured doodle illustration imported individually from OpenMoji. */
+  icon: IconifyIcon;
+  /** Optical sizing keeps differently shaped illustrations visually balanced. */
+  iconSize: number;
   /** 3-stop gradient: [deep edge, mid base, light top-highlight] */
   grad: [string, string, string];
   /** Single shadow hue — keep tight, don't oversaturate */
@@ -114,10 +126,21 @@ interface HomeTab {
 
 const homeTabs: HomeTab[] = [
   {
+    key: 'diary',
+    translationKey: 'diary', title: 'Diary',
+    subtitleKey: 'dashboard.featureSubtitles.daily_diary',
+    icon: diaryIcon,
+    iconSize: 48,
+    grad: ['#0C4A6E', '#0284C7', '#7DD3FC'],
+    shadow: '#075985',
+    feature: 'topbar.diary',
+  },
+  {
     key: 'messages',
     translationKey: 'announcements.title', title: 'Announcements',
     subtitleKey: 'dashboard.featureSubtitles.school_updates',
-    ionIcon: 'megaphone-outline',
+    icon: announcementsIcon,
+    iconSize: 49,
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'quick.announcements',
@@ -126,7 +149,8 @@ const homeTabs: HomeTab[] = [
     key: 'complaints',
     translationKey: 'complaints.title', title: 'Complaints',
     subtitleKey: 'dashboard.featureSubtitles.raise_concern',
-    ionIcon: 'alert-circle-outline',
+    icon: complaintsIcon,
+    iconSize: 46,
     grad: ['#7F1D1D', '#B91C1C', '#F87171'], // Red 900, Red 700
     shadow: '#991B1B', // Red 800
     feature: 'quick.complaints',
@@ -135,7 +159,8 @@ const homeTabs: HomeTab[] = [
     key: 'lifeValues',
     translationKey: 'lifeValues', title: 'Life Values',
     subtitleKey: 'dashboard.featureSubtitles.character_growth',
-    ionIcon: 'heart-outline',
+    icon: lifeValuesIcon,
+    iconSize: 47,
     grad: ['#022C22', '#047857', '#6EE7B7'], // Emerald 900, Emerald 700
     shadow: '#064E3B', // Emerald 800
     feature: 'quick.life_values',
@@ -144,7 +169,8 @@ const homeTabs: HomeTab[] = [
     key: 'busmap',
     translationKey: 'admin_dashboard.transport', title: 'Transport',
     subtitleKey: 'dashboard.featureSubtitles.live_bus',
-    ionIcon: 'bus-outline',
+    icon: transportIcon,
+    iconSize: 50,
     grad: ['#78350F', '#B45309', '#FCD34D'], // Amber 900, Amber 700
     shadow: '#92400E', // Amber 800
     feature: 'quick.transport',
@@ -153,7 +179,8 @@ const homeTabs: HomeTab[] = [
     key: 'projects',
     translationKey: 'scienceProjects', title: 'Science Projects',
     subtitleKey: 'dashboard.featureSubtitles.lab_innovation',
-    ionIcon: 'flask-outline',
+    icon: scienceIcon,
+    iconSize: 49,
     grad: ['#082F49', '#0369A1', '#7DD3FC'], // Sky 900, Sky 700
     shadow: '#075985', // Sky 800
     feature: 'quick.science_projects',
@@ -162,7 +189,8 @@ const homeTabs: HomeTab[] = [
     key: 'profile',
     translationKey: 'menu.profile', title: 'Student Profile',
     subtitleKey: 'dashboard.featureSubtitles.personal_details',
-    ionIcon: 'person-circle-outline',
+    icon: profileIcon,
+    iconSize: 47,
     grad: ['#881337', '#BE123C', '#FDA4AF'], // Rose 900, Rose 700
     shadow: '#9F1239', // Rose 800
     feature: 'quick.profile',
@@ -171,14 +199,26 @@ const homeTabs: HomeTab[] = [
     key: 'messenger',
     translationKey: 'messages.title', title: 'Messages',
     subtitleKey: 'dashboard.featureSubtitles.in_app_chat',
-    ionIcon: 'chatbubble-ellipses-outline',
+    icon: messagesIcon,
+    iconSize: 48,
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'comm.messenger', // Requires comm.messenger feature flag
   },
+  {
+    key: 'lms',
+    translationKey: 'lMS', title: 'LMS',
+    subtitleKey: 'dashboard.featureSubtitles.learning_resources',
+    icon: lmsIcon,
+    iconSize: 50,
+    grad: ['#064E3B', '#059669', '#6EE7B7'],
+    shadow: '#047857',
+    feature: 'topbar.lms',
+  },
 ];
 
 const routeMap: Record<string, string> = {
+  diary: '/Screen/diary',
   profile: '/Screen/profile',
   complaints: '/Screen/complaints',
   busmap: '/Screen/busTracker',
@@ -188,6 +228,7 @@ const routeMap: Record<string, string> = {
   projects: '/Screen/scienceProjects',
   test: '/Screen/weekendTest',
   messenger: '/Screen/messages',
+  lms: '/Screen/lms',
 };
 
 interface ClayViewProps {
@@ -397,6 +438,8 @@ const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
   return (
     <Animated.View style={[{ width: cardWidth }, animCard]}>
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={tab.title}
         onPressIn={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           scale.value = withTiming(0.97, { duration: 150 });
@@ -443,16 +486,12 @@ const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
           <View style={fc.card}>
             {/* Header row: icon chip + arrow */}
             <View style={fc.headerRow}>
-              <View style={fc.iconChipWrap}>
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 28 : 0}
-                  tint="light"
-                  style={fc.iconChipBlur}
-                >
-                  <View style={fc.iconChipInner}>
-                    <Ionicons name={tab.ionIcon} size={24} color="#fff" />
-                  </View>
-                </BlurView>
+              <View style={fc.iconStack}>
+                <View pointerEvents="none" style={fc.iconBackplate} />
+                <View style={fc.iconPaper}>
+                  <View pointerEvents="none" style={fc.iconPaperShine} />
+                  <IconifyIllustration icon={tab.icon} size={tab.iconSize} />
+                </View>
               </View>
 
               <View style={fc.arrowChip}>
@@ -496,21 +535,47 @@ const fc = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: tokens.space[2],
   },
-  iconChipWrap: {
-    borderRadius: tokens.radius.md + 4,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  iconChipBlur: {
+  iconStack: {
+    width: 60,
+    height: 60,
+    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconChipInner: {
-    width: 50, height: 50,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.24)',
-    borderRadius: tokens.radius.md + 2,
+  iconBackplate: {
+    position: 'absolute',
+    width: 54,
+    height: 54,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.30)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.48)',
+    transform: [{ rotate: '7deg' }],
+  },
+  iconPaper: {
+    width: 56,
+    height: 56,
+    borderRadius: 17,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFCF5',
+    borderWidth: 1.25,
+    borderColor: 'rgba(15,23,42,0.12)',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  iconPaperShine: {
+    position: 'absolute',
+    top: 4,
+    left: 8,
+    right: 8,
+    height: 8,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.72)',
   },
   arrowChip: {
     width: 28, height: 28,
@@ -977,10 +1042,23 @@ const HomeScreen = () => {
     return `${cn} · ${t('studentHome.sectionPrefix')} ${sec}`.trim();
   }, [student, t]);
 
-  const firstName =
-    student?.display_name?.split(' ')[0] ||
-    user?.displayName?.split(' ')[0] ||
-    t('studentHome.studentFallback');
+  const studentFullName = useMemo(() => {
+    const profileName = [
+      student?.first_name,
+      student?.middle_name,
+      student?.last_name,
+    ]
+      .map(part => part?.trim())
+      .filter((part): part is string => Boolean(part))
+      .join(' ');
+
+    return (
+      profileName ||
+      student?.display_name?.trim() ||
+      user?.displayName?.trim() ||
+      t('studentHome.studentFallback')
+    );
+  }, [student, user?.displayName, t]);
 
   useEffect(() => {
     if (!user?.userId || !student) return;
@@ -1023,14 +1101,15 @@ const HomeScreen = () => {
               <DashboardHero
                 eyebrow={`${gIco}  ${todayLabel}`.toUpperCase()}
                 greeting={gStr}
-                name={firstName}
+                name={studentFullName}
                 subtitle={classSec}
                 stacks
+                showFullName
                 card={
                   <AdminHeaderCard
                     compact
                     embedded
-                    displayName={student?.display_name || user?.displayName || t('studentHome.studentFallback')}
+                    displayName={studentFullName}
                     roleLabel={classSec}
                     staffCode={student?.current_enrollment?.roll_number ? `Roll ${student.current_enrollment.roll_number}` : undefined}
                     photoUrl={student?.photo_url || user?.photoUrl}

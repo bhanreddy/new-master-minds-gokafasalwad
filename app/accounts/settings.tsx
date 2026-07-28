@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   StatusBar, Switch, Linking
@@ -8,7 +8,7 @@ import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import AdminHeader from '../../src/components/AdminHeader';
-import AvatarUploader from '../../src/components/AvatarUploader';
+import { AvatarUploader } from '../../src/components/AvatarUploader';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -21,6 +21,10 @@ import {
   SettingsAccountSwitcherSheet,
   useSettingsAccountSwitcher,
 } from '../../src/components/SettingsAccountSwitcher';
+import {
+  SettingRow,
+  SettingsGroup as Group,
+} from '../../src/components/SettingsSection';
 
 /** Returns the first human-readable ID (not a UUID) from the user object */
 function getHumanId(user: any): string {
@@ -31,92 +35,6 @@ function getHumanId(user: any): string {
   return 'N/A';
 }
 
-// ─── SettingRow ───────────────────────────────────────────────────────────────
-
-interface SettingRowProps {
-  icon: string;
-  iconColor: string;
-  iconBg: string;
-  label: string;
-  isLast?: boolean;
-  rightElement?: React.ReactNode;
-  onPress?: () => void;
-  labelColor?: string;
-}
-
-function SettingRow({ icon, iconColor, iconBg, label, isLast, rightElement, onPress, labelColor }: SettingRowProps) {
-  const Wrapper = onPress ? TouchableOpacity : View;
-  const { theme } = useTheme();
-  return (
-    <>
-      <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
-        <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
-          <Ionicons name={icon as any} size={18} color={iconColor} />
-        </View>
-        <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
-        <View style={RS.right}>{rightElement}</View>
-      </Wrapper>
-      {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
-    </>);
-
-}
-
-const RS = StyleSheet.create({
-  row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 13, paddingHorizontal: 16
-  },
-  iconBox: {
-    width: 38, height: 38, borderRadius: 11,
-    justifyContent: 'center', alignItems: 'center', marginRight: 13
-  },
-  label: { flex: 1, fontSize: 15, fontWeight: '500' },
-  right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  divider: {
-    height: StyleSheet.hairlineWidth, marginLeft: 67
-  }
-});
-
-// ─── Group ────────────────────────────────────────────────────────────────────
-
-interface GroupProps {
-  title: string;
-  delay: number;
-  borderColor?: string;
-  children: React.ReactNode;
-  theme: Theme;
-}
-
-function Group({ title, delay, borderColor, children, theme }: GroupProps) {
-  return (
-    <Animated.View entering={FadeInDown.delay(delay).duration(480)} style={GS.container}>
-      <Text style={GS.title}>{title}</Text>
-      <View style={[
-        GS.card, { backgroundColor: theme.colors.card },
-        borderColor ?
-          { borderColor, borderWidth: 1 } :
-          { borderWidth: 1, borderColor: theme.colors.border }]
-      }>
-        {children}
-      </View>
-    </Animated.View>);
-
-}
-
-const GS = StyleSheet.create({
-  container: { marginBottom: 22 },
-  title: {
-    fontSize: 10, fontWeight: '700', letterSpacing: 1.5,
-    color: '#9CA3AF', marginBottom: 9, marginLeft: 4,
-    textTransform: 'uppercase'
-  },
-  card: {
-    borderRadius: 18, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1
-  }
-});
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function AccountsSettings() {
@@ -126,7 +44,6 @@ export default function AccountsSettings() {
   const { i18n } = useTranslation();
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const [updating, setUpdating] = useState(false);
   const { switcherOpen, openSwitcher, closeSwitcher } = useSettingsAccountSwitcher();
 
   const handlePress = (item: string) =>
@@ -192,6 +109,7 @@ export default function AccountsSettings() {
             iconColor={SWITCH_ACCOUNT_SETTINGS.iconColor}
             iconBg={SWITCH_ACCOUNT_SETTINGS.iconBg}
             label={SWITCH_ACCOUNT_SETTINGS.label}
+            sublabel="Move between linked school profiles"
             isLast
             onPress={openSwitcher}
             rightElement={chevron} />
@@ -203,6 +121,7 @@ export default function AccountsSettings() {
           <SettingRow
             icon="moon" iconColor="#6366F1" iconBg="#EEF2FF"
             label="Dark Mode"
+            sublabel={isDark ? 'A softer low-light appearance is on' : 'Use a softer appearance in low light'}
             rightElement={
               <Switch
                 trackColor={{ false: theme.colors.border, true: '#818CF8' }}
@@ -215,6 +134,7 @@ export default function AccountsSettings() {
           <SettingRow
             icon="language" iconColor="#3B82F6" iconBg="#EFF6FF"
             label="Language (Telugu)"
+            sublabel="Switch the app between English and Telugu"
             isLast
             rightElement={
               <Switch
@@ -232,6 +152,7 @@ export default function AccountsSettings() {
           <SettingRow
             icon="lock-closed" iconColor="#3B82F6" iconBg="#EFF6FF"
             label="Change Password"
+            sublabel="Update your login credentials securely"
             isLast
             onPress={() => router.push('/change-password')}
             rightElement={chevron} />
@@ -243,30 +164,35 @@ export default function AccountsSettings() {
           <SettingRow
             icon="help-buoy" iconColor="#8B5CF6" iconBg="#F5F3FF"
             label="Help Center"
+            sublabel="Get help from our support team"
             onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hey%2C%20I%20have%20a%20problem%20in%20the%20app')}
             rightElement={chevron} />
 
           <SettingRow
             icon="shield-checkmark" iconColor="#06B6D4" iconBg="#ECFEFF"
             label="Privacy Policy"
+            sublabel="Learn how your information is protected"
             onPress={() => Linking.openURL('https://schoolims.nexsyrus.com/privacy')}
             rightElement={chevron} />
 
           <SettingRow
             icon="megaphone-outline" iconColor="#F59E0B" iconBg="#FEF3C7"
             label="Why do we show Ads"
+            sublabel="Understand our transparent advertising model"
             onPress={() => (router as any).push('/why-ads')}
             rightElement={chevron} />
 
           <SettingRow
             icon="logo-whatsapp" iconColor="#25D366" iconBg="#F0FDF4"
             label="Contact Us"
+            sublabel="Start a conversation on WhatsApp"
             onPress={() => Linking.openURL('https://api.whatsapp.com/send?phone=917892654731&text=Hi%20there...')}
             rightElement={chevron} />
 
           <SettingRow
             icon="code-slash" iconColor="#8B5CF6" iconBg="#F5F3FF"
             label="Dev Contact"
+            sublabel="Product and technical information"
             isLast
             onPress={() => Linking.openURL('https://bhanureddy.nexsyrus.com')}
             rightElement={chevron} />
@@ -278,6 +204,7 @@ export default function AccountsSettings() {
           <SettingRow
             icon="trash-outline" iconColor="#EF4444" iconBg="#FEF2F2"
             label="Delete Account"
+            sublabel="Permanently remove this account"
             labelColor="#EF4444"
             isLast
             onPress={() =>
@@ -337,16 +264,19 @@ export default function AccountsSettings() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'transparent' },
-  scroll: { padding: 20, paddingBottom: 60 },
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  scroll: {
+    width: '100%', maxWidth: 760, alignSelf: 'center',
+    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 80
+  },
 
   // Profile card — amber accent for Accounts role
   profileCard: {
-    backgroundColor: theme.colors.card, borderRadius: 22, padding: 20,
-    marginBottom: 26, overflow: 'hidden',
-    borderWidth: 1, borderColor: theme.colors.border,
-    shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08, shadowRadius: 12, elevation: 3
+    backgroundColor: theme.colors.card, borderRadius: 26, padding: 18,
+    marginBottom: 28, overflow: 'hidden',
+    borderWidth: 1, borderTopWidth: 3, borderColor: theme.colors.border, borderTopColor: '#F59E0B',
+    shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.11, shadowRadius: 18, elevation: 4
   },
   blob1: {
     position: 'absolute', top: -40, right: -30,
@@ -358,7 +288,7 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     width: 90, height: 90, borderRadius: 45,
     backgroundColor: '#EF4444', opacity: 0.05
   },
-  profileTop: { flexDirection: 'row', alignItems: 'center' },
+  profileTop: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', rowGap: 12 },
   avatarWrap: { position: 'relative', marginRight: 14 },
   avatar: {
     width: 62, height: 62, borderRadius: 18,
@@ -370,18 +300,18 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     backgroundColor: '#10B981',
     borderWidth: 2, borderColor: theme.colors.card
   },
-  profileMeta: { flex: 1 },
-  profileName: { fontSize: 17, fontWeight: '800', color: theme.colors.text, marginBottom: 6 },
+  profileMeta: { flex: 1, minWidth: 145 },
+  profileName: { fontSize: 18, lineHeight: 23, fontWeight: '800', color: theme.colors.textStrong, marginBottom: 7 },
   idBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6, alignSelf: 'flex-start'
+    borderRadius: 9, alignSelf: 'flex-start'
   },
   idText: { fontSize: 11, fontWeight: '600', color: '#D97706' },
   editChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 7,
-    borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A'
+    backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 999, borderWidth: 1, borderColor: '#FDE68A', marginLeft: 8
   },
   editChipText: { fontSize: 12, fontWeight: '700', color: '#F59E0B' },
 
@@ -389,8 +319,10 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   logoutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
     backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2',
-    paddingVertical: 15, borderRadius: 16,
-    marginTop: 4, borderWidth: 1, borderColor: '#FECACA'
+    minHeight: 58, borderRadius: 20,
+    marginTop: 2, borderWidth: 1, borderColor: '#FECACA',
+    shadowColor: '#EF4444', shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08, shadowRadius: 12, elevation: 2
   },
   logoutIconWrap: {
     width: 30, height: 30, borderRadius: 9,

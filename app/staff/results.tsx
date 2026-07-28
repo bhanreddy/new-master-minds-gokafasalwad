@@ -19,6 +19,7 @@ import { StudentWithDetails } from '@/src/types/schema';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
+import StudentPhoto from '../../src/components/StudentPhoto';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Constants
@@ -386,7 +387,9 @@ export default function UploadMarks() {
       const response = await StudentService.getAll<StudentWithDetails>({
         class_id: selectedAssignment.class_id,
         section_id: selectedAssignment.section_id,
-        limit: 100
+        limit: 100,
+        sort_by: 'roll_number',
+        sort_order: 'asc',
       });
       setStudents(response.data);
     } catch (error) {
@@ -687,9 +690,16 @@ export default function UploadMarks() {
                 entering={FadeInDown.delay(index * 40).duration(350)}
                 style={[styles.studentRow, index === students.length - 1 && styles.studentRowLast]}>
                 <View style={[styles.studentAvatar, clayGlow('#8B5CF6', 'sm')]}>
-                  <Text style={styles.studentAvatarText}>
-                    {(student.person.first_name?.[0] ?? '?').toUpperCase()}
-                  </Text>
+                  <StudentPhoto
+                    photoUrl={student.person.photo_url}
+                    displayName={
+                      student.person.display_name ??
+                      `${student.person.first_name} ${student.person.last_name}`
+                    }
+                    size={44}
+                    borderRadius={14}
+                    fallbackTextStyle={styles.studentAvatarText}
+                  />
                 </View>
                 <View style={styles.studentInfo}>
                   <Text style={styles.studentName} numberOfLines={1}>

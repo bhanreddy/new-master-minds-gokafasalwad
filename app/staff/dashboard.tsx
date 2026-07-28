@@ -249,7 +249,8 @@ const AttendanceArc = React.memo(function AttendanceArc({
 }) {
   const SIZE = size || 210;
   const STROKE = stroke || 14;
-  const R = (SIZE - STROKE) / 2 - 20;
+  const compact = SIZE <= 150;
+  const R = (SIZE - STROKE) / 2 - (compact ? 12 : 20);
   const CIRC = 2 * Math.PI * R;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
@@ -314,11 +315,11 @@ const AttendanceArc = React.memo(function AttendanceArc({
       </Svg>
       {/* Center Text */}
       <View style={[StyleSheet.absoluteFillObject, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ fontSize: 44, fontWeight: '800', color: textColor, letterSpacing: -1 }}>
+        <Text style={{ fontSize: compact ? 30 : 44, fontWeight: '800', color: textColor, letterSpacing: -1 }}>
           {pct}
-          <Text style={{ fontSize: 22, color: subTextColor, fontWeight: '700' }}>%</Text>
+          <Text style={{ fontSize: compact ? 15 : 22, color: subTextColor, fontWeight: '700' }}>%</Text>
         </Text>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: subTextColor, marginTop: -2 }}>present today</Text>
+        <Text style={{ fontSize: compact ? 10 : 13, fontWeight: '700', color: subTextColor, marginTop: -2 }}>present today</Text>
       </View>
     </View>
   );
@@ -354,37 +355,41 @@ const StatCard = React.memo(function StatCard({ value, label, type, isDark }: { 
   return (
     <View style={[
       {
-        flex: 1,
         backgroundColor: cardBg,
-        borderRadius: 20,
-        padding: 16,
+        borderRadius: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        minHeight: 42,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(255,255,255,0.07)' : `${config.shadowColor}18`,
         ...(Platform.OS === 'web' ? {
-          boxShadow: `0px 12px 24px ${config.shadowColor}35, inset 4px 4px 10px rgba(255, 255, 255, 1), inset -4px -4px 10px rgba(0, 0, 0, 0.06)`
+          boxShadow: isDark
+            ? '0px 5px 14px rgba(0,0,0,0.22)'
+            : `0px 5px 14px ${config.shadowColor}13`
         } : {
           shadowColor: config.shadowColor,
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.35,
-          shadowRadius: 16,
-          elevation: 8,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.12,
+          shadowRadius: 7,
+          elevation: 2,
         }),
       }
     ]}>
       <View style={{
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 28,
+        height: 28,
+        borderRadius: 9,
         backgroundColor: config.bg,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 12,
-        ...(Platform.OS === 'web' ? {
-          boxShadow: `inset 2px 2px 4px rgba(255, 255, 255, 0.8), inset -2px -2px 4px rgba(0, 0, 0, 0.08), 0px 4px 8px ${config.shadowColor}25`
-        } : {})
+        marginRight: 9,
       }}>
-        <Ionicons name={config.icon as any} size={20} color={config.color} />
+        <Ionicons name={config.icon as any} size={17} color={config.color} />
       </View>
-      <Text style={{ fontSize: 13, fontWeight: '700', color: labelColor, marginBottom: 4 }}>{label}</Text>
-      <Text style={{ fontSize: 24, fontWeight: '800', color: valueColor, letterSpacing: -0.5 }}>{value}</Text>
+      <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: labelColor }} numberOfLines={1}>{label}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '800', color: valueColor, letterSpacing: -0.5 }}>{value}</Text>
     </View>
   );
 });
@@ -441,25 +446,27 @@ const AttendanceHero = React.memo(function AttendanceHero({ data, onPress, isDar
       style={[
         anim,
         {
-          marginBottom: 20,
-          borderRadius: 32,
+          marginBottom: 16,
+          borderRadius: 24,
           overflow: 'hidden',
           backgroundColor: cardBg,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(99,102,241,0.08)',
           ...(Platform.OS === 'web' ? {
             boxShadow: isDark
-              ? '0px 20px 50px rgba(0,0,0,0.8), inset 2px 2px 4px rgba(255,255,255,0.06), inset -2px -2px 4px rgba(0,0,0,0.5)'
-              : '0px 20px 50px rgba(150,170,200,0.4), 0px 8px 16px rgba(150,170,200,0.2), inset 3px 3px 8px rgba(255,255,255,1), inset -3px -3px 8px rgba(0,0,0,0.04)'
+              ? '0px 14px 34px rgba(0,0,0,0.42), inset 0px 1px 0px rgba(255,255,255,0.06)'
+              : '0px 14px 34px rgba(100,116,139,0.15), inset 0px 1px 0px rgba(255,255,255,0.9)'
           } : {
             shadowColor: isDark ? '#000' : '#8A9BAE',
-            shadowOffset: { width: 0, height: 16 },
-            shadowOpacity: isDark ? 0.7 : 0.4,
-            shadowRadius: 32,
-            elevation: 12,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: isDark ? 0.42 : 0.18,
+            shadowRadius: 18,
+            elevation: 6,
           }),
         }
       ]}
     >
-      <View style={{ padding: isWideLayout ? 36 : 24 }}>
+      <View style={{ padding: isWideLayout ? 22 : 18 }}>
         <Pressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
@@ -473,126 +480,95 @@ const AttendanceHero = React.memo(function AttendanceHero({ data, onPress, isDar
           style={[Platform.OS === 'web' && { cursor: 'pointer' }]}
         >
           {/* 1. Header Section */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: textColor, letterSpacing: -0.5 }}>{"Today's Roll Call"}</Text>
-              {!!classLabel && (
-                <View
-                  style={{
-                    alignSelf: 'flex-start',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginTop: 10,
-                    maxWidth: '100%',
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 18,
-                    backgroundColor: classChipBg,
-                    ...(Platform.OS === 'web' ? {
-                      boxShadow: isDark
-                        ? 'inset 2px 2px 5px rgba(0,0,0,0.35), inset -2px -2px 4px rgba(255,255,255,0.06), 0px 2px 8px rgba(99,102,241,0.15)'
-                        : 'inset 3px 3px 7px rgba(79,70,229,0.14), inset -3px -3px 6px rgba(255,255,255,1), 0px 2px 8px rgba(99,102,241,0.08)'
-                    } : {
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(165,180,252,0.18)' : 'rgba(99,102,241,0.14)',
-                    }),
-                  }}
-                >
-                  <View style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 11,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 8,
-                    backgroundColor: isDark ? 'rgba(165,180,252,0.16)' : '#FFFFFF',
-                    ...(Platform.OS === 'web' ? {
-                      boxShadow: isDark
-                        ? '0px 2px 4px rgba(0,0,0,0.25), inset 1px 1px 2px rgba(255,255,255,0.1)'
-                        : '0px 2px 5px rgba(99,102,241,0.18), inset 1.5px 1.5px 3px rgba(255,255,255,1), inset -1px -1px 2px rgba(79,70,229,0.1)'
-                    } : {
-                      shadowColor: '#6366F1',
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.15,
-                      shadowRadius: 2,
-                      elevation: 1,
-                    }),
-                  }}>
-                    <Ionicons name="school-outline" size={13} color={classChipIcon} />
-                  </View>
-                  <Text
-                    style={{ fontSize: 13, fontWeight: '700', color: classChipText, letterSpacing: -0.2, flexShrink: 1 }}
-                    numberOfLines={1}
-                  >
-                    {classLabel}
-                  </Text>
-                </View>
-              )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: classLabel ? 10 : 8, gap: 8 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: statusColor }} />
-                <Text style={{ fontSize: 14, fontWeight: '600', color: subTextColor, flexShrink: 1 }} numberOfLines={1}>{statusText}</Text>
-              </View>
-            </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <Text style={{ flex: 1, fontSize: 21, fontWeight: '800', color: textColor, letterSpacing: -0.5 }}>{"Today's Roll Call"}</Text>
 
             {/* Pill student count badge */}
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 24,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              borderRadius: 16,
               backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
-              ...(Platform.OS === 'web' ? {
-                boxShadow: isDark
-                  ? 'inset 2px 2px 4px rgba(255,255,255,0.06), inset -2px -2px 4px rgba(0,0,0,0.3)'
-                  : 'inset 3px 3px 6px rgba(255,255,255,1), inset -3px -3px 6px rgba(150,170,200,0.3), 0px 2px 8px rgba(0,0,0,0.04)'
-              } : {})
             }}>
-              <Ionicons name="people-outline" size={16} color={textColor} style={{ marginRight: 6 }} />
-              <Text style={{ fontSize: 14, fontWeight: '700', color: textColor }}>{total} student{total !== 1 ? 's' : ''}</Text>
+              <Ionicons name="people-outline" size={14} color={textColor} style={{ marginRight: 5 }} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: textColor }}>{total} student{total !== 1 ? 's' : ''}</Text>
             </View>
           </View>
 
-          {/* 2. Middle Arc Section */}
-          <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center', marginBottom: 28, marginTop: 10, position: 'relative' }}>
-            {/* Premium Claymorphic Graphics in the whitespace */}
-            <ClayGraphic type="clock" size={32} isDark={isDark} style={{ top: 15, left: '10%' }} />
-            <ClayGraphic type="book" size={28} isDark={isDark} style={{ bottom: 15, left: '14%' }} />
-            <ClayGraphic type="pencil" size={28} isDark={isDark} style={{ top: 25, right: '10%' }} />
-            <ClayGraphic type="cap" size={32} isDark={isDark} style={{ bottom: 25, right: '14%' }} />
-
-            <AttendanceArc pct={pct} isDark={isDark} size={210} stroke={16} />
+          {/* Class and live session status */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 13, minHeight: 28 }}>
+            {!!classLabel && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                maxWidth: '36%',
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                borderRadius: 12,
+                backgroundColor: classChipBg,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(165,180,252,0.16)' : 'rgba(99,102,241,0.10)',
+              }}>
+                <Ionicons name="school-outline" size={13} color={classChipIcon} style={{ marginRight: 5 }} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: classChipText, flexShrink: 1 }} numberOfLines={1}>
+                  {classLabel}
+                </Text>
+              </View>
+            )}
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: classLabel ? 9 : 0 }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor, marginRight: 6 }} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: subTextColor, flex: 1 }} numberOfLines={1}>{statusText}</Text>
+            </View>
           </View>
 
-
-          {/* 3. Stats Cards Row */}
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 28 }}>
-            <StatCard value={present} label="Present" type="present" isDark={isDark} />
-            <StatCard value={absent} label="Absent" type="absent" isDark={isDark} />
-            <StatCard value={unmarked} label="Not marked" type="pending" isDark={isDark} />
+          {/* Compact progress and status summary */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+            <View style={{
+              width: 132,
+              height: 132,
+              borderRadius: 28,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : '#FAFBFD',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(100,116,139,0.07)',
+            }}>
+              <ClayGraphic type="clock" size={22} isDark={isDark} style={{ top: 9, left: 9 }} />
+              <AttendanceArc pct={pct} isDark={isDark} size={126} stroke={10} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12, gap: 7 }}>
+              <StatCard value={present} label="Present" type="present" isDark={isDark} />
+              <StatCard value={absent} label="Absent" type="absent" isDark={isDark} />
+              <StatCard value={unmarked} label="Not marked" type="pending" isDark={isDark} />
+            </View>
           </View>
 
-          {/* 4. Footer Button */}
-          <View style={{
-            borderRadius: 20,
-            backgroundColor: '#6366F1',
+          {/* Slim primary action */}
+          <LinearGradient
+            colors={['#777AF8', '#5558E8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+            borderRadius: 15,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingVertical: 18,
+            paddingVertical: 13,
             ...(Platform.OS === 'web' ? {
-              boxShadow: '0px 12px 24px rgba(99, 102, 241, 0.4), inset 3px 3px 8px rgba(255, 255, 255, 0.6), inset -3px -3px 8px rgba(0, 0, 0, 0.25)'
+              boxShadow: '0px 8px 18px rgba(79,70,229,0.25), inset 0px 1px 0px rgba(255,255,255,0.30)'
             } : {
               shadowColor: '#6366F1',
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.5,
-              shadowRadius: 16,
-              elevation: 10,
+              shadowOffset: { width: 0, height: 5 },
+              shadowOpacity: 0.28,
+              shadowRadius: 10,
+              elevation: 5,
             })
           }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.2 }}>Mark Attendance</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
-          </View>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.1 }}>Mark Attendance</Text>
+            <Ionicons name="arrow-forward" size={17} color="#FFFFFF" style={{ marginLeft: 7 }} />
+          </LinearGradient>
         </Pressable>
       </View>
     </Animated.View>

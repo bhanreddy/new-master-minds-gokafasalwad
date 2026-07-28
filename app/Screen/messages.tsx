@@ -33,7 +33,6 @@ import { MessagesService, type Conversation, type Message, type Recipient } from
 import ScreenLayout from '@/src/components/ScreenLayout';
 import StudentHeader from '@/src/components/StudentHeader';
 import ClayIconButton from '@/src/components/ClayIconButton';
-import MenuOverlay from '@/src/components/MenuOverlay';
 import { useTheme } from '@/src/hooks/useTheme';
 import { SchoolBackground } from '@/components/SchoolBackground';
 import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
@@ -364,8 +363,6 @@ function MessagesListHeader({
 }) {
   const { i18n } = useTranslation();
   const { isDark, theme } = useTheme();
-  const { user } = useAuth();
-  const [menuVisible, setMenuVisible] = useState(false);
   const [isTeluguLang, setIsTeluguLang] = useState(isTeluguCheck(i18n.language));
 
   useEffect(() => {
@@ -402,18 +399,6 @@ function MessagesListHeader({
         <Ionicons name="arrow-back" size={19} color={isDark ? '#F4F0FB' : '#1E293B'} />
       </ClayIconButton>
 
-      <ClayIconButton
-        onPress={() => {
-          setMenuVisible(true);
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }}
-        isDark={isDark}
-        accent={CLAY_ACCENT}
-        size={42}
-      >
-        <Ionicons name="menu" size={19} color={isDark ? '#F4F0FB' : '#1E293B'} />
-      </ClayIconButton>
-
       <View style={styles.listHeaderCenter}>
         <Text style={[styles.listHeaderTitle, { color: theme.colors.textStrong }]} numberOfLines={1}>
           {title}
@@ -447,8 +432,6 @@ function MessagesListHeader({
       >
         <Ionicons name="settings-outline" size={16} color={isDark ? '#F4F0FB' : '#475569'} />
       </ClayIconButton>
-
-      <MenuOverlay visible={menuVisible} onClose={() => setMenuVisible(false)} userType="student" photoUrl={user?.photoUrl} />
     </View>
   );
 }

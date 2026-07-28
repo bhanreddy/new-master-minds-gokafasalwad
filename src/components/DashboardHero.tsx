@@ -19,6 +19,8 @@ interface DashboardHeroProps {
     cardWidth?: number;
     /** Stack greeting above card instead of side by side */
     stacks?: boolean;
+    /** Allow long names to wrap without truncation. */
+    showFullName?: boolean;
     /** Optional icon in the date pill for portal theming */
     eyebrowIcon?: keyof typeof Ionicons.glyphMap;
     /** Use school brand tints instead of default indigo */
@@ -45,6 +47,7 @@ const DashboardHero: React.FC<DashboardHeroProps> = ({
     card,
     cardWidth,
     stacks = false,
+    showFullName = false,
     eyebrowIcon,
     useSchoolBranding = false,
 }) => {
@@ -281,7 +284,7 @@ const DashboardHero: React.FC<DashboardHeroProps> = ({
                                         {eyebrow}
                                     </Text>
                                 </View>
-                                <Text style={styles.greeting} numberOfLines={2}>
+                                <Text style={styles.greeting} numberOfLines={showFullName ? undefined : 2}>
                                     {greeting}, <Text style={{ color: clay.name }}>{name}</Text> 👋
                                 </Text>
                                 {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}

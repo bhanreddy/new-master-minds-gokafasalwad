@@ -6,7 +6,7 @@ import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import StaffHeader from '../../src/components/StaffHeader';
 import ViewAsBanner from '../../src/components/ViewAsBanner';
 import AccountSwitcherSheet from '../../src/components/AccountSwitcherSheet';
-import AvatarUploader, { AvatarUploaderHandle } from '../../src/components/AvatarUploader';
+import { AvatarUploader, type AvatarUploaderHandle } from '../../src/components/AvatarUploader';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -17,6 +17,10 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { ThemeColors } from '../../src/theme/themes';
 import { Staff, StaffService } from '../../src/services/staffService';
 import { describeFingerprintFailure } from '../../src/services/fingerprintGate';
+import {
+    SettingRow,
+    SettingsGroup as Group,
+} from '../../src/components/SettingsSection';
 
 /** Returns the first human-readable ID (not a UUID) from the user object */
 function getHumanId(user: any): string {
@@ -27,126 +31,15 @@ function getHumanId(user: any): string {
   return 'N/A';
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface SettingRowProps {
-    icon: string;
-    iconLib?: 'ion' | 'fa5' | 'mi';
-    iconColor: string;
-    iconBg: string;
-    label: string;
-    sublabel?: string;
-    isLast?: boolean;
-    rightElement?: React.ReactNode;
-    onPress?: () => void;
-    labelColor?: string;
-}
-
-interface GroupProps {
-    title: string;
-    subtitle?: string;
-    delay: number;
-    borderColor?: string;
-    children: React.ReactNode;
-    colors: ThemeColors;
-}
-
-// ─── SettingRow ───────────────────────────────────────────────────────────────
-
-function SettingRow({
-    icon, iconLib = 'ion', iconColor, iconBg,
-    label, sublabel, isLast, rightElement, onPress, labelColor
-}: SettingRowProps) {
-    const Wrapper = onPress ? TouchableOpacity : View;
-    const { theme } = useTheme();
-
-    const IconComponent = () => {
-        if (iconLib === 'fa5') return <FontAwesome5 name={icon as any} size={15} color={iconColor} />;
-        if (iconLib === 'mi') return <MaterialIcons name={icon as any} size={18} color={iconColor} />;
-        return <Ionicons name={icon as any} size={18} color={iconColor} />;
-    };
-
-    return (
-        <>
-            <Wrapper style={RS.row} onPress={onPress} activeOpacity={0.65}>
-                <View style={[RS.iconBox, { backgroundColor: iconBg }]}>
-                    <IconComponent />
-                </View>
-                <View style={RS.labelWrap}>
-                    <Text style={[RS.label, { color: labelColor ?? theme.colors.textStrong }]}>{label}</Text>
-                    {sublabel && <Text style={[RS.sublabel, { color: theme.colors.textMuted }]}>{sublabel}</Text>}
-                </View>
-                <View style={RS.right}>{rightElement}</View>
-            </Wrapper>
-            {!isLast && <View style={[RS.divider, { backgroundColor: theme.colors.borderLight }]} />}
-        </>
-    );
-}
-
-const RS = StyleSheet.create({
-    row: {
-        flexDirection: 'row', alignItems: 'center',
-        paddingVertical: 13, paddingHorizontal: 16,
-    },
-    iconBox: {
-        width: 38, height: 38, borderRadius: 11,
-        justifyContent: 'center', alignItems: 'center', marginRight: 13,
-    },
-    labelWrap: { flex: 1 },
-    label: { fontSize: 15, fontWeight: '500' },
-    sublabel: { fontSize: 12, marginTop: 1 },
-    right: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    divider: {
-        height: StyleSheet.hairlineWidth, marginLeft: 67,
-    },
-});
-
-// ─── Group ────────────────────────────────────────────────────────────────────
-
-function Group({ title, subtitle, delay, borderColor, children, colors }: GroupProps) {
-    return (
-        <Animated.View entering={FadeInDown.delay(delay).duration(480)} style={GS.container}>
-            <View style={GS.header}>
-                <Text style={GS.title}>{title}</Text>
-                {subtitle && <Text style={GS.subtitle}>{subtitle}</Text>}
-            </View>
-            <View style={[GS.card, { backgroundColor: colors.card },
-            borderColor ? { borderColor, borderWidth: 1 } : { borderWidth: 1, borderColor: colors.border }
-            ]}>
-                {children}
-            </View>
-        </Animated.View>
-    );
-}
-
-const GS = StyleSheet.create({
-    container: { marginBottom: 22 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9, paddingHorizontal: 4 },
-    title: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#9CA3AF', textTransform: 'uppercase' },
-    subtitle: { fontSize: 11, color: '#D1D5DB' },
-    card: { borderRadius: 18, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 },
-});
-
-// ─── Stat pill ────────────────────────────────────────────────────────────────
-
-
-const SP = StyleSheet.create({
-    wrap: { alignItems: 'center', flex: 1 },
-    iconDot: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
-    value: { fontSize: 15, fontWeight: '800', color: '#111827' },
-    label: { fontSize: 10, color: '#9CA3AF', marginTop: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
-});
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StaffSettings() {
     const router = useRouter();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const { user, signOut } = useAuth();
     const fingerprint = useFingerprintAuth();
     const { theme, isDark, toggleTheme } = useTheme();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
-    const [updating, setUpdating] = useState(false);
     const [switcherOpen, setSwitcherOpen] = useState(false);
     const { staffId, isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
     const avatarUploaderRef = useRef<AvatarUploaderHandle>(null);
@@ -159,8 +52,6 @@ export default function StaffSettings() {
 
     const displayName = (isViewingAsAdmin ? (viewedStaff?.display_name || viewAsName) : user?.displayName) || 'Staff Member';
     const photoUrl = isViewingAsAdmin ? viewedStaff?.photo_url : user?.photoUrl;
-
-    const soon = (item: string) => alertCompat(item, 'Coming in the next update.');
 
     const handleLogout = () => {
         if (isViewingAsAdmin) {
@@ -267,10 +158,25 @@ export default function StaffSettings() {
                     <SettingRow
                         icon="moon" iconColor="#6366F1" iconBg="#EEF2FF"
                         label="Dark Mode" sublabel={isDark ? 'Currently on' : 'Currently off'}
-                        isLast
                         rightElement={
                             <Switch trackColor={{ false: theme.colors.border, true: '#818CF8' }}
                                 thumbColor="#fff" onValueChange={toggleTheme} value={isDark} />
+                        }
+                    />
+                    <SettingRow
+                        icon="language" iconColor="#3B82F6" iconBg="#EFF6FF"
+                        label="Language (Telugu)"
+                        sublabel="Switch the app between English and Telugu"
+                        isLast
+                        rightElement={
+                            <Switch
+                                trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+                                thumbColor="#fff"
+                                onValueChange={(next) => {
+                                    i18n.changeLanguage(next ? 'te' : 'en').catch(console.error);
+                                }}
+                                value={i18n.language === 'te'}
+                            />
                         }
                     />
                 </Group>
@@ -388,16 +294,19 @@ export default function StaffSettings() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'transparent' },
-    scroll: { padding: 20, paddingBottom: 60 },
+    container: { flex: 1, backgroundColor: colors.background },
+    scroll: {
+        width: '100%', maxWidth: 760, alignSelf: 'center',
+        paddingHorizontal: 16, paddingTop: 18, paddingBottom: 80,
+    },
 
     // Profile card
     profileCard: {
-        backgroundColor: colors.card, borderRadius: 22, padding: 20,
-        marginBottom: 26, overflow: 'hidden',
-        borderWidth: 1, borderColor: colors.border,
-        shadowColor: '#6366F1', shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.07, shadowRadius: 12, elevation: 3,
+        backgroundColor: colors.card, borderRadius: 26, padding: 18,
+        marginBottom: 28, overflow: 'hidden',
+        borderWidth: 1, borderTopWidth: 3, borderColor: colors.border, borderTopColor: '#6366F1',
+        shadowColor: '#6366F1', shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.11, shadowRadius: 18, elevation: 4,
     },
     blob1: {
         position: 'absolute', top: -40, right: -30,
@@ -409,7 +318,7 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
         width: 90, height: 90, borderRadius: 45,
         backgroundColor: '#F59E0B', opacity: 0.07,
     },
-    profileTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+    profileTop: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', rowGap: 12 },
     avatarWrap: { position: 'relative', marginRight: 14 },
     avatar: {
         width: 62, height: 62, borderRadius: 18,
@@ -421,18 +330,18 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
         backgroundColor: '#10B981',
         borderWidth: 2, borderColor: colors.card,
     },
-    profileMeta: { flex: 1 },
-    profileName: { fontSize: 17, fontWeight: '800', color: colors.textStrong, marginBottom: 5 },
+    profileMeta: { flex: 1, minWidth: 145 },
+    profileName: { fontSize: 18, lineHeight: 23, fontWeight: '800', color: colors.textStrong, marginBottom: 7 },
     roleRow: {
         flexDirection: 'row', alignItems: 'center', gap: 5,
-        backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 4,
-        borderRadius: 6, alignSelf: 'flex-start',
+        backgroundColor: '#EEF2FF', paddingHorizontal: 9, paddingVertical: 5,
+        borderRadius: 9, alignSelf: 'flex-start',
     },
     roleText: { fontSize: 11, fontWeight: '600', color: '#6366F1' },
     editChip: {
         flexDirection: 'row', alignItems: 'center', gap: 4,
-        backgroundColor: '#EEF2FF', paddingHorizontal: 10, paddingVertical: 7,
-        borderRadius: 10, borderWidth: 1, borderColor: '#C7D2FE',
+        backgroundColor: '#EEF2FF', paddingHorizontal: 12, paddingVertical: 8,
+        borderRadius: 999, borderWidth: 1, borderColor: '#C7D2FE', marginLeft: 8,
     },
     editChipText: { fontSize: 12, fontWeight: '700', color: '#6366F1' },
     profileDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginBottom: 16 },
@@ -445,8 +354,10 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     // Logout
     logoutBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-        backgroundColor: '#FEF2F2', paddingVertical: 15, borderRadius: 16,
-        marginTop: 4, borderWidth: 1, borderColor: '#FECACA',
+        backgroundColor: '#FEF2F2', minHeight: 58, borderRadius: 20,
+        marginTop: 2, borderWidth: 1, borderColor: '#FECACA',
+        shadowColor: '#EF4444', shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
     },
     logoutIconWrap: {
         width: 30, height: 30, borderRadius: 9,
