@@ -10,6 +10,7 @@ import {
   Switch,
   Platform,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,8 +25,9 @@ import LogoLoader from '../../src/components/LogoLoader';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import { t_field } from '../../src/utils/lang';
-import { ClassService, ClassInfo, AcademicYear } from '../../src/services/classService';
+import { ClassService, ClassInfo, AcademicYear, ClassSection } from '../../src/services/classService';
 import { ResultService } from '../../src/services/commonServices';
+import { SchoolSettings, SchoolSettingsService } from '../../src/services/schoolSettingsService';
 import { EXAM_CATEGORIES, ExamCategory, examCategoryFor } from '../../src/constants/examCategories';
 import {
   ExamTimetableService,
@@ -44,6 +46,8 @@ import {
   SeatingStrategy,
 } from '../../src/services/examService';
 import { TimetableService, TimetableTeacher } from '../../src/services/timetableService';
+import { downloadHallTicketPdf } from '../../src/utils/hallTicketPdf';
+import { SCHOOL_CONFIG } from '../../src/constants/schoolConfig';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +61,23 @@ const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
 };
 function categoryGradient(examType: string, fallback: string): [string, string] {
   return CATEGORY_GRADIENTS[examType] || [fallback, fallback];
+}
+
+function hallTicketSchoolSettings(settings: SchoolSettings | null): Partial<SchoolSettings> {
+  const configuredName = settings?.school_name?.trim() || '';
+  const hasPlaceholderName =
+    !configuredName ||
+    /^(default\s+school\s+name|school|school\s+name)$/i.test(configuredName);
+
+  return {
+    ...settings,
+    school_name: hasPlaceholderName ? SCHOOL_CONFIG.name : configuredName,
+    school_address: settings?.school_address?.trim() || SCHOOL_CONFIG.address,
+    school_phone: settings?.school_phone?.trim() || SCHOOL_CONFIG.contact,
+    school_email: settings?.school_email?.trim() || SCHOOL_CONFIG.email,
+    school_website: settings?.school_website?.trim() || SCHOOL_CONFIG.website,
+    school_tagline: settings?.school_tagline?.trim() || SCHOOL_CONFIG.tagline,
+  };
 }
 
 /** Subject glyph + stable color, matching the student timetable's language. */
@@ -150,6 +171,7 @@ export default function AdminExams() {
   // list view
   const [exams, setExams] = useState<ExamListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hallTicketExam, setHallTicketExam] = useState<ExamListItem | null>(null);
 
   // detail view
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
@@ -255,9 +277,12 @@ export default function AdminExams() {
       }
     };
     if (publishing) {
+      const hasSeating = allocations.length > 0;
       alertCompat(
         'Publish timetable?',
-        'Students and teachers will immediately see this exam schedule.',
+        hasSeating
+          ? 'Students and teachers will immediately see this exam schedule, seating and invigilators.'
+          : 'Students and teachers will see the schedule. Seating isn’t allocated yet — you can still auto-seat afterwards.',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Publish', onPress: doIt },
@@ -266,7 +291,65 @@ export default function AdminExams() {
     } else {
       doIt();
     }
-  }, [detail, refreshDetail]);
+  }, [detail, refreshDetail, allocations.length]);
+
+  /** One-click seating: reuse last params, or all rooms + all staff. */
+  const handleQuickAllocate = useCallback(async () => {
+    if (!detail) return;
+
+    const run = async () => {
+      try {
+        setSaving(true);
+        let params = allocParams;
+        if (!params?.room_ids?.length) {
+          const [rooms, teachers] = await Promise.all([
+            ExamAllocationService.getRooms(),
+            TimetableService.getTeacherOptions().catch(() => [] as TimetableTeacher[]),
+          ]);
+          if (rooms.length === 0) {
+            alertCompat(
+              'Add rooms first',
+              'Define at least one exam room, then seating can be allocated automatically.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Manage rooms', onPress: () => setRoomsVisible(true) },
+              ]
+            );
+            return;
+          }
+          params = {
+            room_ids: rooms.map((r) => r.id),
+            strategy: 'sequential',
+            invigilator_staff_ids: teachers.map((t) => t.id),
+          };
+        }
+        const result = await ExamAllocationService.generate(detail.exam.id, params);
+        await refreshDetail();
+        const lines = [
+          `${result.students_seated} student(s) seated across ${result.sittings} sitting(s).`,
+          ...(result.warnings || []),
+        ];
+        alertCompat('Seating ready', lines.join('\n'));
+      } catch (err: any) {
+        alertCompat('Could not allocate', err?.message || 'Allocation failed');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    if (allocations.length > 0) {
+      alertCompat(
+        'Reallocate seating?',
+        'Current room and invigilator assignments will be replaced.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Reallocate', onPress: () => { void run(); } },
+        ]
+      );
+    } else {
+      await run();
+    }
+  }, [detail, allocParams, refreshDetail, allocations.length]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -289,10 +372,12 @@ export default function AdminExams() {
             onGenerate={() => setGenVisible(true)}
             onEditPaper={setEditPaper}
             onPublishToggle={handlePublishToggle}
-            onAllocate={() => setAllocVisible(true)}
+            onQuickAllocate={handleQuickAllocate}
+            onCustomizeAllocate={() => setAllocVisible(true)}
             onManageRooms={() => setRoomsVisible(true)}
             onOpenRoom={setRoomDetail}
             onAddRoomToSitting={setAddRoomSitting}
+            onHallTickets={() => setHallTicketExam(detail.exam)}
           />
         )
       ) : loading ? (
@@ -303,7 +388,17 @@ export default function AdminExams() {
           theme={theme}
           exams={exams}
           onOpen={openDetail}
+          onHallTickets={setHallTicketExam}
           onCreate={() => setCreateVisible(true)}
+        />
+      )}
+
+      {hallTicketExam && (
+        <HallTicketModal
+          exam={hallTicketExam}
+          styles={styles}
+          theme={theme}
+          onClose={() => setHallTicketExam(null)}
         />
       )}
 
@@ -337,8 +432,21 @@ export default function AdminExams() {
               const result = await ExamTimetableService.generate(detail.exam.id, params);
               setGenVisible(false);
               await refreshDetail();
-              const lines = [`${result.inserted} paper(s) scheduled.`, ...(result.warnings || [])];
-              alertCompat('Timetable generated', lines.join('\n'));
+              const summary = [`${result.inserted} paper(s) scheduled.`, ...(result.warnings || [])].join('\n');
+              // Offer one-tap seating so admins don't hunt for a second wizard.
+              try {
+                const rooms = await ExamAllocationService.getRooms();
+                if (rooms.length > 0) {
+                  alertCompat('Timetable ready', `${summary}\n\nSeat students automatically?`, [
+                    { text: 'Later', style: 'cancel' },
+                    { text: 'Auto-seat', onPress: () => { void handleQuickAllocate(); } },
+                  ]);
+                } else {
+                  alertCompat('Timetable ready', summary);
+                }
+              } catch {
+                alertCompat('Timetable ready', summary);
+              }
             } catch (err: any) {
               alertCompat('Could not generate', err?.message || 'Generation failed');
             } finally {
@@ -458,21 +566,39 @@ export default function AdminExams() {
 
 // ─── List view ────────────────────────────────────────────────────────────────
 
+type ExamFilter = 'all' | 'live' | 'draft' | 'setup';
+
+function examNeedsSetup(exam: ExamListItem): boolean {
+  return !exam.timetable_published && (exam.papers_count || 0) === 0;
+}
+
+function examIsDraft(exam: ExamListItem): boolean {
+  return !exam.timetable_published && (exam.papers_count || 0) > 0;
+}
+
 const ExamCard = React.memo(function ExamCard({
   exam,
   styles,
   theme,
   onPress,
+  onHallTickets,
 }: {
   exam: ExamListItem;
   styles: Styles;
   theme: Theme;
   onPress: (id: string) => void;
+  onHallTickets: (exam: ExamListItem) => void;
 }) {
   const category = examCategoryFor(exam.exam_type);
   const gradient = categoryGradient(exam.exam_type, category.color);
   const live = !!exam.timetable_published;
   const hasPapers = (exam.papers_count || 0) > 0;
+  const nextHint = live
+    ? null
+    : !hasPapers
+      ? 'Generate timetable'
+      : 'Finish & publish';
+
   return (
     <TouchableOpacity style={styles.examCard} activeOpacity={0.72} onPress={() => onPress(exam.id)}>
       <LinearGradient
@@ -481,7 +607,7 @@ const ExamCard = React.memo(function ExamCard({
         end={{ x: 1, y: 1 }}
         style={styles.examCardIconGradient}
       >
-        <Ionicons name={category.icon} size={21} color="#FFFFFF" />
+        <Ionicons name={category.icon} size={20} color="#FFFFFF" />
       </LinearGradient>
       <View style={styles.examCardBody}>
         <View style={styles.examCardTitleRow}>
@@ -500,29 +626,37 @@ const ExamCard = React.memo(function ExamCard({
             </View>
           ) : (
             <View style={[styles.statusPill, { backgroundColor: theme.colors.borderLight }]}>
-              <Text style={[styles.statusPillText, { color: theme.colors.textTertiary }]}>New</Text>
+              <Text style={[styles.statusPillText, { color: theme.colors.textTertiary }]}>Setup</Text>
             </View>
           )}
         </View>
         <Text style={styles.examCardSub} numberOfLines={1}>
           {category.title}
+          {exam.start_date ? ` · ${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : ' · Not scheduled'}
+          {hasPapers ? ` · ${exam.papers_count} papers` : ''}
         </Text>
-        <View style={styles.examCardMetaRow}>
-          <View style={styles.metaChip}>
-            <Ionicons name="calendar-clear-outline" size={11} color={theme.colors.textSecondary} />
-            <Text style={styles.metaChipText}>
-              {exam.start_date ? `${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : 'Not scheduled'}
-            </Text>
-          </View>
-          {hasPapers && (
-            <View style={styles.metaChip}>
-              <Ionicons name="documents-outline" size={11} color={theme.colors.textSecondary} />
-              <Text style={styles.metaChipText}>{exam.papers_count} papers</Text>
-            </View>
-          )}
-        </View>
+        {nextHint && (
+          <Text style={styles.examCardHint} numberOfLines={1}>
+            Next: {nextHint}
+          </Text>
+        )}
       </View>
-      <Ionicons name="chevron-forward" size={17} color={theme.colors.textTertiary} />
+      {live && hasPapers && (
+        <TouchableOpacity
+          style={styles.hallTicketIconBtn}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Download hall tickets for ${exam.name}`}
+          onPress={(e) => {
+            (e as any)?.stopPropagation?.();
+            onHallTickets(exam);
+          }}
+        >
+          <Ionicons name="download-outline" size={18} color={theme.colors.primary} />
+        </TouchableOpacity>
+      )}
+      <Ionicons name="chevron-forward" size={16} color={theme.colors.textTertiary} />
     </TouchableOpacity>
   );
 });
@@ -532,92 +666,370 @@ function ExamListView({
   theme,
   exams,
   onOpen,
+  onHallTickets,
   onCreate,
 }: {
   styles: Styles;
   theme: Theme;
   exams: ExamListItem[];
   onOpen: (id: string) => void;
+  onHallTickets: (exam: ExamListItem) => void;
   onCreate: () => void;
 }) {
-  const liveCount = exams.filter((e) => e.timetable_published).length;
-  const draftCount = exams.filter((e) => !e.timetable_published && (e.papers_count || 0) > 0).length;
+  const [filter, setFilter] = useState<ExamFilter>('all');
+
+  const counts = useMemo(
+    () => ({
+      all: exams.length,
+      live: exams.filter((e) => e.timetable_published).length,
+      draft: exams.filter(examIsDraft).length,
+      setup: exams.filter(examNeedsSetup).length,
+    }),
+    [exams]
+  );
+
+  const filtered = useMemo(() => {
+    if (filter === 'live') return exams.filter((e) => e.timetable_published);
+    if (filter === 'draft') return exams.filter(examIsDraft);
+    if (filter === 'setup') return exams.filter(examNeedsSetup);
+    return exams;
+  }, [exams, filter]);
+
+  const filters: { key: ExamFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: counts.all },
+    { key: 'live', label: 'Live', count: counts.live },
+    { key: 'draft', label: 'Drafts', count: counts.draft },
+    { key: 'setup', label: 'Setup', count: counts.setup },
+  ];
 
   const renderItem = useCallback(
     ({ item, index }: { item: ExamListItem; index: number }) => (
-      <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 45).duration(300)}>
-        <ExamCard exam={item} styles={styles} theme={theme} onPress={onOpen} />
+      <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 40).duration(280)}>
+        <ExamCard
+          exam={item}
+          styles={styles}
+          theme={theme}
+          onPress={onOpen}
+          onHallTickets={onHallTickets}
+        />
       </Animated.View>
     ),
-    [styles, theme, onOpen]
+    [styles, theme, onOpen, onHallTickets]
   );
 
   return (
     <View style={styles.flex}>
       <FlatList
-        data={exams}
+        data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           exams.length > 0 ? (
-            <Animated.View entering={FadeIn.duration(300)} style={styles.statsStrip}>
-              <View style={styles.statCell}>
-                <Text style={styles.statValue}>{exams.length}</Text>
-                <Text style={styles.statLabel}>Exams</Text>
+            <Animated.View entering={FadeIn.duration(280)} style={styles.listHeader}>
+              <View style={styles.listHeaderTop}>
+                <View>
+                  <Text style={styles.listHeaderTitle}>Exams</Text>
+                  <Text style={styles.listHeaderSub}>
+                    {counts.live} live · {counts.draft} draft · {counts.setup} to set up
+                  </Text>
+                </View>
+                <TouchableOpacity activeOpacity={0.85} onPress={onCreate}>
+                  <LinearGradient
+                    colors={['#4F46E5', '#7C3AED']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.headerNewBtn}
+                  >
+                    <Ionicons name="add" size={16} color="#FFFFFF" />
+                    <Text style={styles.headerNewBtnText}>New</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: theme.colors.success }]}>{liveCount}</Text>
-                <Text style={styles.statLabel}>Live</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statCell}>
-                <Text style={[styles.statValue, { color: theme.colors.warning }]}>{draftCount}</Text>
-                <Text style={styles.statLabel}>Drafts</Text>
-              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterRow}
+              >
+                {filters.map((f) => {
+                  if (f.key !== 'all' && f.count === 0) return null;
+                  const active = filter === f.key;
+                  return (
+                    <TouchableOpacity
+                      key={f.key}
+                      style={[styles.filterChip, active && styles.filterChipActive]}
+                      onPress={() => setFilter(f.key)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                        {f.label}
+                        {f.key !== 'all' ? ` ${f.count}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </Animated.View>
           ) : null
         }
         ListEmptyComponent={
           <Animated.View entering={FadeInDown.duration(400)} style={styles.emptyWrap}>
-            <View style={styles.emptyIconRing}>
-              <Ionicons name="calendar-outline" size={34} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Plan your first exam</Text>
-            <Text style={styles.emptyText}>
-              Pick the classes, dates and sessions — the timetable, seating and invigilation are
-              generated for you, and every detail stays editable.
-            </Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={onCreate}>
-              <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.emptyCta}
-              >
-                <Ionicons name="add" size={17} color="#FFFFFF" />
-                <Text style={styles.emptyCtaText}>Create exam</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            {exams.length > 0 ? (
+              <>
+                <Text style={styles.emptyTitle}>Nothing in this filter</Text>
+                <Text style={styles.emptyText}>Try another tab, or create a new exam.</Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.emptyIconRing}>
+                  <Ionicons name="calendar-outline" size={34} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.emptyTitle}>Plan your first exam</Text>
+                <Text style={styles.emptyText}>
+                  Choose classes and dates — timetable, seating and invigilation are built for you.
+                </Text>
+                <TouchableOpacity activeOpacity={0.85} onPress={onCreate}>
+                  <LinearGradient
+                    colors={['#4F46E5', '#7C3AED']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.emptyCta}
+                  >
+                    <Ionicons name="add" size={17} color="#FFFFFF" />
+                    <Text style={styles.emptyCtaText}>Create exam</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
           </Animated.View>
         }
       />
-      {exams.length > 0 && (
-        <TouchableOpacity style={styles.fabWrap} activeOpacity={0.85} onPress={onCreate}>
-          <LinearGradient
-            colors={['#4F46E5', '#7C3AED']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.primaryFab}
-          >
-            <Ionicons name="add" size={21} color="#FFFFFF" />
-            <Text style={styles.primaryFabText}>New Exam</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
     </View>
+  );
+}
+
+// ─── Hall-ticket download ─────────────────────────────────────────────────────
+
+function HallTicketModal({
+  exam,
+  styles,
+  theme,
+  onClose,
+}: {
+  exam: ExamListItem;
+  styles: Styles;
+  theme: Theme;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<ExamTimetableDetail | null>(null);
+  const [mappings, setMappings] = useState<ClassSection[]>([]);
+  const [school, setSchool] = useState<SchoolSettings | null>(null);
+  const [classId, setClassId] = useState('');
+  const [sectionId, setSectionId] = useState('');
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingOptions(true);
+    Promise.all([
+      ExamTimetableService.getTimetable(exam.id),
+      ClassService.getClassSections(),
+      SchoolSettingsService.getSettings().catch(() => null),
+    ])
+      .then(([timetable, classMappings, settings]) => {
+        if (!active) return;
+        setDetail(timetable);
+        setMappings(
+          classMappings.filter(
+            (mapping) => mapping.academic_year_id === timetable.exam.academic_year_id,
+          ),
+        );
+        setSchool(settings);
+      })
+      .catch((err: any) => {
+        if (active) {
+          alertCompat('Could not load hall tickets', err?.message || 'Please try again.');
+          onClose();
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingOptions(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [exam.id, onClose]);
+
+  const examClassIds = useMemo(
+    () => new Set((detail?.papers || []).map((paper) => paper.class_id)),
+    [detail],
+  );
+  const classOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const mapping of mappings) {
+      if (examClassIds.has(mapping.class_id)) {
+        byId.set(mapping.class_id, { id: mapping.class_id, name: mapping.class_name });
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  }, [examClassIds, mappings]);
+  const sectionOptions = useMemo(
+    () =>
+      mappings
+        .filter((mapping) => mapping.class_id === classId)
+        .map((mapping) => ({ id: mapping.section_id, name: mapping.section_name }))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    [classId, mappings],
+  );
+
+  useEffect(() => {
+    if (classOptions.length === 1 && !classId) setClassId(classOptions[0].id);
+  }, [classId, classOptions]);
+
+  useEffect(() => {
+    if (sectionOptions.length === 1 && !sectionId) setSectionId(sectionOptions[0].id);
+  }, [sectionId, sectionOptions]);
+
+  const handleClassPress = (nextClassId: string) => {
+    setClassId(nextClassId);
+    setSectionId('');
+  };
+
+  const handleDownload = async () => {
+    if (!classId || !sectionId) {
+      alertCompat('Select class and section', 'Both filters are required to create the hall-ticket batch.');
+      return;
+    }
+
+    try {
+      setDownloading(true);
+      const data = await ExamTimetableService.getHallTicketData(exam.id, classId, sectionId);
+      if (data.students.length === 0) {
+        alertCompat('No students found', 'There are no active students in this class and section.');
+        return;
+      }
+
+      const fileName = await downloadHallTicketPdf({
+        examName: t_field(data.exam.name, data.exam.name_te),
+        academicYear: data.exam.academic_year,
+        className: data.class_section.class_name,
+        sectionName: data.class_section.section_name,
+        students: data.students,
+        papers: data.papers,
+        school: hallTicketSchoolSettings(school),
+      });
+      if (Platform.OS === 'web') {
+        alertCompat(
+          'Hall tickets downloaded',
+          `${data.students.length} hall ticket${data.students.length === 1 ? '' : 's'} saved as ${fileName}.`,
+        );
+      }
+    } catch (err: any) {
+      alertCompat('Download failed', err?.message || 'Could not generate hall tickets.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={() => !downloading && onClose()}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.flex}>
+              <Text style={styles.modalTitle}>Download hall tickets</Text>
+              <Text style={styles.hallTicketModalExam} numberOfLines={1}>
+                {t_field(exam.name, exam.name_te)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              disabled={downloading}
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {loadingOptions ? (
+            <View style={styles.hallTicketLoading}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.helperText}>Loading classes and sections…</Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.hallTicketInfo}>
+                <Ionicons name="cut-outline" size={17} color={theme.colors.primary} />
+                <Text style={styles.hallTicketInfoText}>
+                  Three tearable hall tickets per A4 page, with your school logo in the header and as
+                  a watermark. Each ticket includes the full exam schedule.
+                </Text>
+              </View>
+
+              <Text style={styles.fieldLabel}>Class</Text>
+              <View style={styles.chipWrap}>
+                {classOptions.map((item) => {
+                  const active = item.id === classId;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.chip, active && styles.chipActive]}
+                      activeOpacity={0.7}
+                      onPress={() => handleClassPress(item.id)}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {classOptions.length === 0 && (
+                <Text style={styles.helperText}>No scheduled classes are available for this exam.</Text>
+              )}
+
+              <Text style={styles.fieldLabel}>Section</Text>
+              {!classId ? (
+                <Text style={styles.helperText}>Select a class to see its sections.</Text>
+              ) : sectionOptions.length === 0 ? (
+                <Text style={styles.helperText}>No sections are mapped to this class for the exam year.</Text>
+              ) : (
+                <View style={styles.chipWrap}>
+                  {sectionOptions.map((item) => {
+                    const active = item.id === sectionId;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.chip, active && styles.chipActive]}
+                        activeOpacity={0.7}
+                        onPress={() => setSectionId(item.id)}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.modalPrimaryBtn,
+                  (!classId || !sectionId || downloading) && styles.disabledBtn,
+                ]}
+                activeOpacity={0.8}
+                disabled={!classId || !sectionId || downloading}
+                onPress={handleDownload}
+              >
+                <Ionicons name="download-outline" size={17} color="#FFFFFF" />
+                <Text style={styles.modalPrimaryBtnText}>
+                  {downloading ? 'Creating PDF…' : 'Download A4 hall tickets'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -633,10 +1045,12 @@ function ExamDetailView({
   onGenerate,
   onEditPaper,
   onPublishToggle,
-  onAllocate,
+  onQuickAllocate,
+  onCustomizeAllocate,
   onManageRooms,
   onOpenRoom,
   onAddRoomToSitting,
+  onHallTickets,
 }: {
   styles: Styles;
   theme: Theme;
@@ -647,16 +1061,20 @@ function ExamDetailView({
   onGenerate: () => void;
   onEditPaper: (p: ExamPaper) => void;
   onPublishToggle: () => void;
-  onAllocate: () => void;
+  onQuickAllocate: () => void;
+  onCustomizeAllocate: () => void;
   onManageRooms: () => void;
   onOpenRoom: (a: ExamRoomAllocation) => void;
   onAddRoomToSitting: (s: { exam_date: string; session_start: string }) => void;
+  onHallTickets: () => void;
 }) {
   const { exam, papers } = detail;
   const category = examCategoryFor(exam.exam_type);
   const groups = useMemo(() => groupPapersByDate(papers), [papers]);
   const published = !!exam.timetable_published;
   const missingTeachers = papers.filter((p) => p.has_teacher === false).length;
+  const hasSeating = allocations.length > 0;
+  const [seatingOpen, setSeatingOpen] = useState(!published || !hasSeating);
 
   // Group room allocations into sittings (date + session).
   const sittingGroups = useMemo(() => {
@@ -675,6 +1093,39 @@ function ExamDetailView({
     );
   }, [allocations]);
 
+  const seatedCount = allocations.reduce((n, a) => n + (a.seats_count || 0), 0);
+  const invigilatorCount = new Set(
+    allocations.map((a) => a.invigilator_staff_id).filter(Boolean)
+  ).size;
+  const missingInvigilators = allocations.filter((a) => !a.invigilator_staff_id).length;
+
+  // One clear next step — never show three competing primary buttons.
+  // Publish stays on the bottom bar once schedule + seating are done.
+  type NextStep =
+    | { kind: 'generate'; title: string; subtitle: string; cta: string; onPress: () => void }
+    | { kind: 'seat'; title: string; subtitle: string; cta: string; onPress: () => void }
+    | null;
+
+  const nextStep: NextStep = published
+    ? null
+    : papers.length === 0
+      ? {
+          kind: 'generate',
+          title: 'Build the timetable',
+          subtitle: 'Pick classes and dates — papers are scheduled automatically.',
+          cta: 'Generate timetable',
+          onPress: onGenerate,
+        }
+      : !hasSeating
+        ? {
+            kind: 'seat',
+            title: 'Seat students',
+            subtitle: 'Auto-assign rooms and balance invigilators in one tap.',
+            cta: 'Auto-seat',
+            onPress: onQuickAllocate,
+          }
+        : null;
+
   return (
     <View style={styles.flex}>
       <ScrollView contentContainerStyle={styles.detailContent}>
@@ -683,7 +1134,7 @@ function ExamDetailView({
           <Text style={styles.backRowText}>All exams</Text>
         </TouchableOpacity>
 
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.summaryCard}>
+        <Animated.View entering={FadeInDown.duration(280)} style={styles.summaryCard}>
           <LinearGradient
             colors={categoryGradient(exam.exam_type, category.color)}
             start={{ x: 0, y: 0 }}
@@ -698,11 +1149,14 @@ function ExamDetailView({
                 end={{ x: 1, y: 1 }}
                 style={styles.examCardIconGradient}
               >
-                <Ionicons name={category.icon} size={21} color="#FFFFFF" />
+                <Ionicons name={category.icon} size={20} color="#FFFFFF" />
               </LinearGradient>
               <View style={styles.flex}>
                 <Text style={styles.detailTitle}>{t_field(exam.name, exam.name_te)}</Text>
-                <Text style={styles.examCardSub}>{category.title}</Text>
+                <Text style={styles.examCardSub}>
+                  {category.title}
+                  {exam.academic_year ? ` · ${exam.academic_year}` : ''}
+                </Text>
               </View>
               <View
                 style={[
@@ -720,156 +1174,102 @@ function ExamDetailView({
                 </Text>
               </View>
             </View>
-            <View style={styles.examCardMetaRow}>
-              <View style={styles.metaChip}>
-                <Ionicons name="school-outline" size={11} color={theme.colors.textSecondary} />
-                <Text style={styles.metaChipText}>{exam.academic_year}</Text>
+
+            <Text style={styles.summaryMetaLine} numberOfLines={1}>
+              {exam.start_date ? `${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : 'Not scheduled'}
+              {papers.length > 0 ? ` · ${papers.length} papers` : ''}
+              {hasSeating ? ` · ${seatedCount} seated` : ''}
+            </Text>
+
+            {/* Progress: Schedule → Seating → Live */}
+            <View style={styles.progressRow}>
+              {[
+                { label: 'Schedule', done: papers.length > 0 },
+                { label: 'Seating', done: hasSeating },
+                { label: 'Live', done: published },
+              ].map((step, i, arr) => (
+                <React.Fragment key={step.label}>
+                  <View style={styles.progressStep}>
+                    <View
+                      style={[
+                        styles.progressDot,
+                        {
+                          backgroundColor: step.done ? theme.colors.success : theme.colors.borderLight,
+                        },
+                      ]}
+                    >
+                      {step.done && <Ionicons name="checkmark" size={10} color="#FFFFFF" />}
+                    </View>
+                    <Text
+                      style={[
+                        styles.progressLabel,
+                        { color: step.done ? theme.colors.textStrong : theme.colors.textTertiary },
+                      ]}
+                    >
+                      {step.label}
+                    </Text>
+                  </View>
+                  {i < arr.length - 1 && (
+                    <View
+                      style={[
+                        styles.progressLine,
+                        { backgroundColor: step.done ? theme.colors.success : theme.colors.borderLight },
+                      ]}
+                    />
+                  )}
+                </React.Fragment>
+              ))}
+            </View>
+
+            {papers.length > 0 && (
+              <View style={styles.quietActions}>
+                <TouchableOpacity onPress={onGenerate} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
+                  <Text style={styles.quietActionText}>Regenerate</Text>
+                </TouchableOpacity>
+                <Text style={styles.quietActionDot}>·</Text>
+                <TouchableOpacity onPress={onHallTickets} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
+                  <Text style={styles.quietActionText}>Hall tickets</Text>
+                </TouchableOpacity>
+                <Text style={styles.quietActionDot}>·</Text>
+                <TouchableOpacity onPress={onManageRooms} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
+                  <Text style={styles.quietActionText}>Rooms</Text>
+                </TouchableOpacity>
               </View>
-              <View style={styles.metaChip}>
-                <Ionicons name="calendar-clear-outline" size={11} color={theme.colors.textSecondary} />
-                <Text style={styles.metaChipText}>
-                  {exam.start_date ? `${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : 'Not scheduled'}
-                </Text>
-              </View>
-              {papers.length > 0 && (
-                <View style={styles.metaChip}>
-                  <Ionicons name="documents-outline" size={11} color={theme.colors.textSecondary} />
-                  <Text style={styles.metaChipText}>{papers.length} papers</Text>
-                </View>
+            )}
+          </View>
+        </Animated.View>
+
+        {/* Single next-step card — the only loud CTA on drafts */}
+        {nextStep && (
+          <Animated.View entering={FadeInDown.delay(60).duration(280)} style={styles.nextStepCard}>
+            <View style={styles.flex}>
+              <Text style={styles.nextStepTitle}>{nextStep.title}</Text>
+              <Text style={styles.nextStepSub}>{nextStep.subtitle}</Text>
+              {nextStep.kind === 'seat' && (
+                <TouchableOpacity onPress={onCustomizeAllocate} activeOpacity={0.7} style={styles.nextStepAlt}>
+                  <Text style={styles.quietActionText}>Customize rooms & invigilators</Text>
+                </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity activeOpacity={0.85} onPress={onGenerate}>
+            <TouchableOpacity activeOpacity={0.85} disabled={saving} onPress={nextStep.onPress}>
               <LinearGradient
                 colors={['#4F46E5', '#7C3AED']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
-                style={styles.generateBtn}
+                style={[styles.nextStepBtn, saving && styles.disabledBtn]}
               >
-                <Ionicons name="sparkles" size={15} color="#FFFFFF" />
-                <Text style={styles.generateBtnText}>
-                  {papers.length > 0 ? 'Regenerate timetable' : 'Generate timetable'}
-                </Text>
+                <Ionicons
+                  name={nextStep.kind === 'generate' ? 'sparkles' : 'grid-outline'}
+                  size={15}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.nextStepBtnText}>{nextStep.cta}</Text>
               </LinearGradient>
             </TouchableOpacity>
-          </View>
-        </Animated.View>
-
-        {/* Seating & invigilation */}
-        {papers.length > 0 && (
-          <View style={styles.dateGroup}>
-            <View style={styles.seatingHeaderRow}>
-              <View style={[styles.sectionHeaderRow, { marginBottom: 0 }]}>
-                <View style={styles.sectionIconChip}>
-                  <Ionicons name="grid-outline" size={13} color={theme.colors.primary} />
-                </View>
-                <Text style={styles.sectionHeaderText}>Seating & invigilation</Text>
-              </View>
-              <TouchableOpacity onPress={onManageRooms} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.seatingLink}>Manage rooms</Text>
-              </TouchableOpacity>
-            </View>
-            {sittingGroups.length === 0 ? (
-              <TouchableOpacity style={styles.allocateCta} activeOpacity={0.85} onPress={onAllocate}>
-                <Ionicons name="grid-outline" size={16} color={theme.colors.primary} />
-                <Text style={styles.allocateCtaText}>Allocate rooms & invigilators</Text>
-              </TouchableOpacity>
-            ) : (
-              <>
-                {sittingGroups.map((sitting) => (
-                  <View key={`${sitting.exam_date}|${sitting.session_start}`} style={styles.sittingBlock}>
-                    <Text style={styles.sittingLabel}>
-                      {fmtDate(sitting.exam_date)}
-                      {sitting.session_start !== '00:00:00' ? ` · ${fmtTime(sitting.session_start)}` : ''}
-                    </Text>
-                    <View style={styles.dateCard}>
-                      {sitting.rooms.map((room, i) => {
-                        const fill = room.capacity > 0 ? Math.min(1, room.seats_count / room.capacity) : 0;
-                        const fillColor =
-                          fill >= 1 ? theme.colors.danger : fill >= 0.85 ? theme.colors.warning : theme.colors.success;
-                        return (
-                          <TouchableOpacity
-                            key={room.id}
-                            style={[styles.paperRow, i > 0 && styles.paperRowBorder]}
-                            activeOpacity={0.7}
-                            onPress={() => onOpenRoom(room)}
-                          >
-                            <View style={[styles.subjectTile, { backgroundColor: `${theme.colors.primary}12` }]}>
-                              <Ionicons name="business-outline" size={16} color={theme.colors.primary} />
-                            </View>
-                            <View style={styles.flex}>
-                              <View style={styles.paperTitleRow}>
-                                <Text style={styles.paperSubject} numberOfLines={1}>{room.room_name}</Text>
-                                <Text style={styles.roomCount}>
-                                  {room.seats_count}
-                                  <Text style={styles.roomCountTotal}>/{room.capacity}</Text>
-                                </Text>
-                              </View>
-                              <View style={styles.capacityTrack}>
-                                <View
-                                  style={[styles.capacityFill, { width: `${Math.round(fill * 100)}%`, backgroundColor: fillColor }]}
-                                />
-                              </View>
-                              <View style={styles.paperMetaRow}>
-                                {room.invigilator_name ? (
-                                  <>
-                                    <View style={styles.invigAvatar}>
-                                      <Text style={styles.invigAvatarText}>
-                                        {room.invigilator_name.slice(0, 1).toUpperCase()}
-                                      </Text>
-                                    </View>
-                                    <Text style={styles.paperMeta} numberOfLines={1}>
-                                      {room.invigilator_name}
-                                    </Text>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Ionicons name="alert-circle" size={11} color={theme.colors.warning} />
-                                    <Text style={[styles.paperMeta, { color: theme.colors.warning }]}>
-                                      No invigilator
-                                    </Text>
-                                  </>
-                                )}
-                                {room.class_names ? (
-                                  <>
-                                    <Text style={styles.paperMetaDot}>·</Text>
-                                    <Text style={styles.paperMeta} numberOfLines={1}>{room.class_names}</Text>
-                                  </>
-                                ) : null}
-                              </View>
-                            </View>
-                            <Ionicons name="chevron-forward" size={15} color={theme.colors.textTertiary} />
-                          </TouchableOpacity>
-                        );
-                      })}
-                      <TouchableOpacity
-                        style={[styles.paperRow, styles.paperRowBorder]}
-                        activeOpacity={0.7}
-                        onPress={() =>
-                          onAddRoomToSitting({
-                            exam_date: sitting.exam_date,
-                            session_start: sitting.session_start,
-                          })
-                        }
-                      >
-                        <View style={styles.classChip}>
-                          <Ionicons name="add" size={14} color={theme.colors.primary} />
-                        </View>
-                        <Text style={[styles.paperMeta, { color: theme.colors.primary, fontWeight: '700' }]}>
-                          Add room to this sitting
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-                <TouchableOpacity style={styles.allocateCta} activeOpacity={0.85} onPress={onAllocate}>
-                  <Ionicons name="refresh-outline" size={15} color={theme.colors.primary} />
-                  <Text style={styles.allocateCtaText}>Reallocate seating</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+          </Animated.View>
         )}
 
+        {/* Schedule first — the thing people actually read */}
         {groups.length > 0 && (
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionIconChip}>
@@ -879,19 +1279,18 @@ function ExamDetailView({
           </View>
         )}
         {missingTeachers > 0 && (
-          <View style={styles.infoNote}>
-            <Ionicons name="information-circle-outline" size={15} color={theme.colors.warning} />
-            <Text style={styles.infoNoteText}>
-              {missingTeachers} paper{missingTeachers > 1 ? 's have' : ' has'} no subject teacher assigned — teachers
-              can't add their own syllabus for {missingTeachers > 1 ? 'these' : 'it'}. Assign teachers in Academics,
-              or edit the syllabus here.
+          <View style={styles.compactWarn}>
+            <Ionicons name="person-outline" size={14} color={theme.colors.warning} />
+            <Text style={styles.compactWarnText}>
+              {missingTeachers} paper{missingTeachers > 1 ? 's' : ''} without a subject teacher — assign in Academics
+              so teachers can add syllabus.
             </Text>
           </View>
         )}
         {groups.map((group, gi) => (
           <Animated.View
             key={group.date || 'none'}
-            entering={FadeInDown.delay(Math.min(gi, 5) * 50).duration(300)}
+            entering={FadeInDown.delay(Math.min(gi, 5) * 45).duration(280)}
             style={styles.dateGroup}
           >
             <Text style={styles.dateHeader}>{fmtDate(group.date)}</Text>
@@ -929,7 +1328,6 @@ function ExamDetailView({
                         {(paper.syllabus?.length || 0) > 0 && (
                           <>
                             <Text style={styles.paperMetaDot}>·</Text>
-                            <Ionicons name="list-outline" size={10} color={theme.colors.primary} />
                             <Text style={[styles.paperMeta, { color: theme.colors.primary }]}>
                               {paper.syllabus!.length} topics
                             </Text>
@@ -938,15 +1336,14 @@ function ExamDetailView({
                         {paper.has_teacher === false && (
                           <>
                             <Text style={styles.paperMetaDot}>·</Text>
-                            <Ionicons name="person-remove-outline" size={10} color={theme.colors.textTertiary} />
-                            <Text style={[styles.paperMeta, { color: theme.colors.textTertiary }]}>No teacher</Text>
+                            <Text style={[styles.paperMeta, { color: theme.colors.warning }]}>No teacher</Text>
                           </>
                         )}
                         {paper.has_marks && (
                           <>
                             <Text style={styles.paperMetaDot}>·</Text>
                             <Ionicons name="lock-closed" size={10} color={theme.colors.warning} />
-                            <Text style={[styles.paperMeta, { color: theme.colors.warning }]}>Marks entered</Text>
+                            <Text style={[styles.paperMeta, { color: theme.colors.warning }]}>Marks</Text>
                           </>
                         )}
                       </View>
@@ -961,13 +1358,206 @@ function ExamDetailView({
           </Animated.View>
         ))}
 
-        {papers.length === 0 && (
+        {/* Seating — collapsed by default when live */}
+        {papers.length > 0 && (
+          <View style={styles.dateGroup}>
+            <TouchableOpacity
+              style={styles.seatingHeaderRow}
+              activeOpacity={0.75}
+              onPress={() => setSeatingOpen((v) => !v)}
+            >
+              <View style={[styles.sectionHeaderRow, { marginBottom: 0 }]}>
+                <View style={styles.sectionIconChip}>
+                  <Ionicons name="grid-outline" size={13} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.sectionHeaderText}>Seating</Text>
+              </View>
+              <View style={styles.seatingHeaderMeta}>
+                {hasSeating ? (
+                  <Text style={styles.seatingSummary}>
+                    {allocations.length} rooms · {seatedCount} seats
+                    {invigilatorCount > 0 ? ` · ${invigilatorCount} invigilators` : ''}
+                  </Text>
+                ) : (
+                  <Text style={[styles.seatingSummary, { color: theme.colors.warning }]}>Not allocated</Text>
+                )}
+                <Ionicons
+                  name={seatingOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={theme.colors.textTertiary}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {missingInvigilators > 0 && seatingOpen && (
+              <View style={styles.compactWarn}>
+                <Ionicons name="alert-circle-outline" size={14} color={theme.colors.warning} />
+                <Text style={styles.compactWarnText}>
+                  {missingInvigilators} room{missingInvigilators > 1 ? 's' : ''} without an invigilator
+                </Text>
+              </View>
+            )}
+
+            {seatingOpen && (
+              <>
+                {sittingGroups.length === 0 ? (
+                  <View style={styles.seatingEmptyCard}>
+                    <Text style={styles.seatingEmptyText}>
+                      Rooms and invigilators aren’t assigned yet. Auto-seat uses all rooms and balances duties.
+                    </Text>
+                    <View style={styles.seatingEmptyActions}>
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        disabled={saving}
+                        onPress={onQuickAllocate}
+                        style={[styles.inlinePrimaryBtn, saving && styles.disabledBtn]}
+                      >
+                        <Ionicons name="sparkles" size={14} color="#FFFFFF" />
+                        <Text style={styles.inlinePrimaryBtnText}>Auto-seat</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={onCustomizeAllocate} activeOpacity={0.7}>
+                        <Text style={styles.quietActionText}>Customize</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {sittingGroups.map((sitting) => (
+                      <View key={`${sitting.exam_date}|${sitting.session_start}`} style={styles.sittingBlock}>
+                        <Text style={styles.sittingLabel}>
+                          {fmtDate(sitting.exam_date)}
+                          {sitting.session_start !== '00:00:00' ? ` · ${fmtTime(sitting.session_start)}` : ''}
+                        </Text>
+                        <View style={styles.dateCard}>
+                          {sitting.rooms.map((room, i) => {
+                            const fill = room.capacity > 0 ? Math.min(1, room.seats_count / room.capacity) : 0;
+                            const fillColor =
+                              fill >= 1
+                                ? theme.colors.danger
+                                : fill >= 0.85
+                                  ? theme.colors.warning
+                                  : theme.colors.success;
+                            return (
+                              <TouchableOpacity
+                                key={room.id}
+                                style={[styles.paperRow, i > 0 && styles.paperRowBorder]}
+                                activeOpacity={0.7}
+                                onPress={() => onOpenRoom(room)}
+                              >
+                                <View style={[styles.subjectTile, { backgroundColor: `${theme.colors.primary}12` }]}>
+                                  <Ionicons name="business-outline" size={16} color={theme.colors.primary} />
+                                </View>
+                                <View style={styles.flex}>
+                                  <View style={styles.paperTitleRow}>
+                                    <Text style={styles.paperSubject} numberOfLines={1}>
+                                      {room.room_name}
+                                    </Text>
+                                    <Text style={styles.roomCount}>
+                                      {room.seats_count}
+                                      <Text style={styles.roomCountTotal}>/{room.capacity}</Text>
+                                    </Text>
+                                  </View>
+                                  <View style={styles.capacityTrack}>
+                                    <View
+                                      style={[
+                                        styles.capacityFill,
+                                        { width: `${Math.round(fill * 100)}%`, backgroundColor: fillColor },
+                                      ]}
+                                    />
+                                  </View>
+                                  <View style={styles.paperMetaRow}>
+                                    {room.invigilator_name ? (
+                                      <>
+                                        <View style={styles.invigAvatar}>
+                                          <Text style={styles.invigAvatarText}>
+                                            {room.invigilator_name.slice(0, 1).toUpperCase()}
+                                          </Text>
+                                        </View>
+                                        <Text style={styles.paperMeta} numberOfLines={1}>
+                                          {room.invigilator_name}
+                                        </Text>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Ionicons name="alert-circle" size={11} color={theme.colors.warning} />
+                                        <Text style={[styles.paperMeta, { color: theme.colors.warning }]}>
+                                          No invigilator
+                                        </Text>
+                                      </>
+                                    )}
+                                    {room.class_names ? (
+                                      <>
+                                        <Text style={styles.paperMetaDot}>·</Text>
+                                        <Text style={styles.paperMeta} numberOfLines={1}>
+                                          {room.class_names}
+                                        </Text>
+                                      </>
+                                    ) : null}
+                                  </View>
+                                </View>
+                                <Ionicons name="chevron-forward" size={15} color={theme.colors.textTertiary} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                          <TouchableOpacity
+                            style={[styles.paperRow, styles.paperRowBorder]}
+                            activeOpacity={0.7}
+                            onPress={() =>
+                              onAddRoomToSitting({
+                                exam_date: sitting.exam_date,
+                                session_start: sitting.session_start,
+                              })
+                            }
+                          >
+                            <View style={styles.classChip}>
+                              <Ionicons name="add" size={14} color={theme.colors.primary} />
+                            </View>
+                            <Text style={[styles.paperMeta, { color: theme.colors.primary, fontWeight: '700' }]}>
+                              Add room
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                    <View style={styles.quietActions}>
+                      <TouchableOpacity
+                        onPress={onQuickAllocate}
+                        disabled={saving}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6 }}
+                      >
+                        <Text style={styles.quietActionText}>Reallocate</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.quietActionDot}>·</Text>
+                      <TouchableOpacity
+                        onPress={onCustomizeAllocate}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6 }}
+                      >
+                        <Text style={styles.quietActionText}>Customize</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.quietActionDot}>·</Text>
+                      <TouchableOpacity
+                        onPress={onManageRooms}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6 }}
+                      >
+                        <Text style={styles.quietActionText}>Manage rooms</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {papers.length === 0 && !nextStep && (
           <View style={styles.emptyWrap}>
             <Ionicons name="sparkles-outline" size={44} color={theme.colors.textTertiary} />
             <Text style={styles.emptyTitle}>Nothing scheduled</Text>
             <Text style={styles.emptyText}>
-              Tap "Generate timetable", choose the classes and dates, and the schedule is built
-              automatically. You can fine-tune every paper afterwards.
+              Generate a timetable from classes and dates — you can fine-tune every paper afterwards.
             </Text>
           </View>
         )}
@@ -976,11 +1566,22 @@ function ExamDetailView({
 
       {papers.length > 0 && (
         <View style={styles.publishBar}>
-          <View style={[styles.publishStateDot, { backgroundColor: published ? theme.colors.success : theme.colors.warning }]} />
+          <View
+            style={[
+              styles.publishStateDot,
+              { backgroundColor: published ? theme.colors.success : theme.colors.warning },
+            ]}
+          />
           <View style={styles.flex}>
-            <Text style={styles.publishTitle}>{published ? 'Live for students & staff' : 'Draft'}</Text>
+            <Text style={styles.publishTitle}>
+              {published ? 'Live for students & staff' : hasSeating ? 'Draft — ready to publish' : 'Draft'}
+            </Text>
             <Text style={styles.publishSub}>
-              {published ? 'Everyone sees this schedule' : 'Only admins can see this'}
+              {published
+                ? 'Everyone sees this schedule'
+                : hasSeating
+                  ? 'Only admins can see this'
+                  : 'Seat students, then publish'}
             </Text>
           </View>
           {published ? (
@@ -1637,7 +2238,7 @@ function GenerateModal({
               </View>
             </View>
             <Text style={styles.helperText}>
-              Sundays are always skipped. Subjects come from each class's subject mapping in Academics.
+              Sundays are always skipped. Subjects come from each class subject mapping in Academics.
             </Text>
           </ScrollView>
 
@@ -2238,7 +2839,7 @@ function AllocateModal({
               </TouchableOpacity>
             </View>
             {rooms.length === 0 ? (
-              <Text style={styles.helperText}>No rooms defined yet — add them via "Manage rooms".</Text>
+              <Text style={styles.helperText}>No rooms defined yet — add them via Manage rooms.</Text>
             ) : (
               <View style={styles.chipWrap}>
                 {rooms.map((room) => {
@@ -2412,7 +3013,7 @@ function AddRoomToSittingModal({
               <Text style={styles.helperText}>Loading rooms…</Text>
             ) : available.length === 0 ? (
               <Text style={styles.helperText}>
-                Every defined room is already in this sitting — add more rooms via "Manage rooms".
+                Every defined room is already in this sitting — add more rooms via Manage rooms.
               </Text>
             ) : (
               <View style={styles.subjectList}>
@@ -2687,27 +3288,106 @@ const getStyles = (theme: Theme, isDark: boolean) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     flex: { flex: 1 },
-    listContent: { padding: 16, paddingBottom: 120 },
+    listContent: { padding: 16, paddingBottom: 40 },
     detailContent: { padding: 16 },
     bottomSpacer: { height: 96 },
 
     // exam list
+    listHeader: { marginBottom: 12, gap: 12 },
+    listHeaderTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    listHeaderTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+      letterSpacing: -0.4,
+      color: theme.colors.textStrong,
+    },
+    listHeaderSub: {
+      fontSize: 12.5,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    headerNewBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+    },
+    headerNewBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' },
+    filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
+    filterChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : theme.colors.card,
+      borderWidth: 1,
+      borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
+    },
+    filterChipActive: {
+      backgroundColor: `${theme.colors.primary}14`,
+      borderColor: `${theme.colors.primary}44`,
+    },
+    filterChipText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: theme.colors.textSecondary,
+    },
+    filterChipTextActive: { color: theme.colors.primary, fontWeight: '700' },
+
     examCard: {
       flexDirection: 'row',
       alignItems: 'center',
+      gap: 12,
       backgroundColor: theme.colors.card,
-      borderRadius: 18,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
-      marginBottom: 10,
-      gap: 12,
+      marginBottom: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
       ...(Platform.OS === 'ios'
-        ? { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 10 }
+        ? { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 8 }
         : Platform.OS === 'web'
-          ? ({ boxShadow: isDark ? 'none' : '0 3px 12px rgba(15,23,42,0.05)' } as any)
-          : {}),
+          ? ({ boxShadow: isDark ? 'none' : '0 2px 10px rgba(15,23,42,0.04)' } as any)
+          : { elevation: 1 }),
+    },
+    examCardOpen: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+    },
+    hallTicketIconBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${theme.colors.primary}10`,
+    },
+    hallTicketCardBtn: {
+      width: 72,
+      alignSelf: 'stretch',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      borderLeftWidth: 1,
+      borderLeftColor: isDark ? theme.colors.border : theme.colors.borderLight,
+      backgroundColor: `${theme.colors.primary}08`,
+    },
+    hallTicketCardBtnText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: theme.colors.primary,
+      textAlign: 'center',
     },
     examCardIcon: {
       width: 42,
@@ -2717,22 +3397,28 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       justifyContent: 'center',
     },
     examCardIconGradient: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
+      width: 40,
+      height: 40,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    examCardBody: { flex: 1, gap: 3 },
+    examCardBody: { flex: 1, gap: 2 },
     examCardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     examCardTitle: {
       flexShrink: 1,
-      fontSize: 15.5,
+      fontSize: 15,
       fontWeight: '700',
       letterSpacing: -0.2,
       color: theme.colors.textStrong,
     },
     examCardSub: { fontSize: 12, color: theme.colors.textSecondary },
+    examCardHint: {
+      fontSize: 11.5,
+      fontWeight: '600',
+      color: theme.colors.primary,
+      marginTop: 2,
+    },
     examCardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 },
     metaChip: {
       flexDirection: 'row',
@@ -2757,7 +3443,6 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
     badgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
 
-    // stats strip
     statsStrip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2784,16 +3469,6 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       right: 16,
       bottom: 24,
       borderRadius: 16,
-      ...(Platform.OS === 'android'
-        ? { elevation: 5 }
-        : Platform.OS === 'web'
-          ? ({ boxShadow: '0 8px 20px rgba(79,70,229,0.35)' } as any)
-          : {
-              shadowColor: theme.colors.primary,
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.3,
-              shadowRadius: 12,
-            }),
     },
     primaryFab: {
       flexDirection: 'row',
@@ -2835,23 +3510,66 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     backRowText: { fontSize: 13, fontWeight: '600', color: theme.colors.primary },
     summaryCard: {
       backgroundColor: theme.colors.card,
-      borderRadius: 20,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
-      marginBottom: 20,
+      marginBottom: 14,
       flexDirection: 'row',
       overflow: 'hidden',
-      ...(Platform.OS === 'ios'
-        ? { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 14 }
-        : Platform.OS === 'web'
-          ? ({ boxShadow: isDark ? 'none' : '0 4px 16px rgba(15,23,42,0.06)' } as any)
-          : { elevation: 2 }),
     },
     summaryAccent: { width: 4 },
-    summaryInner: { flex: 1, padding: 16, gap: 12 },
+    summaryInner: { flex: 1, padding: 14, gap: 10 },
     summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    detailTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, color: theme.colors.textStrong },
+    detailTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, color: theme.colors.textStrong },
     summaryDates: { fontSize: 13, color: theme.colors.textSecondary },
+    summaryMetaLine: { fontSize: 12.5, color: theme.colors.textSecondary },
+    progressRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: 2,
+    },
+    progressStep: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    progressDot: {
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressLabel: { fontSize: 11.5, fontWeight: '700' },
+    progressLine: { flex: 1, height: 2, marginHorizontal: 8, borderRadius: 1 },
+    quietActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 2,
+    },
+    quietActionText: { fontSize: 12.5, fontWeight: '700', color: theme.colors.primary },
+    quietActionDot: { fontSize: 12.5, color: theme.colors.textTertiary },
+    nextStepCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: theme.colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
+      padding: 14,
+      marginBottom: 16,
+    },
+    nextStepTitle: { fontSize: 14.5, fontWeight: '700', color: theme.colors.textStrong },
+    nextStepSub: { fontSize: 12.5, color: theme.colors.textSecondary, marginTop: 2, lineHeight: 17 },
+    nextStepAlt: { marginTop: 6 },
+    nextStepBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: 12,
+    },
+    nextStepBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' },
     generateBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2861,6 +3579,17 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       paddingVertical: 12,
     },
     generateBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+    compactWarn: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor: `${theme.colors.warning}12`,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginBottom: 10,
+    },
+    compactWarnText: { flex: 1, fontSize: 12, lineHeight: 16, color: theme.colors.textSecondary },
 
     sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
     sectionIconChip: {
@@ -2978,10 +3707,33 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 6,
+      marginBottom: 8,
       paddingRight: 4,
+      gap: 8,
     },
+    seatingHeaderMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+    seatingSummary: { fontSize: 12, fontWeight: '600', color: theme.colors.textSecondary, flexShrink: 1 },
     seatingLink: { fontSize: 12.5, fontWeight: '700', color: theme.colors.primary },
+    seatingEmptyCard: {
+      backgroundColor: theme.colors.card,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
+      padding: 14,
+      gap: 12,
+    },
+    seatingEmptyText: { fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary },
+    seatingEmptyActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    inlinePrimaryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderRadius: 10,
+    },
+    inlinePrimaryBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
     allocateCta: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -3090,6 +3842,35 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       gap: 12,
     },
     modalTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.textStrong },
+    hallTicketModalExam: {
+      marginTop: 3,
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: theme.colors.textSecondary,
+    },
+    hallTicketLoading: {
+      minHeight: 180,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    hallTicketInfo: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 9,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      borderRadius: 12,
+      backgroundColor: `${theme.colors.primary}0D`,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}22`,
+    },
+    hallTicketInfoText: {
+      flex: 1,
+      fontSize: 12,
+      lineHeight: 17,
+      color: theme.colors.textSecondary,
+    },
     fieldLabel: {
       fontSize: 12,
       fontWeight: '700',

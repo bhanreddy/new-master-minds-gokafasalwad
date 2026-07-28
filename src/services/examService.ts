@@ -52,6 +52,27 @@ export interface ExamTimetableDetail {
     papers: ExamPaper[];
 }
 
+export interface ExamHallTicketData {
+    exam: Pick<ExamListItem, 'id' | 'name' | 'name_te' | 'exam_type' | 'start_date' | 'end_date'> & {
+        academic_year_id: string;
+        academic_year: string;
+    };
+    class_section: {
+        id: string;
+        class_id: string;
+        section_id: string;
+        class_name: string;
+        section_name: string;
+    };
+    papers: ExamPaper[];
+    students: {
+        id: string;
+        display_name: string;
+        admission_no: string;
+        roll_number?: string | number | null;
+    }[];
+}
+
 export interface ExamSession {
     start_time: string | null; // "09:30"
     end_time: string | null;
@@ -119,6 +140,17 @@ export const ExamTimetableService = {
     // ── Admin ───────────────────────────────────────────────────────────
     getTimetable: async (examId: string): Promise<ExamTimetableDetail> => {
         return api.get<ExamTimetableDetail>(`/results/exams/${examId}/timetable`);
+    },
+
+    getHallTicketData: async (
+        examId: string,
+        classId: string,
+        sectionId: string
+    ): Promise<ExamHallTicketData> => {
+        return api.get<ExamHallTicketData>(`/results/exams/${examId}/hall-tickets`, {
+            class_id: classId,
+            section_id: sectionId,
+        });
     },
 
     getClassSubjects: async (classIds: string[]): Promise<ClassSubjectOption[]> => {
