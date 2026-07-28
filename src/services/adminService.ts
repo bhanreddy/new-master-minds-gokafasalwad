@@ -34,6 +34,41 @@ export interface AdminDashboardStats {
     // Add other relevant stats
 }
 
+export type AppAdoptionStatus = 'all' | 'detected' | 'not_detected';
+
+export interface AppAdoptionUser {
+    user_id: string;
+    display_name: string;
+    photo_url?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    roles: string[];
+    last_login_at?: string | null;
+    account_created_at: string;
+    admission_no?: string | null;
+    class_name?: string | null;
+    section_name?: string | null;
+    device_count: number;
+    last_detected_at?: string | null;
+    platforms: string[];
+    app_detected: boolean;
+}
+
+export interface AppAdoptionReport {
+    users: AppAdoptionUser[];
+    summary: {
+        total: number;
+        detected: number;
+        not_detected: number;
+    };
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        total_pages: number;
+    };
+}
+
 export interface AccountsPortalStaffMember {
     staff_id: string;
     first_name?: string;
@@ -133,6 +168,13 @@ export interface TalkingPointsResult {
     source: 'calculated' | 'ai' | 'fallback';
     language?: 'te';
     summary?: {
+        app?: {
+            detected: boolean;
+            device_count: number;
+            student_device_count: number;
+            parent_device_count: number;
+            last_detected_at: string | null;
+        };
         attendance: {
             total_days: number;
             present_days: number;
@@ -185,6 +227,16 @@ export const AdminService = {
      */
     getDashboardStats: async (options?: any): Promise<AdminDashboardStats> => {
         return api.get<AdminDashboardStats>('/admin/dashboard-stats', undefined, options);
+    },
+
+    getAppAdoption: async (params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        status?: AppAdoptionStatus;
+        role?: string;
+    }): Promise<AppAdoptionReport> => {
+        return api.get<AppAdoptionReport>('/admin/app-adoption', params, { silent: true });
     },
 
     /**

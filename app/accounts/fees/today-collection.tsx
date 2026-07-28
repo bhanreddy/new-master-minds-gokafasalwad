@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AppTextInput from '@/src/components/AppTextInput';
@@ -133,11 +134,15 @@ const PressableScale = ({
   onPress,
   disabled,
   style,
+  containerStyle,
+  accessibilityLabel,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
   disabled?: boolean;
   style?: any;
+  containerStyle?: any;
+  accessibilityLabel?: string;
 }) => {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -146,6 +151,16 @@ const PressableScale = ({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      focusable
+      style={[
+        containerStyle,
+        Platform.OS === 'web' && {
+          cursor: disabled ? 'not-allowed' : 'pointer',
+        },
+      ]}
       onPressIn={() => {
         scale.value = withSpring(0.97, { damping: 16, stiffness: 280 });
       }}
@@ -489,13 +504,20 @@ function CollectionFiltersPanel({
             ]}
             placeholder="Search name, admission no, ref…"
             placeholderTextColor={isDark ? 'rgba(255,255,255,0.28)' : '#94A3B8'}
+            accessibilityLabel="Search collection transactions"
             value={filters.search}
             onChangeText={(search) => onChange({ search })}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
           />
           {filters.search.trim().length > 0 ? (
-            <Pressable onPress={() => onChange({ search: '' })} hitSlop={8}>
+            <Pressable
+              onPress={() => onChange({ search: '' })}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}
+            >
               <Ionicons name="close-circle" size={18} color={isDark ? '#64748B' : '#94A3B8'} />
             </Pressable>
           ) : null}
@@ -537,8 +559,25 @@ function CollectionFiltersPanel({
                   onClear();
                 }}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Clear all filters"
+                style={[
+                  filterStyles.clearButton,
+                  {
+                    backgroundColor: isDark ? 'rgba(13,148,136,0.18)' : ACCENT_SOFT,
+                  },
+                  Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                ]}
               >
-                <Text style={[filterStyles.clearText, { fontFamily: FONT }]}>Clear</Text>
+                <Ionicons name="close" size={13} color={isDark ? '#5EEAD4' : ACCENT_DEEP} />
+                <Text
+                  style={[
+                    filterStyles.clearText,
+                    { color: isDark ? '#5EEAD4' : ACCENT_DEEP, fontFamily: FONT },
+                  ]}
+                >
+                  Clear
+                </Text>
               </Pressable>
             ) : null}
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={chipText} />
@@ -610,6 +649,8 @@ export default function TodayCollectionScreen() {
   const { user } = useAuth();
   const { theme, isDark } = useTheme();
   const { shellActive } = useAccountsWebChrome();
+  const { width: viewportWidth } = useWindowDimensions();
+  const isCompact = viewportWidth < 720;
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
 
   const [allRows, setAllRows] = useState<FeeTransaction[]>([]);
@@ -801,60 +842,108 @@ export default function TodayCollectionScreen() {
         allRows={allRows}
       />
 
-      <Animated.View entering={FadeInDown.delay(140).duration(360)} style={styles.actionRow}>
-        <PressableScale
-          onPress={handleExport}
-          disabled={exporting || loading}
-          style={[
-            styles.actionBtn,
-            styles.exportBtn,
-            clayCard(isDark, 'sm'),
-            {
-              backgroundColor: isDark ? '#1A2332' : '#F4F7FB',
-              borderWidth: 0,
-            },
-          ]}
-        >
-          {exporting ? (
-            <ActivityIndicator size="small" color={ACCENT} />
-          ) : (
-            <>
-              <Ionicons name="download-outline" size={16} color={ACCENT} />
-              <Text style={[styles.actionBtnTextSecondary, { color: ACCENT, fontFamily: FONT }]}>Export</Text>
-            </>
-          )}
-        </PressableScale>
+      <Animated.View
+        entering={FadeInDown.delay(140).duration(360)}
+        style={[
+          styles.reportToolbar,
+          isCompact && styles.reportToolbarCompact,
+          {
+            backgroundColor: isDark ? '#18212F' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255,255,255,0.09)' : '#D9E2EC',
+          },
+        ]}
+      >
+        <View style={styles.reportToolbarCopy}>
+          <Text style={[styles.reportToolbarTitle, { color: isDark ? '#F8FAFC' : '#0F172A', fontFamily: FONT }]}>
+            Report actions
+          </Text>
+          <Text style={[styles.reportToolbarHint, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]}>
+            {filtersActive ? `Uses ${totals.count} filtered transaction${totals.count === 1 ? '' : 's'}` : 'Uses all transactions shown above'}
+          </Text>
+        </View>
 
-        <PressableScale
-          onPress={handlePrint}
-          disabled={printing || loading}
-          style={[
-            styles.actionBtn,
-            styles.printBtn,
-            {
-              backgroundColor: ACCENT,
-              ...clay(isDark, 'md'),
-              borderWidth: 0,
-              overflow: 'hidden',
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.7, y: 1 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-          {printing ? (
-            <ActivityIndicator size="small" color="#fff" style={{ zIndex: 2 }} />
-          ) : (
-            <>
-              <Ionicons name="print-outline" size={16} color="#fff" style={{ zIndex: 2 }} />
-              <Text style={[styles.actionBtnText, { fontFamily: FONT, zIndex: 2 }]}>Print report</Text>
-            </>
-          )}
-        </PressableScale>
+        <View style={[styles.actionRow, isCompact && styles.actionRowCompact]}>
+          <PressableScale
+            onPress={handleRefresh}
+            disabled={refreshing || loading}
+            accessibilityLabel="Refresh today's collection"
+            containerStyle={[styles.actionBtnSlot, isCompact && styles.actionBtnSlotCompact]}
+            style={[
+              styles.actionBtn,
+              styles.refreshBtn,
+              {
+                backgroundColor: isDark ? '#111827' : '#F8FAFC',
+                borderColor: isDark ? '#334155' : '#CBD5E1',
+              },
+            ]}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={isDark ? '#CBD5E1' : '#475569'} />
+            ) : (
+              <Ionicons name="refresh" size={18} color={isDark ? '#CBD5E1' : '#475569'} />
+            )}
+            <Text style={[styles.refreshBtnText, { color: isDark ? '#E2E8F0' : '#334155', fontFamily: FONT }]}>
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </Text>
+          </PressableScale>
+
+          <PressableScale
+            onPress={handleExport}
+            disabled={exporting || loading}
+            accessibilityLabel="Export current collection as CSV"
+            containerStyle={[styles.actionBtnSlot, isCompact && styles.actionBtnSlotCompact]}
+            style={[
+              styles.actionBtn,
+              styles.exportBtn,
+              {
+                backgroundColor: isDark ? 'rgba(13,148,136,0.12)' : '#F0FDFA',
+                borderColor: isDark ? '#2DD4BF' : ACCENT_DEEP,
+              },
+            ]}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={isDark ? '#5EEAD4' : ACCENT_DEEP} />
+            ) : (
+              <Ionicons name="download-outline" size={18} color={isDark ? '#5EEAD4' : ACCENT_DEEP} />
+            )}
+            <Text style={[styles.actionBtnTextSecondary, { color: isDark ? '#5EEAD4' : ACCENT_DEEP, fontFamily: FONT }]}>
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </Text>
+          </PressableScale>
+
+          <PressableScale
+            onPress={handlePrint}
+            disabled={printing || loading}
+            accessibilityLabel="Print current collection report"
+            containerStyle={[styles.actionBtnSlot, styles.primaryActionSlot, isCompact && styles.actionBtnSlotCompact]}
+            style={[
+              styles.actionBtn,
+              styles.printBtn,
+              {
+                backgroundColor: ACCENT_DEEP,
+                borderColor: isDark ? '#5EEAD4' : ACCENT_DEEP,
+                ...clay(isDark, 'sm'),
+                overflow: 'hidden',
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.7, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {printing ? (
+              <ActivityIndicator size="small" color="#fff" style={{ zIndex: 2 }} />
+            ) : (
+              <Ionicons name="print-outline" size={18} color="#fff" style={{ zIndex: 2 }} />
+            )}
+            <Text style={[styles.actionBtnText, { fontFamily: FONT, zIndex: 2 }]}>
+              {printing ? 'Preparing…' : 'Print report'}
+            </Text>
+          </PressableScale>
+        </View>
       </Animated.View>
 
       <View style={styles.sectionHead}>
@@ -1075,7 +1164,15 @@ const filterStyles = StyleSheet.create({
   toggleText: { fontSize: 13, fontWeight: '700' },
   activeDot: { width: 6, height: 6, borderRadius: 3 },
   toggleRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  clearText: { fontSize: 12, fontWeight: '800', color: ACCENT },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  clearText: { fontSize: 11, fontWeight: '800', color: ACCENT_DEEP },
   panel: {
     borderRadius: 18,
     padding: 14,
@@ -1106,7 +1203,10 @@ const getStyles = (theme: any, isDark: boolean) =>
     listContent: {
       paddingHorizontal: 16,
       paddingBottom: 48,
-      paddingTop: 6,
+      paddingTop: 14,
+      width: '100%',
+      maxWidth: 1280,
+      alignSelf: 'center',
     },
     hero: {
       marginBottom: 16,
@@ -1172,24 +1272,83 @@ const getStyles = (theme: any, isDark: boolean) =>
       fontSize: 12,
       fontWeight: '500',
     },
+    reportToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 20,
+      borderWidth: 1,
+      borderRadius: 20,
+      padding: 14,
+      marginBottom: 18,
+      ...Platform.select({
+        web: {
+          boxShadow: isDark
+            ? '0 12px 28px -20px rgba(0,0,0,0.75)'
+            : '0 12px 28px -20px rgba(15,23,42,0.32)',
+        },
+        default: {
+          elevation: 2,
+          shadowColor: '#0F172A',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: isDark ? 0.28 : 0.1,
+          shadowRadius: 12,
+        },
+      }),
+    },
+    reportToolbarCompact: {
+      alignItems: 'stretch',
+      flexDirection: 'column',
+      gap: 12,
+    },
+    reportToolbarCopy: {
+      flexShrink: 1,
+      minWidth: 150,
+    },
+    reportToolbarTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      marginBottom: 3,
+    },
+    reportToolbarHint: {
+      fontSize: 11,
+      fontWeight: '500',
+    },
     actionRow: {
       flexDirection: 'row',
+      justifyContent: 'flex-end',
       gap: 10,
-      marginBottom: 18,
+    },
+    actionRowCompact: {
+      flexDirection: 'column',
+      width: '100%',
+    },
+    actionBtnSlot: {
+      width: 144,
+    },
+    primaryActionSlot: {
+      width: 164,
+    },
+    actionBtnSlotCompact: {
+      width: '100%',
     },
     actionBtn: {
-      flex: 1,
+      width: '100%',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
       height: 48,
-      borderRadius: 16,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      borderWidth: 1.5,
     },
+    refreshBtn: {},
     exportBtn: {},
-    printBtn: {},
+    printBtn: { minWidth: 164 },
     actionBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
     actionBtnTextSecondary: { fontSize: 14, fontWeight: '800' },
+    refreshBtnText: { fontSize: 13, fontWeight: '800' },
     sectionHead: {
       flexDirection: 'row',
       alignItems: 'center',

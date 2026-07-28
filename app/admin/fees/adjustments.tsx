@@ -221,7 +221,7 @@ export default function FeeAdjustmentsScreen() {
       setLoadingFees(true);
       const feeData = await FeeService.getStudentFees(student.id);
       setStudentFees(feeData?.fees || []);
-    } catch (error) {
+    } catch {
       alertCompat('Error', 'Failed to load student fees');
     } finally {
       setLoadingFees(false);
@@ -392,10 +392,10 @@ export default function FeeAdjustmentsScreen() {
         )}
 
         {/* Apply Adjustment */}
-        <Animated.View
-          entering={FadeInDown.delay(100).duration(320)}
-          style={[styles.card, clayCard(isDark, 'md')]}
-        >
+        {/* Keep controlled inputs out of entering-animation wrappers.
+            Reanimated can recreate/reconfigure the web wrapper during state
+            updates, which interrupts focus while the user is typing. */}
+        <View style={[styles.card, clayCard(isDark, 'md')]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconBadge}>
               <Ionicons name="create-outline" size={16} color={ADMIN_THEME.colors.primary} />
@@ -601,7 +601,7 @@ export default function FeeAdjustmentsScreen() {
 
           {/* Step 3: Form */}
           {selectedFee && (
-            <Animated.View entering={FadeInDown.duration(280)} style={styles.formContainer}>
+            <View style={styles.formContainer}>
               <View style={[styles.stepRow, { marginTop: 4 }]}>
                 <View style={styles.stepBadge}>
                   <Text style={styles.stepBadgeText}>3</Text>
@@ -764,9 +764,9 @@ export default function FeeAdjustmentsScreen() {
                 }
                 style={{ marginTop: 8 }}
               />
-            </Animated.View>
+            </View>
           )}
-        </Animated.View>
+        </View>
 
         {/* History */}
         <Animated.View
