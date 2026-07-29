@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Platform, Pressable, ViewStyle, TextStyle } from 'react-native';
+import { View, StyleSheet, Platform, ViewStyle, TextStyle, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -11,16 +11,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import MenuOverlay from './MenuOverlay';
 import ClayIconButton from './ClayIconButton';
+import LanguageToggle from './LanguageToggle';
 import { Shadows, Spacing } from '../theme/themes';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../hooks/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { schoolColorWithAlpha } from '../constants/schoolConfig';
+import { SCHOOL_CONFIG, schoolColorWithAlpha } from '../constants/schoolConfig';
 
 /** Brand violet used to tint every clay puck's shadow across the app. */
 const CLAY_ACCENT = '#7C6BB8';
+const GOLD = SCHOOL_CONFIG.theme.accent;
 
-/** Reanimated can wrap the vector icon; it must not be nested inside `Animated.Text` (causes "Text strings must be rendered within a <Text> component" on Android). */
+/** Short school label for the center brand pill (first meaningful word). */
+const SCHOOL_BRAND =
+    SCHOOL_CONFIG.name.split(/\s+/).find((w) => w.length > 2 && !/^school$/i.test(w))
+    ?? SCHOOL_CONFIG.name.split(/\s+/)[0]
+    ?? 'School';
 
 interface StudentHeaderProps {
     onMenuPress?: () => void;
@@ -131,6 +137,58 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
         };
     }, [isDark]);
 
+    const brandSubStyle = useAnimatedStyle(() => {
+        if (!scrollY) return { color: schoolColorWithAlpha(GOLD, 0.92) };
+        return {
+            color: interpolateColor(
+                scrollY.value,
+                [0, 50],
+                [schoolColorWithAlpha(GOLD, 0.92), isDark ? '#F09822' : '#B45309']
+            ),
+        };
+    }, [isDark]);
+
+    const brandPillStyle = useAnimatedStyle(() => {
+        if (!scrollY) {
+            return {
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                borderColor: 'rgba(255,255,255,0.14)',
+            };
+        }
+        return {
+            backgroundColor: interpolateColor(
+                scrollY.value,
+                [0, 50],
+                ['rgba(255,255,255,0.08)', isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,107,184,0.10)']
+            ),
+            borderColor: interpolateColor(
+                scrollY.value,
+                [0, 50],
+                ['rgba(255,255,255,0.14)', schoolColorWithAlpha(CLAY_ACCENT, isDark ? 0.28 : 0.22)]
+            ),
+        };
+    }, [isDark]);
+
+    // Without scrollY this header always uses the cosmic navy gradient, even
+    // while the app is in light mode. Base the toggle contrast on its actual
+    // surface instead of the global theme.
+    const languageOnDarkSurface = !scrollY || isDark;
+
+    // Solid fills (no LinearGradient / elevation) — Android otherwise paints a
+    // white rectangle over the inactive segment.
+    const langSwitch = (
+        <LanguageToggle
+            language={isTeluguLang ? 'te' : 'en'}
+            onLanguageChange={setLanguage}
+            darkBackground={languageOnDarkSurface}
+            trackColor={languageOnDarkSurface ? 'rgba(116,101,184,0.24)' : 'rgba(124,107,184,0.14)'}
+            borderColor={languageOnDarkSurface ? 'rgba(222,216,255,0.30)' : 'rgba(124,107,184,0.28)'}
+            activeBackgroundColor={languageOnDarkSurface ? '#7568CF' : '#6B5CC4'}
+            activeLabelColor="#FFFFFF"
+            inactiveLabelColor={languageOnDarkSurface ? '#E9E5FF' : 'rgba(55,48,107,0.72)'}
+        />
+    );
+
     return (
         <Animated.View style={[
             styles.container,
@@ -153,10 +211,9 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 />
             )}
 
-            {/* Left: native = menu on home, back on subpages; web = both.
-                Pucks are always dark-clay — the header's brand identity is dark/cosmic
-                whether it's overlaying a hero image or scrolled into a solid app bar. */}
-            <View style={[styles.leftNav, showNavBack && showNavMenu && styles.leftNavDual]}>
+            {/* Left: Te/En first, then nav controls — keeps language one-thumb reachable. */}
+            <View style={[styles.sideRegion, styles.leftRegion]}>
+                {langSwitch}
                 {showNavBack ? (
                     <ClayIconButton onPress={handleBack} isDark accent={CLAY_ACCENT}>
                         <Ionicons name="arrow-back" size={19} color="#F4F0FB" />
@@ -169,72 +226,30 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 ) : null}
             </View>
 
-            {/* Center: sub-page title. Home quick actions live in the dashboard grid. */}
-            <View style={styles.centerRegion}>
-                {title && (
+            {/* Center: page title when present; otherwise a compact school brand. */}
+            <View style={styles.centerRegion} pointerEvents="none">
+                {title ? (
                     <Animated.Text style={[styles.headerTitle, fontColorStyle, titleStyleOverride]} numberOfLines={1}>
                         {title}
                     </Animated.Text>
+                ) : (
+                    <Animated.View style={[styles.brandPill, brandPillStyle]}>
+                        <View style={styles.brandLogoWrap}>
+                            <Image source={SCHOOL_CONFIG.logo} style={styles.brandLogo} />
+                        </View>
+                        <View style={styles.brandCopy}>
+                            <Animated.Text style={[styles.brandName, fontColorStyle]} numberOfLines={1}>
+                                {SCHOOL_BRAND}
+                            </Animated.Text>
+                            <Animated.Text style={[styles.brandTag, brandSubStyle]} numberOfLines={1}>
+                                {SCHOOL_CONFIG.tagline}
+                            </Animated.Text>
+                        </View>
+                    </Animated.View>
                 )}
             </View>
 
-            <View style={styles.rightActions}>
-                {/* Compact segmented language control with an unambiguous active state. */}
-                <View
-                    accessibilityRole="radiogroup"
-                    style={[
-                        styles.langSwitch,
-                        {
-                            backgroundColor: isDark
-                                ? 'rgba(255,255,255,0.08)'
-                                : 'rgba(124,107,184,0.12)',
-                        },
-                    ]}
-                >
-                    {([
-                        { code: 'en' as const, label: 'EN', accessibilityLabel: 'English' },
-                        { code: 'te' as const, label: 'తె', accessibilityLabel: 'Telugu' },
-                    ]).map(({ code, label, accessibilityLabel }) => {
-                        const isActive = code === (isTeluguLang ? 'te' : 'en');
-
-                        return (
-                            <Pressable
-                                key={code}
-                                accessibilityRole="radio"
-                                accessibilityLabel={accessibilityLabel}
-                                accessibilityState={{ checked: isActive }}
-                                hitSlop={4}
-                                onPress={() => void setLanguage(code)}
-                                style={({ pressed }) => [
-                                    styles.langOption,
-                                    Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
-                                    pressed && styles.langOptionPressed,
-                                ]}
-                            >
-                                {isActive && (
-                                    <LinearGradient
-                                        colors={['#9486E8', '#6656C7']}
-                                        start={{ x: 0, y: 0 }}
-                                        end={{ x: 1, y: 1 }}
-                                        style={styles.langOptionActive}
-                                    />
-                                )}
-                                <Animated.Text
-                                    style={[
-                                        styles.langLabelBase,
-                                        fontColorStyle,
-                                        !isActive && styles.langLabelInactive,
-                                        isActive && styles.langLabelActive,
-                                    ]}
-                                >
-                                    {label}
-                                </Animated.Text>
-                            </Pressable>
-                        );
-                    })}
-                </View>
-
-                {/* Optional page-specific action (e.g. compose a new message) */}
+            <View style={[styles.sideRegion, styles.rightRegion]}>
                 {rightAction && (
                     <ClayIconButton
                         onPress={() => {
@@ -250,7 +265,6 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                     </ClayIconButton>
                 )}
 
-                {/* Settings Button */}
                 {showSettingsButton && (
                     <ClayIconButton
                         onPress={() => {
@@ -289,71 +303,69 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 10 },
         shadowRadius: 20,
     },
-    leftNav: {
+    sideRegion: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: 8,
+        minWidth: 88,
     },
-    leftNavDual: {
-        gap: 10,
+    leftRegion: {
+        justifyContent: 'flex-start',
+        flexShrink: 0,
+    },
+    rightRegion: {
+        justifyContent: 'flex-end',
+        flexShrink: 0,
     },
     centerRegion: {
         flex: 1,
         minWidth: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 6,
+        paddingHorizontal: 8,
     },
-    rightActions: {
-        flexShrink: 0,
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        paddingRight: Spacing.xs,
-    },
-    langSwitch: {
+    brandPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 3,
-        borderRadius: 14,
+        maxWidth: '100%',
+        gap: 8,
+        paddingVertical: 4,
+        paddingLeft: 4,
+        paddingRight: 12,
+        borderRadius: 999,
         borderWidth: 1,
-        borderColor: 'rgba(148,134,232,0.32)',
-        shadowColor: CLAY_ACCENT,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.18,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    langOption: {
-        width: 36,
-        height: 30,
-        borderRadius: 11,
-        alignItems: 'center',
-        justifyContent: 'center',
         overflow: 'hidden',
     },
-    langOptionPressed: {
-        opacity: 0.84,
-        transform: [{ scale: 0.96 }],
-    },
-    langOptionActive: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 11,
+    brandLogoWrap: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.34)',
+        borderColor: schoolColorWithAlpha(GOLD, 0.45),
     },
-    langLabelBase: {
-        fontSize: 10.5,
+    brandLogo: {
+        width: 18,
+        height: 18,
+        resizeMode: 'contain',
+    },
+    brandCopy: {
+        flexShrink: 1,
+        minWidth: 0,
+        gap: 1,
+    },
+    brandName: {
+        fontSize: 13,
         fontWeight: '800',
-        letterSpacing: 0.55,
+        letterSpacing: 0.4,
     },
-    langLabelInactive: {
-        opacity: 0.52,
-    },
-    langLabelActive: {
-        color: '#FFFFFF',
-        opacity: 1,
+    brandTag: {
+        fontSize: 9,
+        fontWeight: '600',
+        letterSpacing: 0.2,
+        opacity: 0.95,
     },
     headerTitle: {
         fontSize: 18,

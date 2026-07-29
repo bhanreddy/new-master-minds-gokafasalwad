@@ -36,6 +36,11 @@ import LogoLoader from '../../src/components/LogoLoader';
 import { BusAttendanceService } from '../../src/services/busAttendanceService';
 import LiveBusMap, { LiveStop } from '../../src/components/LiveBusMap';
 import LiveRouteTracker from '../../src/components/LiveRouteTracker';
+import {
+  interpolateRouteCoordinate,
+  isFixFromCurrentTrip,
+  simulateLiveCoordinate,
+} from '../../src/services/transportLiveSimulation';
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const C = {
@@ -45,6 +50,9 @@ const C = {
   blueBorder: '#BFDBFE',
   emerald: '#059669',
   emeraldLight: '#ECFDF5',
+  teal: '#14B8A6',
+  tealDark: '#0F766E',
+  tealLight: '#CCFBF1',
   amber: '#D97706',
   amberLight: '#FFFBEB',
   amberBorder: '#FDE68A',
@@ -122,7 +130,7 @@ const formatAge = (ageSeconds: number | null | undefined, t: TFunction) => {
 };
 
 // ─── Pulsing stop node (current bus position) ─────────────────────────────────
-const CurrentStopNode = ({ theme }: { theme: any }) => {
+const CurrentStopNode = ({ color }: { color: string }) => {
   const scale = useSharedValue(1);
   useEffect(() => {
     scale.value = withRepeat(
@@ -139,9 +147,9 @@ const CurrentStopNode = ({ theme }: { theme: any }) => {
   }));
   return (
     <View style={nodeStyles.wrap}>
-      <Animated.View style={[nodeStyles.pulseRing, ringStyle, { backgroundColor: theme.colors.primary }]} />
-      <View style={[nodeStyles.currentNode, { backgroundColor: theme.colors.primary, shadowColor: theme.colors.primary }]}>
-        <Ionicons name="bus" size={12} color={C.white} />
+      <Animated.View style={[nodeStyles.pulseRing, ringStyle, { backgroundColor: color }]} />
+      <View style={[nodeStyles.currentNode, { backgroundColor: color, shadowColor: color }]}>
+        <Ionicons name="bus" size={13} color={C.white} />
       </View>
     </View>
   );
@@ -203,12 +211,20 @@ export default function StudentBusTrackerScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [live, setLive] = useState<LivePayload | null>(null);
-  const [mapOpen, setMapOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(Platform.OS !== 'web');
   const [nowMs, setNowMs] = useState(Date.now());
   const [smoothEta, setSmoothEta] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const livePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingHighEtaRef = useRef<number | null>(null);
+  const simulationStartedAtRef = useRef(0);
+  const simulationClockRef = useRef(0);
+  const [simulationProgress, setSimulationProgress] = useState(0);
+  const [simulationRunning, setSimulationRunning] = useState(false);
+  const simulationStopCount = data?.stops?.length ?? 0;
+  const simulationEnd = Math.max(0, simulationStopCount - 1);
+  const simulationDurationMs = Math.max(7_000, simulationEnd * 4_500);
+  const routeSignature = data?.stops?.map((stop) => stop.id).join('|') || '';
 
   const load = useCallback(async (silent?: boolean) => {
     try {
@@ -292,6 +308,11 @@ export default function StudentBusTrackerScreen() {
   // ETA smoothing: a trustworthy ETA drops immediately (good news) but only
   // rises when the higher reading persists across two polls — no jitter.
   useEffect(() => {
+    if (!isFixFromCurrentTrip(live?.location?.recorded_at, data?.trip?.started_at)) {
+      setSmoothEta(null);
+      pendingHighEtaRef.current = null;
+      return;
+    }
     const e = live?.eta_minutes ?? null;
     if (e == null) { setSmoothEta(null); pendingHighEtaRef.current = null; return; }
     setSmoothEta((prev) => {
@@ -300,7 +321,56 @@ export default function StudentBusTrackerScreen() {
       pendingHighEtaRef.current = e;
       return prev;
     });
-  }, [live?.eta_minutes]);
+  }, [data?.trip?.started_at, live?.eta_minutes, live?.location?.recorded_at]);
+
+  useEffect(() => {
+    setSimulationRunning(false);
+    setSimulationProgress(0);
+    simulationClockRef.current = 0;
+  }, [routeSignature]);
+
+  useEffect(() => {
+    const ui = data?.trip?.ui_status || data?.trip?.status;
+    if (tripStatusIsActive(ui)) setSimulationRunning(false);
+  }, [data?.trip?.ui_status, data?.trip?.status]);
+
+  useEffect(() => {
+    if (!simulationRunning || simulationEnd <= 0) return;
+
+    const tick = () => {
+      const elapsed = Date.now() - simulationStartedAtRef.current;
+      const next = Math.min(simulationEnd, (elapsed / simulationDurationMs) * simulationEnd);
+      setSimulationProgress(next);
+      if (next >= simulationEnd) setSimulationRunning(false);
+    };
+
+    tick();
+    const timer = setInterval(tick, 180);
+    return () => clearInterval(timer);
+  }, [simulationDurationMs, simulationEnd, simulationRunning]);
+
+  const toggleRouteSimulation = useCallback(() => {
+    if (simulationEnd <= 0) return;
+    if (simulationRunning) {
+      setSimulationRunning(false);
+      return;
+    }
+
+    const restarting = simulationProgress >= simulationEnd;
+    const startProgress = restarting ? 0 : simulationProgress;
+    if (restarting || simulationClockRef.current === 0) {
+      simulationClockRef.current = Date.now();
+    }
+    simulationStartedAtRef.current =
+      Date.now() - (startProgress / simulationEnd) * simulationDurationMs;
+    setSimulationProgress(startProgress);
+    setSimulationRunning(true);
+  }, [
+    simulationDurationMs,
+    simulationEnd,
+    simulationProgress,
+    simulationRunning,
+  ]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -347,7 +417,6 @@ export default function StudentBusTrackerScreen() {
   const boarding = data.boarding_stop;
   const boardingStopId = data.boarding_stop_id;
   const until = data.stops_until_boarding;
-  const currentOrder = data.current_stop?.stop_order;
   const atYourStop =
     isLive && boardingStopId != null && data.current_stop?.id === boardingStopId;
 
@@ -360,16 +429,31 @@ export default function StudentBusTrackerScreen() {
   // ── Live tracking — only driver GPS and server-calculated ETA ──
   const liveData = live;
   const showLive = isLive && !!live?.live;
-  const loc = liveData?.location ?? null;
+  const rawLoc = liveData?.location ?? null;
+  // Never carry the previous journey's endpoint into a newly-started trip.
+  // Until the driver sends the first fix for this trip, the marker stays at
+  // execution stop #1 (the school in the reported case).
+  const locBelongsToCurrentTrip = isFixFromCurrentTrip(
+    rawLoc?.recorded_at,
+    data.trip?.started_at,
+  );
+  const loc = locBelongsToCurrentTrip ? rawLoc : null;
   // Freshness recomputed locally against the 1s clock so it feels real-time
   // between the 10s polls, instead of only updating when the server answers.
   const locAgeSec = loc?.recorded_at
     ? Math.max(0, Math.round((nowMs - new Date(loc.recorded_at).getTime()) / 1000))
     : null;
   const locFresh = locAgeSec != null && locAgeSec <= 120;
+  // Bridge the small gaps between real GPS packets. Projection is deliberately
+  // capped to 12 seconds/250m, then the next driver fix corrects the marker.
+  const simulatedPosition = loc
+    ? locFresh
+      ? simulateLiveCoordinate(loc, nowMs)
+      : { latitude: loc.latitude, longitude: loc.longitude }
+    : null;
 
   // Smoothed ETA point + learned confidence range (Phase C).
-  const etaPoint = smoothEta ?? liveData?.eta_minutes ?? null;
+  const etaPoint = loc ? smoothEta ?? liveData?.eta_minutes ?? null : null;
   const etaLow = liveData?.eta_low_minutes ?? null;
   const etaHigh = liveData?.eta_high_minutes ?? null;
   const etaHasRange = etaLow != null && etaHigh != null && etaHigh > etaLow;
@@ -404,7 +488,47 @@ export default function StudentBusTrackerScreen() {
     exec_order: stop.exec_order ?? stop.stop_order,
     status: stop.status || 'pending',
   }));
-  const trackerStops = showLive && liveData?.stops?.length ? liveData.stops : previewStops;
+  const routeSimulationActive =
+    !isLive
+    && simulationStopCount > 1
+    && (simulationRunning || simulationProgress > 0);
+  const simulationFinished =
+    routeSimulationActive && simulationProgress >= simulationEnd;
+  const simulationJourneyIndex = Math.min(
+    simulationEnd,
+    Math.floor(simulationProgress + 0.001),
+  );
+  const simulationBusPosition = routeSimulationActive
+    ? interpolateRouteCoordinate(stops, simulationProgress)
+    : null;
+  // Prefer live stop statuses, but keep assignment lat/lng when live omits them
+  // so the Route path viewer can still project a geographic line.
+  const baseTrackerStops = (() => {
+    const liveStops = showLive && liveData?.stops?.length ? liveData.stops : null;
+    if (!liveStops) return previewStops;
+    const previewById = new Map(previewStops.map((s) => [s.id, s]));
+    return liveStops.map((s) => {
+      const fromPreview = previewById.get(s.id);
+      return {
+        ...s,
+        latitude: s.latitude ?? fromPreview?.latitude ?? null,
+        longitude: s.longitude ?? fromPreview?.longitude ?? null,
+      };
+    });
+  })();
+  const trackerStops = routeSimulationActive
+    ? baseTrackerStops.map((stop, index) => ({
+      ...stop,
+      status:
+        index < simulationJourneyIndex || (simulationFinished && index === simulationJourneyIndex)
+          ? 'completed'
+          : index === simulationJourneyIndex
+            ? 'active'
+            : 'pending',
+    }))
+    : baseTrackerStops;
+  const trackerBusPosition = showLive ? simulatedPosition : simulationBusPosition;
+  const usingStreetMap = mapOpen && showLive && Platform.OS !== 'web';
 
   return (
     <ScreenLayout>
@@ -495,16 +619,101 @@ export default function StudentBusTrackerScreen() {
               )}
             </View>
 
-            {/* Realtime tracker — self-contained (works on web + native) */}
-            <LiveRouteTracker
-              stops={trackerStops}
-              bus={showLive && loc ? { latitude: loc.latitude, longitude: loc.longitude, heading: loc.heading } : null}
-              boardingStopId={boardingStopId}
-              isFresh={showLive && locFresh}
-              etaMinutes={showLive ? liveData?.eta_minutes : null}
-              mode={showLive ? 'live' : 'preview'}
-              height={280}
-            />
+            <View style={[s.mapModeBar, isDark && { backgroundColor: theme.colors.background }]}>
+              <TouchableOpacity
+                style={[s.mapModeButton, !usingStreetMap && s.mapModeButtonActive]}
+                activeOpacity={0.75}
+                onPress={() => setMapOpen(false)}
+              >
+                <Ionicons name="git-branch-outline" size={15} color={!usingStreetMap ? C.white : C.slate500} />
+                <Text style={[s.mapModeText, !usingStreetMap && s.mapModeTextActive]}>
+                  {t('busTracker.route_view')}
+                </Text>
+              </TouchableOpacity>
+
+              {Platform.OS !== 'web' && showLive && (
+                <TouchableOpacity
+                  style={[s.mapModeButton, usingStreetMap && s.mapModeButtonActive]}
+                  activeOpacity={0.75}
+                  onPress={() => setMapOpen(true)}
+                >
+                  <Ionicons name="map-outline" size={15} color={usingStreetMap ? C.white : C.slate500} />
+                  <Text style={[s.mapModeText, usingStreetMap && s.mapModeTextActive]}>
+                    {t('busTracker.live_map')}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Native gets a real follow-camera map; web and route mode use the
+                lightweight 60fps tracker. Both receive the same simulated fix. */}
+            {usingStreetMap ? (
+              <Animated.View entering={FadeIn.duration(220)}>
+                <LiveBusMap
+                  stops={trackerStops}
+                  busLocation={simulatedPosition}
+                  heading={loc?.heading}
+                  speed={loc?.speed}
+                  isFresh={locFresh}
+                  boardingStopId={liveData?.boarding_stop_id || boardingStopId}
+                  height={310}
+                />
+              </Animated.View>
+            ) : (
+              <LiveRouteTracker
+                stops={trackerStops}
+                bus={trackerBusPosition
+                  ? { ...trackerBusPosition, heading: showLive ? loc?.heading : null }
+                  : null}
+                boardingStopId={boardingStopId}
+                isFresh={(showLive && locFresh) || routeSimulationActive}
+                etaMinutes={showLive ? liveData?.eta_minutes : null}
+                mode={showLive ? 'live' : 'preview'}
+                simulationProgress={routeSimulationActive ? simulationProgress : null}
+                simulationStopCount={stops.length}
+                height={300}
+              />
+            )}
+
+            {showLive && (
+              <View style={[s.mapStatsRow, isDark && { backgroundColor: theme.colors.background }]}>
+                <View style={s.mapStat}>
+                  <View style={[s.mapStatIcon, { backgroundColor: C.blueLight }]}>
+                    <Ionicons name="speedometer-outline" size={15} color={C.blue} />
+                  </View>
+                  <View>
+                    <Text style={s.mapStatLabel}>{t('busTracker.speed')}</Text>
+                    <Text style={[s.mapStatValue, isDark && { color: theme.colors.textPrimary }]}>
+                      {loc?.speed != null ? `${Math.max(0, Math.round(loc.speed))} km/h` : '—'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={s.mapStatDivider} />
+                <View style={s.mapStat}>
+                  <View style={[s.mapStatIcon, { backgroundColor: locFresh ? C.emeraldLight : C.amberLight }]}>
+                    <Ionicons name={locFresh ? 'radio-outline' : 'cloud-offline-outline'} size={15} color={locFresh ? C.emerald : C.amber} />
+                  </View>
+                  <View>
+                    <Text style={s.mapStatLabel}>{t('busTracker.signal')}</Text>
+                    <Text style={[s.mapStatValue, isDark && { color: theme.colors.textPrimary }]}>
+                      {locFresh ? t('busTracker.gps_strong') : t('busTracker.gps_weak')}
+                    </Text>
+                  </View>
+                </View>
+                <View style={s.mapStatDivider} />
+                <View style={s.mapStat}>
+                  <View style={[s.mapStatIcon, { backgroundColor: C.slate100 }]}>
+                    <Ionicons name="flag-outline" size={15} color={C.slate700} />
+                  </View>
+                  <View>
+                    <Text style={s.mapStatLabel}>{t('busTracker.stops_left')}</Text>
+                    <Text style={[s.mapStatValue, isDark && { color: theme.colors.textPrimary }]}>
+                      {until != null ? until : '—'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {/* ETA row */}
             {showLive && liveData ? (
@@ -550,19 +759,69 @@ export default function StudentBusTrackerScreen() {
               </View>
             </View>
             ) : (
-              <View style={s.previewMapFooter}>
-                <View style={[s.previewMapIcon, { backgroundColor: `${theme.colors.primary}14` }]}>
-                  <Ionicons name="navigate-outline" size={17} color={theme.colors.primary} />
+              <View style={[s.simulationPanel, isDark && { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}>
+                <View style={s.simulationTopRow}>
+                  <View style={[s.previewMapIcon, { backgroundColor: routeSimulationActive ? C.tealLight : `${theme.colors.primary}14` }]}>
+                    <Ionicons
+                      name={routeSimulationActive ? 'bus' : 'navigate-outline'}
+                      size={17}
+                      color={routeSimulationActive ? C.tealDark : theme.colors.primary}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.previewMapTitle, isDark && { color: theme.colors.textPrimary }]}>
+                      {routeSimulationActive
+                        ? simulationFinished
+                          ? t('busTracker.simulation_complete')
+                          : t('busTracker.route_simulation')
+                        : t('busTracker.preview_the_journey')}
+                    </Text>
+                    <Text style={s.previewMapText}>
+                      {routeSimulationActive
+                        ? t('busTracker.simulation_stop_progress', {
+                          current: simulationJourneyIndex + 1,
+                          total: stops.length,
+                        })
+                        : t('busTracker.simulation_from_start_to_end')}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    activeOpacity={0.78}
+                    style={[
+                      s.simulationButton,
+                      { backgroundColor: simulationRunning ? C.slate900 : C.tealDark },
+                    ]}
+                    onPress={toggleRouteSimulation}
+                    disabled={stops.length < 2}
+                  >
+                    <Ionicons
+                      name={simulationRunning ? 'pause' : simulationFinished ? 'refresh' : 'play'}
+                      size={15}
+                      color={C.white}
+                    />
+                    <Text style={s.simulationButtonText}>
+                      {simulationRunning
+                        ? t('busTracker.pause')
+                        : simulationFinished
+                          ? t('busTracker.replay')
+                          : simulationProgress > 0
+                            ? t('busTracker.resume')
+                            : t('busTracker.start')}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.previewMapTitle, isDark && { color: theme.colors.textPrimary }]}>
-                    {t('busTracker.driver_not_started')}
-                  </Text>
-                  <Text style={s.previewMapText}>
-                    {t('busTracker.preview_marker_moves', {
-                      stop: boarding || t('busTracker.your_stop_fallback'),
-                    })}
-                  </Text>
+                <View style={s.simulationProgressTrack}>
+                  <View
+                    style={[
+                      s.simulationProgressFill,
+                      {
+                        width: `${simulationEnd > 0
+                          ? Math.max(0, Math.min(100, (simulationProgress / simulationEnd) * 100))
+                          : 0}%`,
+                      },
+                    ]}
+                  />
                 </View>
               </View>
             )}
@@ -575,32 +834,6 @@ export default function StudentBusTrackerScreen() {
               </View>
             )}
 
-            {/* Full street map (MapLibre) — native only; the web wrapper is a stub */}
-            {showLive && liveData && Platform.OS !== 'web' && (
-              <>
-                <TouchableOpacity
-                  style={[s.liveMapToggle, isDark && { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
-                  activeOpacity={0.7}
-                  onPress={() => setMapOpen((v) => !v)}
-                >
-                  <Ionicons name={mapOpen ? 'chevron-up' : 'map-outline'} size={16} color={theme.colors.primary} />
-                  <Text style={[s.liveMapToggleText, { color: theme.colors.primary }]}>
-                    {mapOpen ? t('busTracker.hide_street_map') : t('busTracker.open_street_map')}
-                  </Text>
-                </TouchableOpacity>
-
-                {mapOpen && (
-                  <Animated.View entering={FadeIn.duration(250)} style={{ marginTop: 12 }}>
-                    <LiveBusMap
-                      stops={trackerStops}
-                      busLocation={loc ? { latitude: loc.latitude, longitude: loc.longitude } : null}
-                      boardingStopId={liveData.boarding_stop_id}
-                      height={240}
-                    />
-                  </Animated.View>
-                )}
-              </>
-            )}
         </Animated.View>
 
         {/* ── Bus at stop alert ───────────────────────────────────────── */}
@@ -644,127 +877,163 @@ export default function StudentBusTrackerScreen() {
           </View>
 
           {stops.map((stop, idx) => {
-            const isReached = stop.status === 'completed';
-            const isCurrent =
-              isLive && currentOrder != null && stop.id === data.current_stop?.id;
+            const reachedFromServer =
+              stop.status === 'completed' || stop.status === 'skipped';
+            const reachedInSimulation =
+              routeSimulationActive
+              && (
+                idx < simulationJourneyIndex
+                || (simulationFinished && idx === simulationJourneyIndex)
+              );
+            const isReached = reachedFromServer || reachedInSimulation;
+            const isCurrent = routeSimulationActive
+              ? idx === simulationJourneyIndex
+              : isLive && stop.id === data.current_stop?.id;
             const isBoardingStop = stop.id === boardingStopId;
             const isLast = idx === stops.length - 1;
             const isUpcoming = !isReached && !isCurrent;
-
-            // Node appearance
-            const nodeColor = isReached
-              ? C.emerald
-              : isCurrent
-                ? theme.colors.primary
-                : isBoardingStop
-                  ? theme.colors.primary
-                  : C.slate200;
-
-            const nodeBg = isReached
-              ? C.emerald
-              : isCurrent
-                ? theme.colors.primary
-                : isBoardingStop
-                  ? 'rgba(0,0,0,0)'
-                  : C.white;
+            const simulatedStopTime = simulationClockRef.current
+              ? simulationClockRef.current + idx * 4 * 60_000
+              : null;
+            const reachedTime = stop.reached_at
+              ? new Date(stop.reached_at)
+              : simulatedStopTime != null
+                ? new Date(simulatedStopTime)
+                : null;
+            const timeText = reachedTime?.toLocaleTimeString(dateLocale, {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            const statusText = isCurrent
+              ? simulationFinished
+                ? t('busTracker.route_ended')
+                : t('busTracker.bus_here')
+              : isReached
+                ? t('busTracker.bus_left')
+                : routeSimulationActive
+                  ? t('busTracker.upcoming')
+                  : t('busTracker.pending');
+            const lineBeforeComplete =
+              isReached || isCurrent || (routeSimulationActive && idx <= simulationJourneyIndex);
+            const lineAfterComplete =
+              isReached && !(simulationFinished && isCurrent);
 
             return (
-              <View key={stop.id} style={s.timelineRow}>
-                {/* ── Left: node + connector line ── */}
-                <View style={s.timelineLeft}>
-                  {/* Connector line above */}
+              <View key={stop.id} style={s.journeyRow}>
+                <View style={s.journeyRail}>
                   {idx > 0 && (
                     <View
                       style={[
-                        s.connectorLine,
-                        s.connectorTop,
-                        { backgroundColor: isReached || isCurrent ? C.emerald : C.slate200 },
+                        s.journeyConnector,
+                        s.journeyConnectorTop,
+                        { backgroundColor: lineBeforeComplete ? C.teal : '#CDEAF3' },
                       ]}
                     />
                   )}
 
-                  {/* Stop node */}
                   {isCurrent ? (
-                    <CurrentStopNode theme={theme} />
+                    <View style={s.journeyCurrentNode}>
+                      <CurrentStopNode color={C.tealDark} />
+                    </View>
                   ) : (
                     <View
                       style={[
-                        s.stopNode,
-                        {
-                          backgroundColor: nodeBg,
-                          borderColor: nodeColor,
-                          borderWidth: isBoardingStop && !isReached ? 2.5 : 1.5,
-                        },
+                        s.journeyNode,
+                        isReached
+                          ? s.journeyNodeReached
+                          : isBoardingStop
+                            ? [s.journeyNodeUpcoming, { borderColor: theme.colors.primary }]
+                            : s.journeyNodeUpcoming,
                       ]}
                     >
                       {isReached ? (
-                        <Ionicons name="checkmark" size={12} color={C.white} />
+                        <View style={s.journeyNodeCore} />
                       ) : isBoardingStop ? (
-                        <Ionicons name="person" size={11} color={theme.colors.primary} />
+                        <Ionicons name="person" size={10} color={theme.colors.primary} />
                       ) : (
-                        <View style={[s.innerDot, { backgroundColor: isUpcoming ? C.slate200 : nodeColor }]} />
+                        <View style={s.journeyNodePendingCore} />
                       )}
                     </View>
                   )}
 
-                  {/* Connector line below */}
                   {!isLast && (
                     <View
                       style={[
-                        s.connectorLine,
-                        s.connectorBottom,
-                        { backgroundColor: isReached ? C.emerald : C.slate200 },
+                        s.journeyConnector,
+                        s.journeyConnectorBottom,
+                        { backgroundColor: lineAfterComplete ? C.teal : '#CDEAF3' },
                       ]}
                     />
                   )}
                 </View>
 
-                {/* ── Right: stop content ── */}
                 <View
                   style={[
-                    s.stopContent,
-                    isCurrent && [s.stopContentCurrent, isDark && { backgroundColor: theme.colors.background }, { borderColor: theme.colors.primaryLight, borderBottomColor: theme.colors.primaryDark }],
-                    isBoardingStop && !isCurrent && [s.stopContentBoarding, isDark && { backgroundColor: theme.colors.background }, { borderColor: theme.colors.primaryLight, borderBottomColor: theme.colors.primary }],
-                    isLast && { marginBottom: 0 },
+                    s.journeyStopContent,
+                    isCurrent && s.journeyStopCurrent,
+                    isBoardingStop && s.journeyBoardingStop,
+                    isDark && {
+                      backgroundColor:
+                        isCurrent || isBoardingStop ? theme.colors.background : 'transparent',
+                    },
+                    isLast && s.journeyStopLast,
                   ]}
                 >
-                  <View style={s.stopContentInner}>
-                    <View style={{ flex: 1 }}>
-                      <View style={s.stopNameRow}>
-                        <Text
-                          style={[
-                            s.stopName,
-                            isDark && { color: theme.colors.textPrimary },
-                            isReached && { color: isDark ? theme.colors.textMuted : C.slate400 },
-                            isCurrent && { color: theme.colors.primary, fontWeight: '700' },
-                            isBoardingStop && !isReached && { color: theme.colors.primary },
-                          ]}
-                        >
-                          {stop.name}
-                        </Text>
-                        {isBoardingStop && (
-                          <View style={[s.boardingTag, { backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: theme.colors.primary }]}>
-                            <Text style={[s.boardingTagText, { color: theme.colors.primary }]}>{t('busTracker.your_stop')}</Text>
-                          </View>
-                        )}
-                        {isCurrent && (
-                          <View style={[s.currentTag, { backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: theme.colors.primary }]}>
-                            <Text style={[s.currentTagText, { color: theme.colors.primary }]}>{t('busTracker.bus_here')}</Text>
-                          </View>
-                        )}
-                      </View>
+                  <View style={s.journeyStopHeading}>
+                    <Text
+                      style={[
+                        s.journeyStopName,
+                        isDark && { color: theme.colors.textPrimary },
+                        isCurrent && { color: C.tealDark },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {stop.name}
+                    </Text>
+                    <Text
+                      style={[
+                        s.journeyStopStatus,
+                        {
+                          color: isCurrent
+                            ? C.tealDark
+                            : isReached
+                              ? C.red
+                              : C.slate400,
+                        },
+                      ]}
+                    >
+                      {statusText}
+                    </Text>
+                  </View>
 
-                      {stop.reached_at ? (
-                        <Text style={s.stopTime}>
-                          {t('busTracker.reached_at')} {new Date(stop.reached_at).toLocaleTimeString(dateLocale, {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </Text>
-                      ) : isUpcoming && !isCurrent ? (
-                        <Text style={s.stopTimePending}>{t('busTracker.pending')}</Text>
-                      ) : null}
+                  {isBoardingStop && (
+                    <View style={[s.journeyBoardingTag, { borderColor: theme.colors.primary }]}>
+                      <Ionicons name="person-outline" size={10} color={theme.colors.primary} />
+                      <Text style={[s.journeyBoardingTagText, { color: theme.colors.primary }]}>
+                        {t('busTracker.your_stop')}
+                      </Text>
                     </View>
+                  )}
+
+                  <View style={s.journeyTimeRow}>
+                    <Ionicons
+                      name={isUpcoming ? 'time-outline' : isCurrent ? 'navigate-outline' : 'log-out-outline'}
+                      size={14}
+                      color={isCurrent || isReached ? C.teal : C.slate400}
+                    />
+                    <Text style={[s.journeyTimeLabel, (isCurrent || isReached) && { color: C.tealDark }]}>
+                      {isCurrent && !simulationFinished
+                        ? t('busTracker.arriving_now')
+                        : timeText
+                          ? routeSimulationActive
+                            ? isUpcoming
+                              ? t('busTracker.simulated_expected', { time: timeText })
+                              : t('busTracker.simulated_at', { time: timeText })
+                            : t('busTracker.reached_at_time', { time: timeText })
+                          : isUpcoming
+                            ? t('busTracker.waiting_for_bus')
+                            : t('busTracker.pending')}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -943,6 +1212,68 @@ const s = StyleSheet.create({
   },
   liveNowDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.emerald },
   liveNowText: { fontSize: 10, fontWeight: '800', color: C.emerald, letterSpacing: 0.5 },
+  mapModeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    padding: 4,
+    marginBottom: 10,
+    borderRadius: 15,
+    backgroundColor: C.slate100,
+  },
+  mapModeButton: {
+    minHeight: 36,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    borderRadius: 11,
+  },
+  mapModeButtonActive: {
+    backgroundColor: C.slate900,
+    shadowColor: C.slate900,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  mapModeText: { color: C.slate500, fontSize: 11, fontWeight: '800' },
+  mapModeTextActive: { color: C.white },
+  mapStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 15,
+    backgroundColor: 'rgba(248,250,252,0.82)',
+  },
+  mapStat: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 5,
+  },
+  mapStatIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapStatLabel: {
+    color: C.slate400,
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  mapStatValue: { color: C.slate900, fontSize: 11, fontWeight: '800', marginTop: 1 },
+  mapStatDivider: { width: 1, height: 30, backgroundColor: C.slate200 },
   liveEtaRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 4, paddingBottom: 4 },
   liveEtaIcon: {
     width: 40, height: 40, borderRadius: 14,
@@ -970,6 +1301,41 @@ const s = StyleSheet.create({
     minHeight: 44,
   },
   liveMapToggleText: { fontSize: 13, fontWeight: '700' },
+  simulationPanel: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.slate200,
+    backgroundColor: C.slate50,
+  },
+  simulationTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  simulationButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  simulationButtonText: { color: C.white, fontSize: 11, fontWeight: '800' },
+  simulationProgressTrack: {
+    height: 5,
+    marginTop: 11,
+    overflow: 'hidden',
+    borderRadius: 99,
+    backgroundColor: '#DDE8EC',
+  },
+  simulationProgressFill: {
+    height: '100%',
+    borderRadius: 99,
+    backgroundColor: C.teal,
+  },
   previewMapFooter: {
     flexDirection: 'row', alignItems: 'center', gap: 11,
     marginTop: 12, paddingHorizontal: 4, paddingVertical: 4,
@@ -1019,6 +1385,115 @@ const s = StyleSheet.create({
   },
   timelineTitle: { fontSize: 16, fontWeight: '800', color: C.slate900, letterSpacing: -0.2 },
   timelineCount: { fontSize: 12, color: C.slate500, fontWeight: '700' },
+
+  // Transit-app journey rail.
+  journeyRow: { minHeight: 82, flexDirection: 'row' },
+  journeyRail: {
+    position: 'relative',
+    width: 50,
+    alignItems: 'center',
+  },
+  journeyConnector: {
+    position: 'absolute',
+    left: 23,
+    width: 4,
+  },
+  journeyConnectorTop: { top: 0, height: 18 },
+  journeyConnectorBottom: { top: 43, bottom: 0 },
+  journeyCurrentNode: { zIndex: 3, marginTop: 12 },
+  journeyNode: {
+    zIndex: 2,
+    width: 18,
+    height: 18,
+    marginTop: 17,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  journeyNodeReached: {
+    borderColor: C.white,
+    backgroundColor: C.teal,
+    shadowColor: C.tealDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  journeyNodeUpcoming: {
+    borderColor: '#9DB8C1',
+    backgroundColor: C.white,
+  },
+  journeyNodeCore: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.white,
+  },
+  journeyNodePendingCore: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#D6E5EA',
+  },
+  journeyStopContent: {
+    flex: 1,
+    minHeight: 72,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 14,
+  },
+  journeyStopLast: { marginBottom: 0 },
+  journeyStopCurrent: {
+    borderWidth: 1.5,
+    borderColor: C.teal,
+    backgroundColor: '#F0FDFA',
+    shadowColor: C.tealDark,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.09,
+    shadowRadius: 7,
+    elevation: 2,
+  },
+  journeyBoardingStop: {
+    borderWidth: 1,
+    borderColor: C.blueBorder,
+    backgroundColor: '#F8FBFF',
+  },
+  journeyStopHeading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  journeyStopName: {
+    flex: 1,
+    color: C.slate900,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  journeyStopStatus: { marginTop: 1, fontSize: 10, fontWeight: '800' },
+  journeyBoardingTag: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: C.white,
+  },
+  journeyBoardingTagText: { fontSize: 9, fontWeight: '800' },
+  journeyTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  journeyTimeLabel: { color: C.slate400, fontSize: 11, fontWeight: '600' },
 
   // ── Timeline row ──
   timelineRow: {

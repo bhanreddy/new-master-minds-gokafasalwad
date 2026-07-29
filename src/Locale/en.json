@@ -100,6 +100,31 @@
       "learning_resources": "Learning resources"
     }
   },
+  "studentSpace": {
+    "eyebrow": "STUDENT SPACE",
+    "greeting": "Explore, {{name}}",
+    "description": "Tools for learning, growth and everyday life",
+    "career": {
+      "title": "Career Guidance",
+      "description": "Explore paths and strengths"
+    },
+    "ai": {
+      "title": "AI Study Assist",
+      "description": "Ask, understand and learn"
+    },
+    "insurance": {
+      "title": "Student Protection",
+      "description": "Coverage and wellbeing"
+    },
+    "money": {
+      "title": "Money Skills",
+      "description": "Save, budget and grow"
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Language, appearance and preferences"
+    }
+  },
   "busTracker": {
     "title": "Bus Tracker",
     "route": "ROUTE",
@@ -169,6 +194,41 @@
     "gps_signal_lost": "GPS signal lost — following checkpoint updates below",
     "hide_street_map": "Hide street map",
     "open_street_map": "Open street map",
+    "route_view": "Route",
+    "live_map": "Live map",
+    "street_view": "Street View",
+    "open_street_view": "Open Street View",
+    "open_in_maps": "Open in Maps",
+    "location_unavailable": "Live location unavailable",
+    "street_view_waiting": "Street View will be available after the driver sends a GPS location.",
+    "map_open_failed": "Could not open maps",
+    "map_open_failed_detail": "Please check that a maps app or browser is available on this device.",
+    "speed": "Speed",
+    "signal": "Signal",
+    "stops_left": "Stops left",
+    "gps_strong": "Strong GPS",
+    "gps_weak": "Weak GPS",
+    "live_movement": "LIVE MOVEMENT",
+    "last_known_position": "LAST KNOWN POSITION",
+    "recenter_bus": "Recenter on bus",
+    "following_bus": "Following bus",
+    "route_overview": "Route overview",
+    "route_simulation": "ROUTE SIMULATION",
+    "preview_the_journey": "Preview the full journey",
+    "simulation_from_start_to_end": "Watch the bus move from the first stop to the final stop.",
+    "simulation_stop_progress": "Stop {{current}} of {{total}}",
+    "simulation_complete": "Simulation complete",
+    "start": "Start",
+    "pause": "Pause",
+    "resume": "Resume",
+    "replay": "Replay",
+    "bus_left": "Bus left",
+    "upcoming": "Upcoming",
+    "route_ended": "Route ended",
+    "simulated_at": "Simulated · {{time}}",
+    "simulated_expected": "Expected · {{time}}",
+    "reached_at_time": "Reached · {{time}}",
+    "waiting_for_bus": "Waiting for bus",
     "stop_fallback": "Stop",
     "route_fallback": "Route",
     "live_gps_active": "Live GPS active",

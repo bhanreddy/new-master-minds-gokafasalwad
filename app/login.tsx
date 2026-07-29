@@ -24,6 +24,7 @@ import Animated, {
   useReducedMotion,
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useTheme } from '@/src/hooks/useTheme';
 import { showAlert } from '@/src/components/CustomAlert';
@@ -37,6 +38,9 @@ import {
 } from '@/src/utils/portalRoutes';
 import { isStudentRole, isStaffPortalRole } from '@/src/utils/roleHelpers';
 import { SCHOOL_ID } from '@/src/constants/school';
+import { SCHOOL_CONFIG } from '@/src/constants/schoolConfig';
+import { isTelugu } from '@/src/utils/lang';
+import * as Haptics from '@/src/utils/haptics';
 import {
   isFingerprintEnabledForAccount,
   issueFingerprintTicket,
@@ -52,6 +56,7 @@ import type { LoginFocusedField } from '@/src/components/doodles/doodleTypes';
 import { useLoginDoodleState } from '@/src/hooks/useLoginDoodleState';
 import LogoLoader from '../src/components/LogoLoader';
 import AdminHeaderCard from '@/src/components/AdminHeaderCard';
+import LanguageToggle from '@/src/components/LanguageToggle';
 
 import { useLoginTheme } from '@/src/hooks/useLoginTheme';
 import {
@@ -76,9 +81,19 @@ const UnifiedLoginScreen: React.FC = () => {
   const C = useLoginTheme();
   const styles = getStyles(C);
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toggleTheme } = useTheme();
   const { user, loading: authLoading, signIn, switchAccount } = useAuth();
+  const isTeluguLang = isTelugu(i18n.language);
+
+  const setLanguage = async (language: 'en' | 'te') => {
+    if ((language === 'te') === isTeluguLang) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await Promise.all([
+      i18n.changeLanguage(language),
+      AsyncStorage.setItem('appLanguage', language),
+    ]);
+  };
 
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -342,16 +357,41 @@ const UnifiedLoginScreen: React.FC = () => {
         >
           <View style={styles.shell}>
             <SafeAreaView edges={['top']} style={styles.topArea}>
-              <View style={styles.themeRow}>
+              <View style={styles.topBar}>
+                {/* Left — Te / En */}
+                <LanguageToggle
+                  language={isTeluguLang ? 'te' : 'en'}
+                  onLanguageChange={setLanguage}
+                  darkBackground={C.isDark}
+                  trackColor={C.isDark ? 'rgba(116,101,184,0.24)' : 'rgba(124,107,184,0.12)'}
+                  borderColor={C.isDark ? 'rgba(222,216,255,0.30)' : 'rgba(107,47,160,0.18)'}
+                  activeBackgroundColor={C.accent}
+                  activeLabelColor="#FFFFFF"
+                  inactiveLabelColor={C.isDark ? '#E9E5FF' : C.inkSoft}
+                />
+
+                {/* Center — school brand */}
+                <View style={styles.brandChip}>
+                  <View style={styles.brandLogoWrap}>
+                    <Image source={SCHOOL_CONFIG.logo} style={styles.brandLogo} />
+                  </View>
+                  <View style={styles.brandCopy}>
+                    <Text style={styles.brandName} numberOfLines={1}>
+                      {SCHOOL_CONFIG.name.split(/\s+/).slice(0, 2).join(' ')}
+                    </Text>
+                    <Text style={styles.brandTag} numberOfLines={1}>
+                      {SCHOOL_CONFIG.tagline}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Right — theme */}
                 <View style={styles.themeToggle}>
                   <Ionicons
                     name={C.isDark ? 'moon' : 'sunny'}
                     size={14}
                     color={C.accent}
                   />
-                  <Text style={styles.themeToggleText}>
-                    {C.isDark ? 'Dark mode' : 'Light mode'}
-                  </Text>
                   <Switch
                     value={C.isDark}
                     onValueChange={toggleTheme}
@@ -690,27 +730,73 @@ const getStyles = (C: ReturnType<typeof useLoginTheme>) => StyleSheet.create({
   topArea: {
     width: '100%',
   },
-  themeRow: {
-    alignItems: 'flex-end',
-    marginBottom: 6,
-    paddingHorizontal: 4,
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+    minHeight: 40,
+  },
+  brandChip: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: C.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: C.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(107,47,160,0.10)',
+  },
+  brandLogoWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.isDark ? 'rgba(240,152,34,0.45)' : 'rgba(240,152,34,0.35)',
+  },
+  brandLogo: {
+    width: 16,
+    height: 16,
+    resizeMode: 'contain',
+  },
+  brandCopy: {
+    flexShrink: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  brandName: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    color: C.ink,
+  },
+  brandTag: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: C.accent,
+    opacity: 0.9,
   },
   themeToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 4,
     minHeight: 34,
-    paddingLeft: 12,
-    paddingRight: 4,
+    paddingLeft: 8,
+    paddingRight: 2,
     borderRadius: 999,
     backgroundColor: C.isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.78)',
     borderWidth: 1,
     borderColor: C.isDark ? 'rgba(255,255,255,0.08)' : 'rgba(107,47,160,0.10)',
-  },
-  themeToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.inkSoft,
+    flexShrink: 0,
   },
   themeSwitch: {
     transform: [{ scale: 0.72 }],

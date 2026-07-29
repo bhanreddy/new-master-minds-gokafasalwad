@@ -103,6 +103,31 @@
       "learning_resources": "అభ్యాస వనరులు"
     }
   },
+  "studentSpace": {
+    "eyebrow": "స్టూడెంట్ స్పేస్",
+    "greeting": "అన్వేషించండి, {{name}}",
+    "description": "చదువు, ఎదుగుదల మరియు రోజువారీ జీవితానికి సాధనాలు",
+    "career": {
+      "title": "కెరీర్ గైడెన్స్",
+      "description": "మార్గాలు మరియు బలాలను తెలుసుకోండి"
+    },
+    "ai": {
+      "title": "AI స్టడీ అసిస్ట్",
+      "description": "అడగండి, అర్థం చేసుకోండి, నేర్చుకోండి"
+    },
+    "insurance": {
+      "title": "స్టూడెంట్ ప్రొటెక్షన్",
+      "description": "రక్షణ మరియు ఆరోగ్య సహాయం"
+    },
+    "money": {
+      "title": "మనీ స్కిల్స్",
+      "description": "పొదుపు, బడ్జెట్ మరియు ఎదుగుదల"
+    },
+    "settings": {
+      "title": "సెట్టింగ్స్",
+      "description": "భాష, రూపం మరియు ప్రాధాన్యతలు"
+    }
+  },
   "busTracker": {
     "title": "బస్ ట్రాకర్",
     "route": "రూట్",
@@ -172,6 +197,41 @@
     "gps_signal_lost": "GPS సిగ్నల్ లేదు — క్రింది చెక్‌పాయింట్ నవీకరణలను అనుసరిస్తున్నాం",
     "hide_street_map": "స్ట్రీట్ మ్యాప్ దాచు",
     "open_street_map": "స్ట్రీట్ మ్యాప్ తెరువు",
+    "route_view": "రూట్",
+    "live_map": "లైవ్ మ్యాప్",
+    "street_view": "స్ట్రీట్ వ్యూ",
+    "open_street_view": "స్ట్రీట్ వ్యూ తెరవండి",
+    "open_in_maps": "మ్యాప్స్‌లో తెరవండి",
+    "location_unavailable": "లైవ్ లొకేషన్ అందుబాటులో లేదు",
+    "street_view_waiting": "డ్రైవర్ GPS లొకేషన్ పంపిన తర్వాత స్ట్రీట్ వ్యూ అందుబాటులో ఉంటుంది.",
+    "map_open_failed": "మ్యాప్స్ తెరవలేకపోయాం",
+    "map_open_failed_detail": "ఈ పరికరంలో మ్యాప్స్ యాప్ లేదా బ్రౌజర్ అందుబాటులో ఉందో చూడండి.",
+    "speed": "వేగం",
+    "signal": "సిగ్నల్",
+    "stops_left": "మిగిలిన స్టాప్‌లు",
+    "gps_strong": "మంచి GPS",
+    "gps_weak": "బలహీన GPS",
+    "live_movement": "లైవ్ కదలిక",
+    "last_known_position": "చివరి లొకేషన్",
+    "recenter_bus": "బస్సుపై మళ్లీ కేంద్రీకరించండి",
+    "following_bus": "బస్సును అనుసరిస్తోంది",
+    "route_overview": "రూట్ అవలోకనం",
+    "route_simulation": "రూట్ సిమ్యులేషన్",
+    "preview_the_journey": "పూర్తి ప్రయాణాన్ని ప్రివ్యూ చేయండి",
+    "simulation_from_start_to_end": "మొదటి స్టాప్ నుంచి చివరి స్టాప్ వరకు బస్సు కదలికను చూడండి.",
+    "simulation_stop_progress": "{{total}}లో {{current}}వ స్టాప్",
+    "simulation_complete": "సిమ్యులేషన్ పూర్తయింది",
+    "start": "ప్రారంభించు",
+    "pause": "పాజ్",
+    "resume": "కొనసాగించు",
+    "replay": "మళ్లీ ప్లే",
+    "bus_left": "బస్సు వెళ్లింది",
+    "upcoming": "తదుపరి",
+    "route_ended": "రూట్ పూర్తయింది",
+    "simulated_at": "సిమ్యులేషన్ · {{time}}",
+    "simulated_expected": "అంచనా · {{time}}",
+    "reached_at_time": "చేరింది · {{time}}",
+    "waiting_for_bus": "బస్సు కోసం వేచి ఉంది",
     "stop_fallback": "స్టాప్",
     "route_fallback": "రూట్",
     "live_gps_active": "లైవ్ GPS యాక్టివ్",

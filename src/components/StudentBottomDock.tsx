@@ -1,8 +1,3 @@
-import aiIcon from '@iconify-icons/fluent-emoji-flat/robot';
-import dcgdIcon from '@iconify-icons/fluent-emoji-flat/rocket';
-import insuranceIcon from '@iconify-icons/fluent-emoji-flat/shield';
-import moneyIcon from '@iconify-icons/fluent-emoji-flat/money-bag';
-import type { IconifyIcon } from '@iconify/types';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
@@ -20,6 +15,7 @@ import {
   useWindowDimensions,
   View,
   ViewStyle,
+  type ImageSourcePropType,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,15 +25,14 @@ import { useAuth } from '../hooks/useAuth';
 import { useFeatures } from '../hooks/useFeatures';
 import { useTheme } from '../hooks/useTheme';
 import * as Haptics from '../utils/haptics';
-import IconifyIllustration from './IconifyIllustration';
 
 type StudentMenuItem = {
   key: string;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   link: Href;
   feature: FeatureKey;
-  icon: IconifyIcon;
+  image: ImageSourcePropType;
   tint: string;
   surface: string;
 };
@@ -45,45 +40,47 @@ type StudentMenuItem = {
 const STUDENT_MENU_ITEMS: StudentMenuItem[] = [
   {
     key: 'dcgd',
-    label: 'DCGD',
-    description: 'Career growth',
+    labelKey: 'studentSpace.career.title',
+    descriptionKey: 'studentSpace.career.description',
     link: '/Screen/dcgd',
     feature: 'menu.dcgd',
-    icon: dcgdIcon,
+    image: require('../../assets/images/student-space/career-guidance-clay.png'),
     tint: '#0D9488',
     surface: '#E6FFFA',
   },
   {
     key: 'ai_doubt',
-    label: 'AI Doubt Assist',
-    description: 'Ask and learn',
+    labelKey: 'studentSpace.ai.title',
+    descriptionKey: 'studentSpace.ai.description',
     link: '/Screen/aiChat',
     feature: 'menu.ai_doubt_assist',
-    icon: aiIcon,
+    image: require('../../assets/images/student-space/ai-study-assist-clay.png'),
     tint: '#6366F1',
     surface: '#EEF2FF',
   },
   {
     key: 'insurance',
-    label: 'Insurance',
-    description: 'Protection details',
+    labelKey: 'studentSpace.insurance.title',
+    descriptionKey: 'studentSpace.insurance.description',
     link: '/Screen/insurance',
     feature: 'menu.insurance',
-    icon: insuranceIcon,
+    image: require('../../assets/images/student-space/insurance-protection-clay.png'),
     tint: '#059669',
     surface: '#ECFDF5',
   },
   {
     key: 'money_science',
-    label: 'Money Science',
-    description: 'Financial skills',
+    labelKey: 'studentSpace.money.title',
+    descriptionKey: 'studentSpace.money.description',
     link: '/Screen/moneyScience',
     feature: 'menu.money_science',
-    icon: moneyIcon,
+    image: require('../../assets/images/student-space/money-skills-clay.png'),
     tint: '#8B5CF6',
     surface: '#F5F3FF',
   },
 ];
+
+const SETTINGS_IMAGE = require('../../assets/images/student-space/settings-preferences-clay.png');
 
 const TAB_META = {
   home: {
@@ -306,6 +303,7 @@ function StudentDockMenu({
   const router = useRouter();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { theme, isDark } = useTheme();
   const { user } = useAuth();
   const { isEnabled } = useFeatures();
@@ -393,10 +391,13 @@ function StudentDockMenu({
 
             <View style={styles.menuHeaderCopy}>
               <Text style={[styles.menuEyebrow, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>
-                STUDENT SPACE
+                {t('studentSpace.eyebrow')}
               </Text>
               <Text style={[styles.menuTitle, { color: theme.colors.textStrong }]} numberOfLines={1}>
-                Explore, {displayName.split(' ')[0]}
+                {t('studentSpace.greeting', { name: displayName.split(' ')[0] })}
+              </Text>
+              <Text style={[styles.menuHeaderDescription, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                {t('studentSpace.description')}
               </Text>
             </View>
 
@@ -418,36 +419,52 @@ function StudentDockMenu({
           </View>
 
           <View style={styles.menuGrid}>
-            {menuItems.map((item) => (
-              <Pressable
-                key={item.key}
-                accessibilityRole="button"
-                accessibilityLabel={item.label}
-                onPress={() => navigateTo(item.link)}
-                style={({ pressed }) => [
-                  styles.menuTile,
-                  {
-                    backgroundColor: isDark ? `${item.tint}18` : item.surface,
-                    borderColor: isDark ? `${item.tint}32` : `${item.tint}22`,
-                  },
-                  pressed && styles.menuTilePressed,
-                  Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
-                ]}
-              >
-                <View style={[styles.menuIllustration, { backgroundColor: isDark ? '#FFFFFFEE' : '#FFFFFF' }]}>
-                  <IconifyIllustration icon={item.icon} size={38} />
-                </View>
-                <View style={styles.menuTileCopy}>
-                  <Text style={[styles.menuTileLabel, { color: theme.colors.textStrong }]} numberOfLines={1}>
-                    {item.label}
-                  </Text>
-                  <Text style={[styles.menuTileDescription, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                    {item.description}
-                  </Text>
-                </View>
-                <Ionicons name="arrow-up" size={14} color={item.tint} style={styles.tileArrow} />
-              </Pressable>
-            ))}
+            {menuItems.map((item) => {
+              const label = t(item.labelKey);
+              const description = t(item.descriptionKey);
+
+              return (
+                <Pressable
+                  key={item.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label}. ${description}`}
+                  onPress={() => navigateTo(item.link)}
+                  style={({ pressed }) => [
+                    styles.menuTile,
+                    {
+                      backgroundColor: isDark ? `${item.tint}18` : item.surface,
+                      borderColor: isDark ? `${item.tint}32` : `${item.tint}22`,
+                    },
+                    pressed && styles.menuTilePressed,
+                    Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
+                  ]}
+                >
+                  <View style={[styles.menuArtwork, { shadowColor: item.tint }]}>
+                    <Image
+                      source={item.image}
+                      style={styles.menuArtworkImage}
+                      resizeMode="cover"
+                      accessibilityIgnoresInvertColors
+                    />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0.55, y: 0.75 }}
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                    />
+                  </View>
+                  <View style={styles.menuTileCopy}>
+                    <Text style={[styles.menuTileLabel, { color: theme.colors.textStrong }]} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    <Text style={[styles.menuTileDescription, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                      {description}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
 
           <View style={[styles.menuFooter, { borderTopColor: theme.colors.border }]}>
@@ -464,18 +481,22 @@ function StudentDockMenu({
                 pressed && styles.pressed,
               ]}
             >
-              <View style={[styles.footerIcon, { backgroundColor: isDark ? '#334155' : '#EEF2FF' }]}>
-                <Ionicons name="settings" size={16} color={isDark ? '#CBD5E1' : '#4F46E5'} />
+              <View style={styles.settingsArtwork}>
+                <Image
+                  source={SETTINGS_IMAGE}
+                  style={styles.settingsArtworkImage}
+                  resizeMode="cover"
+                  accessibilityIgnoresInvertColors
+                />
               </View>
               <View style={styles.settingsCopy}>
                 <Text style={[styles.footerActionText, { color: theme.colors.textStrong }]}>
-                  Settings
+                  {t('studentSpace.settings.title')}
                 </Text>
                 <Text style={[styles.settingsDescription, { color: theme.colors.textMuted }]}>
-                  Language, appearance and preferences
+                  {t('studentSpace.settings.description')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={isDark ? '#818CF8' : '#6366F1'} />
             </Pressable>
           </View>
 
@@ -681,6 +702,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.45,
   },
+  menuHeaderDescription: {
+    marginTop: 2,
+    fontSize: 9.5,
+    lineHeight: 12,
+    fontWeight: '600',
+  },
   closeButton: {
     width: 36,
     height: 36,
@@ -697,35 +724,38 @@ const styles = StyleSheet.create({
   menuTile: {
     flexGrow: 1,
     flexBasis: '47%',
-    minWidth: 145,
-    minHeight: 76,
+    minWidth: 122,
+    height: 140,
     borderRadius: 19,
     borderWidth: 1,
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 8,
     overflow: 'hidden',
   },
   menuTilePressed: {
     opacity: 0.86,
     transform: [{ scale: 0.975 }],
   },
-  menuIllustration: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#64748B',
+  menuArtwork: {
+    width: '100%',
+    height: 82,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.14,
+    shadowRadius: 7,
+    backgroundColor: '#F8F5EF',
+  },
+  menuArtworkImage: {
+    width: '100%',
+    height: '100%',
   },
   menuTileCopy: {
     flex: 1,
     minWidth: 0,
-    marginLeft: 9,
+    paddingTop: 7,
+    paddingHorizontal: 2,
   },
   menuTileLabel: {
     fontSize: 12.5,
@@ -737,30 +767,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 3,
   },
-  tileArrow: {
-    transform: [{ rotate: '45deg' }],
-    marginLeft: 3,
-    opacity: 0.72,
-  },
   menuFooter: {
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   settingsAction: {
-    minHeight: 50,
+    minHeight: 70,
     borderWidth: 1,
     borderRadius: 16,
-    paddingHorizontal: 10,
+    padding: 7,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  footerIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
+  settingsArtwork: {
+    width: 64,
+    height: 56,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
+    backgroundColor: '#F8F5EF',
+  },
+  settingsArtworkImage: {
+    width: '100%',
+    height: '100%',
   },
   settingsCopy: {
     flex: 1,

@@ -1,33 +1,23 @@
 /**
- * HomeScreen.tsx — Premium v7.2
+ * HomeScreen.tsx — Premium v7.3
  * ─────────────────────────────────────────────────────────
- * v7.2 changes:
- * • FeatureCard: Microsoft Fluent Emoji Flat illustrations (matches StudentBottomDock)
- * • Cleaner frosted icon badges — no tilted paper-sticker backplate
- * • homeTabs data preserved (subtitleKey untouched for future reuse)
+ * v7.3 changes:
+ * • FeatureCard: purpose-built claymorphic story images
+ * • Image-first cards replace generic icon/emoji badges
+ * • Localized meaning line makes every destination unambiguous
  * ─────────────────────────────────────────────────────────
  * Design philosophy (rural-UX aware):
  * ✦ COLOR = RECOGNITION — full-color tiles for low-literacy / quick-glance scanning
  * ✦ Premium comes from EXECUTION:
  *   • 3-stop jewel-tone gradients
  *   • Top-left radial light highlight
- *   • Polished, multicolour Fluent illustrations with consistent visual weight
+ *   • Narrative clay doodles with consistent materials and visual weight
  *   • Colored shadow tight + dark ambient layered
- * Illustrations: Fluent Emoji Flat (MIT), imported individually through Iconify.
+ * Illustrations: project-owned, generated specifically for each student action.
  */
 
 import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
-import type { IconifyIcon } from '@iconify/types';
-import announcementsIcon from '@iconify-icons/fluent-emoji-flat/megaphone';
-import complaintsIcon from '@iconify-icons/fluent-emoji-flat/warning';
-import diaryIcon from '@iconify-icons/fluent-emoji-flat/open-book';
-import lifeValuesIcon from '@iconify-icons/fluent-emoji-flat/heart-hands';
-import lmsIcon from '@iconify-icons/fluent-emoji-flat/laptop';
-import messagesIcon from '@iconify-icons/fluent-emoji-flat/speech-balloon';
-import profileIcon from '@iconify-icons/fluent-emoji-flat/student';
-import scienceIcon from '@iconify-icons/fluent-emoji-flat/microscope';
-import transportIcon from '@iconify-icons/fluent-emoji-flat/oncoming-bus';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -42,6 +32,7 @@ import {
   useWindowDimensions,
   View,
   Image,
+  type ImageSourcePropType,
 } from 'react-native';
 import Animated, {
   FadeInUp,
@@ -54,7 +45,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AdminHeaderCard from '../../src/components/AdminHeaderCard';
 import DashboardHero from '../../src/components/DashboardHero';
-import IconifyIllustration from '../../src/components/IconifyIllustration';
 import LogoLoader from '../../src/components/LogoLoader';
 import ScreenLayout from '../../src/components/ScreenLayout';
 import StudentHeader from '../../src/components/StudentHeader';
@@ -113,10 +103,8 @@ interface HomeTab {
   title: string;
   translationKey?: string;
   subtitleKey: string;
-  /** Self-coloured Fluent Emoji Flat illustration imported individually via Iconify. */
-  icon: IconifyIcon;
-  /** Optical sizing keeps differently shaped illustrations visually balanced. */
-  iconSize: number;
+  /** Purpose-built claymorphic scene that explains the destination at a glance. */
+  image: ImageSourcePropType;
   /** 3-stop gradient: [deep edge, mid base, light top-highlight] */
   grad: [string, string, string];
   /** Single shadow hue — keep tight, don't oversaturate */
@@ -130,8 +118,7 @@ const homeTabs: HomeTab[] = [
     key: 'diary',
     translationKey: 'diary', title: 'Diary',
     subtitleKey: 'dashboard.featureSubtitles.daily_diary',
-    icon: diaryIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/diary-clay.png'),
     grad: ['#0C4A6E', '#0284C7', '#7DD3FC'],
     shadow: '#075985',
     feature: 'topbar.diary',
@@ -140,8 +127,7 @@ const homeTabs: HomeTab[] = [
     key: 'messages',
     translationKey: 'announcements.title', title: 'Announcements',
     subtitleKey: 'dashboard.featureSubtitles.school_updates',
-    icon: announcementsIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/announcements-clay.png'),
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'quick.announcements',
@@ -150,8 +136,7 @@ const homeTabs: HomeTab[] = [
     key: 'complaints',
     translationKey: 'complaints.title', title: 'Complaints',
     subtitleKey: 'dashboard.featureSubtitles.raise_concern',
-    icon: complaintsIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/complaints-clay.png'),
     grad: ['#7F1D1D', '#B91C1C', '#F87171'], // Red 900, Red 700
     shadow: '#991B1B', // Red 800
     feature: 'quick.complaints',
@@ -160,8 +145,7 @@ const homeTabs: HomeTab[] = [
     key: 'lifeValues',
     translationKey: 'lifeValues', title: 'Life Values',
     subtitleKey: 'dashboard.featureSubtitles.character_growth',
-    icon: lifeValuesIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/life-values-clay.png'),
     grad: ['#022C22', '#047857', '#6EE7B7'], // Emerald 900, Emerald 700
     shadow: '#064E3B', // Emerald 800
     feature: 'quick.life_values',
@@ -170,8 +154,7 @@ const homeTabs: HomeTab[] = [
     key: 'busmap',
     translationKey: 'admin_dashboard.transport', title: 'Transport',
     subtitleKey: 'dashboard.featureSubtitles.live_bus',
-    icon: transportIcon,
-    iconSize: 42,
+    image: require('../../assets/images/student-actions/transport-clay.png'),
     grad: ['#78350F', '#B45309', '#FCD34D'], // Amber 900, Amber 700
     shadow: '#92400E', // Amber 800
     feature: 'quick.transport',
@@ -180,8 +163,7 @@ const homeTabs: HomeTab[] = [
     key: 'projects',
     translationKey: 'scienceProjects', title: 'Science Projects',
     subtitleKey: 'dashboard.featureSubtitles.lab_innovation',
-    icon: scienceIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/science-clay.png'),
     grad: ['#082F49', '#0369A1', '#7DD3FC'], // Sky 900, Sky 700
     shadow: '#075985', // Sky 800
     feature: 'quick.science_projects',
@@ -190,8 +172,7 @@ const homeTabs: HomeTab[] = [
     key: 'profile',
     translationKey: 'menu.profile', title: 'Student Profile',
     subtitleKey: 'dashboard.featureSubtitles.personal_details',
-    icon: profileIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/profile-clay.png'),
     grad: ['#881337', '#BE123C', '#FDA4AF'], // Rose 900, Rose 700
     shadow: '#9F1239', // Rose 800
     feature: 'quick.profile',
@@ -200,8 +181,7 @@ const homeTabs: HomeTab[] = [
     key: 'messenger',
     translationKey: 'messages.title', title: 'Messages',
     subtitleKey: 'dashboard.featureSubtitles.in_app_chat',
-    icon: messagesIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/messages-clay.png'),
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'comm.messenger', // Requires comm.messenger feature flag
@@ -210,8 +190,7 @@ const homeTabs: HomeTab[] = [
     key: 'lms',
     translationKey: 'lMS', title: 'LMS',
     subtitleKey: 'dashboard.featureSubtitles.learning_resources',
-    icon: lmsIcon,
-    iconSize: 40,
+    image: require('../../assets/images/student-actions/lms-clay.png'),
     grad: ['#064E3B', '#059669', '#6EE7B7'],
     shadow: '#047857',
     feature: 'topbar.lms',
@@ -421,14 +400,16 @@ const sp = StyleSheet.create({
 });
 
 /* ═══════════════════════════════════════════
-   FEATURE CARD — v7.2: SLIM, ICON-FORWARD
-   • Fluent Emoji Flat glyphs in frosted white badges
-   • Subtitle removed (icon + title carry meaning)
-   • Height 168 → 128 (~25% shorter)
-   • All v7 depth tricks preserved
+   FEATURE CARD — v7.3: IMAGE-DRIVEN CLAY STORY
+   • Each card has a purpose-built, meaningful scene
+   • Localized title + meaning line reinforce recognition
+   • Framed artwork stays legible on light and dark cards
 ═══════════════════════════════════════════ */
 const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
-  tab: HomeTab & { title: string }; isDark: boolean; onPress: () => void; cardWidth: number;
+  tab: HomeTab & { title: string; subtitle: string };
+  isDark: boolean;
+  onPress: () => void;
+  cardWidth: number;
 }) => {
   const scale = useSharedValue(1);
   const pressGlow = useSharedValue(0);
@@ -485,30 +466,26 @@ const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
           />
 
           <View style={fc.card}>
-            {/* Header row: icon chip + arrow */}
-            <View style={fc.headerRow}>
-              <View style={[fc.iconBadge, {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.96)' : '#FFFFFF',
-                borderColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.72)',
-                shadowColor: tab.shadow,
-              }]}>
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0)']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={fc.iconBadgeShine}
-                  pointerEvents="none"
-                />
-                <IconifyIllustration icon={tab.icon} size={tab.iconSize} />
-              </View>
-
-              <View style={fc.arrowChip}>
-                <Ionicons name="arrow-forward" size={13} color="#fff" />
-              </View>
+            <View style={[fc.artStage, { shadowColor: tab.shadow }]}>
+              <Image
+                source={tab.image}
+                style={fc.artImage}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+              <LinearGradient
+                colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.55, y: 0.65 }}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
             </View>
 
-            {/* Title only */}
-            <Text style={fc.title} numberOfLines={2}>{tab.title}</Text>
+            <View style={fc.copy}>
+              <Text style={fc.title} numberOfLines={2}>{tab.title}</Text>
+              <Text style={fc.subtitle} numberOfLines={1}>{tab.subtitle}</Text>
+            </View>
           </View>
         </View>
       </Pressable>
@@ -525,10 +502,10 @@ const fc = StyleSheet.create({
   },
   card: {
     borderRadius: tokens.radius['xl'],
-    padding: tokens.space[4],
-    minHeight: 128,
+    padding: 10,
+    height: 188,
     overflow: 'hidden',
-    justifyContent: 'space-between',
+    gap: 0,
   },
   pressGlow: {
     position: 'absolute',
@@ -537,47 +514,41 @@ const fc = StyleSheet.create({
     borderRadius: tokens.radius['xl'],
   },
 
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: tokens.space[2],
-  },
-  iconBadge: {
-    width: 56,
-    height: 56,
+  artStage: {
+    width: '100%',
+    height: 108,
     borderRadius: 16,
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  iconBadgeShine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 22,
-  },
-  arrowChip: {
-    width: 28, height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.26)',
-    justifyContent: 'center', alignItems: 'center',
+    borderColor: 'rgba(255,255,255,0.58)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 7,
+    backgroundColor: '#F8F5EF',
   },
-
+  artImage: {
+    width: '100%',
+    height: '100%',
+  },
+  copy: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    paddingTop: 6,
+    paddingHorizontal: 2,
+    gap: 2,
+  },
   title: {
-    fontSize: 16.5,
+    fontSize: 15.5,
     fontWeight: '800',
     letterSpacing: -0.2,
-    lineHeight: 21,
+    lineHeight: 19,
     color: '#FFFFFF',
+  },
+  subtitle: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    lineHeight: 14,
+    color: 'rgba(255,255,255,0.76)',
   },
 });
 
@@ -1156,6 +1127,7 @@ const HomeScreen = () => {
                         tab={{
                           ...item,
                           title: item.translationKey ? (t(item.translationKey) as string) : item.title,
+                          subtitle: t(item.subtitleKey) as string,
                         }}
                         isDark={isDark}
                         cardWidth={cardW}

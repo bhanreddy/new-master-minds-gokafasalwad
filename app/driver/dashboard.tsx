@@ -36,6 +36,7 @@ const PINK_GRADIENT: [string, string] = ['#EC4899', '#BE185D'];
 const GREEN = '#10B981';
 const RED = '#EF4444';
 const HEARTBEAT_INTERVAL = 30000;
+const AUTO_TRANSITION_RETRY_MS = 30000;
 /** Auto-mark "arrived" when the bus is within this distance of the next stop. */
 const AUTO_ARRIVE_RADIUS_KM = 0.15;
 /** Auto-complete an arrived stop once the bus pulls this far away. Larger than
@@ -93,6 +94,7 @@ interface CalibrationInfo {
   segments_total: number;
   segments_learned: number;
   clean_trip_count: number;
+  required_clean_trip_count: number;
 }
 
 /** Latest foreground GPS fix, attached to stop marks for calibration. */
@@ -167,7 +169,7 @@ export default function DriverDashboard() {
     persist: true,
     revalidateOnMount: true,
     enabled: !!user?.userId,
-    fetcher: () => api.get<any>('/transport/driver/my-bus'),
+    fetcher: () => api.get<any>('/transport/driver/my-bus', undefined, { silent: true }),
   });
 
   const loading = busDataLoading && !driverBusData;
@@ -181,6 +183,7 @@ export default function DriverDashboard() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoArrivedStopsRef = useRef<Set<string>>(new Set());
   const autoCompletedStopsRef = useRef<Set<string>>(new Set());
+  const autoRetryAfterRef = useRef<Map<string, number>>(new Map());
   const lastFixRef = useRef<GpsFix | null>(null);
   const [calibration, setCalibration] = useState<CalibrationInfo | null>(null);
 
@@ -276,7 +279,11 @@ export default function DriverDashboard() {
     try {
       const route = routes.find((r) => r.id === routeId) || selectedRoute;
       const tripDirection = resolveTripDirectionParam(route, leg);
-      const data = await api.get<any[]>(`/transport/driver/route/${routeId}/stops?trip_direction=${tripDirection}`);
+      const data = await api.get<any[]>(
+        `/transport/driver/route/${routeId}/stops?trip_direction=${tripDirection}`,
+        undefined,
+        { silent: true },
+      );
       setStops(data.map((s, idx) => ({
         id: '', stop_id: s.id, stop_name: s.name,
         stop_order: s.exec_order ?? idx + 1,
@@ -289,7 +296,11 @@ export default function DriverDashboard() {
   /* ─── Fetch trip status (during trip) ─── */
   const fetchTripStatus = async (tripId: string) => {
     try {
-      const data = await api.get<any>(`/transport/trips/${tripId}/status`);
+      const data = await api.get<any>(
+        `/transport/trips/${tripId}/status`,
+        undefined,
+        { silent: true },
+      );
       setStops(data.stops.map((s: any) => ({
         id: s.id, stop_id: s.stop_id, stop_name: s.stop_name,
         stop_order: s.stop_order, status: s.status,
@@ -304,7 +315,11 @@ export default function DriverDashboard() {
   useEffect(() => {
     if (!selectedRoute?.id) { setCalibration(null); return; }
     let cancelled = false;
-    api.get<CalibrationInfo>(`/transport/driver/route/${selectedRoute.id}/calibration?trip_direction=${tripLeg}`)
+    api.get<CalibrationInfo>(
+      `/transport/driver/route/${selectedRoute.id}/calibration?trip_direction=${tripLeg}`,
+      undefined,
+      { silent: true },
+    )
       .then((d) => { if (!cancelled) setCalibration(d); })
       .catch(() => { if (!cancelled) setCalibration(null); });
     return () => { cancelled = true; };
@@ -367,7 +382,10 @@ export default function DriverDashboard() {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           setActionLoading(true);
           try {
-            await api.post<any>(`/transport/trips/${activeTripId}/end`);
+            const result = await api.post<{ calibration?: CalibrationInfo }>(
+              `/transport/trips/${activeTripId}/end`,
+            );
+            if (result?.calibration) setCalibration(result.calibration);
             setIsTracking(false);
             setActiveTripId(null);
             stopLocationTracking();
@@ -441,12 +459,24 @@ export default function DriverDashboard() {
     if (arrived && arrived.latitude != null && arrived.longitude != null) {
       const pulledAway =
         distanceKm(lat, lng, Number(arrived.latitude), Number(arrived.longitude)) >= AUTO_COMPLETE_EXIT_RADIUS_KM;
-      if (pulledAway && !autoCompletedStopsRef.current.has(arrived.stop_id)) {
+      const retryKey = `complete:${arrived.stop_id}`;
+      const canRetry = (autoRetryAfterRef.current.get(retryKey) || 0) <= Date.now();
+      if (pulledAway && canRetry && !autoCompletedStopsRef.current.has(arrived.stop_id)) {
         autoCompletedStopsRef.current.add(arrived.stop_id);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        api.post<any>(`/transport/trips/${activeTripId}/stops/${arrived.stop_id}/complete`)
-          .then(() => fetchTripStatus(activeTripId))
-          .catch(() => { autoCompletedStopsRef.current.delete(arrived.stop_id); });
+        api.post<any>(
+          `/transport/trips/${activeTripId}/stops/${arrived.stop_id}/complete`,
+          undefined,
+          { silent: true },
+        )
+          .then(() => {
+            autoRetryAfterRef.current.delete(retryKey);
+            return fetchTripStatus(activeTripId);
+          })
+          .catch(() => {
+            autoCompletedStopsRef.current.delete(arrived.stop_id);
+            autoRetryAfterRef.current.set(retryKey, Date.now() + AUTO_TRANSITION_RETRY_MS);
+          });
         return; // one transition per GPS fix keeps stop ordering strict
       }
     }
@@ -454,6 +484,8 @@ export default function DriverDashboard() {
     // 2. Arrive at the next pending stop as the bus reaches it.
     const next = stops.find((st) => st.status === 'pending');
     if (!next || next.latitude == null || next.longitude == null) return;
+    const retryKey = `arrive:${next.stop_id}`;
+    if ((autoRetryAfterRef.current.get(retryKey) || 0) > Date.now()) return;
     if (autoArrivedStopsRef.current.has(next.stop_id)) return;
     if (distanceKm(lat, lng, Number(next.latitude), Number(next.longitude)) > AUTO_ARRIVE_RADIUS_KM) return;
     autoArrivedStopsRef.current.add(next.stop_id);
@@ -462,9 +494,15 @@ export default function DriverDashboard() {
     // it from geo calibration (it can fire up to 150m before the stop).
     api.post<any>(`/transport/trips/${activeTripId}/stops/${next.stop_id}/arrive`, {
       latitude: lat, longitude: lng, source: 'geofence',
-    })
-      .then(() => fetchTripStatus(activeTripId))
-      .catch(() => { autoArrivedStopsRef.current.delete(next.stop_id); });
+    }, { silent: true })
+      .then(() => {
+        autoRetryAfterRef.current.delete(retryKey);
+        return fetchTripStatus(activeTripId);
+      })
+      .catch(() => {
+        autoArrivedStopsRef.current.delete(next.stop_id);
+        autoRetryAfterRef.current.set(retryKey, Date.now() + AUTO_TRANSITION_RETRY_MS);
+      });
   };
 
   /* ─── GPS Tracking ───
@@ -548,7 +586,9 @@ export default function DriverDashboard() {
 
     if (!heartbeatRef.current) {
       heartbeatRef.current = setInterval(async () => {
-        try { await api.post(`/transport/buses/${busId}/heartbeat`); } catch { }
+        try {
+          await api.post(`/transport/buses/${busId}/heartbeat`, undefined, { silent: true });
+        } catch { }
       }, HEARTBEAT_INTERVAL);
     }
   };
@@ -562,6 +602,7 @@ export default function DriverDashboard() {
     if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
     autoArrivedStopsRef.current.clear();
     autoCompletedStopsRef.current.clear();
+    autoRetryAfterRef.current.clear();
   };
 
   useEffect(() => () => { stopLocationTracking(); if (timerRef.current) clearInterval(timerRef.current); }, []);
@@ -842,7 +883,10 @@ export default function DriverDashboard() {
                 {calibration.is_calibrated
                   ? t('driver_ui.route_calibrated', 'Route calibrated')
                   : t('driver_ui.calibrating_route', 'Calibrating route') +
-                    ` · trip ${Math.min(calibration.clean_trip_count + 1, 2)} of 2`}
+                    ` · trip ${Math.min(
+                      calibration.clean_trip_count + 1,
+                      calibration.required_clean_trip_count || 4,
+                    )} of ${calibration.required_clean_trip_count || 4}`}
               </Text>
               <Text style={[s.calibSub, calibration.is_calibrated && { color: '#047857' }]}>
                 {calibration.is_calibrated
