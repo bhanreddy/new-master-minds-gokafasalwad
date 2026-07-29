@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Dimensions, Platform, Pressable, Modal, ScrollView, TouchableOpacity } from 'react-native';
 import {
   KeyboardAvoidingView,
@@ -39,6 +39,11 @@ import {
 } from '../../src/services/examService';
 import { examCategoryFor } from '../../src/constants/examCategories';
 import { t_field } from '../../src/utils/lang';
+import { useFocusEffect, useRouter } from 'expo-router';
+import {
+  MySubstitution,
+  SubstitutionService,
+} from '../../src/services/substitutionService';
 
 const { width, height } = Dimensions.get('window');
 const FONT_FAMILY = Platform.OS === 'ios' ? 'SF Pro Display' : 'sans-serif';
@@ -250,6 +255,14 @@ const timeToMinutes = (timeStr: string): number => {
   return h * 60 + m;
 };
 
+const timeLabel = (timeStr: string): string =>
+  format(new Date(`2000-01-01T${timeStr}`), 'h:mm a');
+
+const shortPeriodLabel = (name: string | null | undefined, fallback: number): string => {
+  const number = String(name || '').match(/\d+/)?.[0];
+  return number ? `P${number}` : `P${fallback}`;
+};
+
 // A period counts as a break if it's flagged is_break or named like one.
 const isBreakPeriod = (p: Period): boolean =>
   p.is_break === true || /break|lunch|recess|interval/i.test(p.name || '');
@@ -322,9 +335,16 @@ const LiveTimeIndicator = ({ isDark }: {isDark: boolean;}) => {
 // ─── Slot Item Component ───────────────────────────────────────────
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const SlotItem = ({ item, index, currentTime, isDark, totalSlots
+const SlotItem = ({ item, index, currentTime, isDark, totalSlots, onOpenAttendance
 
-}: {item: TimetableSlot;index: number;currentTime: Date;isDark: boolean;totalSlots: number;}) => {
+}: {
+  item: TimetableSlot;
+  index: number;
+  currentTime: Date;
+  isDark: boolean;
+  totalSlots: number;
+  onOpenAttendance?: () => void;
+}) => {
   const status = getPeriodStatus(item.start_time, item.end_time, currentTime);
   const isActive = status === 'active';
   const isCompleted = status === 'completed';
@@ -488,9 +508,17 @@ const SlotItem = ({ item, index, currentTime, isDark, totalSlots
               }]
               }>
                 <Text style={[styles.periodText, { color: subjectTheme.accent, fontFamily: FONT_FAMILY }]}>
-                  Period {item.period_number}
+                  {item.period_name || `Period ${item.period_number}`}
                 </Text>
               </View>
+              {item.is_substitution && (
+                <View style={[styles.coverInlineTag, { backgroundColor: isDark ? 'rgba(129,140,248,0.16)' : '#EEF2FF' }]}>
+                  <Ionicons name="swap-horizontal" size={11} color={isDark ? '#A5B4FC' : '#4338CA'} />
+                  <Text style={[styles.coverInlineTagText, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                    One-day cover
+                  </Text>
+                </View>
+              )}
               {isActive &&
               <Animated.View
                 entering={FadeIn.duration(280)}
@@ -514,6 +542,14 @@ const SlotItem = ({ item, index, currentTime, isDark, totalSlots
                     {item.class_name} · {item.section_name}
                   </Text>
                 </View>
+                {item.is_substitution && item.absent_teacher_name ? (
+                  <View style={[styles.detailItem, { marginTop: 4 }]}>
+                    <Ionicons name="person-outline" size={12} color={isDark ? '#A5B4FC' : '#6366F1'} />
+                    <Text style={[styles.detailText, { color: isDark ? '#A5B4FC' : '#6366F1', fontFamily: FONT_FAMILY }]}>
+                      Covering for {item.absent_teacher_name}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <View style={[
               styles.avatarWrapper,
@@ -526,6 +562,19 @@ const SlotItem = ({ item, index, currentTime, isDark, totalSlots
                 <SubjectAvatar size={44} subject={item.subject_name || 'N/A'} />
               </View>
             </View>
+
+            {item.is_substitution && item.attendance_session && onOpenAttendance ? (
+              <Pressable
+                onPress={onOpenAttendance}
+                style={[styles.coverCardAttendanceButton, { backgroundColor: subjectTheme.accent }]}
+              >
+                <Ionicons name="checkbox-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.coverCardAttendanceText}>
+                  Mark {item.attendance_session} attendance
+                </Text>
+                <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
+              </Pressable>
+            ) : null}
 
             {isActive &&
             <Animated.View entering={FadeIn.duration(320)}>
@@ -788,10 +837,12 @@ const capsuleStyles = StyleSheet.create({
 // ─── Main Screen ───────────────────────────────────────────────────
 const TimeTableScreen = () => {
   const { isDark } = useTheme();
+  const router = useRouter();
   const { staffId, isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
   const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
+  const [todaySubstitutions, setTodaySubstitutions] = useState<MySubstitution[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
     const idx = new Date().getDay(); // 0=Sun..6=Sat
@@ -804,6 +855,10 @@ const TimeTableScreen = () => {
   const [examLoaded, setExamLoaded] = useState(false);
   const [openSyllabusId, setOpenSyllabusId] = useState<string | null>(null);
   const [editSlot, setEditSlot] = useState<ExamScheduleSlot | null>(null);
+  const todayDay = useMemo<DayOfWeek>(() => {
+    const index = currentTime.getDay();
+    return index >= 1 && index <= 6 ? TIMETABLE_DAYS[index - 1] : 'monday';
+  }, [currentTime]);
 
   // Per-day school if the teacher's slots span more than one weekday.
   const isPerDay = useMemo(() => {
@@ -811,10 +866,55 @@ const TimeTableScreen = () => {
     return days.size > 1;
   }, [slots]);
 
+  const coverSlots = useMemo<TimetableSlot[]>(
+    () =>
+      todaySubstitutions.map((cover) => ({
+        id: `substitution-${cover.id}`,
+        period_number: cover.period_number,
+        period_name: cover.period_name,
+        day_of_week: todayDay,
+        start_time: cover.start_time,
+        end_time: cover.end_time,
+        subject_id: cover.subject_id,
+        subject_name: cover.subject_name,
+        room_no: cover.room_no || undefined,
+        class_name: cover.class_name,
+        section_name: cover.section_name,
+        is_substitution: true,
+        substitution_date: cover.substitution_date,
+        absent_teacher_name: cover.absent_teacher_name,
+        attendance_session: cover.attendance_session,
+      })),
+    [todayDay, todaySubstitutions]
+  );
+
+  const periodNameByOrder = useMemo(
+    () => new Map(periods.map((period) => [period.sort_order, period.name])),
+    [periods]
+  );
+
   const visibleSlots = useMemo(() => {
     const base = !isPerDay ? slots : slots.filter((s) => (s.day_of_week || 'monday') === selectedDay);
-    return [...base].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
-  }, [slots, isPerDay, selectedDay]);
+    const covers = !isPerDay || selectedDay === todayDay ? coverSlots : [];
+    return [...base, ...covers]
+      .map((slot) => ({
+        ...slot,
+        period_name: slot.period_name || periodNameByOrder.get(slot.period_number) || null,
+      }))
+      .sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+  }, [slots, isPerDay, selectedDay, todayDay, coverSlots, periodNameByOrder]);
+
+  const todayScheduleSlots = useMemo(() => {
+    const permanent = !isPerDay
+      ? slots
+      : slots.filter((slot) => (slot.day_of_week || 'monday') === todayDay);
+    return [...permanent, ...coverSlots]
+      .map((slot) => ({
+        ...slot,
+        period_name: slot.period_name || periodNameByOrder.get(slot.period_number) || null,
+      }))
+      .sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
+  }, [slots, isPerDay, todayDay, coverSlots, periodNameByOrder]);
 
   // School bell-schedule breaks (lunch / recess), ordered by start time.
   const breakPeriods = useMemo(
@@ -856,8 +956,6 @@ const TimeTableScreen = () => {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {loadTimetable();}, [staffId]);
-
   // Published exam schedule for the classes this teacher teaches — lazy.
   const loadExamData = async () => {
     try {
@@ -887,19 +985,42 @@ const TimeTableScreen = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, [currentTime]);
 
-  const loadTimetable = async () => {
+  const loadTimetable = useCallback(async () => {
     try {
-      const [data, periodDefs] = await Promise.all([
+      const localToday = new Date();
+      const localTodayYmd = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(localToday.getDate()).padStart(2, '0')}`;
+      const [data, periodDefs, coverDuties] = await Promise.all([
         TimetableService.getTeacherTimetable(undefined, staffId),
         TimetableService.getPeriods().catch(() => [] as Period[]),
+        isViewingAsAdmin
+          ? Promise.resolve([] as MySubstitution[])
+          : SubstitutionService.getMine(localTodayYmd).catch(() => [] as MySubstitution[]),
       ]);
       setSlots(data.sort((a, b) => a.period_number - b.period_number));
       setPeriods(periodDefs);
+      setTodaySubstitutions(coverDuties);
     } catch (error) {
 
     } finally {
       setLoading(false);
     }
+  }, [isViewingAsAdmin, staffId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadTimetable();
+    }, [loadTimetable])
+  );
+
+  const openSubstitutionAttendance = (slot: TimetableSlot) => {
+    if (!slot.attendance_session || !slot.substitution_date) return;
+    router.push({
+      pathname: '/staff/manage-students',
+      params: {
+        session: slot.attendance_session,
+        date: slot.substitution_date,
+      },
+    });
   };
 
   const headerAnimatedStyle = useAnimatedStyle(() => ({
@@ -928,9 +1049,13 @@ const TimeTableScreen = () => {
     [currentTime.getHours(), isDark]
   );
 
-  const totalPeriods = slots.length;
-  const completedPeriods = slots.filter((s) => getPeriodStatus(s.start_time, s.end_time, currentTime) === 'completed').length;
-  const activePeriod = slots.find((s) => getPeriodStatus(s.start_time, s.end_time, currentTime) === 'active');
+  const totalPeriods = todayScheduleSlots.length;
+  const completedPeriods = todayScheduleSlots.filter(
+    (slot) => getPeriodStatus(slot.start_time, slot.end_time, currentTime) === 'completed'
+  ).length;
+  const activePeriod = todayScheduleSlots.find(
+    (slot) => getPeriodStatus(slot.start_time, slot.end_time, currentTime) === 'active'
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0B1020' : '#EFF2F9' }]}>
@@ -983,6 +1108,76 @@ const TimeTableScreen = () => {
         </Animated.View>
 
         {isViewingAsAdmin && <ViewAsBanner name={viewAsName} />}
+
+        {todaySubstitutions.length > 0 && (
+          <Animated.View
+            entering={FadeInDown.delay(120).duration(360)}
+            style={[styles.coverDutyPanel, { backgroundColor: isDark ? '#1A2332' : '#FFFFFF' }]}
+          >
+            <View style={styles.coverDutyHeader}>
+              <View style={styles.coverDutyIcon}>
+                <Ionicons name="swap-horizontal" size={17} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.coverDutyEyebrow, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                  TODAY&apos;S COVER {todaySubstitutions.length === 1 ? 'DUTY' : 'DUTIES'}
+                </Text>
+                <Text style={[styles.coverDutyTitle, { color: isDark ? '#EEF2FF' : '#0F172A' }]}>
+                  You&apos;re helping another class today
+                </Text>
+              </View>
+              <View style={[styles.coverDutyCount, { backgroundColor: isDark ? 'rgba(129,140,248,0.16)' : '#EEF2FF' }]}>
+                <Text style={{ color: isDark ? '#A5B4FC' : '#4338CA', fontWeight: '900' }}>
+                  {todaySubstitutions.length}
+                </Text>
+              </View>
+            </View>
+            {todaySubstitutions.map((cover, index) => (
+              <View
+                key={cover.id}
+                style={[
+                  styles.coverDutyRow,
+                  index > 0 && {
+                    borderTopWidth: 1,
+                    borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#E8ECF4',
+                  },
+                ]}
+              >
+                <View style={[styles.coverDutyPeriod, { backgroundColor: isDark ? 'rgba(129,140,248,0.14)' : '#EEF2FF' }]}>
+                  <Text style={[styles.coverDutyPeriodText, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                    {shortPeriodLabel(cover.period_name, cover.period_number)}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.coverDutyClass, { color: isDark ? '#EEF2FF' : '#0F172A' }]}>
+                    {cover.class_name}-{cover.section_name} · {cover.subject_name}
+                  </Text>
+                  <Text style={[styles.coverDutyMeta, { color: isDark ? '#8892A4' : '#64748B' }]}>
+                    {timeLabel(cover.start_time)}–{timeLabel(cover.end_time)} · for {cover.absent_teacher_name}
+                  </Text>
+                </View>
+                {cover.attendance_session ? (
+                  <Pressable
+                    onPress={() => router.push({
+                      pathname: '/staff/manage-students',
+                      params: {
+                        session: cover.attendance_session!,
+                        date: cover.substitution_date,
+                      },
+                    })}
+                    style={styles.coverAttendanceButton}
+                  >
+                    <Ionicons name="checkbox-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.coverAttendanceText}>Attendance</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
+            <Text style={[styles.coverDutyExpiry, { color: isDark ? '#6B7890' : '#94A3B8' }]}>
+              These duties and class access expire automatically after today.
+            </Text>
+          </Animated.View>
+        )}
 
         {/* ── Class / Exams toggle ── */}
         <View style={[styles.modeToggle, { backgroundColor: isDark ? '#1F2937' : '#E4E9F5' }]}>
@@ -1290,7 +1485,12 @@ const TimeTableScreen = () => {
             index={row.slotIndex}
             currentTime={currentTime}
             isDark={isDark}
-            totalSlots={visibleSlots.length} />
+            totalSlots={visibleSlots.length}
+            onOpenAttendance={
+              row.slot.is_substitution && row.slot.attendance_session
+                ? () => openSubstitutionAttendance(row.slot)
+                : undefined
+            } />
 
           )}
           </View> :
@@ -1980,6 +2180,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1
   },
+  coverInlineTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 9,
+    gap: 4,
+    marginLeft: 'auto',
+    marginRight: 6
+  },
+  coverInlineTagText: {
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.45
+  },
   activeTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2023,6 +2239,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     letterSpacing: 0
+  },
+  coverCardAttendanceButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 34,
+    marginTop: 12,
+    paddingHorizontal: 11,
+    borderRadius: 11
+  },
+  coverCardAttendanceText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'capitalize'
   },
   avatarWrapper: {
     borderRadius: 14,
@@ -2076,5 +2308,96 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     letterSpacing: 0.1
+  },
+
+  // ── One-day substitution duty ───────────────────────────────────
+  coverDutyPanel: {
+    marginHorizontal: 18,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.92)' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.18)',
+    shadowColor: '#4338CA',
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3
+  },
+  coverDutyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 9
+  },
+  coverDutyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366F1'
+  },
+  coverDutyEyebrow: {
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  coverDutyTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2
+  },
+  coverDutyCount: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  coverDutyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 11
+  },
+  coverDutyPeriod: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  coverDutyPeriodText: {
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  coverDutyClass: {
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  coverDutyMeta: {
+    fontSize: 9,
+    marginTop: 3
+  },
+  coverAttendanceButton: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#4F46E5'
+  },
+  coverAttendanceText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900'
+  },
+  coverDutyExpiry: {
+    fontSize: 9,
+    textAlign: 'center',
+    marginTop: 3
   }
 });

@@ -33,8 +33,23 @@ export type BulkExpenseRow = {
 };
 
 const CATEGORY_TINT: Record<string, string> = {
+  Stationery: '#4F46E5',
+  'Office Expenses': '#0F766E',
+  Cameras: '#7C3AED',
+  Savings: '#059669',
+  'Agent Commission': '#EA580C',
+  Donations: '#DB2777',
+  'Labour Charges': '#B45309',
+  Construction: '#475569',
+  'Electricity Bill': '#CA8A04',
+  'Tea & Refreshments': '#A16207',
+  'Water Bill': '#0284C7',
+  'Transport & Fuel': '#0891B2',
   Education: '#4F46E5',
   Maintenance: '#D97706',
+  'Internet & Phone': '#2563EB',
+  'Printing & Exams': '#9333EA',
+  Security: '#DC2626',
   Sports: '#059669',
   Utility: '#2563EB',
   Events: '#DB2777',

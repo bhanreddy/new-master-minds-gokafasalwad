@@ -18,6 +18,7 @@ const options: HallTicketPdfOptions = {
     school_email: 'office@example.edu',
   },
   logoDataUri: 'data:image/png;base64,abc',
+  principalSignatureDataUri: 'data:image/png;base64,signature',
   students: Array.from({ length: 4 }, (_, index) => ({
     id: `student-${index + 1}`,
     display_name: `Student ${index + 1}`,
@@ -56,23 +57,33 @@ const options: HallTicketPdfOptions = {
 
 describe('hallTicketPdf', () => {
   it(`creates ${TICKETS_PER_PAGE}-row A4 pages and starts a second page for the next student`, () => {
-    const html = buildHallTicketHtml(options);
+    const html = buildHallTicketHtml({
+      ...options,
+      students: [
+        ...options.students,
+        { id: 'student-5', display_name: 'Student 5', admission_no: 'ADM-5', roll_number: 5 },
+      ],
+    });
 
-    expect(TICKETS_PER_PAGE).toBe(3);
+    expect(TICKETS_PER_PAGE).toBe(4);
     expect((html.match(/class="hall-sheet"/g) || []).length).toBe(2);
-    expect((html.match(/class="ticket-slot"/g) || []).length).toBe(4);
-    expect(html).toContain(`grid-template-rows: repeat(${TICKETS_PER_PAGE}, minmax(0, 1fr))`);
+    expect((html.match(/class="ticket-slot"/g) || []).length).toBe(5);
+    expect(html).toContain(`grid-template-rows: repeat(${TICKETS_PER_PAGE}, 61mm)`);
+    expect(html).toContain('height: 58mm');
     expect(html).toContain('border-bottom: 0.3mm dashed');
   });
 
   it('renders school logo in the header and as a watermark', () => {
     const html = buildHallTicketHtml(options);
 
-    expect((html.match(/class="school-logo"/g) || []).length).toBe(options.students.length);
+    expect((html.match(/class="school-logo"/g) || []).length).toBe(options.students.length * 2);
     expect((html.match(/class="watermark"/g) || []).length).toBe(options.students.length);
     expect(html).toContain('data:image/png;base64,abc');
     expect(html).toContain('Hall Ticket');
-    expect(html).toContain('Learn · Lead · Serve');
+    expect(html).toContain('Hall Ticket | Formative Assessment 1');
+    expect(html).toContain('| 2026-27');
+    expect(html).toContain('opacity: 0.1');
+    expect(html).not.toContain('Hyderabad, Telangana');
   });
 
   it('falls back to initials when no logo is provided', () => {
@@ -86,26 +97,55 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('EP');
   });
 
+  it('places the configured principal signature in every hall ticket', () => {
+    const html = buildHallTicketHtml(options);
+
+    expect((html.match(/class="principal-signature"/g) || []).length).toBe(options.students.length);
+    expect(html).toContain('data:image/png;base64,signature');
+    expect(html).toContain('<span>Principal</span>');
+  });
+
+  it('keeps a blank principal signing line when no signature is configured', () => {
+    const html = buildHallTicketHtml({
+      ...options,
+      principalSignatureDataUri: null,
+      students: options.students.slice(0, 1),
+    });
+
+    expect(html).not.toContain('class="principal-signature"');
+    expect(html).toContain('<div class="sign-block principal-sign-block">');
+    expect(html).toContain('<i></i>');
+  });
+
   it('repeats the full subject schedule on every student ticket', () => {
     const html = buildHallTicketHtml(options);
 
     expect((html.match(/Mathematics/g) || []).length).toBe(options.students.length);
     expect((html.match(/Science/g) || []).length).toBe(options.students.length);
     expect((html.match(/9:30 AM - 10:30 AM/g) || []).length).toBe(options.students.length * 2);
-    expect(html).toContain('2 subjects | Mon, 10 Aug 2026 - Tue, 11 Aug 2026');
+    expect(html).toContain('10/08/2026');
+    expect(html).toContain('11/08/2026');
+    expect(html).toContain('2 subjects');
   });
 
-  it('omits instructions and includes a Sign of Invigilator column', () => {
+  it('lays dates and subjects out horizontally like the compact printed hall ticket', () => {
     const html = buildHallTicketHtml({
       ...options,
       students: options.students.slice(0, 1),
     });
 
     expect(html).not.toContain('Instructions');
-    expect(html).toContain('Sign of Invigilator');
-    expect((html.match(/class="invigilator-sign"/g) || []).length).toBe(options.papers.length);
-    expect(html).toContain('.schedule th:nth-child(6) { background: #243b8f; color: #fff; }');
-    expect(html).not.toContain('height: 100%;\n      border-collapse: collapse');
+    expect((html.match(/Sign of invigilator/g) || []).length).toBe(options.papers.length);
+    expect((html.match(/class="invigilator-sign-line"/g) || []).length).toBe(options.papers.length);
+    expect(html).not.toContain('Signature of invigilator');
+    expect(html).not.toContain('Student signature');
+    expect(html).not.toContain('Max 40');
+    expect(html).toContain('row-gap: 5mm');
+    expect((html.match(/2026-27/g) || []).length).toBe(1);
+    expect(html).toContain(
+      '<tr><th scope="col">10/08/2026</th><th scope="col">11/08/2026</th></tr>',
+    );
+    expect(html).toMatch(/<tbody><tr><td>[\s\S]*Mathematics[\s\S]*Science[\s\S]*<\/tr><\/tbody>/);
   });
 
   it('keeps every subject in a single schedule table for long exams', () => {
@@ -122,7 +162,7 @@ describe('hallTicketPdf', () => {
     });
 
     expect(html).not.toContain('class="schedule-columns"');
-    expect((html.match(/Sign of Invigilator/g) || []).length).toBe(1);
+    expect((html.match(/class="schedule"/g) || []).length).toBe(1);
     for (const paper of longPapers) expect(html).toContain(paper.subject_name);
   });
 

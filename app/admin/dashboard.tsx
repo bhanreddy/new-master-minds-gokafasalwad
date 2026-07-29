@@ -1289,7 +1289,7 @@ export default function AdminDashboard() {
       buildAdminNavActions(t).map((item) => ({
         ...item,
         badge:
-          item.route === '/admin/academics'
+          item.route === '/admin/diary/viewer'
             ? dashboardData?.diaryEntriesToday ?? 0
             : item.route === '/admin/access-requests'
               ? pendingRequestsCount

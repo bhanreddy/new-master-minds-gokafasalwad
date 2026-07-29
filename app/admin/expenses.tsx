@@ -4,7 +4,7 @@ import { styles as ds } from '@/src/theme/styles';
 
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  StatusBar, Modal, Platform, ScrollView, Pressable,
+  StatusBar, Modal, Platform, ScrollView, Pressable, useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,8 +17,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useExpenses } from '../../src/hooks/useExpenses';
-import { Expense } from '../../src/types/expenses';
+import { CreateExpenseRequest, Expense } from '../../src/types/expenses';
 import { PolicyService } from '../../src/services/policyService';
+import { AcademicYear, AcademicYearService } from '../../src/services/academicYearService';
 import NetBalanceTab from '../../src/components/NetBalanceTab';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
@@ -35,14 +36,50 @@ import {
 const CATEGORIES = [...EXPENSE_CATEGORIES];
 
 const CATEGORY_META: Record<string, { icon: string; color: string; bg: string; grad: [string, string] }> = {
+  Stationery: { icon: 'pencil-alt', color: '#4F46E5', bg: '#EEF2FF', grad: ['#4338CA', '#6366F1'] },
+  'Office Expenses': { icon: 'briefcase', color: '#0F766E', bg: '#CCFBF1', grad: ['#0F766E', '#14B8A6'] },
+  Cameras: { icon: 'video', color: '#7C3AED', bg: '#F3E8FF', grad: ['#6D28D9', '#A855F7'] },
+  Savings: { icon: 'piggy-bank', color: '#059669', bg: '#D1FAE5', grad: ['#047857', '#10B981'] },
+  'Agent Commission': { icon: 'handshake', color: '#EA580C', bg: '#FFEDD5', grad: ['#C2410C', '#F97316'] },
+  Donations: { icon: 'hand-holding-heart', color: '#DB2777', bg: '#FCE7F3', grad: ['#BE185D', '#EC4899'] },
+  'Labour Charges': { icon: 'hard-hat', color: '#B45309', bg: '#FEF3C7', grad: ['#92400E', '#D97706'] },
+  Construction: { icon: 'building', color: '#475569', bg: '#F1F5F9', grad: ['#334155', '#64748B'] },
+  'Electricity Bill': { icon: 'bolt', color: '#CA8A04', bg: '#FEF9C3', grad: ['#A16207', '#EAB308'] },
+  'Tea & Refreshments': { icon: 'coffee', color: '#A16207', bg: '#FEF3C7', grad: ['#854D0E', '#CA8A04'] },
+  'Water Bill': { icon: 'tint', color: '#0284C7', bg: '#E0F2FE', grad: ['#0369A1', '#0EA5E9'] },
+  'Transport & Fuel': { icon: 'bus', color: '#0891B2', bg: '#CFFAFE', grad: ['#0E7490', '#06B6D4'] },
   Education: { icon: 'graduation-cap', color: '#4F46E5', bg: '#EEF2FF', grad: ['#4338CA', '#6366F1'] },
   Maintenance: { icon: 'tools', color: '#D97706', bg: '#FEF3C7', grad: ['#B45309', '#F59E0B'] },
+  'Internet & Phone': { icon: 'wifi', color: '#2563EB', bg: '#DBEAFE', grad: ['#1D4ED8', '#3B82F6'] },
+  'Printing & Exams': { icon: 'print', color: '#9333EA', bg: '#F3E8FF', grad: ['#7E22CE', '#A855F7'] },
+  Security: { icon: 'shield-alt', color: '#DC2626', bg: '#FEE2E2', grad: ['#B91C1C', '#EF4444'] },
   Sports: { icon: 'running', color: '#059669', bg: '#D1FAE5', grad: ['#047857', '#10B981'] },
   Utility: { icon: 'bolt', color: '#2563EB', bg: '#DBEAFE', grad: ['#1D4ED8', '#3B82F6'] },
   Events: { icon: 'calendar-alt', color: '#DB2777', bg: '#FCE7F3', grad: ['#BE185D', '#EC4899'] },
   Salary: { icon: 'wallet', color: '#7C3AED', bg: '#EDE9FE', grad: ['#6D28D9', '#8B5CF6'] },
   Other: { icon: 'ellipsis-h', color: '#64748B', bg: '#F1F5F9', grad: ['#475569', '#94A3B8'] },
 };
+
+const QUICK_EXPENSE_CATEGORIES = [
+  { category: 'Stationery', label: 'Stationery', hint: 'Books, pens & supplies' },
+  { category: 'Office Expenses', label: 'Office expenses', hint: 'Daily administration' },
+  { category: 'Cameras', label: 'Cameras & CCTV', hint: 'Devices & installation' },
+  { category: 'Savings', label: 'Savings', hint: 'Reserve allocations' },
+  { category: 'Agent Commission', label: 'Agent commission', hint: 'Referral commissions' },
+  { category: 'Donations', label: 'Donations', hint: 'Charitable support' },
+  { category: 'Labour Charges', label: 'Labour charges', hint: 'Daily & contract labour' },
+  { category: 'Construction', label: 'Construction', hint: 'Campus development' },
+  { category: 'Electricity Bill', label: 'Electricity bill', hint: 'Power charges' },
+  { category: 'Tea & Refreshments', label: 'Chai & refreshments', hint: 'Tea, snacks & pantry' },
+  { category: 'Water Bill', label: 'Water bill', hint: 'Water charges' },
+  { category: 'Transport & Fuel', label: 'Transport & fuel', hint: 'Vehicles and travel' },
+  { category: 'Maintenance', label: 'Repairs & maintenance', hint: 'Upkeep and servicing' },
+  { category: 'Internet & Phone', label: 'Internet & phone', hint: 'Connectivity bills' },
+  { category: 'Printing & Exams', label: 'Printing & exams', hint: 'Paper and assessments' },
+  { category: 'Security', label: 'Security', hint: 'Guards and safety' },
+  { category: 'Salary', label: 'Salaries', hint: 'Staff payments' },
+  { category: 'Other', label: 'Other expenses', hint: 'Any name not listed' },
+] as const;
 
 const STATUS_META = {
   approved: { bg: '#ECFDF5', text: '#065F46', dot: '#10B981', border: '#A7F3D0', label: 'Approved' },
@@ -51,12 +88,28 @@ const STATUS_META = {
 };
 
 const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+const defaultAcademicYearRange = () => {
+  const now = new Date();
+  const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return {
+    fromDate: `${startYear}-04-01`,
+    toDate: `${startYear + 1}-03-31`,
+  };
+};
 
 export default function AdminExpenses() {
   const { theme, isDark } = useTheme();
+  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { expenses, loading, fetchExpenses, createExpense, createBulkExpenses, updateStatus } = useExpenses();
+  const {
+    expenses: academicYearExpenses,
+    loading: academicSummaryLoading,
+    fetchExpenses: fetchAcademicYearExpenses,
+  } = useExpenses();
+  const [academicYear, setAcademicYear] = useState<AcademicYear | null>(null);
+  const [academicYearRange, setAcademicYearRange] = useState(defaultAcademicYearRange);
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState(monthStartInput);
   const [toDate, setToDate] = useState(todayDateInput);
@@ -71,7 +124,7 @@ export default function AdminExpenses() {
   const [deleting, setDeleting] = useState(false);
 
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState(CATEGORIES[0]);
+  const [newCategory, setNewCategory] = useState<string>(CATEGORIES[0]);
   const [newAmount, setNewAmount] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,7 +141,26 @@ export default function AdminExpenses() {
 
   useEffect(() => {
     if (activeTab === 'list') fetchExpenses(searchQuery, fetchOptions);
-  }, [searchQuery, activeTab, fetchOptions]);
+  }, [searchQuery, activeTab, fetchOptions, fetchExpenses]);
+
+  useEffect(() => {
+    let active = true;
+    const loadAcademicSummary = async () => {
+      let range = defaultAcademicYearRange();
+      try {
+        const year = await AcademicYearService.getCurrentYear();
+        if (!active) return;
+        setAcademicYear(year);
+        range = { fromDate: year.start_date, toDate: year.end_date };
+        setAcademicYearRange(range);
+      } catch {
+        // The April–March fallback keeps the summary useful if no active year is configured.
+      }
+      if (active) await fetchAcademicYearExpenses('', range);
+    };
+    loadAcademicSummary();
+    return () => { active = false; };
+  }, [fetchAcademicYearExpenses]);
 
   const resetDateFilters = () => {
     setFromDate(monthStartInput());
@@ -127,8 +199,15 @@ export default function AdminExpenses() {
     if (success) {
       setIsAddModalVisible(false);
       resetForm();
+      fetchAcademicYearExpenses('', academicYearRange);
       alertCompat('Success', 'Expense logged successfully');
     }
+  };
+
+  const handleBulkExpenses = async (items: CreateExpenseRequest[]) => {
+    const result = await createBulkExpenses(items);
+    if (result.ok) fetchAcademicYearExpenses('', academicYearRange);
+    return result;
   };
 
   const handleApprove = async (expense: Expense) => {
@@ -172,6 +251,7 @@ export default function AdminExpenses() {
       setSelectedExpense(null);
       setDeleteReason('');
       fetchExpenses(searchQuery, fetchOptions);
+      fetchAcademicYearExpenses('', academicYearRange);
       alertCompat('Success', 'Expense deleted.');
     } catch {
       alertCompat('Error', 'Failed to delete expense.');
@@ -184,6 +264,32 @@ export default function AdminExpenses() {
   const totalApproved = expenses.filter((e) => e.status === 'approved').reduce((s, e) => s + e.amount, 0);
   const totalPaid = expenses.filter((e) => e.status === 'paid').reduce((s, e) => s + e.amount, 0);
   const totalAll = totalPending + totalApproved + totalPaid;
+  const academicYearTotal = academicYearExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const thisMonthStart = monthStartInput();
+  const today = todayDateInput();
+  const thisMonthExpenses = academicYearExpenses.filter(
+    (expense) => expense.expense_date >= thisMonthStart && expense.expense_date <= today
+  );
+  const thisMonthTotal = thisMonthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const knownQuickCategories = useMemo(
+    () => new Set(QUICK_EXPENSE_CATEGORIES.filter((item) => item.category !== 'Other').map((item) => item.category)),
+    []
+  );
+  const categoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    academicYearExpenses.forEach((expense) => {
+      const category = knownQuickCategories.has(expense.category as any) ? expense.category : 'Other';
+      totals[category] = (totals[category] ?? 0) + expense.amount;
+    });
+    return totals;
+  }, [academicYearExpenses, knownQuickCategories]);
+  const quickCardWidth = width >= 1450
+    ? '15.8%'
+    : width >= 1050
+      ? '23.8%'
+      : width >= 720
+        ? '31.5%'
+        : '48.2%';
 
   const renderItem = useCallback(({ item, index }: { item: Expense; index: number }) => {
     const st = STATUS_META[item.status as keyof typeof STATUS_META] ?? STATUS_META.pending;
@@ -227,7 +333,12 @@ export default function AdminExpenses() {
     );
   }, [styles]);
 
-  const openAdd = () => {
+  const openAdd = (category?: string, title?: string) => {
+    resetForm();
+    if (category) {
+      setNewCategory(category);
+      setNewTitle(category === 'Other' ? '' : (title ?? category));
+    }
     setIsAddModalVisible(true);
   };
 
@@ -262,76 +373,198 @@ export default function AdminExpenses() {
 
       {activeTab === 'list' ? (
         <>
-          <Animated.View entering={FadeInDown.delay(40).duration(280)}>
-            <View style={[styles.searchContainer, searchFocused && styles.searchContainerFocused]}>
-              <Ionicons
-                name="search-outline"
-                size={17}
-                color={searchFocused ? theme.colors.primary : theme.colors.textTertiary}
-                style={styles.searchIcon}
-              />
-              <AppTextInput
-                style={[ds.inputInChrome, styles.searchInput]}
-                placeholder="Search by title or category…"
-                placeholderTextColor={theme.colors.textTertiary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn} hitSlop={8}>
-                  <Ionicons name="close" size={12} color="#fff" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </Animated.View>
+          <FlatList
+            data={expenses}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              <>
+                <Animated.View entering={FadeInDown.delay(40).duration(360)} style={styles.heroWrap}>
+                  <LinearGradient
+                    colors={isDark ? ['#312E81', '#4C1D95'] : ['#4338CA', '#6D28D9']}
+                    style={styles.heroCard}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.heroOrbLarge} />
+                    <View style={styles.heroOrbSmall} />
+                    <View style={styles.heroTopRow}>
+                      <View>
+                        <Text style={styles.heroEyebrow}>TOTAL EXPENSES</Text>
+                        <Text style={styles.heroTitle}>Academic year spending</Text>
+                      </View>
+                      <View style={styles.heroYearPill}>
+                        <Ionicons name="calendar-outline" size={13} color="#E0E7FF" />
+                        <Text style={styles.heroYearText}>{academicYear?.code ?? 'Current year'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.heroMetrics}>
+                      <View style={styles.heroMainMetric}>
+                        <Text style={styles.heroAmount}>
+                          {academicSummaryLoading && academicYearExpenses.length === 0 ? '₹—' : fmtINR(academicYearTotal)}
+                        </Text>
+                        <Text style={styles.heroMetricCaption}>
+                          {academicYearExpenses.length} {academicYearExpenses.length === 1 ? 'entry' : 'entries'} this academic year
+                        </Text>
+                      </View>
+                      <View style={styles.heroMonthCard}>
+                        <View style={styles.heroMonthIcon}>
+                          <Ionicons name="trending-up-outline" size={17} color="#fff" />
+                        </View>
+                        <View>
+                          <Text style={styles.heroMonthLabel}>This month</Text>
+                          <Text style={styles.heroMonthAmount}>
+                            {academicSummaryLoading && academicYearExpenses.length === 0 ? '₹—' : fmtINR(thisMonthTotal)}
+                          </Text>
+                          <Text style={styles.heroMonthCount}>
+                            {thisMonthExpenses.length} {thisMonthExpenses.length === 1 ? 'expense' : 'expenses'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <Pressable
+                      style={({ pressed }) => [styles.heroAddButton, pressed && { opacity: 0.88 }]}
+                      onPress={() => openAdd()}
+                    >
+                      <Ionicons name="add-circle" size={19} color="#4338CA" />
+                      <Text style={styles.heroAddButtonText}>Add new expense</Text>
+                    </Pressable>
+                  </LinearGradient>
+                </Animated.View>
 
-          <Animated.View entering={FadeInDown.delay(80).duration(280)}>
-            <ExpenseDateFilterBar
-              fromDate={fromDate}
-              toDate={toDate}
-              onFromDateChange={setFromDate}
-              onToDateChange={setToDate}
-              onClear={resetDateFilters}
-              isDark={isDark}
-            />
-          </Animated.View>
+                <Animated.View entering={FadeInDown.delay(90).duration(360)} style={styles.quickSection}>
+                  <View style={styles.sectionHeadingRow}>
+                    <View>
+                      <Text style={styles.sectionEyebrow}>QUICK ENTRY</Text>
+                      <Text style={styles.sectionTitle}>Choose an expense type</Text>
+                      <Text style={styles.sectionSubtitle}>Tap a card, enter the amount and save.</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setIsBulkModalVisible(true)}
+                      style={({ pressed }) => [styles.bulkEntryButton, pressed && { opacity: 0.8 }]}
+                    >
+                      <Ionicons name="grid-outline" size={16} color={theme.colors.primary} />
+                      <Text style={styles.bulkEntryButtonText}>Bulk entry</Text>
+                    </Pressable>
+                  </View>
 
-          {expenses.length > 0 && (
-            <Animated.View entering={FadeInDown.duration(300)} style={styles.summaryStrip}>
-              <View style={styles.summaryHero}>
-                <Text style={styles.summaryHeroLabel}>Total spent</Text>
-                <Text style={styles.summaryHeroAmount}>{fmtINR(totalAll)}</Text>
-              </View>
-              <View style={styles.summaryDivider} />
-              {[
-                { label: 'Pending', amount: totalPending, color: STATUS_META.pending.dot },
-                { label: 'Approved', amount: totalApproved, color: STATUS_META.approved.dot },
-                { label: 'Paid', amount: totalPaid, color: STATUS_META.paid.dot },
-              ].map((stat) => (
-                <View key={stat.label} style={styles.summaryChip}>
-                  <View style={[styles.summaryDot, { backgroundColor: stat.color }]} />
-                  <Text style={styles.summaryLabel}>{stat.label}</Text>
-                  <Text style={styles.summaryAmount}>{fmtINR(stat.amount)}</Text>
+                  <View style={styles.quickGrid}>
+                    {QUICK_EXPENSE_CATEGORIES.map((item, index) => {
+                      const meta = CATEGORY_META[item.category] ?? CATEGORY_META.Other;
+                      const spent = categoryTotals[item.category] ?? 0;
+                      return (
+                        <Animated.View
+                          key={item.category}
+                          entering={index < 12 ? FadeInDown.delay(110 + index * 22).duration(300) : undefined}
+                          style={{ width: quickCardWidth as any }}
+                        >
+                          <Pressable
+                            onPress={() => openAdd(item.category, item.label)}
+                            accessibilityLabel={`Add ${item.label} expense`}
+                            style={({ pressed }) => [
+                              styles.quickCard,
+                              pressed && { opacity: 0.9, transform: [{ translateY: 1 }] },
+                            ]}
+                          >
+                            <View style={styles.quickCardTop}>
+                              <View style={[styles.quickIconBox, { backgroundColor: meta.bg }]}>
+                                <FontAwesome5 name={meta.icon as any} size={15} color={meta.color} />
+                              </View>
+                              <View style={[styles.quickAddIcon, { borderColor: `${meta.color}32` }]}>
+                                <Ionicons name="add" size={14} color={meta.color} />
+                              </View>
+                            </View>
+                            <Text style={styles.quickCardTitle} numberOfLines={1}>{item.label}</Text>
+                            <Text style={styles.quickCardHint} numberOfLines={1}>{item.hint}</Text>
+                            <View style={styles.quickCardFooter}>
+                              <View>
+                                <Text style={styles.quickSpentLabel}>YEAR SPEND</Text>
+                                <Text style={[styles.quickSpentAmount, { color: meta.color }]}>{fmtINR(spent)}</Text>
+                              </View>
+                              <Text style={[styles.quickAddText, { color: meta.color }]}>Add money</Text>
+                            </View>
+                          </Pressable>
+                        </Animated.View>
+                      );
+                    })}
+                  </View>
+                </Animated.View>
+
+                <View style={styles.historySection}>
+                  <View style={styles.historyHeadingRow}>
+                    <View>
+                      <Text style={styles.sectionEyebrow}>HISTORY</Text>
+                      <Text style={styles.sectionTitle}>Expense transactions</Text>
+                    </View>
+                    <View style={styles.historyCountBadge}>
+                      <Text style={styles.historyCountText}>{expenses.length} records</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.searchContainer, searchFocused && styles.searchContainerFocused]}>
+                    <Ionicons
+                      name="search-outline"
+                      size={17}
+                      color={searchFocused ? theme.colors.primary : theme.colors.textTertiary}
+                      style={styles.searchIcon}
+                    />
+                    <AppTextInput
+                      style={[ds.inputInChrome, styles.searchInput]}
+                      placeholder="Search by title or category…"
+                      placeholderTextColor={theme.colors.textTertiary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setSearchFocused(false)}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn} hitSlop={8}>
+                        <Ionicons name="close" size={12} color="#fff" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <ExpenseDateFilterBar
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    onFromDateChange={setFromDate}
+                    onToDateChange={setToDate}
+                    onClear={resetDateFilters}
+                    isDark={isDark}
+                  />
+
+                  {expenses.length > 0 && (
+                    <View style={styles.summaryStrip}>
+                      <View style={styles.summaryHero}>
+                        <Text style={styles.summaryHeroLabel}>Filtered total</Text>
+                        <Text style={styles.summaryHeroAmount}>{fmtINR(totalAll)}</Text>
+                      </View>
+                      <View style={styles.summaryDivider} />
+                      {[
+                        { label: 'Pending', amount: totalPending, color: STATUS_META.pending.dot },
+                        { label: 'Approved', amount: totalApproved, color: STATUS_META.approved.dot },
+                        { label: 'Paid', amount: totalPaid, color: STATUS_META.paid.dot },
+                      ].map((stat) => (
+                        <View key={stat.label} style={styles.summaryChip}>
+                          <View style={[styles.summaryDot, { backgroundColor: stat.color }]} />
+                          <Text style={styles.summaryLabel}>{stat.label}</Text>
+                          <Text style={styles.summaryAmount}>{fmtINR(stat.amount)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              ))}
-            </Animated.View>
-          )}
-
-          {loading && expenses.length === 0 ? (
-            <View style={styles.centered}>
-              <LogoLoader size={56} color={theme.colors.primary} />
-              <Text style={styles.loadingText}>Loading expenses…</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={expenses}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              ListEmptyComponent={
+              </>
+            }
+            ListEmptyComponent={
+              loading ? (
+                <View style={styles.inlineLoading}>
+                  <LogoLoader size={44} color={theme.colors.primary} />
+                  <Text style={styles.loadingText}>Loading expenses…</Text>
+                </View>
+              ) : (
                 <Animated.View entering={FadeIn.duration(350)} style={styles.emptyContainer}>
                   <View style={styles.emptyIconWrap}>
                     <LinearGradient
@@ -340,38 +573,25 @@ export default function AdminExpenses() {
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                     />
-                    <FontAwesome5 name="receipt" size={26} color="#818CF8" />
+                    <FontAwesome5 name="receipt" size={24} color="#818CF8" />
                   </View>
                   <Text style={styles.emptyTitle}>
-                    {searchQuery ? 'No matching expenses' : 'No expenses yet'}
+                    {searchQuery ? 'No matching expenses' : 'No expenses in this period'}
                   </Text>
                   <Text style={styles.emptySubtitle}>
                     {searchQuery
                       ? `Nothing matched “${searchQuery}”. Try another search or widen the date range.`
-                      : 'Log school spending so you can track balances and approvals in one place.'}
+                      : 'Use any quick-entry card above to log spending.'}
                   </Text>
-                  {!searchQuery && (
-                    <Pressable
-                      style={({ pressed }) => [styles.emptyCta, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
-                      onPress={openAdd}
-                    >
-                      <LinearGradient
-                        colors={['#4F46E5', '#6366F1']}
-                        style={styles.emptyCtaGrad}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                      >
-                        <Ionicons name="add" size={18} color="#fff" />
-                        <Text style={styles.emptyCtaText}>Add first expense</Text>
-                      </LinearGradient>
-                    </Pressable>
-                  )}
                 </Animated.View>
-              }
-              refreshing={loading}
-              onRefresh={() => fetchExpenses(searchQuery, fetchOptions)}
-            />
-          )}
+              )
+            }
+            refreshing={loading}
+            onRefresh={() => {
+              fetchExpenses(searchQuery, fetchOptions);
+              fetchAcademicYearExpenses('', academicYearRange);
+            }}
+          />
 
           {/* FABs */}
           <Pressable
@@ -386,7 +606,7 @@ export default function AdminExpenses() {
 
           <Animated.View style={[styles.fabWrapper, fabStyle]}>
             <Pressable
-              onPress={openAdd}
+              onPress={() => openAdd()}
               onPressIn={() => { fabScale.value = withSpring(0.94, { damping: 15, stiffness: 280 }); }}
               onPressOut={() => { fabScale.value = withSpring(1, { damping: 12, stiffness: 220 }); }}
               accessibilityLabel="Add expense"
@@ -580,7 +800,7 @@ export default function AdminExpenses() {
       <BulkExpenseSheet
         visible={isBulkModalVisible}
         onClose={() => setIsBulkModalVisible(false)}
-        onSubmit={createBulkExpenses}
+        onSubmit={handleBulkExpenses}
         isDark={isDark}
       />
 
@@ -737,6 +957,181 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: '600', color: theme.colors.textSecondary },
   activeTabText: { color: '#fff', fontWeight: '800' },
 
+  heroWrap: { marginHorizontal: 20, marginTop: 14 },
+  heroCard: {
+    minHeight: 206,
+    borderRadius: 24,
+    padding: 22,
+    overflow: 'hidden',
+    ...(Platform.OS === 'ios'
+      ? { shadowColor: '#4338CA', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.24, shadowRadius: 18 }
+      : { elevation: 6 }),
+  },
+  heroOrbLarge: {
+    position: 'absolute',
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    right: -70,
+    top: -110,
+  },
+  heroOrbSmall: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    left: '42%',
+    bottom: -70,
+  },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  heroEyebrow: { color: '#C7D2FE', fontSize: 10, fontWeight: '800', letterSpacing: 1.3 },
+  heroTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginTop: 4, letterSpacing: -0.25 },
+  heroYearPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 18,
+  },
+  heroYearText: { color: '#F5F3FF', fontSize: 11, fontWeight: '700' },
+  heroMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginTop: 20,
+  },
+  heroMainMetric: { flex: 1, minWidth: 190 },
+  heroAmount: { color: '#fff', fontSize: 34, fontWeight: '900', letterSpacing: -1.2 },
+  heroMetricCaption: { color: '#C7D2FE', fontSize: 11, fontWeight: '600', marginTop: 4 },
+  heroMonthCard: {
+    minWidth: 186,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  heroMonthIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  heroMonthLabel: { color: '#DDD6FE', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.7 },
+  heroMonthAmount: { color: '#fff', fontSize: 18, fontWeight: '900', marginTop: 1 },
+  heroMonthCount: { color: '#C7D2FE', fontSize: 10, fontWeight: '600', marginTop: 1 },
+  heroAddButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 17,
+  },
+  heroAddButtonText: { color: '#4338CA', fontSize: 12, fontWeight: '800' },
+
+  quickSection: { marginHorizontal: 20, marginTop: 24 },
+  sectionHeadingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 12,
+    marginBottom: 14,
+  },
+  sectionEyebrow: { color: theme.colors.primary, fontSize: 9, fontWeight: '900', letterSpacing: 1.25 },
+  sectionTitle: { color: theme.colors.textStrong, fontSize: 18, fontWeight: '800', letterSpacing: -0.4, marginTop: 3 },
+  sectionSubtitle: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: '500', marginTop: 3 },
+  bulkEntryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: isDark ? 'rgba(129,140,248,0.12)' : '#EEF2FF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(129,140,248,0.22)' : '#E0E7FF',
+  },
+  bulkEntryButtonText: { color: theme.colors.primary, fontSize: 11, fontWeight: '800' },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  quickCard: {
+    minHeight: 144,
+    backgroundColor: theme.colors.background,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 13,
+    justifyContent: 'space-between',
+    ...(Platform.OS === 'ios'
+      ? { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10 }
+      : { elevation: 2 }),
+  },
+  quickCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  quickIconBox: { width: 36, height: 36, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  quickAddIcon: {
+    width: 25,
+    height: 25,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#fff',
+  },
+  quickCardTitle: { color: theme.colors.textStrong, fontSize: 13, fontWeight: '800', letterSpacing: -0.15, marginTop: 11 },
+  quickCardHint: { color: theme.colors.textTertiary, fontSize: 10, fontWeight: '500', marginTop: 2 },
+  quickCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: 9,
+    marginTop: 10,
+  },
+  quickSpentLabel: { color: theme.colors.textTertiary, fontSize: 8, fontWeight: '800', letterSpacing: 0.7 },
+  quickSpentAmount: { fontSize: 12, fontWeight: '900', marginTop: 1 },
+  quickAddText: { fontSize: 9, fontWeight: '800' },
+
+  historySection: {
+    marginTop: 28,
+    paddingTop: 22,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  historyHeadingRow: {
+    marginHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  historyCountBadge: {
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  historyCountText: { color: theme.colors.textSecondary, fontSize: 10, fontWeight: '700' },
+  inlineLoading: { alignItems: 'center', justifyContent: 'center', paddingVertical: 34 },
+
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -808,12 +1203,13 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  listContent: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 120 },
+  listContent: { paddingTop: 0, paddingBottom: 120 },
 
   card: {
     flexDirection: 'row',
     backgroundColor: theme.colors.background,
     borderRadius: 18,
+    marginHorizontal: 20,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -882,7 +1278,7 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   fabGloss: { position: 'absolute', top: 0, left: 0, right: 0, height: 22 },
   fabLabel: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.1 },
 
-  emptyContainer: { alignItems: 'center', paddingTop: 56, paddingHorizontal: 28 },
+  emptyContainer: { alignItems: 'center', paddingTop: 28, paddingHorizontal: 28, paddingBottom: 24 },
   emptyIconWrap: {
     width: 80,
     height: 80,

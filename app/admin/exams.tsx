@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
@@ -12,6 +13,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -172,6 +174,7 @@ export default function AdminExams() {
   const [exams, setExams] = useState<ExamListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hallTicketExam, setHallTicketExam] = useState<ExamListItem | null>(null);
+  const [signatureVisible, setSignatureVisible] = useState(false);
 
   // detail view
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
@@ -390,6 +393,7 @@ export default function AdminExams() {
           onOpen={openDetail}
           onHallTickets={setHallTicketExam}
           onCreate={() => setCreateVisible(true)}
+          onManageSignature={() => setSignatureVisible(true)}
         />
       )}
 
@@ -401,6 +405,13 @@ export default function AdminExams() {
           onClose={() => setHallTicketExam(null)}
         />
       )}
+
+      <PrincipalSignatureModal
+        visible={signatureVisible}
+        styles={styles}
+        theme={theme}
+        onClose={() => setSignatureVisible(false)}
+      />
 
       <CreateExamModal
         visible={createVisible}
@@ -668,6 +679,7 @@ function ExamListView({
   onOpen,
   onHallTickets,
   onCreate,
+  onManageSignature,
 }: {
   styles: Styles;
   theme: Theme;
@@ -675,6 +687,7 @@ function ExamListView({
   onOpen: (id: string) => void;
   onHallTickets: (exam: ExamListItem) => void;
   onCreate: () => void;
+  onManageSignature: () => void;
 }) {
   const [filter, setFilter] = useState<ExamFilter>('all');
 
@@ -726,8 +739,7 @@ function ExamListView({
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          exams.length > 0 ? (
-            <Animated.View entering={FadeIn.duration(280)} style={styles.listHeader}>
+          <Animated.View entering={FadeIn.duration(280)} style={styles.listHeader}>
               <View style={styles.listHeaderTop}>
                 <View>
                   <Text style={styles.listHeaderTitle}>Exams</Text>
@@ -735,17 +747,29 @@ function ExamListView({
                     {counts.live} live · {counts.draft} draft · {counts.setup} to set up
                   </Text>
                 </View>
-                <TouchableOpacity activeOpacity={0.85} onPress={onCreate}>
-                  <LinearGradient
-                    colors={['#4F46E5', '#7C3AED']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.headerNewBtn}
+                <View style={styles.headerActions}>
+                  <TouchableOpacity
+                    style={styles.signatureHeaderBtn}
+                    activeOpacity={0.75}
+                    onPress={onManageSignature}
+                    accessibilityRole="button"
+                    accessibilityLabel="Manage principal signature"
                   >
-                    <Ionicons name="add" size={16} color="#FFFFFF" />
-                    <Text style={styles.headerNewBtnText}>New</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                    <Ionicons name="pencil-outline" size={16} color={theme.colors.primary} />
+                    <Text style={styles.signatureHeaderBtnText}>Principal signature</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.85} onPress={onCreate}>
+                    <LinearGradient
+                      colors={['#4F46E5', '#7C3AED']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.headerNewBtn}
+                    >
+                      <Ionicons name="add" size={16} color="#FFFFFF" />
+                      <Text style={styles.headerNewBtnText}>New</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
               </View>
               <ScrollView
                 horizontal
@@ -771,7 +795,6 @@ function ExamListView({
                 })}
               </ScrollView>
             </Animated.View>
-          ) : null
         }
         ListEmptyComponent={
           <Animated.View entering={FadeInDown.duration(400)} style={styles.emptyWrap}>
@@ -806,6 +829,187 @@ function ExamListView({
         }
       />
     </View>
+  );
+}
+
+// ─── Principal signature ──────────────────────────────────────────────────────
+
+function PrincipalSignatureModal({
+  visible,
+  styles,
+  theme,
+  onClose,
+}: {
+  visible: boolean;
+  styles: Styles;
+  theme: Theme;
+  onClose: () => void;
+}) {
+  const [school, setSchool] = useState<SchoolSettings | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    let active = true;
+    setLoading(true);
+    SchoolSettingsService.getSettings()
+      .then((settings) => {
+        if (active) setSchool(settings);
+      })
+      .catch((error: any) => {
+        if (active) alertCompat('Could not load signature', error?.message || 'Please try again.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible]);
+
+  const chooseSignature = async () => {
+    if (saving) return;
+    if (Platform.OS !== 'web') {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        alertCompat('Photos permission needed', 'Allow photo library access to choose the principal signature.');
+        return;
+      }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 1],
+      quality: 0.95,
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    try {
+      setSaving(true);
+      const asset = result.assets[0];
+      const signatureUrl = await SchoolSettingsService.uploadPrincipalSignature(asset.uri, asset.mimeType);
+      setSchool((current) => current ? { ...current, principal_signature_url: signatureUrl } : current);
+      alertCompat('Signature saved', 'New hall tickets will use this principal signature automatically.');
+    } catch (error: any) {
+      alertCompat('Upload failed', error?.message || 'Could not save the principal signature.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeSignature = () => {
+    if (!school?.principal_signature_url || saving) return;
+    alertCompat(
+      'Remove principal signature?',
+      'Future hall tickets will return to a blank principal signing line.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await SchoolSettingsService.removePrincipalSignature();
+              setSchool((current) => current ? { ...current, principal_signature_url: '' } : current);
+            } catch (error: any) {
+              alertCompat('Could not remove signature', error?.message || 'Please try again.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const signatureUrl = school?.principal_signature_url?.trim() || '';
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !saving && onClose()}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <View style={styles.flex}>
+              <Text style={styles.modalTitle}>Principal signature</Text>
+              <Text style={styles.signatureModalSubtitle}>Used automatically on every hall ticket</Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Close principal signature"
+            >
+              <Ionicons name="close" size={23} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={styles.signatureLoading}>
+              <LogoLoader size={44} color={theme.colors.primary} />
+            </View>
+          ) : (
+            <>
+              <View style={styles.signaturePreview}>
+                {signatureUrl ? (
+                  <Image
+                    source={{ uri: signatureUrl }}
+                    resizeMode="contain"
+                    style={styles.signaturePreviewImage}
+                  />
+                ) : (
+                  <View style={styles.signatureEmpty}>
+                    <View style={styles.signatureEmptyIcon}>
+                      <Ionicons name="pencil-outline" size={24} color={theme.colors.primary} />
+                    </View>
+                    <Text style={styles.signatureEmptyTitle}>No signature added</Text>
+                    <Text style={styles.signatureEmptyText}>Hall tickets currently show a blank signing line.</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.hallTicketInfo}>
+                <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
+                <Text style={styles.hallTicketInfoText}>
+                  Use a clear signature on a plain white or transparent background. The image is trimmed and resized automatically.
+                </Text>
+              </View>
+
+              <View style={styles.signatureActions}>
+                {signatureUrl ? (
+                  <TouchableOpacity
+                    style={styles.signatureRemoveBtn}
+                    onPress={removeSignature}
+                    disabled={saving}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="trash-outline" size={16} color={theme.colors.danger} />
+                    <Text style={styles.signatureRemoveText}>Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={[styles.modalPrimaryBtn, styles.signatureUploadBtn, saving && styles.disabledBtn]}
+                  onPress={chooseSignature}
+                  disabled={saving}
+                  accessibilityRole="button"
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons name="image-outline" size={17} color="#FFFFFF" />
+                  )}
+                  <Text style={styles.modalPrimaryBtnText}>
+                    {saving ? 'Saving…' : signatureUrl ? 'Replace signature' : 'Choose signature'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -963,8 +1167,8 @@ function HallTicketModal({
               <View style={styles.hallTicketInfo}>
                 <Ionicons name="cut-outline" size={17} color={theme.colors.primary} />
                 <Text style={styles.hallTicketInfoText}>
-                  Three tearable hall tickets per A4 page, with your school logo in the header and as
-                  a watermark. Each ticket includes the full exam schedule.
+                  Four compact tearable hall tickets per A4 page, with subjects arranged horizontally
+                  and your school icon in the header and watermark.
                 </Text>
               </View>
 
@@ -3311,6 +3515,29 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       color: theme.colors.textSecondary,
       marginTop: 2,
     },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    signatureHeaderBtn: {
+      minHeight: 38,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}32`,
+      backgroundColor: `${theme.colors.primary}0D`,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    signatureHeaderBtnText: {
+      color: theme.colors.primary,
+      fontSize: 12.5,
+      fontWeight: '700',
+    },
     headerNewBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -3853,6 +4080,85 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 2,
+    },
+    signatureModalSubtitle: {
+      marginTop: 3,
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+    },
+    signatureLoading: {
+      minHeight: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    signaturePreview: {
+      minHeight: 170,
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    signaturePreviewImage: {
+      width: '100%',
+      height: 130,
+    },
+    signatureEmpty: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+    },
+    signatureEmptyIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${theme.colors.primary}12`,
+      marginBottom: 10,
+    },
+    signatureEmptyTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: theme.colors.textStrong,
+    },
+    signatureEmptyText: {
+      marginTop: 4,
+      fontSize: 11.5,
+      color: theme.colors.textTertiary,
+      textAlign: 'center',
+    },
+    signatureActions: {
+      marginTop: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    signatureUploadBtn: {
+      flexGrow: 1,
+      maxWidth: 260,
+      marginTop: 0,
+    },
+    signatureRemoveBtn: {
+      minHeight: 42,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: `${theme.colors.danger}32`,
+      backgroundColor: `${theme.colors.danger}0C`,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    signatureRemoveText: {
+      color: theme.colors.danger,
+      fontSize: 12.5,
+      fontWeight: '700',
     },
     hallTicketInfo: {
       flexDirection: 'row',

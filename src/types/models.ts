@@ -581,6 +581,9 @@ export interface Complaint {
     readonly raised_by: string;
     readonly raised_by_name?: string;
     readonly raised_for_student_id?: string;
+    readonly student_name?: string;
+    readonly student_admission_no?: string;
+    readonly student_photo_url?: string | null;
     readonly assigned_to?: string;
     readonly resolution?: string;
     readonly resolution_te?: string;

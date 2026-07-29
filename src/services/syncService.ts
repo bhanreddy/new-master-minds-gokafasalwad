@@ -1,6 +1,8 @@
 import { api } from './apiClient';
 import { StorageService } from './storageService';
 import { supabase } from './supabaseConfig';
+import { sortStudentFeesByConfiguredOrder } from '../utils/feeOrdering';
+import type { StudentFee } from '../types/models';
 
 export const SyncService = {
     /**
@@ -115,17 +117,34 @@ export const SyncService = {
         if (cached && !forceReFetch) {
             api.get<any>(`/fees/students/${studentId}`, { ...params, lastSyncedAt }).then(async (res) => {
                 if (res?.fees && res.fees.length > 0) {
-                    const merged = await StorageService.merge(userId, cacheKey, res.fees, 'id');
-                    const fullRecord = { student: res.student || cached.data[0]?.student, summary: res.summary || cached.data[0]?.summary, fees: merged };
+                    const mergedById = new Map<string, StudentFee>();
+                    for (const fee of (cached.data[0]?.fees || []) as StudentFee[]) {
+                        mergedById.set(fee.id, fee);
+                    }
+                    for (const fee of res.fees as StudentFee[]) {
+                        mergedById.set(fee.id, fee);
+                    }
+                    const fullRecord = {
+                        student: res.student || cached.data[0]?.student,
+                        summary: res.summary || cached.data[0]?.summary,
+                        fees: sortStudentFeesByConfiguredOrder(Array.from(mergedById.values())),
+                    };
                     await StorageService.set(userId, cacheKey, [fullRecord]);
                 }
             }).catch(() => { });
-            return cached.data[0];
+            return {
+                ...cached.data[0],
+                fees: sortStudentFeesByConfiguredOrder(cached.data[0]?.fees || []),
+            };
         }
 
         const freshData = await api.get<any>(`/fees/students/${studentId}`, params);
-        await StorageService.set(userId, cacheKey, [freshData]);
-        return freshData;
+        const orderedData = {
+            ...freshData,
+            fees: sortStudentFeesByConfiguredOrder(freshData?.fees || []),
+        };
+        await StorageService.set(userId, cacheKey, [orderedData]);
+        return orderedData;
     },
 
     async clearUserCache(userId: string) {

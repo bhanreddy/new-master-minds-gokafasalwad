@@ -689,6 +689,16 @@ const MENU_CONFIGS: Record<string, MenuConfig> = {
     shimmerColor: 'rgba(100,255,220,0.35)',
     patternType: 'dots',
   },
+  portfolio: {
+    icon: <Ionicons name="id-card" size={27} color="#fff" />,
+    grad: ['#2DD4BF', '#0D9488', '#0F766E'] as const,
+    accentLight: '#99F6E4',
+    accentBar: ['#99F6E4', '#2DD4BF'],
+    shadowColor: '#0D9488',
+    category: 'STUDENTS',
+    shimmerColor: 'rgba(94,234,212,0.36)',
+    patternType: 'arc',
+  },
   attendance: {
     icon: <FontAwesome5 name="fingerprint" size={27} color="#fff" />,
     grad: ['#FF8040', '#E8520A', '#B83600'] as const,
@@ -896,6 +906,9 @@ function getStaffClayColors(configKey: string, isDark: boolean) {
   } else if (configKey === 'timetable') {
     bg = isDark ? '#00A352' : '#00C853'; // Vibrant Green
     shadowColor = isDark ? '#005E2E' : '#1B5E20';
+  } else if (configKey === 'portfolio') {
+    bg = isDark ? '#0F766E' : '#14B8A6';
+    shadowColor = isDark ? '#064E3B' : '#0F766E';
   } else if (configKey === 'attendance') {
     bg = isDark ? '#C44E00' : '#FF6D00'; // Vivid Orange
     shadowColor = isDark ? '#802F00' : '#E65100';
@@ -1293,6 +1306,7 @@ export default function StaffDashboard() {
     { title: 'Messages', subtitle: 'In-app chat', configKey: 'messages', route: '/staff/messages' },
     { title: 'Diary', subtitle: 'Daily logs & notes', configKey: 'diary', route: '/staff/diary' },
     { title: 'Timetable', subtitle: 'Class schedule', configKey: 'timetable', route: '/staff/timetable' },
+    { title: 'Student Portfolio', subtitle: 'First-class profiles', configKey: 'portfolio', route: '/staff/student-portfolio' },
     { title: 'My Attendance', subtitle: 'History & reports', configKey: 'attendance', route: '/staff/attendance' },
     { title: 'Leaves', subtitle: 'Review approvals', configKey: 'leaves', route: '/staff/leaves', badge: data?.pendingLeaves ? `${data.pendingLeaves}` : undefined },
     { title: 'Results', subtitle: 'Enter & view marks', configKey: 'results', route: '/staff/results' },

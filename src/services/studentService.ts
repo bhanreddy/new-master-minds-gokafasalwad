@@ -7,6 +7,7 @@ import type {
     Parent,
     AttendanceSummary,
 } from '../types/models';
+import { sortStudentFeesByConfiguredOrder } from '../utils/feeOrdering';
 
 /** Aggregated payload from GET /student/dashboard (one HTTP call for the student home tab). */
 export interface StudentDashboardResponse {
@@ -262,7 +263,14 @@ export const StudentService = {
      * Get student fees
      */
     getFees: async (id: string, params?: { page?: number; limit?: number; academic_year_id?: string }): Promise<FeeResponse & { meta?: { total: number; page: number; limit: number; total_pages: number } }> => {
-        return api.get(`/students/${id}/fees`, params);
+        const result = await api.get<FeeResponse & { meta?: { total: number; page: number; limit: number; total_pages: number } }>(
+            `/students/${id}/fees`,
+            params,
+        );
+        return {
+            ...result,
+            fees: sortStudentFeesByConfiguredOrder(result.fees || []),
+        };
     },
 
     /**

@@ -1,8 +1,9 @@
 /**
- * HomeScreen.tsx — Premium v7.1
+ * HomeScreen.tsx — Premium v7.2
  * ─────────────────────────────────────────────────────────
- * v7.1 changes:
- * • FeatureCard: OpenMoji doodle illustrations in fitted paper-sticker badges
+ * v7.2 changes:
+ * • FeatureCard: Microsoft Fluent Emoji Flat illustrations (matches StudentBottomDock)
+ * • Cleaner frosted icon badges — no tilted paper-sticker backplate
  * • homeTabs data preserved (subtitleKey untouched for future reuse)
  * ─────────────────────────────────────────────────────────
  * Design philosophy (rural-UX aware):
@@ -10,23 +11,23 @@
  * ✦ Premium comes from EXECUTION:
  *   • 3-stop jewel-tone gradients
  *   • Top-left radial light highlight
- *   • Hand-drawn, multicolour illustrations with consistent visual weight
+ *   • Polished, multicolour Fluent illustrations with consistent visual weight
  *   • Colored shadow tight + dark ambient layered
- * Illustrations: OpenMoji (CC BY-SA 4.0), imported individually through Iconify.
+ * Illustrations: Fluent Emoji Flat (MIT), imported individually through Iconify.
  */
 
 import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { IconifyIcon } from '@iconify/types';
-import announcementsIcon from '@iconify-icons/openmoji/megaphone';
-import complaintsIcon from '@iconify-icons/openmoji/warning';
-import diaryIcon from '@iconify-icons/openmoji/open-book';
-import lifeValuesIcon from '@iconify-icons/openmoji/heart-hands';
-import lmsIcon from '@iconify-icons/openmoji/laptop';
-import messagesIcon from '@iconify-icons/openmoji/speech-balloon';
-import profileIcon from '@iconify-icons/openmoji/student';
-import scienceIcon from '@iconify-icons/openmoji/microscope';
-import transportIcon from '@iconify-icons/openmoji/oncoming-bus';
+import announcementsIcon from '@iconify-icons/fluent-emoji-flat/megaphone';
+import complaintsIcon from '@iconify-icons/fluent-emoji-flat/warning';
+import diaryIcon from '@iconify-icons/fluent-emoji-flat/open-book';
+import lifeValuesIcon from '@iconify-icons/fluent-emoji-flat/heart-hands';
+import lmsIcon from '@iconify-icons/fluent-emoji-flat/laptop';
+import messagesIcon from '@iconify-icons/fluent-emoji-flat/speech-balloon';
+import profileIcon from '@iconify-icons/fluent-emoji-flat/student';
+import scienceIcon from '@iconify-icons/fluent-emoji-flat/microscope';
+import transportIcon from '@iconify-icons/fluent-emoji-flat/oncoming-bus';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -112,7 +113,7 @@ interface HomeTab {
   title: string;
   translationKey?: string;
   subtitleKey: string;
-  /** Self-coloured doodle illustration imported individually from OpenMoji. */
+  /** Self-coloured Fluent Emoji Flat illustration imported individually via Iconify. */
   icon: IconifyIcon;
   /** Optical sizing keeps differently shaped illustrations visually balanced. */
   iconSize: number;
@@ -130,7 +131,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'diary', title: 'Diary',
     subtitleKey: 'dashboard.featureSubtitles.daily_diary',
     icon: diaryIcon,
-    iconSize: 48,
+    iconSize: 40,
     grad: ['#0C4A6E', '#0284C7', '#7DD3FC'],
     shadow: '#075985',
     feature: 'topbar.diary',
@@ -140,7 +141,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'announcements.title', title: 'Announcements',
     subtitleKey: 'dashboard.featureSubtitles.school_updates',
     icon: announcementsIcon,
-    iconSize: 49,
+    iconSize: 40,
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'quick.announcements',
@@ -150,7 +151,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'complaints.title', title: 'Complaints',
     subtitleKey: 'dashboard.featureSubtitles.raise_concern',
     icon: complaintsIcon,
-    iconSize: 46,
+    iconSize: 40,
     grad: ['#7F1D1D', '#B91C1C', '#F87171'], // Red 900, Red 700
     shadow: '#991B1B', // Red 800
     feature: 'quick.complaints',
@@ -160,7 +161,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'lifeValues', title: 'Life Values',
     subtitleKey: 'dashboard.featureSubtitles.character_growth',
     icon: lifeValuesIcon,
-    iconSize: 47,
+    iconSize: 40,
     grad: ['#022C22', '#047857', '#6EE7B7'], // Emerald 900, Emerald 700
     shadow: '#064E3B', // Emerald 800
     feature: 'quick.life_values',
@@ -170,7 +171,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'admin_dashboard.transport', title: 'Transport',
     subtitleKey: 'dashboard.featureSubtitles.live_bus',
     icon: transportIcon,
-    iconSize: 50,
+    iconSize: 42,
     grad: ['#78350F', '#B45309', '#FCD34D'], // Amber 900, Amber 700
     shadow: '#92400E', // Amber 800
     feature: 'quick.transport',
@@ -180,7 +181,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'scienceProjects', title: 'Science Projects',
     subtitleKey: 'dashboard.featureSubtitles.lab_innovation',
     icon: scienceIcon,
-    iconSize: 49,
+    iconSize: 40,
     grad: ['#082F49', '#0369A1', '#7DD3FC'], // Sky 900, Sky 700
     shadow: '#075985', // Sky 800
     feature: 'quick.science_projects',
@@ -190,7 +191,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'menu.profile', title: 'Student Profile',
     subtitleKey: 'dashboard.featureSubtitles.personal_details',
     icon: profileIcon,
-    iconSize: 47,
+    iconSize: 40,
     grad: ['#881337', '#BE123C', '#FDA4AF'], // Rose 900, Rose 700
     shadow: '#9F1239', // Rose 800
     feature: 'quick.profile',
@@ -200,7 +201,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'messages.title', title: 'Messages',
     subtitleKey: 'dashboard.featureSubtitles.in_app_chat',
     icon: messagesIcon,
-    iconSize: 48,
+    iconSize: 40,
     grad: ['#312E81', '#4338CA', '#818CF8'], // Indigo 900, Indigo 700
     shadow: '#3730A3', // Indigo 800
     feature: 'comm.messenger', // Requires comm.messenger feature flag
@@ -210,7 +211,7 @@ const homeTabs: HomeTab[] = [
     translationKey: 'lMS', title: 'LMS',
     subtitleKey: 'dashboard.featureSubtitles.learning_resources',
     icon: lmsIcon,
-    iconSize: 50,
+    iconSize: 40,
     grad: ['#064E3B', '#059669', '#6EE7B7'],
     shadow: '#047857',
     feature: 'topbar.lms',
@@ -420,10 +421,10 @@ const sp = StyleSheet.create({
 });
 
 /* ═══════════════════════════════════════════
-   FEATURE CARD — v7.1: SLIM, ICON-FORWARD
+   FEATURE CARD — v7.2: SLIM, ICON-FORWARD
+   • Fluent Emoji Flat glyphs in frosted white badges
    • Subtitle removed (icon + title carry meaning)
    • Height 168 → 128 (~25% shorter)
-   • Icon chip 44 → 50, glyph 22 → 24 (icon = anchor)
    • All v7 depth tricks preserved
 ═══════════════════════════════════════════ */
 const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
@@ -486,12 +487,19 @@ const FeatureCard = ({ tab, isDark, onPress, cardWidth }: {
           <View style={fc.card}>
             {/* Header row: icon chip + arrow */}
             <View style={fc.headerRow}>
-              <View style={fc.iconStack}>
-                <View pointerEvents="none" style={fc.iconBackplate} />
-                <View style={fc.iconPaper}>
-                  <View pointerEvents="none" style={fc.iconPaperShine} />
-                  <IconifyIllustration icon={tab.icon} size={tab.iconSize} />
-                </View>
+              <View style={[fc.iconBadge, {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.96)' : '#FFFFFF',
+                borderColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.72)',
+                shadowColor: tab.shadow,
+              }]}>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={fc.iconBadgeShine}
+                  pointerEvents="none"
+                />
+                <IconifyIllustration icon={tab.icon} size={tab.iconSize} />
               </View>
 
               <View style={fc.arrowChip}>
@@ -535,47 +543,25 @@ const fc = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: tokens.space[2],
   },
-  iconStack: {
-    width: 60,
-    height: 60,
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconBackplate: {
-    position: 'absolute',
-    width: 54,
-    height: 54,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.30)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
-    transform: [{ rotate: '7deg' }],
-  },
-  iconPaper: {
+  iconBadge: {
     width: 56,
     height: 56,
-    borderRadius: 17,
+    borderRadius: 16,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFCF5',
-    borderWidth: 1.25,
-    borderColor: 'rgba(15,23,42,0.12)',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.18,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
     shadowRadius: 8,
     elevation: 4,
   },
-  iconPaperShine: {
+  iconBadgeShine: {
     position: 'absolute',
-    top: 4,
-    left: 8,
-    right: 8,
-    height: 8,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 22,
   },
   arrowChip: {
     width: 28, height: 28,

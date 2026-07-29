@@ -70,6 +70,7 @@ export default function StaffLayout() {
             <MaterialTopTabs.Screen name="profile" options={hiddenScreenOptions} />
             <MaterialTopTabs.Screen name="settings" options={hiddenScreenOptions} />
             <MaterialTopTabs.Screen name="student-details" options={hiddenScreenOptions} />
+            <MaterialTopTabs.Screen name="student-portfolio" options={hiddenScreenOptions} />
         </MaterialTopTabs>
     );
 }

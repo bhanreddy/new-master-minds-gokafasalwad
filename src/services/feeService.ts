@@ -10,6 +10,7 @@ import {
     FeeMode,
     FeeType
 } from '../types/models';
+import { sortStudentFeesByConfiguredOrder } from '../utils/feeOrdering';
 
 export { FeeType };
 export type { FeeMode, FeeStructureListResponse };
@@ -234,7 +235,11 @@ export const FeeService = {
      * Get student fees (Ledger)
      */
     getStudentFees: async (studentId: string, academicYearId?: string): Promise<FeeResponse> => {
-        return api.get<FeeResponse>(`/fees/students/${studentId}`, { academic_year_id: academicYearId });
+        const result = await api.get<FeeResponse>(`/fees/students/${studentId}`, { academic_year_id: academicYearId });
+        return {
+            ...result,
+            fees: sortStudentFeesByConfiguredOrder(result.fees || []),
+        };
     },
 
     /** Tuition + transport outstanding balance (0 when fully paid). */

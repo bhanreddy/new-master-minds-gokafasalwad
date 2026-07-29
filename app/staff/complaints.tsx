@@ -40,6 +40,9 @@ interface UIComplaint extends Complaint {
   color?: string;
   target?: string;
   date?: string;
+  student_name?: string;
+  student_admission_no?: string;
+  student_photo_url?: string | null;
 }
 interface Student {
   id: string;
@@ -140,6 +143,29 @@ const FILTER_TABS = [
   { key: 'FACILITY' as const, label: 'Facility', icon: 'business-outline' as const },
 ];
 
+type StatusStatFilter = 'ALL' | 'OPEN' | 'ACTIVE' | 'DONE';
+
+const INCIDENT_PRESETS = [
+  { key: 'disruption', label: 'Disruption', title: 'Classroom disruption', icon: 'megaphone-outline' as const },
+  { key: 'bullying', label: 'Bullying', title: 'Bullying or harassment', icon: 'hand-left-outline' as const },
+  { key: 'late', label: 'Late', title: 'Repeated lateness', icon: 'time-outline' as const },
+  { key: 'disrespect', label: 'Disrespect', title: 'Disrespectful behaviour', icon: 'alert-circle-outline' as const },
+  { key: 'other', label: 'Other', title: '', icon: 'ellipsis-horizontal-outline' as const },
+] as const;
+
+function matchesStatusStatFilter(status: string | undefined, filter: StatusStatFilter) {
+  const s = normalizeStatus(status);
+  if (filter === 'ALL') return true;
+  if (filter === 'OPEN') return s === 'open' || s === 'pending';
+  if (filter === 'ACTIVE') return s === 'in progress' || s === 'escalated';
+  if (filter === 'DONE') return s === 'resolved' || s === 'closed';
+  return true;
+}
+
+function isHighPriority(priority?: string) {
+  return ['high', 'urgent'].includes((priority || '').toLowerCase());
+}
+
 // ─── PressScale ────────────────────────────────────────────────────
 function PressScale({
   onPress, children, disabled, style,
@@ -150,12 +176,13 @@ function PressScale({
   const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <Pressable
+      style={style}
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => { if (!disabled) scale.value = withSpring(0.96, { damping: 18, stiffness: 320 }); }}
       onPressOut={() => { scale.value = withSpring(1, { damping: 14, stiffness: 220 }); }}
     >
-      <Animated.View style={[style, aStyle]}>{children}</Animated.View>
+      <Animated.View style={aStyle}>{children}</Animated.View>
     </Pressable>
   );
 }
@@ -329,91 +356,86 @@ const sk = StyleSheet.create({
 
 // ─── Complaint Card ────────────────────────────────────────────────
 const ComplaintCard = React.memo(function ComplaintCard({
-  item, index, isDark, onPress,
+  item, index, isDark, wide, onPress,
 }: {
-  item: UIComplaint; index: number; isDark: boolean; onPress: (c: UIComplaint) => void;
+  item: UIComplaint; index: number; isDark: boolean; wide: boolean; onPress: (c: UIComplaint) => void;
 }) {
   const catKey = item.category?.toLowerCase() || 'default';
   const cat = CATEGORY_CFG[catKey] || CATEGORY_CFG.default;
   const pri = PRIORITY_CFG[(item.priority || 'low').toLowerCase()] || PRIORITY_CFG.low;
   const stat = STATUS_CFG[normalizeStatus(item.status)] || STATUS_CFG.open;
-  const isHigh = ['high', 'urgent'].includes((item.priority || '').toLowerCase());
+  const isHigh = isHighPriority(item.priority);
+  const studentLabel = item.student_name?.trim() || 'Student not linked';
+  const adm = item.student_admission_no ? `#${item.student_admission_no}` : null;
   const s = useSharedValue(1);
+  const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
 
   return (
-    <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 55).duration(320).easing(Easing.out(Easing.cubic))}>
+    <Animated.View
+      entering={FadeInDown.delay(Math.min(index, 8) * 45).duration(280).easing(Easing.out(Easing.cubic))}
+      style={wide ? cc.gridItem : undefined}
+    >
       <AnimatedTouch
         activeOpacity={1}
-        onPressIn={() => { s.value = withSpring(0.975, { damping: 18, stiffness: 240 }); }}
+        onPressIn={() => { s.value = withSpring(0.98, { damping: 18, stiffness: 240 }); }}
         onPressOut={() => { s.value = withSpring(1, { damping: 16, stiffness: 220 }); }}
         onPress={() => onPress(item)}
-        style={[useAnimatedStyle(() => ({ transform: [{ scale: s.value }] })), { marginBottom: 12 }]}
+        style={[scaleStyle, { marginBottom: 10 }]}
       >
-        <View style={[cc.card, clayCard(isDark, 'sm') as any, isHigh && cc.cardUrgent]}>
-          <LinearGradient
-            colors={isDark
-              ? ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0)']
-              : ['rgba(255,255,255,0.70)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.75, y: 1 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
-            pointerEvents="none"
-          />
+        <View style={[cc.card, wide && cc.cardWide, clayCard(isDark, 'sm') as any, isHigh && cc.cardUrgent]}>
           <View style={[cc.stripe, { backgroundColor: cat.color }]} />
-
-          <View style={cc.inner}>
-            <View style={cc.top}>
-              <View style={[cc.iconWrap, { backgroundColor: cat.bg }]}>
-                <Ionicons name={cat.icon} size={17} color={cat.color} />
-              </View>
-
-              <View style={cc.headerText}>
-                <Text style={[cc.ticket, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
-                  #{item.ticket_no || item.id?.slice(0, 8)}
+          <View style={cc.row}>
+            <StudentPhoto
+              photoUrl={item.student_photo_url}
+              displayName={studentLabel}
+              size={wide ? 44 : 36}
+              borderRadius={wide ? 14 : 11}
+              style={[cc.avatar, { backgroundColor: cat.bg }]}
+              fallbackTextStyle={{ color: cat.color, fontWeight: '800', fontSize: 14, fontFamily: FONT }}
+            />
+            <View style={cc.main}>
+              <View style={cc.titleRow}>
+                <Text style={[cc.studentName, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]} numberOfLines={1}>
+                  {studentLabel}
                 </Text>
-                <Text style={[cc.title, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]} numberOfLines={2}>
-                  {item.title || 'Untitled report'}
-                </Text>
-              </View>
-
-              <View style={[cc.priorityBadge, { backgroundColor: pri.bg, borderColor: pri.border }]}>
-                <Text style={[cc.priorityText, { color: pri.color, fontFamily: FONT }]}>
-                  {(item.priority || 'Low').toUpperCase()}
+                <Text style={[cc.timeText, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
+                  {formatTimeAgo(item.created_at)}
                 </Text>
               </View>
-            </View>
-
-            {!!item.description && (
-              <Text style={[cc.desc, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]} numberOfLines={2}>
-                {item.description}
+              {adm ? (
+                <Text style={[cc.adm, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>{adm}</Text>
+              ) : null}
+              <Text style={[cc.incident, { color: isDark ? '#94A3B8' : '#475569', fontFamily: FONT }]} numberOfLines={1}>
+                {item.title || 'Untitled report'}
               </Text>
-            )}
-
-            <View style={[cc.footer, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
-              <View style={cc.footerLeft}>
-                <View style={[cc.catPill, { backgroundColor: cat.bg }]}>
-                  <Text style={[cc.catText, { color: cat.color, fontFamily: FONT }]}>{cat.label}</Text>
+              {wide && item.description ? (
+                <Text
+                  style={[cc.description, { color: isDark ? '#64748B' : '#64748B', fontFamily: FONT }]}
+                  numberOfLines={2}
+                >
+                  {item.description}
+                </Text>
+              ) : null}
+              <View style={cc.pillRow}>
+                <View style={[cc.categoryBadge, { backgroundColor: cat.bg }]}>
+                  <Ionicons name={cat.icon} size={10} color={cat.color} />
+                  <Text style={[cc.categoryText, { color: cat.color, fontFamily: FONT }]}>{cat.label}</Text>
                 </View>
-                <View style={cc.timeMeta}>
-                  <Ionicons name="time-outline" size={12} color={isDark ? '#475569' : '#94A3B8'} />
-                  <Text style={[cc.timeText, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
-                    {formatTimeAgo(item.created_at)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={cc.footerRight}>
                 <View style={[cc.statusBadge, { backgroundColor: stat.bg, borderColor: stat.border }]}>
-                  <MaterialIcons name={stat.icon} size={11} color={stat.color} />
-                  <Text style={[cc.statusText, { color: stat.color, fontFamily: FONT }]}>
-                    {stat.label.toUpperCase()}
+                  <MaterialIcons name={stat.icon} size={10} color={stat.color} />
+                  <Text style={[cc.statusText, { color: stat.color, fontFamily: FONT }]}>{stat.label}</Text>
+                </View>
+                <View style={[cc.priorityBadge, { backgroundColor: pri.bg, borderColor: pri.border }]}>
+                  <Text style={[cc.priorityText, { color: pri.color, fontFamily: FONT }]}>
+                    {(item.priority || 'low').toUpperCase()}
                   </Text>
                 </View>
-                <View style={[cc.chevron, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
-                  <Ionicons name="chevron-forward" size={14} color={isDark ? '#64748B' : '#94A3B8'} />
-                </View>
+                <Text style={[cc.ticket, { color: isDark ? '#475569' : '#94A3B8', fontFamily: FONT }]}>
+                  {item.ticket_no ? `#${item.ticket_no}` : ''}
+                </Text>
               </View>
             </View>
+            <Ionicons name="chevron-forward" size={16} color={isDark ? '#475569' : '#94A3B8'} />
           </View>
         </View>
       </AnimatedTouch>
@@ -422,38 +444,38 @@ const ComplaintCard = React.memo(function ComplaintCard({
 });
 
 const cc = StyleSheet.create({
-  card: { borderRadius: 24, overflow: 'hidden', position: 'relative' },
+  card: { borderRadius: 18, overflow: 'hidden', position: 'relative' },
+  cardWide: { minHeight: 176 },
+  gridItem: { width: '49.35%' },
   cardUrgent: {
     borderColor: 'rgba(239,68,68,0.28)',
     ...Platform.select({
-      ios: { shadowColor: '#EF4444', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
-      android: { elevation: 4 },
+      ios: { shadowColor: '#EF4444', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+      android: { elevation: 3 },
       default: {},
     }),
   },
-  stripe: { position: 'absolute', left: 0, top: 14, bottom: 14, width: 3.5, borderRadius: 3, zIndex: 2 },
-  inner: { padding: 0 },
-  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, paddingLeft: 18, paddingBottom: 8 },
-  iconWrap: { width: 40, height: 40, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
-  headerText: { flex: 1, minWidth: 0 },
-  ticket: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 3 },
-  title: { fontSize: 15, fontWeight: '700', letterSpacing: -0.3, lineHeight: 20 },
-  priorityBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, borderWidth: 1, marginTop: 2 },
-  priorityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  desc: { fontSize: 13, lineHeight: 19, paddingHorizontal: 18, paddingBottom: 12, letterSpacing: -0.1 },
-  footer: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingLeft: 18, paddingVertical: 11, borderTopWidth: StyleSheet.hairlineWidth, gap: 8,
+  stripe: { position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2, zIndex: 2 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 12, paddingHorizontal: 14, paddingLeft: 16,
   },
-  footerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, flexWrap: 'wrap' },
-  footerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  catPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  catText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.45 },
-  timeMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  avatar: { alignItems: 'center', justifyContent: 'center' },
+  main: { flex: 1, minWidth: 0, gap: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  studentName: { fontSize: 15, fontWeight: '800', letterSpacing: -0.3, flex: 1 },
+  adm: { fontSize: 11, fontWeight: '600' },
+  incident: { fontSize: 13, fontWeight: '500', marginTop: 1 },
+  description: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginTop: 4 },
+  pillRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  categoryBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8 },
+  categoryText: { fontSize: 10, fontWeight: '700' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  priorityBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  priorityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+  ticket: { fontSize: 10, fontWeight: '600', marginLeft: 'auto' },
   timeText: { fontSize: 11, fontWeight: '500' },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9, borderWidth: 1 },
-  statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
-  chevron: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
 });
 
 // ─── Detail Sheet ──────────────────────────────────────────────────
@@ -466,6 +488,9 @@ function DetailSheet({
   const cat = CATEGORY_CFG[item.category?.toLowerCase() || 'default'] || CATEGORY_CFG.default;
   const pri = PRIORITY_CFG[(item.priority || 'low').toLowerCase()] || PRIORITY_CFG.low;
   const stat = STATUS_CFG[normalizeStatus(item.status)] || STATUS_CFG.open;
+  const studentLine = item.student_name
+    ? `${item.student_name}${item.student_admission_no ? ` · #${item.student_admission_no}` : ''}`
+    : null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -473,16 +498,26 @@ function DetailSheet({
         <Pressable style={[ds.sheet, clayCard(isDark, 'lg') as any]} onPress={(e) => e.stopPropagation?.()}>
           <View style={ds.handle} />
           <View style={ds.sheetHeader}>
-            <View style={[ds.sheetIcon, { backgroundColor: cat.bg }]}>
-              <Ionicons name={cat.icon} size={20} color={cat.color} />
-            </View>
+            <StudentPhoto
+              photoUrl={item.student_photo_url}
+              displayName={item.student_name || item.title}
+              size={44}
+              borderRadius={14}
+              style={[ds.sheetIcon, { backgroundColor: cat.bg }]}
+              fallbackTextStyle={{ color: cat.color, fontWeight: '800', fontSize: 18, fontFamily: FONT }}
+            />
             <View style={{ flex: 1 }}>
               <Text style={[ds.sheetTicket, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
-                #{item.ticket_no || item.id?.slice(0, 8)}
+                {item.ticket_no ? `#${item.ticket_no}` : 'Report'}
               </Text>
               <Text style={[ds.sheetTitle, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>
-                {item.title || 'Untitled report'}
+                {studentLine || item.title || 'Disciplinary report'}
               </Text>
+              {studentLine && item.title ? (
+                <Text style={[ds.sheetSub, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]} numberOfLines={2}>
+                  {item.title}
+                </Text>
+              ) : null}
             </View>
             <PressScale onPress={onClose}>
               <View style={[ds.closeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}>
@@ -491,53 +526,55 @@ function DetailSheet({
             </PressScale>
           </View>
 
-          <View style={ds.badgeRow}>
-            <View style={[ds.badge, { backgroundColor: cat.bg }]}>
-              <Text style={[ds.badgeText, { color: cat.color, fontFamily: FONT }]}>{cat.label}</Text>
-            </View>
-            <View style={[ds.badge, { backgroundColor: pri.bg, borderColor: pri.border, borderWidth: 1 }]}>
-              <Text style={[ds.badgeText, { color: pri.color, fontFamily: FONT }]}>{(item.priority || 'Low').toUpperCase()}</Text>
-            </View>
-            <View style={[ds.badge, { backgroundColor: stat.bg, borderColor: stat.border, borderWidth: 1 }]}>
-              <MaterialIcons name={stat.icon} size={12} color={stat.color} />
-              <Text style={[ds.badgeText, { color: stat.color, fontFamily: FONT }]}>{stat.label}</Text>
-            </View>
-          </View>
-
-          <Text style={[ds.sectionLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Description</Text>
-          <Text style={[ds.body, { color: isDark ? '#CBD5E1' : '#334155', fontFamily: FONT }]}>
-            {item.description || 'No description provided.'}
-          </Text>
-
-          <View style={[ds.metaGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
-            <View style={ds.metaItem}>
-              <Ionicons name="time-outline" size={14} color={EM} />
-              <View>
-                <Text style={[ds.metaLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Filed</Text>
-                <Text style={[ds.metaValue, { color: isDark ? '#E2E8F0' : '#0F172A', fontFamily: FONT }]}>
-                  {formatTimeAgo(item.created_at)}
-                </Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: WIN_W * 0.85 }}>
+            <View style={ds.badgeRow}>
+              <View style={[ds.badge, { backgroundColor: cat.bg }]}>
+                <Text style={[ds.badgeText, { color: cat.color, fontFamily: FONT }]}>{cat.label}</Text>
+              </View>
+              <View style={[ds.badge, { backgroundColor: pri.bg, borderColor: pri.border, borderWidth: 1 }]}>
+                <Text style={[ds.badgeText, { color: pri.color, fontFamily: FONT }]}>{(item.priority || 'Low').toUpperCase()}</Text>
+              </View>
+              <View style={[ds.badge, { backgroundColor: stat.bg, borderColor: stat.border, borderWidth: 1 }]}>
+                <MaterialIcons name={stat.icon} size={12} color={stat.color} />
+                <Text style={[ds.badgeText, { color: stat.color, fontFamily: FONT }]}>{stat.label}</Text>
               </View>
             </View>
-            {item.raised_by_name || item.raised_by ? (
+
+            <Text style={[ds.sectionLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>What happened</Text>
+            <Text style={[ds.body, { color: isDark ? '#CBD5E1' : '#334155', fontFamily: FONT }]}>
+              {item.description || 'No description provided.'}
+            </Text>
+
+            <View style={[ds.metaGrid, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
               <View style={ds.metaItem}>
-                <Ionicons name="person-outline" size={14} color={EM} />
+                <Ionicons name="time-outline" size={14} color={EM} />
                 <View>
-                  <Text style={[ds.metaLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Raised by</Text>
-                  <Text style={[ds.metaValue, { color: isDark ? '#E2E8F0' : '#0F172A', fontFamily: FONT }]} numberOfLines={1}>
-                    {item.raised_by_name || item.raised_by}
+                  <Text style={[ds.metaLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Filed</Text>
+                  <Text style={[ds.metaValue, { color: isDark ? '#E2E8F0' : '#0F172A', fontFamily: FONT }]}>
+                    {formatTimeAgo(item.created_at)}
                   </Text>
                 </View>
               </View>
-            ) : null}
-          </View>
+              {item.raised_by_name || item.raised_by ? (
+                <View style={ds.metaItem}>
+                  <Ionicons name="person-outline" size={14} color={EM} />
+                  <View>
+                    <Text style={[ds.metaLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Raised by</Text>
+                    <Text style={[ds.metaValue, { color: isDark ? '#E2E8F0' : '#0F172A', fontFamily: FONT }]} numberOfLines={1}>
+                      {item.raised_by_name || item.raised_by}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
 
-          {item.resolution ? (
-            <>
-              <Text style={[ds.sectionLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT, marginTop: 16 }]}>Resolution</Text>
-              <Text style={[ds.body, { color: isDark ? '#CBD5E1' : '#334155', fontFamily: FONT }]}>{item.resolution}</Text>
-            </>
-          ) : null}
+            {item.resolution ? (
+              <>
+                <Text style={[ds.sectionLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT, marginTop: 16 }]}>Resolution</Text>
+                <Text style={[ds.body, { color: isDark ? '#CBD5E1' : '#334155', fontFamily: FONT }]}>{item.resolution}</Text>
+              </>
+            ) : null}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -561,6 +598,7 @@ const ds = StyleSheet.create({
   sheetIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   sheetTicket: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3 },
   sheetTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4, lineHeight: 24 },
+  sheetSub: { fontSize: 13, fontWeight: '500', marginTop: 4, lineHeight: 18 },
   closeBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
@@ -573,122 +611,23 @@ const ds = StyleSheet.create({
   metaValue: { fontSize: 13, fontWeight: '700' },
 });
 
-// ─── Animated Tab Switcher ─────────────────────────────────────────
-const TAB_DEFS = [
-  { key: 'MY_REPORTS' as const, label: 'History', icon: 'history' as const },
-  { key: 'FILE_NEW' as const, label: 'New report', icon: 'edit' as const },
-];
-
-const TabSwitcher = ({
-  activeTab, onSwitch, isDark,
-}: {
-  activeTab: 'MY_REPORTS' | 'FILE_NEW';
-  onSwitch: (k: 'MY_REPORTS' | 'FILE_NEW') => void;
-  isDark: boolean;
-}) => {
-  const slideX = useSharedValue(0);
-  const pillWidth = useSharedValue(0);
-  const tabLayouts = React.useRef<{ x: number; width: number }[]>([]);
-
-  const slideToTab = (index: number) => {
-    const layout = tabLayouts.current[index];
-    if (layout) {
-      slideX.value = withSpring(layout.x, { damping: 20, stiffness: 260 });
-      pillWidth.value = withSpring(layout.width, { damping: 20, stiffness: 260 });
-    }
-  };
-
-  useEffect(() => {
-    const idx = TAB_DEFS.findIndex((t) => t.key === activeTab);
-    const t = setTimeout(() => slideToTab(idx), 50);
-    return () => clearTimeout(t);
-  }, [activeTab]);
-
-  const pillStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: slideX.value }],
-    width: pillWidth.value,
-  }));
-
-  const scales = TAB_DEFS.map(() => useSharedValue(1));
-
-  return (
-    <Animated.View entering={FadeInDown.delay(80).duration(340).easing(Easing.out(Easing.cubic))} style={ts.outerWrap}>
-      <View style={[ts.blurWrap, clayInset(isDark) as any]}>
-        <View style={ts.track}>
-          <Animated.View style={[ts.slidePill, pillStyle, clayCard(isDark, 'sm') as any, { borderRadius: 16 }]} />
-          {TAB_DEFS.map((tab, idx) => {
-            const isActive = activeTab === tab.key;
-            const s = scales[idx];
-            const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
-            return (
-              <AnimatedTouch
-                key={tab.key}
-                activeOpacity={1}
-                onPressIn={() => { s.value = withSpring(0.93, { damping: 16, stiffness: 260 }); }}
-                onPressOut={() => { s.value = withSpring(1, { damping: 16, stiffness: 260 }); }}
-                onPress={() => onSwitch(tab.key)}
-                style={[ts.tabBtn, animStyle]}
-                onLayout={(e) => {
-                  tabLayouts.current[idx] = {
-                    x: e.nativeEvent.layout.x,
-                    width: e.nativeEvent.layout.width,
-                  };
-                  if (tab.key === activeTab) {
-                    slideX.value = e.nativeEvent.layout.x;
-                    pillWidth.value = e.nativeEvent.layout.width;
-                  }
-                }}
-              >
-                <View style={[ts.iconWrap, isActive && { backgroundColor: isDark ? 'rgba(52,211,153,0.18)' : 'rgba(16,185,129,0.12)' }]}>
-                  <MaterialIcons
-                    name={tab.icon}
-                    size={15}
-                    color={isActive ? (isDark ? '#34D399' : EM) : (isDark ? '#64748B' : '#94A3B8')}
-                  />
-                </View>
-                <Text style={[ts.tabLabel, {
-                  color: isActive ? (isDark ? '#34D399' : EM) : (isDark ? '#64748B' : '#64748B'),
-                  fontFamily: FONT,
-                  fontWeight: isActive ? '700' : '600',
-                }]}>
-                  {tab.label}
-                </Text>
-              </AnimatedTouch>
-            );
-          })}
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
-
-const ts = StyleSheet.create({
-  outerWrap: { marginBottom: 18, borderRadius: 20 },
-  blurWrap: { borderRadius: 20, overflow: 'hidden' },
-  track: { flexDirection: 'row', padding: 4, borderRadius: 20, position: 'relative' },
-  slidePill: {
-    position: 'absolute', top: 4, bottom: 4, left: 0, borderRadius: 16, overflow: 'hidden', zIndex: 0,
-  },
-  tabBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 7, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 16, zIndex: 1,
-  },
-  iconWrap: { width: 24, height: 24, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  tabLabel: { fontSize: 13, letterSpacing: -0.2 },
-});
-
 // ─── Main Screen ───────────────────────────────────────────────────
 export default function StaffComplaints() {
   const { isDark } = useTheme();
   const { isViewingAsAdmin, viewAsName, staffId } = useEffectiveStaffId();
 
-  const [activeTab, setActiveTab] = useState<'MY_REPORTS' | 'FILE_NEW'>('MY_REPORTS');
+  const [wizardVisible, setWizardVisible] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [statusStatFilter, setStatusStatFilter] = useState<StatusStatFilter>('ALL');
+  const [highPriorityOnly, setHighPriorityOnly] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [complaints, setComplaints] = useState<UIComplaint[]>([]);
   const [filterType, setFilterType] = useState<'ALL' | 'DISCIPLINARY' | 'FACILITY'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [detailItem, setDetailItem] = useState<UIComplaint | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
   // Form
   const [studentMode, setStudentMode] = useState<'single' | 'multiple'>('single');
@@ -707,31 +646,71 @@ export default function StaffComplaints() {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const { width: winW } = useWindowDimensions();
+  const isDesktop = winW >= 1024;
+  const useReportGrid = winW >= 860;
   const formMaxW = Math.min(winW - 36, 560);
 
   const submitScale = useSharedValue(1);
   const submitAnim = useAnimatedStyle(() => ({ transform: [{ scale: submitScale.value }] }));
 
   useEffect(() => {
-    if (activeTab === 'MY_REPORTS') fetchComplaints();
-  }, [activeTab]);
+    fetchComplaints();
+  }, []);
 
   useEffect(() => {
-    if (activeTab === 'FILE_NEW' && studentMode === 'single' && studentSearch.length > 2) {
+    if (wizardVisible && studentMode === 'single' && studentSearch.length > 2) {
       const t = setTimeout(searchStudents, 500);
       return () => clearTimeout(t);
     } else if (studentMode === 'single') setStudentsList([]);
-  }, [studentSearch, activeTab, studentMode]);
+  }, [studentSearch, wizardVisible, studentMode]);
 
   useEffect(() => {
-    if (activeTab !== 'FILE_NEW' || studentMode !== 'multiple') return;
+    if (!wizardVisible || studentMode !== 'multiple') return;
     loadTeacherClasses();
-  }, [activeTab, studentMode, staffId]);
+  }, [wizardVisible, studentMode, staffId]);
 
   useEffect(() => {
-    if (activeTab !== 'FILE_NEW' || studentMode !== 'multiple' || !selectedClassSectionId) return;
+    if (!wizardVisible || studentMode !== 'multiple' || !selectedClassSectionId) return;
     loadClassStudents(selectedClassSectionId);
-  }, [activeTab, studentMode, selectedClassSectionId, classSections]);
+  }, [wizardVisible, studentMode, selectedClassSectionId, classSections]);
+
+  const resetForm = useCallback(() => {
+    setWizardStep(1);
+    setStudentMode('single');
+    setStudentSearch('');
+    setStudentsList([]);
+    setSelectedStudent(null);
+    setSelectedStudentIds([]);
+    setClassSections([]);
+    setSelectedClassSectionId(null);
+    setClassStudents([]);
+    setTitle('');
+    setDesc('');
+    setSeverity('Low');
+    setSelectedPreset(null);
+    setAttemptedSubmit(false);
+  }, []);
+
+  const openWizard = useCallback(() => {
+    resetForm();
+    setWizardVisible(true);
+  }, [resetForm]);
+
+  const closeWizard = useCallback(() => {
+    setWizardVisible(false);
+    resetForm();
+  }, [resetForm]);
+
+  const toggleStatusStat = useCallback((key: StatusStatFilter) => {
+    setStatusStatFilter((prev) => (prev === key ? 'ALL' : key));
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setSearchQuery('');
+    setFilterType('ALL');
+    setStatusStatFilter('ALL');
+    setHighPriorityOnly(false);
+  }, []);
 
   const loadTeacherClasses = async () => {
     setLoadingClass(true);
@@ -879,7 +858,7 @@ export default function StaffComplaints() {
       return;
     }
     try {
-      setLoading(true);
+      setSubmitting(true);
       if (studentMode === 'single') {
         await ComplaintService.create({
           title: title.trim(), description: desc.trim(), category: 'disciplinary',
@@ -895,49 +874,82 @@ export default function StaffComplaints() {
         });
         alertCompat('Submitted', `Report sent to ${result.count} student(s).`);
       }
-      setTitle(''); setDesc(''); setStudentSearch('');
-      setSelectedStudent(null); setSelectedStudentIds([]);
-      setSeverity('Low'); setStudentMode('single');
-      setAttemptedSubmit(false);
-      setActiveTab('MY_REPORTS');
+      closeWizard();
+      await fetchComplaints();
     } catch {
       alertCompat('Error', 'Failed to submit report.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  const goWizardNext = () => {
+    if (wizardStep === 1) {
+      if (!studentReady) {
+        setAttemptedSubmit(true);
+        return;
+      }
+      setWizardStep(2);
+      setAttemptedSubmit(false);
+      return;
+    }
+    if (wizardStep === 2) {
+      if (!titleReady || !descReady) {
+        setAttemptedSubmit(true);
+        return;
+      }
+      setWizardStep(3);
+      setAttemptedSubmit(false);
+    }
+  };
+
+  const goWizardBack = () => {
+    if (wizardStep === 1) {
+      closeWizard();
+      return;
+    }
+    setWizardStep((s) => (s === 3 ? 2 : 1));
+    setAttemptedSubmit(false);
+  };
+
+  const applyPreset = (preset: typeof INCIDENT_PRESETS[number]) => {
+    setSelectedPreset(preset.key);
+    if (preset.title) setTitle(preset.title);
+  };
+
   const counts = useMemo(() => {
-    const open = complaints.filter((c) => {
-      const s = normalizeStatus(c.status);
-      return s === 'open' || s === 'pending';
-    }).length;
-    const high = complaints.filter((c) => ['high', 'urgent'].includes((c.priority || '').toLowerCase())).length;
-    const resolved = complaints.filter((c) => {
-      const s = normalizeStatus(c.status);
-      return s === 'resolved' || s === 'closed';
-    }).length;
+    const open = complaints.filter((c) => matchesStatusStatFilter(c.status, 'OPEN')).length;
+    const active = complaints.filter((c) => matchesStatusStatFilter(c.status, 'ACTIVE')).length;
+    const done = complaints.filter((c) => matchesStatusStatFilter(c.status, 'DONE')).length;
+    const high = complaints.filter((c) => isHighPriority(c.priority)).length;
     const disciplinary = complaints.filter((c) => c.category?.toUpperCase() === 'DISCIPLINARY').length;
     const facility = complaints.filter((c) => c.category?.toUpperCase() === 'FACILITY').length;
-    return { open, high, resolved, disciplinary, facility, total: complaints.length };
+    return { open, active, done, high, disciplinary, facility, total: complaints.length };
   }, [complaints]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return complaints.filter((c) => {
       if (filterType !== 'ALL' && c.category?.toUpperCase() !== filterType) return false;
+      if (statusStatFilter !== 'ALL' && !matchesStatusStatFilter(c.status, statusStatFilter)) return false;
+      if (highPriorityOnly && !isHighPriority(c.priority)) return false;
       if (!q) return true;
-      const hay = `${c.title || ''} ${c.description || ''} ${c.ticket_no || ''} ${c.raised_by_name || ''}`.toLowerCase();
+      const hay = `${c.title || ''} ${c.description || ''} ${c.ticket_no || ''} ${c.raised_by_name || ''} ${c.student_name || ''} ${c.student_admission_no || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [complaints, filterType, searchQuery]);
+  }, [complaints, filterType, searchQuery, statusStatFilter, highPriorityOnly]);
 
   const openDetail = useCallback((c: UIComplaint) => setDetailItem(c), []);
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    filterType !== 'ALL' ||
+    statusStatFilter !== 'ALL' ||
+    highPriorityOnly;
 
   return (
     <View style={{ flex: 1 }}>
       <LinearGradient
-        colors={isDark ? ['#06040F', '#0C0820', '#080614'] : ['#EEF2FF', '#E8EEFF', '#F5F0FF']}
+        colors={isDark ? ['#050810', '#0A1210', '#060908'] : ['#F0FDF4', '#ECFDF5', '#F8FAFC']}
         style={StyleSheet.absoluteFillObject}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.55, y: 1 }}
@@ -950,90 +962,167 @@ export default function StaffComplaints() {
         variant="scroll"
         bottomOffset={28}
         extraScrollPadding={48}
-        contentContainerStyle={ms.scroll}
+        contentContainerStyle={[ms.scroll, isDesktop && ms.scrollDesktop]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — compact on File New so the form stays above the fold */}
-        <Animated.View entering={FadeInDown.delay(40).duration(320)} style={[ms.pageHeader, activeTab === 'FILE_NEW' && { marginBottom: 8 }]}>
-          <View style={ms.heroLeft}>
-            <View style={[ms.heroBadge, { backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(5,150,105,0.12)' }]}>
-              <Ionicons name="shield-checkmark" size={16} color={isDark ? '#34D399' : EM} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[ms.pageTitle, activeTab === 'FILE_NEW' && { fontSize: 18 }, { color: isDark ? '#EEF2FF' : '#06101E', fontFamily: FONT }]}>
-                Student Disciplinary
-              </Text>
-              {activeTab === 'MY_REPORTS' ? (
-                <Text style={[ms.pageSub, { color: isDark ? '#64748B' : '#64748B', fontFamily: FONT }]}>
-                  Track behaviour, file reports, follow through
+        <View style={ms.contentShell}>
+          <Animated.View
+            entering={FadeInDown.delay(40).duration(320)}
+            style={[
+              ms.pageHeader,
+              isDesktop && ms.pageHeaderDesktop,
+              isDesktop && (clayCard(isDark, 'md') as any),
+            ]}
+          >
+            <View style={ms.heroLeft}>
+              <View style={[
+                ms.heroBadge,
+                isDesktop && ms.heroBadgeDesktop,
+                { backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(5,150,105,0.12)' },
+              ]}>
+                <Ionicons name="shield-checkmark" size={isDesktop ? 24 : 16} color={isDark ? '#34D399' : EM} />
+              </View>
+              <View style={{ flex: 1 }}>
+                {isDesktop && (
+                  <Text style={[ms.heroEyebrow, { color: isDark ? '#34D399' : EM, fontFamily: FONT }]}>
+                    STUDENT SUPPORT HUB
+                  </Text>
+                )}
+                <Text style={[
+                  ms.pageTitle,
+                  isDesktop && ms.pageTitleDesktop,
+                  { color: isDark ? '#EEF2FF' : '#06101E', fontFamily: FONT },
+                ]}>
+                  Student Disciplinary
                 </Text>
-              ) : null}
+                <Text style={[
+                  ms.pageSub,
+                  isDesktop && ms.pageSubDesktop,
+                  { color: isDark ? '#64748B' : '#64748B', fontFamily: FONT },
+                ]}>
+                  Record concerns, track progress, and support every student with clear follow-through.
+                </Text>
+              </View>
             </View>
-          </View>
-        </Animated.View>
-
-        {/* Stats */}
-        {!loading && complaints.length > 0 && activeTab === 'MY_REPORTS' && (
-          <Animated.View entering={FadeInDown.delay(60).duration(320)} style={[ms.statsStrip, clayCard(isDark, 'sm') as any]}>
-            <View style={ms.statChip}>
-              <Text style={[ms.statNumber, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>{counts.total}</Text>
-              <Text style={[ms.statLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Total</Text>
-            </View>
-            <View style={[ms.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]} />
-            <View style={ms.statChip}>
-              <Text style={[ms.statNumber, { color: '#F59E0B', fontFamily: FONT }]}>{counts.open}</Text>
-              <Text style={[ms.statLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Open</Text>
-            </View>
-            <View style={[ms.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]} />
-            <View style={ms.statChip}>
-              <Text style={[ms.statNumber, { color: '#EF4444', fontFamily: FONT }]}>{counts.high}</Text>
-              <Text style={[ms.statLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Urgent</Text>
-            </View>
-            <View style={[ms.statDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]} />
-            <View style={ms.statChip}>
-              <Text style={[ms.statNumber, { color: EM_SOFT, fontFamily: FONT }]}>{counts.resolved}</Text>
-              <Text style={[ms.statLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Done</Text>
-            </View>
-          </Animated.View>
-        )}
-
-        <TabSwitcher activeTab={activeTab} onSwitch={setActiveTab} isDark={isDark} />
-
-        {/* History */}
-        {activeTab === 'MY_REPORTS' && (
-          <Animated.View entering={FadeIn.duration(280)}>
-            {/* Search */}
-            <View style={[
-              ms.searchWrap,
-              clayInset(isDark, searchFocused) as any,
-              searchFocused && { borderColor: EM_GLOW },
-            ]}>
-              <Ionicons name="search-outline" size={17} color={searchFocused ? EM : (isDark ? '#64748B' : '#94A3B8')} />
-              <AppTextInput
-                style={[ms.searchInput, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
-                placeholder="Search tickets, titles…"
-                placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-              />
-              {searchQuery.length > 0 && (
-                <PressScale onPress={() => setSearchQuery('')}>
-                  <View style={[ms.searchClear, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)' }]}>
-                    <Ionicons name="close" size={12} color="#fff" />
+            {isDesktop && (
+              <PressScale onPress={openWizard}>
+                <LinearGradient
+                  colors={[EM, EM_SOFT]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={ms.heroCta}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                  <View>
+                    <Text style={[ms.heroCtaTitle, { fontFamily: FONT }]}>New report</Text>
+                    <Text style={[ms.heroCtaSub, { fontFamily: FONT }]}>Start a guided 3-step form</Text>
                   </View>
-                </PressScale>
-              )}
-            </View>
+                  <Ionicons name="arrow-forward" size={17} color="#fff" />
+                </LinearGradient>
+              </PressScale>
+            )}
+          </Animated.View>
 
-            {/* Filters */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 14 }}
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 2 }}
-            >
+          {!loading && complaints.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(60).duration(320)} style={[ms.statRow, isDesktop && ms.statRowDesktop]}>
+              {([
+                { key: 'OPEN' as const, label: 'Open', hint: 'Needs review', count: counts.open, color: '#F59E0B', icon: 'time-outline' as const },
+                { key: 'ACTIVE' as const, label: 'Active', hint: 'In follow-up', count: counts.active, color: '#3B82F6', icon: 'pulse-outline' as const },
+                { key: 'DONE' as const, label: 'Resolved', hint: 'Completed', count: counts.done, color: EM_SOFT, icon: 'checkmark-circle-outline' as const },
+              ]).map((chip) => {
+                const active = statusStatFilter === chip.key;
+                return (
+                  <PressScale key={chip.key} onPress={() => toggleStatusStat(chip.key)} style={{ flex: 1 }}>
+                    <View style={[
+                      ms.statChipBtn,
+                      isDesktop && ms.statChipDesktop,
+                      clayCard(isDark, 'sm') as any,
+                      active && {
+                        borderColor: isDark ? 'rgba(52,211,153,0.45)' : 'rgba(5,150,105,0.40)',
+                        backgroundColor: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(5,150,105,0.08)',
+                      },
+                    ]}>
+                      {isDesktop && (
+                        <View style={[ms.statIcon, { backgroundColor: `${chip.color}18` }]}>
+                          <Ionicons name={chip.icon} size={20} color={chip.color} />
+                        </View>
+                      )}
+                      <View style={isDesktop ? ms.statCopy : undefined}>
+                        <Text style={[ms.statNumber, isDesktop && ms.statNumberDesktop, { color: chip.color, fontFamily: FONT }]}>{chip.count}</Text>
+                        <Text style={[ms.statLabel, isDesktop && ms.statLabelDesktop, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]}>
+                          {chip.label}
+                        </Text>
+                        {isDesktop && (
+                          <Text style={[ms.statHint, { color: isDark ? '#475569' : '#94A3B8', fontFamily: FONT }]}>{chip.hint}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </PressScale>
+                );
+              })}
+              <PressScale onPress={() => setHighPriorityOnly((v) => !v)} style={{ flex: 1 }}>
+                <View style={[
+                  ms.statChipBtn,
+                  isDesktop && ms.statChipDesktop,
+                  clayCard(isDark, 'sm') as any,
+                  highPriorityOnly && {
+                    borderColor: 'rgba(239,68,68,0.45)',
+                    backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+                  },
+                ]}>
+                  {isDesktop && (
+                    <View style={[ms.statIcon, { backgroundColor: 'rgba(239,68,68,0.10)' }]}>
+                      <Ionicons name="alert-circle-outline" size={20} color="#EF4444" />
+                    </View>
+                  )}
+                  <View style={isDesktop ? ms.statCopy : undefined}>
+                    <Text style={[ms.statNumber, isDesktop && ms.statNumberDesktop, { color: '#EF4444', fontFamily: FONT }]}>{counts.high}</Text>
+                    <Text style={[ms.statLabel, isDesktop && ms.statLabelDesktop, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]}>High priority</Text>
+                    {isDesktop && (
+                      <Text style={[ms.statHint, { color: isDark ? '#475569' : '#94A3B8', fontFamily: FONT }]}>Needs attention</Text>
+                    )}
+                  </View>
+                </View>
+              </PressScale>
+            </Animated.View>
+          )}
+
+          <Animated.View
+            entering={FadeIn.duration(280)}
+            style={[isDesktop && ms.controlsPanel, isDesktop && (clayCard(isDark, 'sm') as any)]}
+          >
+            <View style={[ms.controlsRow, isDesktop && ms.controlsRowDesktop]}>
+              <View style={[
+                ms.searchWrap,
+                isDesktop && ms.searchWrapDesktop,
+                clayInset(isDark, searchFocused) as any,
+                searchFocused && { borderColor: EM_GLOW },
+              ]}>
+                <Ionicons name="search-outline" size={18} color={searchFocused ? EM : (isDark ? '#64748B' : '#94A3B8')} />
+                <AppTextInput
+                  style={[ms.searchInput, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}
+                  placeholder="Search by student, admission no., ticket, or incident…"
+                  placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                />
+                {searchQuery.length > 0 && (
+                  <PressScale onPress={() => setSearchQuery('')}>
+                    <View style={[ms.searchClear, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)' }]}>
+                      <Ionicons name="close" size={12} color="#fff" />
+                    </View>
+                  </PressScale>
+                )}
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[ms.filterScroller, isDesktop && ms.filterScrollerDesktop]}
+                contentContainerStyle={ms.filterContent}
+              >
               {FILTER_TABS.map((f) => {
                 const isActive = filterType === f.key;
                 const count = f.key === 'ALL' ? counts.total
@@ -1079,9 +1168,28 @@ export default function StaffComplaints() {
                   </PressScale>
                 );
               })}
-            </ScrollView>
+              </ScrollView>
+            </View>
+          </Animated.View>
 
-            {loading ? (
+          <View style={ms.reportsHeader}>
+            <View>
+              <Text style={[ms.reportsTitle, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>Reports</Text>
+              <Text style={[ms.reportsMeta, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
+                Showing {filtered.length} of {counts.total}
+              </Text>
+            </View>
+            {hasActiveFilters && (
+              <PressScale onPress={clearAllFilters}>
+                <View style={[ms.resetButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)' }]}>
+                  <Ionicons name="refresh-outline" size={14} color={isDark ? '#94A3B8' : '#64748B'} />
+                  <Text style={[ms.resetText, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]}>Reset filters</Text>
+                </View>
+              </PressScale>
+            )}
+          </View>
+
+          {loading ? (
               <View>
                 <SkeletonCard isDark={isDark} delay={0} />
                 <SkeletonCard isDark={isDark} delay={60} />
@@ -1097,15 +1205,15 @@ export default function StaffComplaints() {
                   />
                 </View>
                 <Text style={[ms.emptyTitle, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>
-                  {searchQuery ? 'No matches' : 'No reports yet'}
+                  {hasActiveFilters ? 'No matching reports' : 'No reports yet'}
                 </Text>
                 <Text style={[ms.emptyText, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>
-                  {searchQuery
-                    ? 'Try a different ticket, title, or keyword.'
+                  {hasActiveFilters
+                    ? 'Change or reset the filters to see more results.'
                     : 'File your first behaviour report — it only takes a minute.'}
                 </Text>
-                {!searchQuery && (
-                  <PressScale onPress={() => setActiveTab('FILE_NEW')}>
+                {!hasActiveFilters && (
+                  <PressScale onPress={openWizard}>
                     <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ms.emptyCta}>
                       <Ionicons name="add-circle-outline" size={16} color="#fff" />
                       <Text style={[ms.emptyCtaText, { fontFamily: FONT }]}>File New Report</Text>
@@ -1114,60 +1222,91 @@ export default function StaffComplaints() {
                 )}
               </Animated.View>
             ) : (
-              filtered.map((item, i) => (
-                <ComplaintCard key={item.id} item={item} index={i} isDark={isDark} onPress={openDetail} />
-              ))
-            )}
-          </Animated.View>
-        )}
-
-        {/* File New */}
-        {activeTab === 'FILE_NEW' && (
-          <Animated.View
-            entering={FadeInDown.delay(60).duration(300).easing(Easing.out(Easing.cubic))}
-            style={{ width: '100%', maxWidth: formMaxW, alignSelf: 'center' }}
-          >
-            <View style={[ms.formCard, clayCard(isDark, 'md') as any]}>
-              <View style={ms.formInner}>
-                {/* Progress pills */}
-                <View style={ms.progressRow}>
-                  {[
-                    { n: 1, label: 'Who', done: studentReady },
-                    { n: 2, label: 'What', done: titleReady && descReady },
-                    { n: 3, label: 'Severity', done: true },
-                  ].map((p, i) => (
-                    <React.Fragment key={p.n}>
-                      {i > 0 ? <View style={[ms.progressLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]} /> : null}
-                      <View style={ms.progressItem}>
-                        <View style={[
-                          ms.progressDot,
-                          p.done
-                            ? { backgroundColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(5,150,105,0.14)' }
-                            : { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)' },
-                        ]}>
-                          {p.done
-                            ? <Ionicons name="checkmark" size={11} color={isDark ? '#34D399' : EM} />
-                            : <Text style={[ms.progressNum, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>{p.n}</Text>}
-                        </View>
-                        <Text style={[ms.progressLabel, {
-                          color: p.done ? (isDark ? '#34D399' : EM) : (isDark ? '#64748B' : '#94A3B8'),
-                          fontFamily: FONT,
-                        }]}>{p.label}</Text>
-                      </View>
-                    </React.Fragment>
-                  ))}
-                </View>
-
-                {/* Step 1 — Who */}
-                <View style={[ms.stepBlock, { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
-                  <StepHeader
-                    step={1}
-                    title="Who is this about?"
-                    subtitle={studentMode === 'single' ? 'Search one student' : 'Pick from your class'}
+              <View style={[ms.reportGrid, useReportGrid && ms.reportGridWide]}>
+                {filtered.map((item, i) => (
+                  <ComplaintCard
+                    key={item.id}
+                    item={item}
+                    index={i}
                     isDark={isDark}
-                    done={studentReady}
+                    wide={useReportGrid}
+                    onPress={openDetail}
                   />
+                ))}
+              </View>
+            )}
 
+          <View style={{ height: isDesktop ? 36 : 100 }} />
+        </View>
+      </KeyboardAwareScreen>
+
+      {!loading && !isDesktop && (
+        <Animated.View entering={FadeInUp.delay(200).duration(320)} style={ms.fabWrap} pointerEvents="box-none">
+          <PressScale onPress={openWizard}>
+            <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ms.fab}>
+              <Ionicons name="add" size={22} color="#fff" />
+              <Text style={[ms.fabText, { fontFamily: FONT }]}>New Report</Text>
+            </LinearGradient>
+          </PressScale>
+        </Animated.View>
+      )}
+
+      <Modal visible={wizardVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeWizard}>
+        <View style={{ flex: 1, backgroundColor: isDark ? '#0A1210' : '#F8FAFC' }}>
+          <LinearGradient
+            colors={isDark ? ['#050810', '#0A1210'] : ['#F0FDF4', '#F8FAFC']}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={[wz.header, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]}>
+            <PressScale onPress={goWizardBack}>
+              <View style={[wz.headerBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)' }]}>
+                <Ionicons name={wizardStep === 1 ? 'close' : 'arrow-back'} size={18} color={isDark ? '#94A3B8' : '#64748B'} />
+              </View>
+            </PressScale>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={[wz.headerTitle, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>New report</Text>
+              <Text style={[wz.headerStep, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Step {wizardStep} of 3</Text>
+            </View>
+            <View style={wz.headerBtn} />
+          </View>
+
+          <View style={ms.progressRow}>
+            {[
+              { n: 1, label: 'Who', done: studentReady },
+              { n: 2, label: 'What', done: titleReady && descReady },
+              { n: 3, label: 'Review', done: wizardStep === 3 },
+            ].map((p, i) => (
+              <React.Fragment key={p.n}>
+                {i > 0 ? <View style={[ms.progressLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]} /> : null}
+                <View style={ms.progressItem}>
+                  <View style={[
+                    ms.progressDot,
+                    (wizardStep > p.n || p.done)
+                      ? { backgroundColor: isDark ? 'rgba(16,185,129,0.22)' : 'rgba(5,150,105,0.14)' }
+                      : { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)' },
+                  ]}>
+                    {(wizardStep > p.n || (p.done && wizardStep >= p.n))
+                      ? <Ionicons name="checkmark" size={11} color={isDark ? '#34D399' : EM} />
+                      : <Text style={[ms.progressNum, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>{p.n}</Text>}
+                  </View>
+                  <Text style={[ms.progressLabel, {
+                    color: wizardStep >= p.n ? (isDark ? '#34D399' : EM) : (isDark ? '#64748B' : '#94A3B8'),
+                    fontFamily: FONT,
+                  }]}>{p.label}</Text>
+                </View>
+              </React.Fragment>
+            ))}
+          </View>
+
+          <KeyboardAwareScreen
+            variant="scroll"
+            bottomOffset={88}
+            contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, maxWidth: formMaxW, alignSelf: 'center', width: '100%' }}
+            showsVerticalScrollIndicator={false}
+          >
+            {wizardStep === 1 && (
+              <Animated.View entering={FadeIn.duration(220)} style={[ms.stepBlock, { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
+                <StepHeader step={1} title="Who is this about?" subtitle={studentMode === 'single' ? 'Search one student' : 'Pick from your class'} isDark={isDark} done={studentReady} />
                   <View style={ms.modeGrid}>
                     {([
                       { key: 'single' as const, label: 'One student', desc: 'Search by name or roll', icon: 'person-outline' as const },
@@ -1424,115 +1563,126 @@ export default function StaffComplaints() {
                       )}
                     </View>
                   )}
+              </Animated.View>
+            )}
+            {wizardStep === 2 && (
+              <Animated.View entering={FadeIn.duration(220)}>
+                <StepHeader step={2} title="What happened?" subtitle="Pick a type or write your own" isDark={isDark} done={titleReady && descReady} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 14 }}>
+                  {INCIDENT_PRESETS.map((preset) => {
+                    const active = selectedPreset === preset.key;
+                    return (
+                      <PressScale key={preset.key} onPress={() => applyPreset(preset)}>
+                        <View style={[
+                          ms.presetChip,
+                          active
+                            ? { backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(5,150,105,0.12)', borderColor: isDark ? 'rgba(52,211,153,0.40)' : 'rgba(5,150,105,0.35)' }
+                            : { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#fff', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' },
+                        ]}>
+                          <Ionicons name={preset.icon} size={14} color={active ? (isDark ? '#34D399' : EM) : (isDark ? '#64748B' : '#94A3B8')} />
+                          <Text style={[ms.presetText, { color: active ? (isDark ? '#34D399' : EM) : (isDark ? '#CBD5E1' : '#475569'), fontFamily: FONT }]}>{preset.label}</Text>
+                        </View>
+                      </PressScale>
+                    );
+                  })}
+                </ScrollView>
+                <FormField
+                  label="Incident title"
+                  required
+                  isDark={isDark}
+                  icon="title"
+                  placeholder="e.g. Disruptive behaviour in Class 10A"
+                  value={title}
+                  onChangeText={setTitle}
+                  error={attemptedSubmit && !titleReady ? 'Title is required' : undefined}
+                />
+                <FormField
+                  label="Description"
+                  required
+                  hint="Time, place, and context help admins act"
+                  isDark={isDark}
+                  icon="notes"
+                  multiline
+                  placeholder="What happened, when, and any context…"
+                  value={desc}
+                  onChangeText={setDesc}
+                  error={attemptedSubmit && !descReady ? 'Description is required' : undefined}
+                />
+              </Animated.View>
+            )}
+            {wizardStep === 3 && (
+              <Animated.View entering={FadeIn.duration(220)}>
+                <StepHeader step={3} title="Review & submit" subtitle="Confirm severity and details" isDark={isDark} done />
+                <View style={[ms.reviewCard, clayCard(isDark, 'sm') as any]}>
+                  <Text style={[ms.reviewLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT }]}>Student(s)</Text>
+                  <Text style={[ms.reviewValue, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>
+                    {studentMode === 'single'
+                      ? selectedStudent?.display_name
+                      : `${selectedStudentIds.length} selected`}
+                  </Text>
+                  <Text style={[ms.reviewLabel, { color: isDark ? '#64748B' : '#94A3B8', fontFamily: FONT, marginTop: 10 }]}>Incident</Text>
+                  <Text style={[ms.reviewValue, { color: isDark ? '#EEF2FF' : '#0F172A', fontFamily: FONT }]}>{title}</Text>
+                  <Text style={[ms.reviewBody, { color: isDark ? '#94A3B8' : '#64748B', fontFamily: FONT }]} numberOfLines={4}>{desc}</Text>
                 </View>
-
-                {/* Step 2 — What */}
-                <View style={[ms.stepBlock, { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
-                  <StepHeader
-                    step={2}
-                    title="What happened?"
-                    subtitle="Keep it factual and specific"
-                    isDark={isDark}
-                    done={titleReady && descReady}
-                  />
-                  <FormField
-                    label="Incident title"
-                    required
-                    isDark={isDark}
-                    icon="title"
-                    placeholder="e.g. Disruptive behaviour in Class 10A"
-                    value={title}
-                    onChangeText={setTitle}
-                    error={attemptedSubmit && !titleReady ? 'Title is required' : undefined}
-                  />
-                  <FormField
-                    label="Description"
-                    required
-                    hint="Time, place, and context help admins act"
-                    isDark={isDark}
-                    icon="notes"
-                    multiline
-                    placeholder="What happened, when, and any context…"
-                    value={desc}
-                    onChangeText={setDesc}
-                    error={attemptedSubmit && !descReady ? 'Description is required' : undefined}
-                  />
-                </View>
-
-                {/* Step 3 — Severity */}
-                <View style={[ms.stepBlock, ms.stepBlockLast, { borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)' }]}>
-                  <StepHeader
-                    step={3}
-                    title="How serious?"
-                    subtitle="Sets priority for follow-up"
-                    isDark={isDark}
-                    done
-                  />
-                  <View style={ms.severityRow}>
-                    {SEVERITY_CFG.map((lvl) => {
-                      const isActive = severity === lvl.key;
-                      return (
-                        <PressScale key={lvl.key} onPress={() => setSeverity(lvl.key)} style={{ flex: 1 }}>
-                          <View style={[ms.severityChip, {
-                            backgroundColor: isActive ? lvl.activeBg : (isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC'),
-                            borderColor: isActive ? lvl.color + '55' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'),
+                <Text style={[ms.fieldLabel, { color: isDark ? '#CBD5E1' : '#334155', fontFamily: FONT, marginTop: 4 }]}>Severity</Text>
+                <View style={[ms.severityRow, { marginTop: 8 }]}>
+                  {SEVERITY_CFG.map((lvl) => {
+                    const isActive = severity === lvl.key;
+                    return (
+                      <PressScale key={lvl.key} onPress={() => setSeverity(lvl.key)} style={{ flex: 1 }}>
+                        <View style={[ms.severityChip, {
+                          backgroundColor: isActive ? lvl.activeBg : (isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC'),
+                          borderColor: isActive ? lvl.color + '55' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)'),
+                        }]}>
+                          <View style={[ms.sevDot, { backgroundColor: lvl.color, opacity: isActive ? 1 : 0.35 }]} />
+                          <Text style={[ms.sevText, {
+                            color: isActive ? lvl.color : (isDark ? '#94A3B8' : '#64748B'),
+                            fontFamily: FONT, fontWeight: isActive ? '700' : '600',
                           }]}>
-                            <View style={[ms.sevDot, { backgroundColor: lvl.color, opacity: isActive ? 1 : 0.35 }]} />
-                            <Text style={[ms.sevText, {
-                              color: isActive ? lvl.color : (isDark ? '#94A3B8' : '#64748B'),
-                              fontFamily: FONT, fontWeight: isActive ? '700' : '600',
-                            }]}>
-                              {lvl.key}
-                            </Text>
-                          </View>
-                        </PressScale>
-                      );
-                    })}
-                  </View>
+                            {lvl.key}
+                          </Text>
+                        </View>
+                      </PressScale>
+                    );
+                  })}
                 </View>
+              </Animated.View>
+            )}
+          </KeyboardAwareScreen>
 
-                <AnimatedPressable
-                  disabled={loading}
-                  onPressIn={() => { submitScale.value = withSpring(0.97, { damping: 16, stiffness: 280 }); }}
-                  onPressOut={() => { submitScale.value = withSpring(1, { damping: 14, stiffness: 220 }); }}
-                  onPress={handleSubmit}
-                  style={[submitAnim, { opacity: loading ? 0.7 : 1 }]}
-                >
-                  <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ms.submitGrad}>
-                    <View style={ms.submitShine} />
-                    {loading ? (
-                      <LogoLoader color="#fff" />
-                    ) : (
-                      <>
-                        <Ionicons name="send" size={15} color="#fff" />
-                        <Text style={[ms.submitText, { fontFamily: FONT }]}>
-                          {studentMode === 'multiple' && selectedStudentIds.length > 1
-                            ? `Submit to ${selectedStudentIds.length} students`
-                            : 'Submit report'}
-                        </Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </AnimatedPressable>
-              </View>
-            </View>
-          </Animated.View>
-        )}
-
-        <View style={{ height: activeTab === 'MY_REPORTS' ? 100 : 80 }} />
-      </KeyboardAwareScreen>
-
-      {/* Thumb-zone FAB — History only */}
-      {activeTab === 'MY_REPORTS' && !loading && (
-        <Animated.View entering={FadeInUp.delay(200).duration(320)} style={ms.fabWrap} pointerEvents="box-none">
-          <PressScale onPress={() => setActiveTab('FILE_NEW')}>
-            <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ms.fab}>
-              <Ionicons name="add" size={22} color="#fff" />
-              <Text style={[ms.fabText, { fontFamily: FONT }]}>New Report</Text>
-            </LinearGradient>
-          </PressScale>
-        </Animated.View>
-      )}
+          <View style={[wz.footer, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)', backgroundColor: isDark ? '#0A1210' : '#F8FAFC' }]}>
+            {wizardStep < 3 ? (
+              <PressScale onPress={goWizardNext} style={{ flex: 1 }}>
+                <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ms.submitGrad}>
+                  <Text style={[ms.submitText, { fontFamily: FONT }]}>Continue</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#fff" />
+                </LinearGradient>
+              </PressScale>
+            ) : (
+              <AnimatedPressable
+                disabled={submitting}
+                onPressIn={() => { submitScale.value = withSpring(0.97, { damping: 16, stiffness: 280 }); }}
+                onPressOut={() => { submitScale.value = withSpring(1, { damping: 14, stiffness: 220 }); }}
+                onPress={handleSubmit}
+                style={[submitAnim, { flex: 1, opacity: submitting ? 0.7 : 1 }]}
+              >
+                <LinearGradient colors={[EM, EM_SOFT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ms.submitGrad}>
+                  {submitting ? <LogoLoader color="#fff" /> : (
+                    <>
+                      <Ionicons name="send" size={15} color="#fff" />
+                      <Text style={[ms.submitText, { fontFamily: FONT }]}>
+                        {studentMode === 'multiple' && selectedStudentIds.length > 1
+                          ? `Submit to ${selectedStudentIds.length} students`
+                          : 'Submit report'}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </AnimatedPressable>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <DetailSheet
         item={detailItem}
@@ -1547,32 +1697,83 @@ export default function StaffComplaints() {
 // ─── Styles ────────────────────────────────────────────────────────
 const ms = StyleSheet.create({
   scroll: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 30 },
+  scrollDesktop: { paddingHorizontal: 32, paddingTop: 24 },
+  contentShell: { width: '100%', maxWidth: 1440, alignSelf: 'center' },
 
   pageHeader: { marginBottom: 14 },
+  pageHeaderDesktop: {
+    minHeight: 126,
+    marginBottom: 18,
+    paddingHorizontal: 26,
+    paddingVertical: 22,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 24,
+    overflow: 'hidden',
+  },
   heroLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroBadge: {
     width: 40, height: 40, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
+  heroBadgeDesktop: { width: 58, height: 58, borderRadius: 19 },
+  heroEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginBottom: 5 },
   pageTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.6 },
+  pageTitleDesktop: { fontSize: 30, letterSpacing: -1 },
   pageSub: { fontSize: 13, fontWeight: '500', marginTop: 2, lineHeight: 18 },
-
-  statsStrip: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 14, paddingHorizontal: 8, marginBottom: 16, borderRadius: 20,
+  pageSubDesktop: { fontSize: 14, lineHeight: 21, maxWidth: 660, marginTop: 5 },
+  heroCta: {
+    minWidth: 278,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 18,
   },
-  statChip: { flex: 1, alignItems: 'center', gap: 2 },
-  statNumber: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
-  statLabel: { fontSize: 11, fontWeight: '600' },
-  statDivider: { width: StyleSheet.hairlineWidth, height: 28 },
+  heroCtaTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  heroCtaSub: { color: 'rgba(255,255,255,0.76)', fontSize: 11, fontWeight: '500', marginTop: 2 },
 
+  statRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  statRowDesktop: { gap: 14, marginBottom: 18 },
+  statChipBtn: {
+    alignItems: 'center', justifyContent: 'center', gap: 2,
+    paddingVertical: 10, paddingHorizontal: 6, borderRadius: 14, borderWidth: 1, borderColor: 'transparent',
+  },
+  statChipDesktop: {
+    minHeight: 92,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 13,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+  },
+  statIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  statCopy: { flex: 1, minWidth: 0 },
+  statNumber: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  statNumberDesktop: { fontSize: 24, lineHeight: 26 },
+  statLabel: { fontSize: 10, fontWeight: '600' },
+  statLabelDesktop: { fontSize: 13, fontWeight: '800', marginTop: 1 },
+  statHint: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+
+  controlsPanel: { padding: 14, borderRadius: 20, marginBottom: 22 },
+  controlsRow: {},
+  controlsRowDesktop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 14, paddingVertical: Platform.OS === 'web' ? 10 : 12,
     borderRadius: 16, marginBottom: 14,
   },
+  searchWrapDesktop: { flex: 1, minWidth: 320, marginBottom: 0, minHeight: 48 },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '500', outlineStyle: 'none' as any, padding: 0 },
   searchClear: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  filterScroller: { marginBottom: 14 },
+  filterScrollerDesktop: { flexGrow: 0, marginBottom: 0 },
+  filterContent: { gap: 8, paddingHorizontal: 2 },
 
   sectionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
 
@@ -1583,6 +1784,20 @@ const ms = StyleSheet.create({
   filterText: { fontSize: 12, letterSpacing: -0.1 },
   filterCount: { minWidth: 20, height: 20, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   filterCountText: { fontSize: 10, fontWeight: '800' },
+  reportsHeader: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  reportsTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
+  reportsMeta: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  resetButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 11 },
+  resetText: { fontSize: 11, fontWeight: '700' },
+  reportGrid: { width: '100%' },
+  reportGridWide: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16 },
 
   emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 24, gap: 10, borderRadius: 24 },
   emptyIcon: { width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
@@ -1696,4 +1911,28 @@ const ms = StyleSheet.create({
     paddingVertical: 14, paddingHorizontal: 18, borderRadius: 16, overflow: 'hidden',
   },
   fabText: { color: '#fff', fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+
+  presetChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, borderWidth: 1.5,
+  },
+  presetText: { fontSize: 12, fontWeight: '700' },
+  reviewCard: { padding: 14, borderRadius: 16, marginBottom: 12 },
+  reviewLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  reviewValue: { fontSize: 15, fontWeight: '700', marginTop: 4, letterSpacing: -0.2 },
+  reviewBody: { fontSize: 13, fontWeight: '500', marginTop: 6, lineHeight: 19 },
+});
+
+const wz = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  headerStep: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  footer: {
+    flexDirection: 'row', paddingHorizontal: 18, paddingVertical: 14, paddingBottom: Platform.OS === 'ios' ? 22 : 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
 });

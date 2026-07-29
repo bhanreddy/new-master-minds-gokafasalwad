@@ -199,6 +199,7 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
     const staffMenuItems: MenuItem[] = [
         { key: 'attendance', label: 'Mark Attendance', icon: 'checkbox-outline', link: '/staff/manage-students', accent: '#4F46E5' },
         { key: 'timetable', label: 'My Timetable', icon: 'calendar-outline', link: '/staff/timetable', accent: '#0EA5E9' },
+        { key: 'student_portfolio', label: 'Student Portfolio', icon: 'id-card-outline', link: '/staff/student-portfolio', accent: '#14B8A6' },
         { key: 'upload_marks', label: 'Upload Marks', icon: 'cloud-upload-outline', link: '/staff/results', accent: '#8B5CF6' },
         { key: 'leaves', label: 'Apply Leave', icon: 'document-text-outline', link: '/staff/leaves', accent: '#F59E0B' },
         { key: 'profile', label: 'Staff Profile', icon: 'person-outline', link: '/staff/profile', accent: '#10B981' },

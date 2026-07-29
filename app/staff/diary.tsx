@@ -209,7 +209,7 @@ export default function StaffDiary() {
   const priorDates = useMemo(() => priorHistoryYmds(todayAnchor), [todayAnchor]);
 
   const [activeTab, setActiveTab] = useState<DiaryHistoryTabId>('today');
-  const [historyDate, setHistoryDate] = useState(() => priorDates[0] ?? toYmd(new Date()));
+  const [historyDate, setHistoryDate] = useState(() => todayYmd);
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const datesWithData = useMemo(

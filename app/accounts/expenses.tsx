@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Modal, 
+  View, Text, StyleSheet, FlatList, StatusBar, Modal,
   Platform, ScrollView, Pressable
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import { Redirect } from 'expo-router';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { usePermissions } from '../../src/hooks/usePermissions';
 import Animated, {
-  FadeInDown, FadeIn, Layout,
+  FadeInDown, FadeIn,
   useAnimatedStyle, useSharedValue,
   withTiming, withSpring,
 } from 'react-native-reanimated';
@@ -30,8 +30,23 @@ import { formatDateShort, monthStartInput, todayDateInput } from '../../src/comp
 
 // ─── Category config ──────────────────────────────────────────────────────────
 const CATEGORY_CONFIG: Record<string, { icon: string; color: string; grad: [string, string] }> = {
+  Stationery: { icon: 'pencil-outline', color: '#4F46E5', grad: ['#4338CA', '#6366F1'] },
+  'Office Expenses': { icon: 'briefcase-outline', color: '#0F766E', grad: ['#0F766E', '#14B8A6'] },
+  Cameras: { icon: 'videocam-outline', color: '#7C3AED', grad: ['#6D28D9', '#A855F7'] },
+  Savings: { icon: 'wallet-outline', color: '#059669', grad: ['#047857', '#10B981'] },
+  'Agent Commission': { icon: 'people-outline', color: '#EA580C', grad: ['#C2410C', '#F97316'] },
+  Donations: { icon: 'heart-outline', color: '#DB2777', grad: ['#BE185D', '#EC4899'] },
+  'Labour Charges': { icon: 'hammer-outline', color: '#B45309', grad: ['#92400E', '#D97706'] },
+  Construction: { icon: 'business-outline', color: '#475569', grad: ['#334155', '#64748B'] },
+  'Electricity Bill': { icon: 'flash-outline', color: '#CA8A04', grad: ['#A16207', '#EAB308'] },
+  'Tea & Refreshments': { icon: 'cafe-outline', color: '#A16207', grad: ['#854D0E', '#CA8A04'] },
+  'Water Bill': { icon: 'water-outline', color: '#0284C7', grad: ['#0369A1', '#0EA5E9'] },
+  'Transport & Fuel': { icon: 'bus-outline', color: '#0891B2', grad: ['#0E7490', '#06B6D4'] },
   Education: { icon: 'book-outline', color: '#3B82F6', grad: ['#1D4ED8', '#3B82F6'] },
   Maintenance: { icon: 'construct-outline', color: '#F59E0B', grad: ['#B45309', '#F59E0B'] },
+  'Internet & Phone': { icon: 'wifi-outline', color: '#2563EB', grad: ['#1D4ED8', '#3B82F6'] },
+  'Printing & Exams': { icon: 'print-outline', color: '#9333EA', grad: ['#7E22CE', '#A855F7'] },
+  Security: { icon: 'shield-checkmark-outline', color: '#DC2626', grad: ['#B91C1C', '#EF4444'] },
   Sports: { icon: 'football-outline', color: '#10B981', grad: ['#065F46', '#10B981'] },
   Utility: { icon: 'flash-outline', color: '#8B5CF6', grad: ['#5B21B6', '#8B5CF6'] },
   Events: { icon: 'calendar-outline', color: '#EC4899', grad: ['#9D174D', '#EC4899'] },
@@ -348,7 +363,7 @@ export default function AccountsExpenses() {
 
   useEffect(() => {
     fetchExpenses(searchQuery, fetchOptions);
-  }, [searchQuery, fetchOptions]);
+  }, [searchQuery, fetchOptions, fetchExpenses]);
 
   const resetDateFilters = () => {
     setFromDate(monthStartInput());

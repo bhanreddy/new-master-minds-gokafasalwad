@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -205,8 +205,13 @@ export default function ManageStudents() {
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{ session?: string; date?: string }>();
   const { user } = useAuth();
   const { staffId, isViewingAsAdmin, viewAsName } = useEffectiveStaffId();
+  const requestedSession: AttendanceSession | null =
+    routeParams.session === 'morning' || routeParams.session === 'afternoon'
+      ? routeParams.session
+      : null;
 
   const [students, setStudents] = useState<StudentUI[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,11 +219,16 @@ export default function ManageStudents() {
   const [submitting, setSubmitting] = useState(false);
   const [detectedClassId, setDetectedClassId] = useState<string | null>(null);
   const [detectedClassLabel, setDetectedClassLabel] = useState<string | null>(null);
-  const [session, setSession] = useState<AttendanceSession>(currentSession());
+  const [session, setSession] = useState<AttendanceSession>(requestedSession || currentSession());
   const [loadError, setLoadError] = useState<string | null>(null);
   // Defaults to today — same as production. Past dates are opt-in via the picker.
   const todayYMD = useMemo(() => localAttendanceDate(), []);
-  const [selectedDate, setSelectedDate] = useState(todayYMD);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const requestedDate = String(routeParams.date || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate <= todayYMD
+      ? requestedDate
+      : todayYMD;
+  });
 
   const tabBarReserve = staffTabBarReserve(theme.spacing);
   const isToday = selectedDate === todayYMD;

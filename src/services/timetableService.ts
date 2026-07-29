@@ -39,6 +39,7 @@ export interface TimetableConfig {
 export interface TimetableSlot {
     id: string;
     period_number: number;
+    period_name?: string | null;
     day_of_week?: DayOfWeek;
     start_time: string; // "09:00:00"
     end_time: string;
@@ -50,6 +51,11 @@ export interface TimetableSlot {
     room_no?: string;
     class_name?: string; // For teacher view
     section_name?: string; // For teacher view
+    /** Exact-date staff cover duty; never part of the permanent timetable. */
+    is_substitution?: boolean;
+    substitution_date?: string;
+    absent_teacher_name?: string;
+    attendance_session?: 'morning' | 'afternoon' | null;
 }
 
 export interface CreateSlotRequest {
