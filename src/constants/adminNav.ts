@@ -28,7 +28,6 @@ export function buildAdminNavActions(t: TFunction): AdminNavAction[] {
     { title: t('admin_dashboard_v2.academic_structure', 'Academics'), icon: 'school-outline', route: '/admin/academics', tier: 'PRIMARY', gradient: ['#172554', '#2563EB'], category: 'Academic' },
     { title: 'Class Diary', icon: 'book-outline', route: '/admin/diary/viewer', tier: 'PRIMARY', gradient: ['#0F3A5F', '#0284C7'], category: 'Academic' },
     { title: t('admin_dashboard_v2.timetable_manager', 'Timetable'), icon: 'calendar-outline', route: '/admin/timetable', tier: 'PRIMARY', gradient: ['#312E81', '#4F46E5'], category: 'Academic' },
-    { title: 'Substitutions', icon: 'swap-horizontal-outline', route: '/admin/substitutions', tier: 'PRIMARY', gradient: ['#3730A3', '#06B6D4'], category: 'Academic', permission: 'academics.manage' },
     { title: t('admin_dashboard_v2.exams', 'Exams'), icon: 'clipboard-outline', route: '/admin/exams', tier: 'PRIMARY', gradient: ['#3730A3', '#0EA5E9'], category: 'Academic' },
     { title: 'Year Upgrade', icon: 'refresh-circle-outline', route: '/admin/academic-year-upgrade', tier: 'PRIMARY', gradient: ['#1E3A8A', '#7C3AED'], category: 'Academic' },
     { title: t('admin_dashboard_v2.certificates', 'Certs'), icon: 'ribbon-outline', route: '/admin/certificate-generator', tier: 'PRIMARY', gradient: ['#1E40AF', '#06B6D4'], category: 'Academic' },
@@ -50,7 +49,6 @@ export function buildAdminNavActions(t: TFunction): AdminNavAction[] {
     { title: t('admin_dashboard_v2.manage_staff', 'Staff'), icon: 'people-outline', route: '/admin/manage-staff', tier: 'OPS', gradient: ['#7C3AED', '#EC4899'], category: 'HR' },
     { title: t('admin_dashboard_v2.add_staff', 'Add Staff'), icon: 'person-add-outline', route: '/admin/addStaff', tier: 'OPS', gradient: ['#6D28D9', '#8B5CF6'], category: 'HR', permission: 'staff.create' },
     { title: t('admin_dashboard_v2.add_accounts_staff', 'Accounts Portal'), icon: 'wallet-outline', route: '/admin/add-accounts-staff', tier: 'OPS', gradient: ['#BE123C', '#F97316'], category: 'HR' },
-    { title: 'App Adoption', icon: 'phone-portrait-outline', route: '/admin/app-adoption', tier: 'ADMIN', gradient: ['#0F766E', '#14B8A6'], category: 'Security' },
     { title: 'Access Requests', icon: 'key-outline', route: '/admin/access-requests', tier: 'ADMIN', gradient: ['#881337', '#E11D48'], category: 'Security' },
   ];
 }
