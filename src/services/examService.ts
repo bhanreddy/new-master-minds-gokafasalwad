@@ -153,9 +153,13 @@ export const ExamTimetableService = {
         });
     },
 
-    getClassSubjects: async (classIds: string[]): Promise<ClassSubjectOption[]> => {
+    getClassSubjects: async (
+        classIds: string[],
+        academicYearId?: string
+    ): Promise<ClassSubjectOption[]> => {
         return api.get<ClassSubjectOption[]>('/results/exam-timetable/class-subjects', {
             class_ids: classIds.join(','),
+            ...(academicYearId ? { academic_year_id: academicYearId } : {}),
         });
     },
 

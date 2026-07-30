@@ -434,6 +434,7 @@ export default function AdminExams() {
           theme={theme}
           isDark={isDark}
           classes={classes}
+          academicYearId={detail.exam.academic_year_id}
           initialParams={detail.exam.timetable_params || null}
           hasExistingPapers={detail.papers.length > 0}
           onClose={() => setGenVisible(false)}
@@ -1955,6 +1956,7 @@ function GenerateModal({
   theme,
   isDark,
   classes,
+  academicYearId,
   initialParams,
   hasExistingPapers,
   onClose,
@@ -1965,6 +1967,7 @@ function GenerateModal({
   theme: Theme;
   isDark: boolean;
   classes: ClassInfo[];
+  academicYearId: string;
   initialParams: ExamGenerateParams | null;
   hasExistingPapers: boolean;
   onClose: () => void;
@@ -2038,7 +2041,7 @@ function GenerateModal({
     (async () => {
       try {
         setSubjectsLoading(true);
-        const options = await ExamTimetableService.getClassSubjects(classIds);
+        const options = await ExamTimetableService.getClassSubjects(classIds, academicYearId);
         if (cancelled) return;
         setSubjectOptions(options);
         const available = options.map((o) => o.id);
@@ -2063,7 +2066,7 @@ function GenerateModal({
     return () => {
       cancelled = true;
     };
-  }, [visible, classIds.join(',')]);
+  }, [visible, academicYearId, classIds]);
 
   const toggleClass = (id: string) => {
     setClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
