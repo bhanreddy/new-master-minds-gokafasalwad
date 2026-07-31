@@ -111,4 +111,58 @@ describe('accountVault.removeAccount fingerprint cleanup', () => {
       })
     );
   });
+
+  it('reads July legacy credential envelopes after an app update', async () => {
+    secureTokenStore.__store.set(
+      'vault_login_credentials_v1',
+      JSON.stringify({
+        __vault: 'login_credentials_v1',
+        credentials: {
+          'legacy-user': {
+            email: 'LEGACY@example.com',
+            password: 'legacy-secret',
+          },
+        },
+      })
+    );
+
+    await expect(
+      accountVault.getLoginRecoveryCredential('legacy-user')
+    ).resolves.toEqual(
+      expect.objectContaining({
+        email: 'legacy@example.com',
+        password: 'legacy-secret',
+        updatedAt: expect.any(Number),
+      })
+    );
+  });
+
+  it('migrates the interim credential marker to the backward-compatible marker', async () => {
+    secureTokenStore.__store.set(
+      'vault_login_credentials_v1',
+      JSON.stringify({
+        __vault: 'credentials_v1',
+        credentials: {
+          'interim-user': {
+            email: 'interim@example.com',
+            password: 'interim-secret',
+            updatedAt: 123,
+          },
+        },
+      })
+    );
+
+    await expect(
+      accountVault.getLoginRecoveryCredential('interim-user')
+    ).resolves.toEqual({
+      email: 'interim@example.com',
+      password: 'interim-secret',
+      updatedAt: 123,
+    });
+    expect(
+      JSON.parse(
+        secureTokenStore.__store.get('vault_login_credentials_v1')
+      ).__vault
+    ).toBe('login_credentials_v1');
+  });
 });

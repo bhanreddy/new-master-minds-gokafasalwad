@@ -79,6 +79,14 @@ export interface LoginRecoveryCredential {
   updatedAt: number;
 }
 interface LoginCredentialsEnvelope {
+  // Keep the historic logical marker as the canonical format so credentials
+  // written by older builds migrate without a schema break.
+  __vault: 'login_credentials_v1';
+  credentials: Record<string, LoginRecoveryCredential>;
+}
+interface InterimLoginCredentialsEnvelope {
+  // Briefly used by a newer build. Read and migrate it so no update path loses
+  // a credential merely because the envelope marker changed.
   __vault: 'credentials_v1';
   credentials: Record<string, LoginRecoveryCredential>;
 }
@@ -137,20 +145,58 @@ async function _writeRefreshMap(tokens: Record<string, string>): Promise<void> {
 }
 async function _readLoginCredentials(): Promise<Record<string, LoginRecoveryCredential>> {
   if (Platform.OS === 'web') return {};
-  const env = await readEnvelope<LoginCredentialsEnvelope>(
+  const historic = await readEnvelope<LoginCredentialsEnvelope>(
+    VAULT_LOGIN_CREDENTIALS_KEY,
+    'login_credentials_v1'
+  );
+  if (historic?.credentials && typeof historic.credentials === 'object') {
+    return Object.fromEntries(
+      Object.entries(historic.credentials)
+        .filter(([, value]) => value?.email && value?.password)
+        .map(([userId, value]) => [
+          userId,
+          {
+            email: value.email.trim().toLowerCase(),
+            password: value.password,
+            updatedAt: Number.isFinite(value.updatedAt)
+              ? value.updatedAt
+              : Date.now(),
+          },
+        ])
+    );
+  }
+
+  const interim = await readEnvelope<InterimLoginCredentialsEnvelope>(
     VAULT_LOGIN_CREDENTIALS_KEY,
     'credentials_v1'
   );
-  return env?.credentials && typeof env.credentials === 'object'
-    ? env.credentials
-    : {};
+  if (!interim?.credentials || typeof interim.credentials !== 'object') {
+    return {};
+  }
+
+  const migrated = Object.fromEntries(
+    Object.entries(interim.credentials)
+      .filter(([, value]) => value?.email && value?.password)
+      .map(([userId, value]) => [
+        userId,
+        {
+          email: value.email.trim().toLowerCase(),
+          password: value.password,
+          updatedAt: Number.isFinite(value.updatedAt)
+            ? value.updatedAt
+            : Date.now(),
+        },
+      ])
+  );
+  await _writeLoginCredentials(migrated);
+  return migrated;
 }
 async function _writeLoginCredentials(
   credentials: Record<string, LoginRecoveryCredential>
 ): Promise<void> {
   if (Platform.OS === 'web') return;
   await writeEnvelope(VAULT_LOGIN_CREDENTIALS_KEY, {
-    __vault: 'credentials_v1',
+    __vault: 'login_credentials_v1',
     credentials,
   });
 }

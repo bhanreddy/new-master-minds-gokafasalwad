@@ -53,6 +53,23 @@ import { SecureTokenStore } from './secureTokenStore';
 const AsyncStorage = require('@react-native-async-storage/async-storage');
 const SecureStore = require('expo-secure-store');
 
+function legacyEncrypt(value: string, key: string): string {
+  const nodeCrypto = require('crypto');
+  const input = Buffer.from(value, 'utf8');
+  const output = Buffer.alloc(input.length);
+  for (let offset = 0; offset < input.length; offset += 32) {
+    const blockIndex = Math.floor(offset / 32);
+    const hash = nodeCrypto
+      .createHash('sha256')
+      .update(`${key}:${blockIndex}`)
+      .digest();
+    for (let index = 0; index < 32 && offset + index < input.length; index += 1) {
+      output[offset + index] = input[offset + index] ^ hash[index];
+    }
+  }
+  return output.toString('base64');
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   AsyncStorage.__store.clear();
@@ -95,6 +112,53 @@ describe('SecureTokenStore native storage', () => {
     expect([...SecureStore.__store.keys()]).toEqual(
       expect.arrayContaining([expect.stringContaining('secure_store_v2_auth_session_manifest')])
     );
+  });
+
+  it('migrates the oldest per-key encrypted Android session after an app update', async () => {
+    const legacyKey = 'old-device-keystore-key';
+    const value = JSON.stringify({
+      supabaseSession: {
+        access_token: 'old-access',
+        refresh_token: 'old-refresh',
+      },
+      validatedUser: { userId: 'old-user' },
+      tokenExpiresAt: Date.now() + 60_000,
+    });
+    SecureStore.__store.set('session_enc_key', legacyKey);
+    AsyncStorage.__store.set(
+      'supabase_session_enc_auth_session',
+      legacyEncrypt(value, legacyKey)
+    );
+
+    await expect(SecureTokenStore.getItem('auth_session')).resolves.toBe(value);
+    expect(
+      AsyncStorage.__store.has('supabase_session_enc_auth_session')
+    ).toBe(false);
+    expect([...SecureStore.__store.keys()]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('secure_store_v2_auth_session_manifest'),
+      ])
+    );
+  });
+
+  it('migrates the oldest global-key bug without showing the login screen', async () => {
+    const legacyKey = 'old-global-keystore-key';
+    const value = JSON.stringify({
+      supabaseSession: {
+        access_token: 'global-access',
+        refresh_token: 'global-refresh',
+      },
+      validatedUser: { userId: 'global-user' },
+      tokenExpiresAt: Date.now() + 60_000,
+    });
+    SecureStore.__store.set('session_enc_key', legacyKey);
+    AsyncStorage.__store.set(
+      'supabase_session_enc',
+      legacyEncrypt(value, legacyKey)
+    );
+
+    await expect(SecureTokenStore.getItem('auth_session')).resolves.toBe(value);
+    expect(AsyncStorage.__store.has('supabase_session_enc')).toBe(false);
   });
 
   it('rejects an incomplete chunk set rather than returning partial session data', async () => {

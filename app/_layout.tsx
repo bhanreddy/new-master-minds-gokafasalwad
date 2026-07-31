@@ -45,6 +45,7 @@ import Constants from 'expo-constants';
 import ForceUpdateScreen from '../src/components/ForceUpdateScreen';
 import { useVersionCheck } from '../src/hooks/useVersionCheck';
 import FestivalPosterGate from '../src/components/FestivalPosterGate';
+import { selectDisposableVersionCacheKeys } from '../src/utils/updateCachePolicy';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -84,9 +85,10 @@ export default function Layout() {
       const currentVersion = Constants.expoConfig?.version || '1.0.0';
       const storedVersion = await AsyncStorage.getItem('app_version');
       if (storedVersion && storedVersion !== currentVersion) {
-        // App updated, clear all offline caches starting with @app_
+        // App updated: clear disposable offline data only. Auth/session/token
+        // keys are explicitly protected, including future @app_* auth names.
         const keys = await AsyncStorage.getAllKeys();
-        const cacheKeys = keys.filter((k) => k.startsWith('@app_'));
+        const cacheKeys = selectDisposableVersionCacheKeys(keys);
         if (cacheKeys.length > 0) {
           await AsyncStorage.multiRemove(cacheKeys);
         }
