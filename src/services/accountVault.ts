@@ -3,6 +3,7 @@ import { SecureTokenStore, getBackupRefreshToken } from './secureTokenStore';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { SCHOOL_ID } from '../constants/school';
 import { disableFingerprintForAccount } from './biometricService';
+import { Platform } from 'react-native';
 
 /**
  * accountVault.ts — Phase 1 multi-account ("Instagram-style") session vault.
@@ -16,14 +17,17 @@ import { disableFingerprintForAccount } from './biometricService';
  *
  * STORAGE STRATEGY
  *   All vault blobs are persisted through `SecureTokenStore`, which chunks
- *   values into the native OS keychain/Keystore. No password is retained;
- *   account restoration uses revocable refresh tokens.
+ *   values into the native OS keychain/Keystore. Native builds retain a
+ *   recovery credential only inside encrypted device-bound storage. It is
+ *   used only when normal refresh-token rotation can no longer recover the
+ *   session. Web builds never persist a password.
  *
  *   Namespaced keys (clearly separated from the single-session keys
  *   `auth_session` / `supabase_session_enc` / `sb_secure_refresh_token`):
  *     - vault_accounts_v1          → the list of accounts
  *     - vault_active_user_id_v1    → the active-account pointer
  *     - vault_refresh_tokens_v1    → per-userId backup refresh-token MAP
+ *     - vault_login_credentials_v1 → native-only recovery credentials
  *     - vault_migration_v1_done    → one-time migration flag
  *
  * Every value is wrapped in a `{ __vault: <marker> }` envelope so malformed,
@@ -68,6 +72,15 @@ interface ActiveEnvelope {
 interface RefreshMapEnvelope {
   __vault: 'refresh_v1';
   tokens: Record<string, string>;
+}
+export interface LoginRecoveryCredential {
+  email: string;
+  password: string;
+  updatedAt: number;
+}
+interface LoginCredentialsEnvelope {
+  __vault: 'credentials_v1';
+  credentials: Record<string, LoginRecoveryCredential>;
 }
 interface MigrationEnvelope {
   __vault: 'migration_v1';
@@ -122,6 +135,25 @@ async function _readRefreshMap(): Promise<Record<string, string>> {
 async function _writeRefreshMap(tokens: Record<string, string>): Promise<void> {
   await writeEnvelope(VAULT_REFRESH_MAP_KEY, { __vault: 'refresh_v1', tokens });
 }
+async function _readLoginCredentials(): Promise<Record<string, LoginRecoveryCredential>> {
+  if (Platform.OS === 'web') return {};
+  const env = await readEnvelope<LoginCredentialsEnvelope>(
+    VAULT_LOGIN_CREDENTIALS_KEY,
+    'credentials_v1'
+  );
+  return env?.credentials && typeof env.credentials === 'object'
+    ? env.credentials
+    : {};
+}
+async function _writeLoginCredentials(
+  credentials: Record<string, LoginRecoveryCredential>
+): Promise<void> {
+  if (Platform.OS === 'web') return;
+  await writeEnvelope(VAULT_LOGIN_CREDENTIALS_KEY, {
+    __vault: 'credentials_v1',
+    credentials,
+  });
+}
 async function _readMigrationFlag(): Promise<boolean> {
   const env = await readEnvelope<MigrationEnvelope>(VAULT_MIGRATION_FLAG_KEY, 'migration_v1');
   return env?.done === true;
@@ -166,10 +198,6 @@ export async function runVaultMigrationIfNeeded(): Promise<void> {
 
   migrationPromise = (async () => {
     try {
-      // Older builds retained reusable email/password pairs. Refresh tokens
-      // are sufficient for account switching and are server-revocable, so
-      // purge the credential blob even on installations already migrated.
-      await SecureTokenStore.removeItem(VAULT_LOGIN_CREDENTIALS_KEY);
       if (await _readMigrationFlag()) return; // already migrated on this install
 
       // Read the existing single-session blob (written by authService via
@@ -268,6 +296,49 @@ export async function removeBackupRefreshTokenForUser(userId: string): Promise<v
   }
 }
 
+// ── Native credential recovery ───────────────────────────────────────────
+
+/**
+ * Save the one credential capable of rebuilding a revoked/expired refresh
+ * session. SecureTokenStore keeps this entirely in Android Keystore / iOS
+ * Keychain storage; web deliberately no-ops to avoid plaintext persistence.
+ */
+export async function saveLoginRecoveryCredential(
+  userId: string,
+  email: string,
+  password: string
+): Promise<void> {
+  if (Platform.OS === 'web' || !userId || !email || !password) return;
+  await ensureMigrated();
+  const credentials = await _readLoginCredentials();
+  credentials[userId] = {
+    email: email.trim().toLowerCase(),
+    password,
+    updatedAt: Date.now(),
+  };
+  await _writeLoginCredentials(credentials);
+}
+
+export async function getLoginRecoveryCredential(
+  userId: string
+): Promise<LoginRecoveryCredential | null> {
+  if (Platform.OS === 'web' || !userId) return null;
+  await ensureMigrated();
+  const credentials = await _readLoginCredentials();
+  const credential = credentials[userId];
+  if (!credential?.email || !credential?.password) return null;
+  return credential;
+}
+
+export async function removeLoginRecoveryCredential(userId: string): Promise<void> {
+  if (Platform.OS === 'web' || !userId) return;
+  await ensureMigrated();
+  const credentials = await _readLoginCredentials();
+  if (!(userId in credentials)) return;
+  delete credentials[userId];
+  await _writeLoginCredentials(credentials);
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 
 /**
@@ -314,6 +385,7 @@ export async function removeAccount(userId: string): Promise<void> {
   }
 
   await removeBackupRefreshTokenForUser(userId);
+  await removeLoginRecoveryCredential(userId);
   // This is the single choke point for account removal (manual logout and the
   // "remove saved login" UI both reach it), so it is where the account's
   // fingerprint opt-in record is dropped. Scoped to this userId — siblings

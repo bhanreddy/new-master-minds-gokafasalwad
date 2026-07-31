@@ -24,6 +24,7 @@ jest.mock('./secureTokenStore', () => {
 
 import * as accountVault from './accountVault';
 import type { VaultAccount } from './accountVault';
+import { Platform } from 'react-native';
 
 /* Handles on the mocks above, for assertions. */
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -47,6 +48,7 @@ function account(userId: string, roleCode: string): VaultAccount {
 beforeEach(async () => {
   jest.clearAllMocks();
   secureTokenStore.__store.clear();
+  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
 });
 
 describe('accountVault.removeAccount fingerprint cleanup', () => {
@@ -79,5 +81,34 @@ describe('accountVault.removeAccount fingerprint cleanup', () => {
     await accountVault.removeAccount('student-3');
 
     expect(biometricService.disableFingerprintForAccount).toHaveBeenCalledWith(SCHOOL, 'student-3');
+  });
+
+  it('persists recovery credentials securely and deletes only the removed account credential', async () => {
+    await accountVault.addAccount(account('admin-1', 'admin'));
+    await accountVault.addAccount(account('staff-2', 'staff'));
+    await accountVault.saveLoginRecoveryCredential(
+      'admin-1',
+      'ADMIN@example.com',
+      'admin-secret'
+    );
+    await accountVault.saveLoginRecoveryCredential(
+      'staff-2',
+      'staff@example.com',
+      'staff-secret'
+    );
+
+    await accountVault.removeAccount('admin-1');
+
+    await expect(
+      accountVault.getLoginRecoveryCredential('admin-1')
+    ).resolves.toBeNull();
+    await expect(
+      accountVault.getLoginRecoveryCredential('staff-2')
+    ).resolves.toEqual(
+      expect.objectContaining({
+        email: 'staff@example.com',
+        password: 'staff-secret',
+      })
+    );
   });
 });

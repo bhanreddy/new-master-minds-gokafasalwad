@@ -20,9 +20,13 @@ export interface HallTicketPdfOptions {
   logoDataUri?: string | null;
   /** Pre-resolved principal signature. Resolved from school settings when omitted. */
   principalSignatureDataUri?: string | null;
+  /** Printable hall-ticket model. Defaults to the compact four-up A4 layout. */
+  ticketsPerPage?: HallTicketsPerPage;
 }
 
-/** Compact tearable tickets per A4 sheet. */
+export type HallTicketsPerPage = 2 | 3 | 4;
+
+/** Backward-compatible default for callers that do not choose a model. */
 export const TICKETS_PER_PAGE = 4;
 
 const A4_PAGE_WIDTH_PX = 794;
@@ -80,12 +84,16 @@ function schoolInitials(name: string): string {
   );
 }
 
-function scheduleTable(papers: ExamPaper[]): string {
-  const sorted = [...papers].sort((a, b) => {
+function sortedPapers(papers: ExamPaper[]): ExamPaper[] {
+  return [...papers].sort((a, b) => {
     const left = `${a.exam_date || '9999'}|${a.start_time || '99:99'}|${a.subject_name}`;
     const right = `${b.exam_date || '9999'}|${b.start_time || '99:99'}|${b.subject_name}`;
     return left.localeCompare(right);
   });
+}
+
+function compactScheduleTable(papers: ExamPaper[]): string {
+  const sorted = sortedPapers(papers);
 
   const dates = sorted
     .map(
@@ -112,6 +120,52 @@ function scheduleTable(papers: ExamPaper[]): string {
   </table>`;
 }
 
+function comfortableScheduleGrid(papers: ExamPaper[]): string {
+  return `<div class="schedule-grid">
+    ${sortedPapers(papers)
+      .map(
+        (paper) => `<div class="paper-card">
+          <div class="paper-date">${escapeHtml(formatCompactDate(paper.exam_date))}</div>
+          <strong>${escapeHtml(paper.subject_name)}</strong>
+          <span class="subject-time">${escapeHtml(formatTimeRange(paper.start_time, paper.end_time))}</span>
+          <div class="paper-sign"><i></i><small>Invigilator</small></div>
+        </div>`,
+      )
+      .join('')}
+  </div>`;
+}
+
+function largeScheduleTable(papers: ExamPaper[]): string {
+  return `<table class="schedule-detail">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Subject</th>
+        <th>Timing</th>
+        <th>Invigilator signature</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${sortedPapers(papers)
+        .map(
+          (paper) => `<tr>
+            <td>${escapeHtml(formatCompactDate(paper.exam_date))}</td>
+            <td><strong>${escapeHtml(paper.subject_name)}</strong></td>
+            <td><strong>${escapeHtml(formatTimeRange(paper.start_time, paper.end_time))}</strong></td>
+            <td><i class="detail-sign-line"></i></td>
+          </tr>`,
+        )
+        .join('')}
+    </tbody>
+  </table>`;
+}
+
+function scheduleMarkup(papers: ExamPaper[], ticketsPerPage: HallTicketsPerPage): string {
+  if (ticketsPerPage === 2) return largeScheduleTable(papers);
+  if (ticketsPerPage === 3) return comfortableScheduleGrid(papers);
+  return compactScheduleTable(papers);
+}
+
 function logoMarkup(logoDataUri: string | null | undefined, schoolName: string, className: string): string {
   if (logoDataUri) {
     return `<img class="${className}" src="${escapeHtml(logoDataUri)}" alt="" />`;
@@ -119,7 +173,11 @@ function logoMarkup(logoDataUri: string | null | undefined, schoolName: string, 
   return `<div class="${className} ${className}--fallback">${escapeHtml(schoolInitials(schoolName))}</div>`;
 }
 
-function ticketHtml(options: HallTicketPdfOptions, student: HallTicketStudent): string {
+function ticketHtml(
+  options: HallTicketPdfOptions,
+  student: HallTicketStudent,
+  ticketsPerPage: HallTicketsPerPage,
+): string {
   const schoolName = options.school?.school_name || 'School';
   const schoolMedium = (options.school?.school_medium || '').trim();
   const logo = options.logoDataUri;
@@ -133,7 +191,7 @@ function ticketHtml(options: HallTicketPdfOptions, student: HallTicketStudent): 
           : '';
 
   return `<section class="ticket-slot">
-    <article class="ticket ${densityClass}">
+    <article class="ticket ticket--layout-${ticketsPerPage} ${densityClass}">
       ${logoMarkup(logo, schoolName, 'watermark')}
 
       <header class="ticket-header">
@@ -176,7 +234,7 @@ function ticketHtml(options: HallTicketPdfOptions, student: HallTicketStudent): 
         <span class="schedule-label">Examination schedule</span>
         <span class="schedule-summary">${options.papers.length} subject${options.papers.length === 1 ? '' : 's'}</span>
       </div>
-      <div class="schedule-wrap">${scheduleTable(options.papers)}</div>
+      <div class="schedule-wrap">${scheduleMarkup(options.papers, ticketsPerPage)}</div>
 
       <footer class="ticket-footer">
         <div class="sign-block">
@@ -195,13 +253,14 @@ function ticketHtml(options: HallTicketPdfOptions, student: HallTicketStudent): 
 }
 
 export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
+  const ticketsPerPage = options.ticketsPerPage || TICKETS_PER_PAGE;
   const pages: string[] = [];
-  for (let index = 0; index < options.students.length; index += TICKETS_PER_PAGE) {
+  for (let index = 0; index < options.students.length; index += ticketsPerPage) {
     const ticketRows = options.students
-      .slice(index, index + TICKETS_PER_PAGE)
-      .map((student) => ticketHtml(options, student))
+      .slice(index, index + ticketsPerPage)
+      .map((student) => ticketHtml(options, student, ticketsPerPage))
       .join('');
-    pages.push(`<main class="hall-sheet">${ticketRows}</main>`);
+    pages.push(`<main class="hall-sheet hall-sheet--${ticketsPerPage}">${ticketRows}</main>`);
   }
 
   return `<!DOCTYPE html>
@@ -223,23 +282,23 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       height: 297mm;
       padding: 4.5mm 6mm;
       display: grid;
-      grid-template-rows: repeat(${TICKETS_PER_PAGE}, 61mm);
-      row-gap: 5mm;
       align-content: start;
       page-break-inside: avoid;
       break-inside: avoid-page;
       overflow: hidden;
       background: #fff;
     }
+    .hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 3mm; }
+    .hall-sheet--3 { grid-template-rows: repeat(3, 89mm); row-gap: 4mm; }
+    .hall-sheet--2 { grid-template-rows: repeat(2, 137mm); row-gap: 7mm; }
     .hall-sheet + .hall-sheet { page-break-before: always; break-before: page; }
 
     .ticket-slot {
       min-height: 0;
       position: relative;
-      height: 61mm;
       padding: 0;
     }
-    .ticket-slot:not(:nth-child(${TICKETS_PER_PAGE}n))::before {
+    .ticket-slot:not(:last-child)::before {
       content: "";
       position: absolute;
       z-index: 3;
@@ -249,7 +308,7 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       height: 1px;
       border-bottom: 0.3mm dashed #94a3b8;
     }
-    .ticket-slot:not(:nth-child(${TICKETS_PER_PAGE}n))::after {
+    .ticket-slot:not(:last-child)::after {
       content: "CUT HERE";
       position: absolute;
       z-index: 4;
@@ -267,7 +326,6 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
 
     .ticket {
       position: relative;
-      height: 58mm;
       border: 0.3mm solid #243b8f;
       border-radius: 1.6mm;
       padding: 1.6mm 2.5mm 1.3mm;
@@ -278,6 +336,9 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
         linear-gradient(90deg, #f59e0b 0, #f59e0b 0.9mm, transparent 0.9mm),
         linear-gradient(180deg, #f8faff 0%, #ffffff 14mm);
     }
+    .ticket--layout-4 { height: 64mm; }
+    .ticket--layout-3 { height: 86mm; padding: 2mm 3mm 1.8mm; }
+    .ticket--layout-2 { height: 133mm; padding: 2.6mm 3.5mm 2.2mm; }
 
     .watermark {
       position: absolute;
@@ -472,21 +533,26 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       letter-spacing: 0.05pt;
       font-weight: 700;
     }
-    .schedule tbody tr { height: 14.5mm; }
+    .schedule tbody tr { height: 19mm; }
     .schedule td { background-color: rgba(255, 255, 255, 0.9); }
     .schedule td strong {
       display: block;
-      font-size: 5.4pt;
-      line-height: 1.05;
+      font-size: 7pt;
+      line-height: 1.08;
       color: #172554;
+      font-weight: 800;
     }
     .schedule td .subject-time,
     .schedule td small {
       display: block;
       margin-top: 0.35mm;
       color: #64748b;
-      font-size: 3.9pt;
+      font-size: 5.2pt;
       line-height: 1.05;
+    }
+    .schedule td .subject-time {
+      color: #1e293b;
+      font-weight: 800;
     }
     .schedule td .invigilator-sign-line {
       display: block;
@@ -499,6 +565,146 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       margin-top: 0.2mm;
       font-size: 3.3pt;
     }
+
+    /* Three-up model: spacious schedule cards, three or four cards per row. */
+    .ticket--layout-3 .ticket-header { min-height: 12mm; }
+    .ticket--layout-3 .school-logo { width: 11mm; height: 11mm; flex-basis: 11mm; }
+    .ticket--layout-3 .school-name { font-size: 11pt; }
+    .ticket--layout-3 .hall-ticket-title { font-size: 8pt; }
+    .ticket--layout-3 .student-meta { padding: 1.1mm 1.3mm; margin-bottom: 1mm; }
+    .ticket--layout-3 .student-meta span { font-size: 5pt; }
+    .ticket--layout-3 .student-meta strong { font-size: 7.3pt; }
+    .ticket--layout-3 .meta-wide strong { font-size: 8.2pt; }
+    .ticket--layout-3 .schedule-label { font-size: 5.6pt; }
+    .ticket--layout-3 .schedule-summary { font-size: 5.2pt; }
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1mm;
+    }
+    .paper-card {
+      min-width: 0;
+      min-height: 16mm;
+      padding: 0.8mm;
+      border: 0.2mm solid #aab7cf;
+      border-radius: 0.8mm;
+      background: rgba(255, 255, 255, 0.9);
+      text-align: center;
+    }
+    .paper-date {
+      margin: -0.8mm -0.8mm 0.7mm;
+      padding: 0.65mm 0.4mm;
+      border-radius: 0.65mm 0.65mm 0 0;
+      background: #243b8f;
+      color: #fff;
+      font-size: 5.2pt;
+      font-weight: 800;
+    }
+    .paper-card > strong {
+      display: block;
+      min-height: 4.5mm;
+      color: #172554;
+      font-size: 6.8pt;
+      line-height: 1.08;
+      font-weight: 800;
+    }
+    .paper-card .subject-time {
+      display: block;
+      margin-top: 0.55mm;
+      color: #1e293b;
+      font-size: 5.2pt;
+      line-height: 1.05;
+      font-weight: 800;
+    }
+    .paper-sign i {
+      display: block;
+      width: 82%;
+      height: 2.3mm;
+      margin: 0.5mm auto 0.2mm;
+      border-bottom: 0.2mm solid #64748b;
+    }
+    .paper-sign small {
+      display: block;
+      color: #64748b;
+      font-size: 3.5pt;
+      line-height: 1;
+    }
+    .ticket--layout-3 .ticket-footer {
+      min-height: 8mm;
+      flex-basis: 8mm;
+      margin-top: auto;
+    }
+    .ticket--layout-3 .sign-block { font-size: 5.4pt; }
+
+    /* Two-up model: large readable row-based schedule. */
+    .ticket--layout-2 {
+      background:
+        linear-gradient(90deg, #f59e0b 0, #f59e0b 1.2mm, transparent 1.2mm),
+        linear-gradient(180deg, #f4f7ff 0%, #ffffff 20mm);
+    }
+    .ticket--layout-2 .ticket-header { min-height: 15mm; gap: 3mm; }
+    .ticket--layout-2 .school-logo { width: 14mm; height: 14mm; flex-basis: 14mm; }
+    .ticket--layout-2 .school-name { font-size: 13pt; }
+    .ticket--layout-2 .hall-ticket-title { margin-top: 0.6mm; font-size: 9pt; }
+    .ticket--layout-2 .header-end { width: 29mm; flex-basis: 29mm; }
+    .ticket--layout-2 .medium-label { font-size: 7pt; }
+    .ticket--layout-2 .header-rule { height: 0.65mm; margin: 1mm 0; }
+    .ticket--layout-2 .student-meta { padding: 1.5mm; margin-bottom: 1.3mm; }
+    .ticket--layout-2 .student-meta span { font-size: 5.8pt; }
+    .ticket--layout-2 .student-meta strong { margin-top: 0.5mm; font-size: 8.7pt; }
+    .ticket--layout-2 .meta-wide strong { font-size: 10pt; }
+    .ticket--layout-2 .schedule-label { font-size: 6.4pt; }
+    .ticket--layout-2 .schedule-summary { font-size: 5.8pt; }
+    .schedule-detail {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .schedule-detail th,
+    .schedule-detail td {
+      height: 5.2mm;
+      padding: 0.65mm 1.1mm;
+      border: 0.2mm solid #aab7cf;
+      vertical-align: middle;
+    }
+    .schedule-detail th {
+      background: #243b8f;
+      color: #fff;
+      font-size: 5.8pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.2pt;
+    }
+    .schedule-detail th:nth-child(1) { width: 21%; }
+    .schedule-detail th:nth-child(2) { width: 30%; }
+    .schedule-detail th:nth-child(3) { width: 28%; }
+    .schedule-detail th:nth-child(4) { width: 21%; }
+    .schedule-detail td {
+      background: rgba(255, 255, 255, 0.9);
+      color: #1e293b;
+      font-size: 7pt;
+      text-align: center;
+    }
+    .schedule-detail td:nth-child(2) strong,
+    .schedule-detail td:nth-child(3) strong {
+      color: #172554;
+      font-size: 7.8pt;
+      font-weight: 800;
+    }
+    .detail-sign-line {
+      display: block;
+      width: 85%;
+      height: 2.2mm;
+      margin: 0 auto;
+      border-bottom: 0.25mm solid #64748b;
+    }
+    .ticket--layout-2 .ticket-footer {
+      min-height: 10mm;
+      flex-basis: 10mm;
+      margin-top: auto;
+    }
+    .ticket--layout-2 .sign-block { font-size: 6.2pt; padding: 0.8mm 1.5mm 0.6mm; }
+    .ticket--layout-2 .principal-signature { max-height: 8mm; }
 
     .ticket-footer {
       display: flex;
@@ -548,38 +754,38 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
     }
 
     .ticket--single .schedule tbody tr { height: 15mm; }
-    .ticket--dense .ticket-header { min-height: 9.2mm; }
-    .ticket--dense .school-logo { width: 8.5mm; height: 8.5mm; flex-basis: 8.5mm; }
-    .ticket--dense .header-rule { margin: 0.55mm 0; height: 0.4mm; }
-    .ticket--dense .student-meta { padding-top: 0.55mm; padding-bottom: 0.55mm; margin-bottom: 0.55mm; }
-    .ticket--dense .schedule tbody tr { height: 13.5mm; }
-    .ticket--dense .schedule th,
-    .ticket--dense .schedule td { padding-left: 0.25mm; padding-right: 0.25mm; }
-    .ticket--dense .schedule td strong { font-size: 4.8pt; }
-    .ticket--dense .schedule td .subject-time { font-size: 3.5pt; }
-    .ticket--dense .schedule td small { font-size: 3pt; }
-    .ticket--dense .sign-block i,
-    .ticket--dense .principal-signature { min-height: 2.2mm; }
+    .ticket--layout-4.ticket--dense .ticket-header { min-height: 9.2mm; }
+    .ticket--layout-4.ticket--dense .school-logo { width: 8.5mm; height: 8.5mm; flex-basis: 8.5mm; }
+    .ticket--layout-4.ticket--dense .header-rule { margin: 0.55mm 0; height: 0.4mm; }
+    .ticket--layout-4.ticket--dense .student-meta { padding-top: 0.55mm; padding-bottom: 0.55mm; margin-bottom: 0.55mm; }
+    .ticket--layout-4.ticket--dense .schedule tbody tr { height: 19mm; }
+    .ticket--layout-4.ticket--dense .schedule th,
+    .ticket--layout-4.ticket--dense .schedule td { padding-left: 0.25mm; padding-right: 0.25mm; }
+    .ticket--layout-4.ticket--dense .schedule td strong { font-size: 6.2pt; }
+    .ticket--layout-4.ticket--dense .schedule td .subject-time { font-size: 4.7pt; }
+    .ticket--layout-4.ticket--dense .schedule td small { font-size: 3.2pt; }
+    .ticket--layout-4.ticket--dense .sign-block i,
+    .ticket--layout-4.ticket--dense .principal-signature { min-height: 2.2mm; }
 
-    .ticket--very-dense { padding-top: 1.2mm; padding-bottom: 1mm; }
-    .ticket--very-dense .ticket-header { min-height: 8.2mm; }
-    .ticket--very-dense .school-logo { width: 7.5mm; height: 7.5mm; flex-basis: 7.5mm; }
-    .ticket--very-dense .school-name { font-size: 8pt; }
-    .ticket--very-dense .header-rule { margin: 0.4mm 0; height: 0.35mm; }
-    .ticket--very-dense .student-meta { padding-top: 0.4mm; padding-bottom: 0.4mm; margin-bottom: 0.4mm; }
-    .ticket--very-dense .student-meta span { font-size: 4.1pt; }
-    .ticket--very-dense .student-meta strong { font-size: 5.9pt; }
-    .ticket--very-dense .schedule-heading { margin-bottom: 0.3mm; }
-    .ticket--very-dense .schedule tbody tr { height: 12.5mm; }
-    .ticket--very-dense .schedule th,
-    .ticket--very-dense .schedule td { padding: 0.2mm; }
-    .ticket--very-dense .schedule th { height: 3mm; font-size: 3.7pt; }
-    .ticket--very-dense .schedule td strong { font-size: 4.1pt; }
-    .ticket--very-dense .schedule td .subject-time { font-size: 3.1pt; }
-    .ticket--very-dense .schedule td small { font-size: 2.7pt; }
-    .ticket--very-dense .ticket-footer { padding-top: 0.2mm; }
-    .ticket--very-dense .sign-block i,
-    .ticket--very-dense .principal-signature { min-height: 2mm; }
+    .ticket--layout-4.ticket--very-dense { padding-top: 1.2mm; padding-bottom: 1mm; }
+    .ticket--layout-4.ticket--very-dense .ticket-header { min-height: 8.2mm; }
+    .ticket--layout-4.ticket--very-dense .school-logo { width: 7.5mm; height: 7.5mm; flex-basis: 7.5mm; }
+    .ticket--layout-4.ticket--very-dense .school-name { font-size: 8pt; }
+    .ticket--layout-4.ticket--very-dense .header-rule { margin: 0.4mm 0; height: 0.35mm; }
+    .ticket--layout-4.ticket--very-dense .student-meta { padding-top: 0.4mm; padding-bottom: 0.4mm; margin-bottom: 0.4mm; }
+    .ticket--layout-4.ticket--very-dense .student-meta span { font-size: 4.1pt; }
+    .ticket--layout-4.ticket--very-dense .student-meta strong { font-size: 5.9pt; }
+    .ticket--layout-4.ticket--very-dense .schedule-heading { margin-bottom: 0.3mm; }
+    .ticket--layout-4.ticket--very-dense .schedule tbody tr { height: 18.5mm; }
+    .ticket--layout-4.ticket--very-dense .schedule th,
+    .ticket--layout-4.ticket--very-dense .schedule td { padding: 0.2mm; }
+    .ticket--layout-4.ticket--very-dense .schedule th { height: 3mm; font-size: 3.7pt; }
+    .ticket--layout-4.ticket--very-dense .schedule td strong { font-size: 5.6pt; }
+    .ticket--layout-4.ticket--very-dense .schedule td .subject-time { font-size: 4.2pt; }
+    .ticket--layout-4.ticket--very-dense .schedule td small { font-size: 2.9pt; }
+    .ticket--layout-4.ticket--very-dense .ticket-footer { padding-top: 0.2mm; }
+    .ticket--layout-4.ticket--very-dense .sign-block i,
+    .ticket--layout-4.ticket--very-dense .principal-signature { min-height: 2mm; }
   </style>
 </head>
 <body>${pages.join('')}</body>

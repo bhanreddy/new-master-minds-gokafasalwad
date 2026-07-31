@@ -12,6 +12,7 @@ import {
   Platform,
   FlatList,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -40,6 +41,7 @@ import {
   ExamGenerateParams,
   ExamScheduleMode,
   ExamSession,
+  ExamWeekday,
   ClassSubjectOption,
   ExamRoom,
   ExamRoomAllocation,
@@ -48,7 +50,10 @@ import {
   SeatingStrategy,
 } from '../../src/services/examService';
 import { TimetableService, TimetableTeacher } from '../../src/services/timetableService';
-import { downloadHallTicketPdf } from '../../src/utils/hallTicketPdf';
+import {
+  downloadHallTicketPdf,
+  type HallTicketsPerPage,
+} from '../../src/utils/hallTicketPdf';
 import { SCHOOL_CONFIG } from '../../src/constants/schoolConfig';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -129,6 +134,76 @@ function fmtDate(date?: string | null): string {
 }
 
 const TIME_INPUT_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+const EXAM_WEEKDAYS: { id: ExamWeekday; short: string; label: string }[] = [
+  { id: 'monday', short: 'Mon', label: 'Monday' },
+  { id: 'tuesday', short: 'Tue', label: 'Tuesday' },
+  { id: 'wednesday', short: 'Wed', label: 'Wednesday' },
+  { id: 'thursday', short: 'Thu', label: 'Thursday' },
+  { id: 'friday', short: 'Fri', label: 'Friday' },
+  { id: 'saturday', short: 'Sat', label: 'Saturday' },
+];
+const DEFAULT_EXAM_WEEKDAYS = EXAM_WEEKDAYS.map((day) => day.id);
+const DEFAULT_SESSION_TIMES: ExamSession[] = [
+  { start_time: '09:30', end_time: '12:30' },
+  { start_time: '13:30', end_time: '15:30' },
+  { start_time: '15:45', end_time: '17:15' },
+];
+
+function localExamDateCount({
+  startDate,
+  endDate,
+  allowedWeekdays,
+  excludedDates,
+  gapDays,
+  maxConsecutiveDays,
+}: {
+  startDate: string;
+  endDate: string;
+  allowedWeekdays: ExamWeekday[];
+  excludedDates: string[];
+  gapDays: number;
+  maxConsecutiveDays: number;
+}): number {
+  if (!startDate || !endDate || endDate < startDate) return 0;
+  const allowed = new Set(allowedWeekdays);
+  const excluded = new Set(excludedDates);
+  const weekdayIds: (ExamWeekday | null)[] = [
+    null,
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ];
+  let count = 0;
+  let cooldown = 0;
+  let consecutive = 0;
+  const end = new Date(`${endDate}T00:00:00Z`);
+  for (
+    let date = new Date(`${startDate}T00:00:00Z`);
+    date <= end;
+    date = new Date(date.getTime() + 86400000)
+  ) {
+    const weekday = weekdayIds[date.getUTCDay()];
+    const iso = date.toISOString().slice(0, 10);
+    if (!weekday || !allowed.has(weekday) || excluded.has(iso)) continue;
+    if (cooldown > 0) {
+      cooldown -= 1;
+      continue;
+    }
+    count += 1;
+    consecutive += 1;
+    cooldown = gapDays;
+    if (maxConsecutiveDays > 0 && consecutive >= maxConsecutiveDays && cooldown === 0) {
+      cooldown = 1;
+      consecutive = 0;
+    } else if (cooldown > 0) {
+      consecutive = 0;
+    }
+  }
+  return count;
+}
 
 /** "09:30:00" → "09:30" for editable inputs. */
 function toHHMM(time?: string | null): string {
@@ -1016,6 +1091,36 @@ function PrincipalSignatureModal({
 
 // ─── Hall-ticket download ─────────────────────────────────────────────────────
 
+const HALL_TICKET_MODELS: {
+  count: HallTicketsPerPage;
+  title: string;
+  badge: string;
+  description: string;
+  icon: any;
+}[] = [
+  {
+    count: 4,
+    title: 'Compact',
+    badge: '4 per page',
+    description: 'Tear-off format with a horizontal subject schedule.',
+    icon: 'grid-outline',
+  },
+  {
+    count: 3,
+    title: 'Comfortable',
+    badge: '3 per page',
+    description: 'Larger student details with individual subject cards.',
+    icon: 'albums-outline',
+  },
+  {
+    count: 2,
+    title: 'Large',
+    badge: '2 per page',
+    description: 'Maximum readability with a full row-based schedule.',
+    icon: 'reader-outline',
+  },
+];
+
 function HallTicketModal({
   exam,
   styles,
@@ -1032,6 +1137,7 @@ function HallTicketModal({
   const [school, setSchool] = useState<SchoolSettings | null>(null);
   const [classId, setClassId] = useState('');
   const [sectionId, setSectionId] = useState('');
+  const [ticketsPerPage, setTicketsPerPage] = useState<HallTicketsPerPage>(4);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [downloading, setDownloading] = useState(false);
 
@@ -1124,6 +1230,7 @@ function HallTicketModal({
         students: data.students,
         papers: data.papers,
         school: hallTicketSchoolSettings(school),
+        ticketsPerPage,
       });
       if (Platform.OS === 'web') {
         alertCompat(
@@ -1137,6 +1244,9 @@ function HallTicketModal({
       setDownloading(false);
     }
   };
+  const selectedModel =
+    HALL_TICKET_MODELS.find((model) => model.count === ticketsPerPage) ||
+    HALL_TICKET_MODELS[0];
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={() => !downloading && onClose()}>
@@ -1165,11 +1275,48 @@ function HallTicketModal({
             </View>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[styles.fieldLabel, { marginTop: 2 }]}>Hall-ticket model</Text>
+              <View style={styles.hallTicketModelGrid}>
+                {HALL_TICKET_MODELS.map((model) => {
+                  const active = ticketsPerPage === model.count;
+                  return (
+                    <TouchableOpacity
+                      key={model.count}
+                      style={[styles.hallTicketModelCard, active && styles.hallTicketModelCardActive]}
+                      activeOpacity={0.78}
+                      onPress={() => setTicketsPerPage(model.count)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: active }}
+                    >
+                      <View style={[styles.hallTicketModelIcon, active && styles.hallTicketModelIconActive]}>
+                        <Ionicons
+                          name={model.icon}
+                          size={19}
+                          color={active ? '#FFFFFF' : theme.colors.primary}
+                        />
+                      </View>
+                      <View style={styles.flex}>
+                        <View style={styles.hallTicketModelTitleRow}>
+                          <Text style={[styles.hallTicketModelTitle, active && styles.hallTicketModelTitleActive]}>
+                            {model.title}
+                          </Text>
+                          {active && <Ionicons name="checkmark-circle" size={17} color={theme.colors.primary} />}
+                        </View>
+                        <Text style={[styles.hallTicketModelBadge, active && styles.hallTicketModelBadgeActive]}>
+                          {model.badge}
+                        </Text>
+                        <Text style={styles.hallTicketModelDescription}>{model.description}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               <View style={styles.hallTicketInfo}>
-                <Ionicons name="cut-outline" size={17} color={theme.colors.primary} />
+                <Ionicons name={selectedModel.icon} size={17} color={theme.colors.primary} />
                 <Text style={styles.hallTicketInfoText}>
-                  Four compact tearable hall tickets per A4 page, with subjects arranged horizontally
-                  and your school icon in the header and watermark.
+                  {selectedModel.badge}: {selectedModel.description} Every model includes the school
+                  icon, watermark, student details, and signature areas.
                 </Text>
               </View>
 
@@ -1227,7 +1374,9 @@ function HallTicketModal({
               >
                 <Ionicons name="download-outline" size={17} color="#FFFFFF" />
                 <Text style={styles.modalPrimaryBtnText}>
-                  {downloading ? 'Creating PDF…' : 'Download A4 hall tickets'}
+                  {downloading
+                    ? 'Creating PDF…'
+                    : `Download ${ticketsPerPage}-per-page A4 hall tickets`}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -1973,31 +2122,46 @@ function GenerateModal({
   onClose: () => void;
   onSubmit: (params: ExamGenerateParams) => Promise<void>;
 }) {
+  const { width: viewportWidth } = useWindowDimensions();
+  const compactLayout = viewportWidth < 560;
   const [classIds, setClassIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sessions, setSessions] = useState<ExamSession[]>([
-    { start_time: '09:30', end_time: '12:30' },
+    DEFAULT_SESSION_TIMES[0],
   ]);
-  const [includeSaturdays, setIncludeSaturdays] = useState(true);
+  const [allowedWeekdays, setAllowedWeekdays] = useState<ExamWeekday[]>(DEFAULT_EXAM_WEEKDAYS);
   const [excludeHolidays, setExcludeHolidays] = useState(true);
+  const [excludedDates, setExcludedDates] = useState<string[]>([]);
+  const [blackoutDraft, setBlackoutDraft] = useState('');
   const [gapDays, setGapDays] = useState(0);
+  const [maxConsecutiveDays, setMaxConsecutiveDays] = useState(0);
   const [mode, setMode] = useState<ExamScheduleMode>('aligned');
   const [maxMarks, setMaxMarks] = useState('100');
   const [passingMarks, setPassingMarks] = useState('35');
+  const [subjectMarks, setSubjectMarks] = useState<
+    Record<string, { max_marks: string; passing_marks: string }>
+  >({});
   const [busy, setBusy] = useState(false);
   // Subject picker: options come from the selected classes' subject mappings;
   // subjectSel is the ordered selection = the exam order.
   const [subjectOptions, setSubjectOptions] = useState<ClassSubjectOption[]>([]);
   const [subjectSel, setSubjectSel] = useState<string[]>([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [subjectLoadError, setSubjectLoadError] = useState('');
+  const [subjectReloadKey, setSubjectReloadKey] = useState(0);
   const initialSubjectIds = React.useRef<string[] | null>(null);
+  const prevOptionIds = React.useRef<Set<string>>(new Set());
 
   // Pre-fill from the last generation so "regenerate with tweaks" is painless.
   useEffect(() => {
     if (!visible) return;
+    prevOptionIds.current = new Set();
+    setSubjectLoadError('');
+    setBlackoutDraft('');
     if (initialParams) {
-      setClassIds(initialParams.class_ids || []);
+      const availableClassIds = new Set(classes.map((item) => item.id));
+      setClassIds((initialParams.class_ids || []).filter((id) => availableClassIds.has(id)));
       setStartDate(initialParams.start_date || '');
       setEndDate(initialParams.end_date || '');
       const savedSessions = (initialParams.sessions || []).map((s) => ({
@@ -2014,26 +2178,64 @@ function GenerateModal({
               },
             ]
       );
-      setIncludeSaturdays(initialParams.include_saturdays !== false);
+      setAllowedWeekdays(
+        initialParams.allowed_weekdays?.length
+          ? initialParams.allowed_weekdays
+          : initialParams.include_saturdays === false
+            ? DEFAULT_EXAM_WEEKDAYS.slice(0, 5)
+            : DEFAULT_EXAM_WEEKDAYS
+      );
       setExcludeHolidays(initialParams.exclude_holidays !== false);
+      setExcludedDates(initialParams.excluded_dates || []);
       setGapDays(initialParams.gap_days || 0);
+      setMaxConsecutiveDays(initialParams.max_consecutive_days || 0);
       setMode(initialParams.mode === 'per_class' ? 'per_class' : 'aligned');
       setMaxMarks(String(initialParams.max_marks ?? 100));
       setPassingMarks(String(initialParams.passing_marks ?? 35));
-      initialSubjectIds.current = initialParams.subject_ids || null;
+      setSubjectMarks(
+        Object.fromEntries(
+          (initialParams.subject_marks || []).map((entry) => [
+            entry.subject_id,
+            {
+              max_marks: String(entry.max_marks),
+              passing_marks: String(entry.passing_marks),
+            },
+          ])
+        )
+      );
+      initialSubjectIds.current = initialParams.subject_ids?.length
+        ? initialParams.subject_ids
+        : null;
+    } else {
+      setClassIds([]);
+      setStartDate('');
+      setEndDate('');
+      setSessions([DEFAULT_SESSION_TIMES[0]]);
+      setAllowedWeekdays(DEFAULT_EXAM_WEEKDAYS);
+      setExcludeHolidays(true);
+      setExcludedDates([]);
+      setGapDays(0);
+      setMaxConsecutiveDays(0);
+      setMode('aligned');
+      setMaxMarks('100');
+      setPassingMarks('35');
+      setSubjectMarks({});
+      setSubjectOptions([]);
+      setSubjectSel([]);
+      initialSubjectIds.current = null;
     }
-  }, [visible, initialParams]);
+  }, [visible, initialParams, classes]);
 
   // Refresh the subject list whenever the class selection changes.
   // Rules: saved selection order wins on first load; a subject the admin
   // deselected stays deselected; subjects that become newly available (from
   // adding a class) join the selection at the end.
-  const prevOptionIds = React.useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!visible) return;
     if (classIds.length === 0) {
       setSubjectOptions([]);
       setSubjectSel([]);
+      setSubjectLoadError('');
       prevOptionIds.current = new Set();
       return;
     }
@@ -2041,6 +2243,7 @@ function GenerateModal({
     (async () => {
       try {
         setSubjectsLoading(true);
+        setSubjectLoadError('');
         const options = await ExamTimetableService.getClassSubjects(classIds, academicYearId);
         if (cancelled) return;
         setSubjectOptions(options);
@@ -2057,8 +2260,17 @@ function GenerateModal({
           const newOnes = available.filter((id) => !wasKnown.has(id) && !kept.includes(id));
           return [...kept, ...newOnes];
         });
-      } catch {
-        // silent — generation still works server-side with all subjects
+        setSubjectMarks((prev) =>
+          Object.fromEntries(
+            Object.entries(prev).filter(([id]) => availableSet.has(id))
+          )
+        );
+      } catch (err: any) {
+        if (cancelled) return;
+        setSubjectOptions([]);
+        setSubjectSel([]);
+        prevOptionIds.current = new Set();
+        setSubjectLoadError(err?.message || 'Could not load subjects. Check the connection and retry.');
       } finally {
         if (!cancelled) setSubjectsLoading(false);
       }
@@ -2066,14 +2278,22 @@ function GenerateModal({
     return () => {
       cancelled = true;
     };
-  }, [visible, academicYearId, classIds]);
+  }, [visible, academicYearId, classIds, subjectReloadKey]);
 
   const toggleClass = (id: string) => {
     setClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   };
 
   const toggleSubject = (id: string) => {
-    setSubjectSel((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+    setSubjectSel((prev) => {
+      if (!prev.includes(id)) return [...prev, id];
+      setSubjectMarks((marks) => {
+        const next = { ...marks };
+        delete next[id];
+        return next;
+      });
+      return prev.filter((s) => s !== id);
+    });
   };
 
   const moveSubject = (id: string, dir: -1 | 1) => {
@@ -2087,19 +2307,77 @@ function GenerateModal({
     });
   };
 
-  const setSessionCount = (count: number) => {
-    setSessions((prev) => {
-      const next = [...prev];
-      while (next.length < count) {
-        next.push({ start_time: '', end_time: '' });
-      }
-      return next.slice(0, count);
-    });
+  const addSession = () => {
+    setSessions((prev) =>
+      prev.length >= 3 ? prev : [...prev, { ...DEFAULT_SESSION_TIMES[prev.length] }]
+    );
+  };
+
+  const removeSession = (index: number) => {
+    setSessions((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const setSessionTime = (index: number, field: 'start_time' | 'end_time', value: string) => {
     setSessions((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   };
+
+  const toggleWeekday = (weekday: ExamWeekday) => {
+    setAllowedWeekdays((prev) =>
+      prev.includes(weekday) ? prev.filter((day) => day !== weekday) : [...prev, weekday]
+    );
+  };
+
+  const addBlackoutDate = () => {
+    if (
+      !blackoutDraft ||
+      excludedDates.includes(blackoutDraft) ||
+      (startDate && blackoutDraft < startDate) ||
+      (endDate && blackoutDraft > endDate)
+    ) {
+      return;
+    }
+    setExcludedDates((prev) => [...prev, blackoutDraft].sort());
+    setBlackoutDraft('');
+  };
+
+  const addSubjectMarks = (subjectId: string) => {
+    setSubjectMarks((prev) => ({
+      ...prev,
+      [subjectId]: { max_marks: maxMarks, passing_marks: passingMarks },
+    }));
+  };
+
+  const removeSubjectMarks = (subjectId: string) => {
+    setSubjectMarks((prev) => {
+      const next = { ...prev };
+      delete next[subjectId];
+      return next;
+    });
+  };
+
+  const usableDateCount = useMemo(
+    () =>
+      localExamDateCount({
+        startDate,
+        endDate,
+        allowedWeekdays,
+        excludedDates,
+        gapDays,
+        maxConsecutiveDays,
+      }),
+    [startDate, endDate, allowedWeekdays, excludedDates, gapDays, maxConsecutiveDays]
+  );
+  const requiredDateCount = Math.ceil(subjectSel.length / Math.max(1, sessions.length));
+  const plannedPaperCount = subjectSel.reduce(
+    (count, id) => count + (subjectOptions.find((option) => option.id === id)?.class_count || 0),
+    0
+  );
+  const dateCapacityShort =
+    mode === 'aligned' &&
+    !!startDate &&
+    !!endDate &&
+    subjectSel.length > 0 &&
+    requiredDateCount > usableDateCount;
 
   const submit = async () => {
     if (classIds.length === 0) {
@@ -2108,6 +2386,22 @@ function GenerateModal({
     }
     if (!startDate || !endDate) {
       alertCompat('Select dates', 'Choose the exam window start and end dates.');
+      return;
+    }
+    if (endDate < startDate) {
+      alertCompat('Invalid exam window', 'The end date must be on or after the start date.');
+      return;
+    }
+    if (allowedWeekdays.length === 0) {
+      alertCompat('Select exam days', 'Keep at least one weekday available for exams.');
+      return;
+    }
+    if (subjectsLoading) {
+      alertCompat('Subjects still loading', 'Wait for the selected classes to finish loading.');
+      return;
+    }
+    if (subjectLoadError) {
+      alertCompat('Subjects unavailable', 'Retry loading subjects before generating the timetable.');
       return;
     }
     if (subjectSel.length === 0) {
@@ -2130,6 +2424,48 @@ function GenerateModal({
         return;
       }
     }
+    const parsedMaxMarks = Number(maxMarks);
+    const parsedPassingMarks = Number(passingMarks);
+    if (
+      !Number.isFinite(parsedMaxMarks) ||
+      parsedMaxMarks <= 0 ||
+      !Number.isFinite(parsedPassingMarks) ||
+      parsedPassingMarks < 0 ||
+      parsedPassingMarks > parsedMaxMarks
+    ) {
+      alertCompat('Invalid marks', 'Passing marks must be between 0 and maximum marks.');
+      return;
+    }
+    const parsedSubjectMarks = Object.entries(subjectMarks)
+      .filter(([subjectId]) => subjectSel.includes(subjectId))
+      .map(([subjectId, marks]) => ({
+        subject_id: subjectId,
+        max_marks: Number(marks.max_marks),
+        passing_marks: Number(marks.passing_marks),
+      }));
+    const invalidSubjectMarks = parsedSubjectMarks.find(
+      (marks) =>
+        !Number.isFinite(marks.max_marks) ||
+        marks.max_marks <= 0 ||
+        !Number.isFinite(marks.passing_marks) ||
+        marks.passing_marks < 0 ||
+        marks.passing_marks > marks.max_marks
+    );
+    if (invalidSubjectMarks) {
+      const subject = subjectOptions.find((option) => option.id === invalidSubjectMarks.subject_id);
+      alertCompat(
+        'Invalid subject marks',
+        `Check the maximum and passing marks for ${subject?.name || 'the subject exception'}.`
+      );
+      return;
+    }
+    if (dateCapacityShort) {
+      alertCompat(
+        'Not enough exam dates',
+        `This setup needs at least ${requiredDateCount} date(s), but only ${usableDateCount} fit. Extend the window, add weekdays, reduce rest days, or add a session.`
+      );
+      return;
+    }
     const params: ExamGenerateParams = {
       class_ids: classIds,
       start_date: startDate,
@@ -2139,11 +2475,15 @@ function GenerateModal({
         end_time: s.end_time || null,
       })),
       subject_ids: subjectSel,
-      include_saturdays: includeSaturdays,
+      allowed_weekdays: allowedWeekdays,
+      include_saturdays: allowedWeekdays.includes('saturday'),
       exclude_holidays: excludeHolidays,
+      excluded_dates: excludedDates,
       gap_days: gapDays,
-      max_marks: Number(maxMarks) || 100,
-      passing_marks: Number(passingMarks) || 35,
+      max_consecutive_days: maxConsecutiveDays,
+      max_marks: parsedMaxMarks,
+      passing_marks: parsedPassingMarks,
+      subject_marks: parsedSubjectMarks,
       mode,
     };
     const run = async () => {
@@ -2175,6 +2515,16 @@ function GenerateModal({
     accentColor: theme.colors.primary,
     iconColor: theme.colors.textSecondary,
   };
+  const allClassesSelected =
+    classes.length > 0 && classes.every((item) => classIds.includes(item.id));
+  const generateDisabled =
+    busy ||
+    subjectsLoading ||
+    !!subjectLoadError ||
+    classIds.length === 0 ||
+    subjectSel.length === 0 ||
+    allowedWeekdays.length === 0 ||
+    dateCapacityShort;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2184,7 +2534,12 @@ function GenerateModal({
       >
         <View style={[styles.modalCard, styles.modalCardTall]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Timetable parameters</Text>
+            <View style={styles.flex}>
+              <Text style={styles.modalTitle}>Build exam timetable</Text>
+              <Text style={styles.modalSubtitle}>
+                Choose what can run, when it can run, and the rules the scheduler must follow.
+              </Text>
+            </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
             </TouchableOpacity>
@@ -2194,14 +2549,14 @@ function GenerateModal({
             <Text style={styles.fieldLabel}>Classes</Text>
             <View style={styles.chipWrap}>
               <TouchableOpacity
-                style={[styles.chip, classIds.length === classes.length && styles.chipActive]}
+                style={[styles.chip, allClassesSelected && styles.chipActive]}
                 onPress={() =>
-                  setClassIds(classIds.length === classes.length ? [] : classes.map((c) => c.id))
+                  setClassIds(allClassesSelected ? [] : classes.map((c) => c.id))
                 }
                 activeOpacity={0.7}
               >
                 <Text
-                  style={[styles.chipText, classIds.length === classes.length && styles.chipTextActive]}
+                  style={[styles.chipText, allClassesSelected && styles.chipTextActive]}
                 >
                   All
                 </Text>
@@ -2225,13 +2580,46 @@ function GenerateModal({
               <Text style={[styles.fieldLabel, { marginTop: 0, marginBottom: 0 }]}>
                 Subjects & order ({subjectSel.length}/{subjectOptions.length})
               </Text>
-              {subjectsLoading && <Text style={styles.helperInline}>loading…</Text>}
+              {subjectOptions.length > 0 && !subjectsLoading && (
+                <View style={styles.inlineActions}>
+                  <TouchableOpacity onPress={() => setSubjectSel(subjectOptions.map((option) => option.id))}>
+                    <Text style={styles.inlineActionText}>Select all</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSubjectSel([]);
+                      setSubjectMarks({});
+                    }}
+                  >
+                    <Text style={styles.inlineActionText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
             {classIds.length === 0 ? (
               <Text style={styles.helperText}>Select classes to load their subjects.</Text>
+            ) : subjectsLoading ? (
+              <View style={styles.inlineStatusCard}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={styles.inlineStatusText}>Loading timetable and academic subjects…</Text>
+              </View>
+            ) : subjectLoadError ? (
+              <View style={[styles.inlineStatusCard, styles.inlineErrorCard]}>
+                <Ionicons name="cloud-offline-outline" size={18} color={theme.colors.danger} />
+                <View style={styles.flex}>
+                  <Text style={styles.inlineErrorTitle}>Subjects could not be loaded</Text>
+                  <Text style={styles.inlineStatusText}>{subjectLoadError}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => setSubjectReloadKey((key) => key + 1)}
+                >
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
             ) : subjectOptions.length === 0 && !subjectsLoading ? (
               <Text style={styles.helperText}>
-                No subjects mapped to the selected classes yet — assign them in Academics.
+                No subjects exist in Academics or the timetable for these classes and academic year.
               </Text>
             ) : (
               <View style={styles.subjectList}>
@@ -2294,54 +2682,164 @@ function GenerateModal({
               </View>
             )}
 
-            <Text style={styles.fieldLabel}>Exam window</Text>
-            <View style={styles.rowTwo}>
-              <View style={styles.flex}>
-                <AppDatePicker value={startDate} onChange={setStartDate} placeholder="Start date" {...pickerColors} />
+            <Text style={styles.fieldLabel}>Dates and allowed days</Text>
+            <View style={styles.parameterPanel}>
+              <View style={[styles.rowTwo, compactLayout && styles.columnStack]}>
+                <View style={styles.flex}>
+                  <Text style={styles.inputSubLabel}>Window starts</Text>
+                  <AppDatePicker
+                    value={startDate}
+                    onChange={(value) => {
+                      setStartDate(value);
+                      setExcludedDates((dates) => dates.filter((date) => date >= value));
+                    }}
+                    placeholder="Start date"
+                    {...pickerColors}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={styles.inputSubLabel}>Window ends</Text>
+                  <AppDatePicker
+                    value={endDate}
+                    onChange={(value) => {
+                      setEndDate(value);
+                      setExcludedDates((dates) => dates.filter((date) => date <= value));
+                    }}
+                    placeholder="End date"
+                    minimumDate={startDate || undefined}
+                    {...pickerColors}
+                  />
+                </View>
               </View>
-              <View style={styles.flex}>
-                <AppDatePicker value={endDate} onChange={setEndDate} placeholder="End date" minimumDate={startDate || undefined} {...pickerColors} />
+
+              <Text style={styles.parameterLabel}>Exam weekdays</Text>
+              <View style={styles.weekdayRow}>
+                {EXAM_WEEKDAYS.map((day) => {
+                  const active = allowedWeekdays.includes(day.id);
+                  return (
+                    <TouchableOpacity
+                      key={day.id}
+                      accessibilityLabel={day.label}
+                      style={[styles.weekdayChip, active && styles.weekdayChipActive]}
+                      onPress={() => toggleWeekday(day.id)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.weekdayText, active && styles.weekdayTextActive]}>
+                        {day.short}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+              {allowedWeekdays.length === 0 && (
+                <Text style={styles.fieldError}>Select at least one exam weekday.</Text>
+              )}
+
+              <View style={styles.switchRowCompact}>
+                <View style={styles.flex}>
+                  <Text style={styles.switchLabel}>Skip school holidays</Text>
+                  <Text style={styles.parameterHint}>Uses holiday dates already saved in Events.</Text>
+                </View>
+                <Switch
+                  value={excludeHolidays}
+                  onValueChange={setExcludeHolidays}
+                  trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              <View style={styles.parameterDivider} />
+              <View style={styles.parameterTitleRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.parameterLabel}>Blackout dates</Text>
+                  <Text style={styles.parameterHint}>Add local closures or dates that exams cannot use.</Text>
+                </View>
+                <Text style={styles.parameterCount}>{excludedDates.length}/31</Text>
+              </View>
+              <View style={styles.addParameterRow}>
+                <View style={styles.flex}>
+                  <AppDatePicker
+                    value={blackoutDraft}
+                    onChange={setBlackoutDraft}
+                    placeholder="Choose a date"
+                    minimumDate={startDate || undefined}
+                    maximumDate={endDate || undefined}
+                    variant="compact"
+                    {...pickerColors}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.addParameterBtn,
+                    (!blackoutDraft || excludedDates.includes(blackoutDraft)) && styles.disabledBtn,
+                  ]}
+                  disabled={!blackoutDraft || excludedDates.includes(blackoutDraft)}
+                  onPress={addBlackoutDate}
+                >
+                  <Ionicons name="add" size={16} color="#FFFFFF" />
+                  <Text style={styles.addParameterBtnText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+              {excludedDates.length > 0 && (
+                <View style={styles.removableChipWrap}>
+                  {excludedDates.map((date) => (
+                    <View key={date} style={styles.removableChip}>
+                      <Text style={styles.removableChipText}>{fmtDate(date)}</Text>
+                      <TouchableOpacity
+                        onPress={() => setExcludedDates((dates) => dates.filter((item) => item !== date))}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Ionicons name="close-circle" size={16} color={theme.colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
 
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Sessions per day</Text>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => setSessionCount(Math.max(1, sessions.length - 1))}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="remove" size={16} color={theme.colors.textStrong} />
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{sessions.length}</Text>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => setSessionCount(Math.min(3, sessions.length + 1))}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add" size={16} color={theme.colors.textStrong} />
-                </TouchableOpacity>
-              </View>
+            <View style={styles.parameterTitleRow}>
+              <Text style={styles.fieldLabel}>Sessions ({sessions.length}/3)</Text>
+              <TouchableOpacity
+                style={[styles.secondaryAddBtn, sessions.length >= 3 && styles.disabledBtn]}
+                disabled={sessions.length >= 3}
+                onPress={addSession}
+              >
+                <Ionicons name="add" size={15} color={theme.colors.primary} />
+                <Text style={styles.secondaryAddBtnText}>Add session</Text>
+              </TouchableOpacity>
             </View>
             {sessions.map((session, i) => (
-              <View key={i} style={styles.sessionRow}>
-                <Text style={styles.sessionLabel}>
-                  {sessions.length > 1 ? `Session ${i + 1}` : 'Timing (24h)'}
-                </Text>
-                <View style={[styles.rowTwo, styles.flex]}>
+              <View key={i} style={styles.sessionCard}>
+                <View style={styles.sessionCardHeader}>
+                  <View style={styles.sessionNumber}>
+                    <Text style={styles.sessionNumberText}>{i + 1}</Text>
+                  </View>
+                  <Text style={styles.sessionCardTitle}>Session {i + 1}</Text>
+                  {sessions.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.iconRemoveBtn}
+                      onPress={() => removeSession(i)}
+                      accessibilityLabel={`Remove session ${i + 1}`}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={theme.colors.danger} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.rowTwo}>
                   <View style={styles.flex}>
+                    <Text style={styles.inputSubLabel}>Starts</Text>
                     <AppTextInput
                       value={session.start_time || ''}
-                      onChangeText={(v: string) => setSessionTime(i, 'start_time', v)}
+                      onChangeText={(value: string) => setSessionTime(i, 'start_time', value)}
                       placeholder="09:30"
                       style={styles.input}
                     />
                   </View>
                   <View style={styles.flex}>
+                    <Text style={styles.inputSubLabel}>Ends</Text>
                     <AppTextInput
                       value={session.end_time || ''}
-                      onChangeText={(v: string) => setSessionTime(i, 'end_time', v)}
+                      onChangeText={(value: string) => setSessionTime(i, 'end_time', value)}
                       placeholder="12:30"
                       style={styles.input}
                     />
@@ -2349,59 +2847,13 @@ function GenerateModal({
                 </View>
               </View>
             ))}
-            {sessions.length > 1 && (
-              <Text style={styles.helperText}>
-                {sessions.length} papers are scheduled per day — subjects fill Session 1, then
-                Session 2{sessions.length > 2 ? ', then Session 3' : ''}.
-              </Text>
-            )}
 
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Include Saturdays</Text>
-              <Switch
-                value={includeSaturdays}
-                onValueChange={setIncludeSaturdays}
-                trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Skip holidays from Events</Text>
-              <Switch
-                value={excludeHolidays}
-                onValueChange={setExcludeHolidays}
-                trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Rest days between papers</Text>
-              <View style={styles.stepper}>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => setGapDays((g) => Math.max(0, g - 1))}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="remove" size={16} color={theme.colors.textStrong} />
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{gapDays}</Text>
-                <TouchableOpacity
-                  style={styles.stepperBtn}
-                  onPress={() => setGapDays((g) => Math.min(3, g + 1))}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add" size={16} color={theme.colors.textStrong} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <Text style={styles.fieldLabel}>Scheduling style</Text>
+            <Text style={styles.fieldLabel}>Scheduling rules</Text>
             <View style={styles.segment}>
               {(
                 [
-                  ['aligned', 'Aligned', 'Same subject on the same day for every class'],
-                  ['per_class', 'Per class', 'Each class fills its own consecutive days'],
+                  ['aligned', 'Aligned', 'Shared subjects run together across classes'],
+                  ['per_class', 'Per class', 'Each class gets its own compact sequence'],
                 ] as const
               ).map(([value, label, hint]) => {
                 const active = mode === value;
@@ -2413,50 +2865,196 @@ function GenerateModal({
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{label}</Text>
-                    <Text style={[styles.segmentHint, active && styles.segmentHintActive]} numberOfLines={2}>
-                      {hint}
-                    </Text>
+                    <Text style={[styles.segmentHint, active && styles.segmentHintActive]}>{hint}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
-
-            <Text style={styles.fieldLabel}>Marks per paper</Text>
-            <View style={styles.rowTwo}>
-              <View style={styles.flex}>
-                <Text style={styles.inputSubLabel}>Maximum marks</Text>
-                <AppTextInput
-                  value={maxMarks}
-                  onChangeText={setMaxMarks}
-                  placeholder="e.g. 100"
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
+            <View style={[styles.ruleGrid, compactLayout && styles.columnStack]}>
+              <View style={[styles.ruleCard, compactLayout && styles.ruleCardCompact]}>
+                <Text style={styles.ruleTitle}>Rest days after every exam date</Text>
+                <Text style={styles.ruleHint}>Fixed spacing between scheduled dates.</Text>
+                <View style={styles.stepper}>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => setGapDays((value) => Math.max(0, value - 1))}
+                  >
+                    <Ionicons name="remove" size={16} color={theme.colors.textStrong} />
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{gapDays}</Text>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => setGapDays((value) => Math.min(6, value + 1))}
+                  >
+                    <Ionicons name="add" size={16} color={theme.colors.textStrong} />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.flex}>
-                <Text style={styles.inputSubLabel}>Passing marks</Text>
-                <AppTextInput
-                  value={passingMarks}
-                  onChangeText={setPassingMarks}
-                  placeholder="e.g. 35"
-                  keyboardType="numeric"
-                  style={styles.input}
-                />
+              <View style={[styles.ruleCard, compactLayout && styles.ruleCardCompact]}>
+                <Text style={styles.ruleTitle}>Maximum consecutive exam days</Text>
+                <Text style={styles.ruleHint}>Zero means no streak limit.</Text>
+                <View style={styles.stepper}>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => setMaxConsecutiveDays((value) => Math.max(0, value - 1))}
+                  >
+                    <Ionicons name="remove" size={16} color={theme.colors.textStrong} />
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>
+                    {maxConsecutiveDays === 0 ? 'Off' : maxConsecutiveDays}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => setMaxConsecutiveDays((value) => Math.min(6, value + 1))}
+                  >
+                    <Ionicons name="add" size={16} color={theme.colors.textStrong} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-            <Text style={styles.helperText}>
-              Sundays are always skipped. Subjects come from each class subject mapping in Academics.
-            </Text>
+
+            <Text style={styles.fieldLabel}>Marks</Text>
+            <View style={styles.parameterPanel}>
+              <Text style={styles.parameterLabel}>Default for every paper</Text>
+              <View style={styles.rowTwo}>
+                <View style={styles.flex}>
+                  <Text style={styles.inputSubLabel}>Maximum marks</Text>
+                  <AppTextInput
+                    value={maxMarks}
+                    onChangeText={setMaxMarks}
+                    placeholder="100"
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={styles.inputSubLabel}>Passing marks</Text>
+                  <AppTextInput
+                    value={passingMarks}
+                    onChangeText={setPassingMarks}
+                    placeholder="35"
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </View>
+              </View>
+
+              {subjectSel.some((id) => !subjectMarks[id]) && (
+                <>
+                  <Text style={styles.parameterLabel}>Add a subject exception</Text>
+                  <View style={styles.chipWrap}>
+                    {subjectSel
+                      .filter((id) => !subjectMarks[id])
+                      .map((id) => {
+                        const subject = subjectOptions.find((option) => option.id === id);
+                        if (!subject) return null;
+                        return (
+                          <TouchableOpacity
+                            key={id}
+                            style={styles.exceptionChip}
+                            onPress={() => addSubjectMarks(id)}
+                          >
+                            <Ionicons name="add-circle-outline" size={15} color={theme.colors.primary} />
+                            <Text style={styles.exceptionChipText}>
+                              {t_field(subject.name, subject.name_te)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </View>
+                </>
+              )}
+
+              {Object.entries(subjectMarks)
+                .filter(([id]) => subjectSel.includes(id))
+                .map(([id, marks]) => {
+                  const subject = subjectOptions.find((option) => option.id === id);
+                  return (
+                    <View key={id} style={styles.marksExceptionRow}>
+                      <View style={styles.exceptionHeader}>
+                        <Text style={styles.exceptionTitle} numberOfLines={1}>
+                          {subject ? t_field(subject.name, subject.name_te) : 'Subject'}
+                        </Text>
+                        <TouchableOpacity onPress={() => removeSubjectMarks(id)}>
+                          <Ionicons name="close-circle" size={19} color={theme.colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.rowTwo}>
+                        <View style={styles.flex}>
+                          <Text style={styles.inputSubLabel}>Maximum</Text>
+                          <AppTextInput
+                            value={marks.max_marks}
+                            onChangeText={(value: string) =>
+                              setSubjectMarks((prev) => ({
+                                ...prev,
+                                [id]: { ...prev[id], max_marks: value },
+                              }))
+                            }
+                            keyboardType="numeric"
+                            style={styles.input}
+                          />
+                        </View>
+                        <View style={styles.flex}>
+                          <Text style={styles.inputSubLabel}>Passing</Text>
+                          <AppTextInput
+                            value={marks.passing_marks}
+                            onChangeText={(value: string) =>
+                              setSubjectMarks((prev) => ({
+                                ...prev,
+                                [id]: { ...prev[id], passing_marks: value },
+                              }))
+                            }
+                            keyboardType="numeric"
+                            style={styles.input}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+            </View>
+
+            <View style={[styles.schedulePreview, dateCapacityShort && styles.schedulePreviewError]}>
+              <View style={styles.previewIcon}>
+                <Ionicons
+                  name={dateCapacityShort ? 'warning-outline' : 'calendar-outline'}
+                  size={20}
+                  color={dateCapacityShort ? theme.colors.danger : theme.colors.primary}
+                />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.previewTitle}>
+                  {dateCapacityShort ? 'The selected window is too short' : 'Schedule capacity looks good'}
+                </Text>
+                <Text style={styles.previewText}>
+                  {plannedPaperCount} paper(s) across {subjectSel.length} subject(s) ·{' '}
+                  {requiredDateCount} date(s) needed · {usableDateCount} usable before Event holidays
+                </Text>
+                {mode === 'per_class' && (
+                  <Text style={styles.previewHint}>
+                    Per-class mode may use fewer dates when classes teach different subjects.
+                  </Text>
+                )}
+              </View>
+            </View>
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.modalPrimaryBtn, busy && styles.disabledBtn]}
+            style={[styles.modalPrimaryBtn, generateDisabled && styles.disabledBtn]}
             onPress={submit}
-            disabled={busy}
+            disabled={generateDisabled}
             activeOpacity={0.85}
           >
             <Ionicons name="sparkles-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.modalPrimaryBtnText}>{busy ? 'Generating…' : 'Generate timetable'}</Text>
+            <Text style={styles.modalPrimaryBtnText}>
+              {busy
+                ? 'Generating…'
+                : dateCapacityShort
+                  ? 'Adjust dates to continue'
+                  : plannedPaperCount > 0
+                    ? `Generate ${plannedPaperCount} paper${plannedPaperCount === 1 ? '' : 's'}`
+                    : 'Generate timetable'}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -4072,6 +4670,13 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       gap: 12,
     },
     modalTitle: { fontSize: 17, fontWeight: '700', color: theme.colors.textStrong },
+    modalSubtitle: {
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: theme.colors.textTertiary,
+      marginTop: 2,
+      maxWidth: 430,
+    },
     hallTicketModalExam: {
       marginTop: 3,
       fontSize: 12.5,
@@ -4163,6 +4768,68 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       fontSize: 12.5,
       fontWeight: '700',
     },
+    hallTicketModelGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 10,
+    },
+    hallTicketModelCard: {
+      flexGrow: 1,
+      flexBasis: 150,
+      minWidth: 140,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 9,
+      padding: 10,
+      borderRadius: 13,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+    },
+    hallTicketModelCardActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: `${theme.colors.primary}0D`,
+    },
+    hallTicketModelIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${theme.colors.primary}12`,
+    },
+    hallTicketModelIconActive: { backgroundColor: theme.colors.primary },
+    hallTicketModelTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 6,
+    },
+    hallTicketModelTitle: { fontSize: 12.5, fontWeight: '800', color: theme.colors.textStrong },
+    hallTicketModelTitleActive: { color: theme.colors.primary },
+    hallTicketModelBadge: {
+      alignSelf: 'flex-start',
+      marginTop: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      overflow: 'hidden',
+      fontSize: 9.5,
+      fontWeight: '800',
+      color: theme.colors.textSecondary,
+      backgroundColor: theme.colors.card,
+    },
+    hallTicketModelBadgeActive: {
+      color: theme.colors.primary,
+      backgroundColor: `${theme.colors.primary}14`,
+    },
+    hallTicketModelDescription: {
+      marginTop: 4,
+      fontSize: 10.5,
+      lineHeight: 14,
+      color: theme.colors.textTertiary,
+    },
     hallTicketInfo: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -4212,6 +4879,7 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     chipTextActive: { color: theme.colors.primary, fontWeight: '700' },
     input: { marginBottom: 0 },
     rowTwo: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    columnStack: { flexDirection: 'column', alignItems: 'stretch' },
     helperText: { fontSize: 12, color: theme.colors.textTertiary, marginTop: 10, lineHeight: 17 },
     subjectHeaderRow: {
       flexDirection: 'row',
@@ -4221,6 +4889,33 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       marginBottom: 8,
     },
     helperInline: { fontSize: 11, color: theme.colors.textTertiary },
+    inlineActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    inlineActionText: { fontSize: 11.5, fontWeight: '700', color: theme.colors.primary },
+    inlineStatusCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      minHeight: 54,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
+      backgroundColor: theme.colors.background,
+    },
+    inlineErrorCard: {
+      borderColor: `${theme.colors.danger}44`,
+      backgroundColor: `${theme.colors.danger}08`,
+    },
+    inlineStatusText: { fontSize: 11.5, lineHeight: 16, color: theme.colors.textSecondary },
+    inlineErrorTitle: { fontSize: 12.5, fontWeight: '700', color: theme.colors.danger, marginBottom: 2 },
+    retryBtn: {
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 9,
+      backgroundColor: `${theme.colors.primary}16`,
+    },
+    retryBtnText: { fontSize: 11.5, fontWeight: '800', color: theme.colors.primary },
     subjectList: {
       borderWidth: 1,
       borderColor: theme.colors.border,
@@ -4261,6 +4956,120 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       justifyContent: 'center',
       backgroundColor: theme.colors.background,
     },
+    parameterPanel: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 14,
+      padding: 12,
+      gap: 10,
+      backgroundColor: isDark ? `${theme.colors.background}88` : theme.colors.background,
+    },
+    parameterLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    parameterHint: { fontSize: 11, lineHeight: 15, color: theme.colors.textTertiary, marginTop: 2 },
+    parameterDivider: { height: 1, backgroundColor: theme.colors.borderLight, marginVertical: 2 },
+    parameterTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    parameterCount: { fontSize: 11, fontWeight: '700', color: theme.colors.textTertiary },
+    weekdayRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+    weekdayChip: {
+      minWidth: 44,
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.card,
+    },
+    weekdayChipActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: `${theme.colors.primary}16`,
+    },
+    weekdayText: { fontSize: 12, fontWeight: '600', color: theme.colors.textTertiary },
+    weekdayTextActive: { color: theme.colors.primary, fontWeight: '800' },
+    fieldError: { fontSize: 11.5, fontWeight: '600', color: theme.colors.danger },
+    switchRowCompact: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      minHeight: 42,
+      gap: 12,
+    },
+    addParameterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    addParameterBtn: {
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingHorizontal: 13,
+      borderRadius: 10,
+      backgroundColor: theme.colors.primary,
+    },
+    addParameterBtnText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF' },
+    removableChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+    removableChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingLeft: 9,
+      paddingRight: 5,
+      paddingVertical: 6,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.card,
+    },
+    removableChipText: { fontSize: 11.5, fontWeight: '600', color: theme.colors.textSecondary },
+    secondaryAddBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}44`,
+      backgroundColor: `${theme.colors.primary}0D`,
+    },
+    secondaryAddBtnText: { fontSize: 11.5, fontWeight: '800', color: theme.colors.primary },
+    sessionCard: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 13,
+      padding: 11,
+      gap: 9,
+      marginBottom: 8,
+      backgroundColor: theme.colors.background,
+    },
+    sessionCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    sessionNumber: {
+      width: 24,
+      height: 24,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${theme.colors.primary}18`,
+    },
+    sessionNumberText: { fontSize: 11.5, fontWeight: '800', color: theme.colors.primary },
+    sessionCardTitle: { flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.colors.textStrong },
+    iconRemoveBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${theme.colors.danger}0D`,
+    },
     sessionRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -4293,6 +5102,33 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       backgroundColor: theme.colors.background,
     },
     stepperValue: { fontSize: 15, fontWeight: '700', color: theme.colors.textStrong, minWidth: 18, textAlign: 'center' },
+    ruleGrid: { flexDirection: 'row', gap: 8, marginTop: 9 },
+    ruleCard: {
+      flex: 1,
+      minHeight: 122,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 7,
+      padding: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.background,
+    },
+    ruleCardCompact: { flex: undefined, width: '100%' },
+    ruleTitle: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      lineHeight: 15,
+      textAlign: 'center',
+      color: theme.colors.textStrong,
+    },
+    ruleHint: {
+      fontSize: 10.5,
+      lineHeight: 14,
+      textAlign: 'center',
+      color: theme.colors.textTertiary,
+    },
     segment: { flexDirection: 'row', gap: 8 },
     segmentItem: {
       flex: 1,
@@ -4311,6 +5147,52 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     segmentLabelActive: { color: theme.colors.primary },
     segmentHint: { fontSize: 11, color: theme.colors.textTertiary, lineHeight: 15 },
     segmentHintActive: { color: theme.colors.textSecondary },
+    exceptionChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}33`,
+      backgroundColor: theme.colors.card,
+    },
+    exceptionChipText: { fontSize: 11.5, fontWeight: '700', color: theme.colors.primary },
+    marksExceptionRow: {
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.borderLight,
+      paddingTop: 10,
+      gap: 8,
+    },
+    exceptionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    exceptionTitle: { flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.colors.textStrong },
+    schedulePreview: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginTop: 14,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}33`,
+      backgroundColor: `${theme.colors.primary}0B`,
+    },
+    schedulePreviewError: {
+      borderColor: `${theme.colors.danger}44`,
+      backgroundColor: `${theme.colors.danger}09`,
+    },
+    previewIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.card,
+    },
+    previewTitle: { fontSize: 12.5, fontWeight: '800', color: theme.colors.textStrong },
+    previewText: { fontSize: 11.5, lineHeight: 16, color: theme.colors.textSecondary, marginTop: 2 },
+    previewHint: { fontSize: 10.5, lineHeight: 14, color: theme.colors.textTertiary, marginTop: 3 },
     modalPrimaryBtn: {
       flexDirection: 'row',
       alignItems: 'center',

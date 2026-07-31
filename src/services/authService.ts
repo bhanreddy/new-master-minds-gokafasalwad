@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { AuthSession, ValidatedUser } from '../types/auth';
-import { api, APIError } from './apiClient';
+import { api, APIError, registerSessionRecoveryCallback } from './apiClient';
 import { SCHOOL_NAME, SCHOOL_ID } from '../constants/school';
 import { normalizeLoginEmail } from '../utils/roleHelpers';
 import * as accountVault from './accountVault';
@@ -100,6 +100,64 @@ async function persistSessionFromRefresh(
     // Vault sync is best-effort — never block session persistence.
   }
   return authSession;
+}
+
+/**
+ * Last-resort native recovery. Refresh tokens remain the primary mechanism;
+ * the stored password is touched only after Supabase has explicitly rejected
+ * the refresh token. accountVault refuses to persist credentials on web.
+ */
+async function recoverSessionWithSavedLogin(
+  prior: AuthSession
+): Promise<Session | null> {
+  const credential = await accountVault.getLoginRecoveryCredential(
+    prior.validatedUser.userId
+  );
+  if (!credential) return null;
+
+  beginInternalSwap();
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: credential.email,
+      password: credential.password,
+    });
+    if (
+      error ||
+      !data.session ||
+      data.session.user.id !== prior.validatedUser.userId
+    ) {
+      return null;
+    }
+    return data.session;
+  } finally {
+    endInternalSwap();
+  }
+}
+
+async function saveRecoveryCredentialReliably(
+  userId: string,
+  email: string,
+  password: string
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await accountVault.saveLoginRecoveryCredential(
+        userId,
+        email,
+        password
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 50 * Math.pow(2, attempt))
+        );
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function syncVaultFromAuthSession(authSession: AuthSession): Promise<void> {
@@ -242,6 +300,17 @@ async function removeSecureItem(key: string) {
   await SecureTokenStore.removeItem(key);
 }
 
+async function readPersistedAuthSession(): Promise<AuthSession | null> {
+  const raw = await getSecureItem(STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as AuthSession;
+    return parsed?.validatedUser && parsed?.supabaseSession ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export const clearAuthState = async (): Promise<void> => {
   await removeSecureItem(STORAGE_KEY);
 };
@@ -371,6 +440,11 @@ export const AuthService = {
 
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
+      await saveRecoveryCredentialReliably(
+        userId,
+        email,
+        newPassword
+      );
     } finally {
       endInternalSwap();
     }
@@ -499,6 +573,11 @@ export const AuthService = {
       try {
         await accountVault.addAccount(accountVault.buildVaultAccount(authSession));
         await accountVault.setActiveAccountId(authSession.validatedUser.userId);
+        await saveRecoveryCredentialReliably(
+          authSession.validatedUser.userId,
+          canonicalEmail,
+          password
+        );
       } catch (vaultErr) {
         if (__DEV__) console.warn('[AuthService] vault register (signIn) failed:', vaultErr);
       }
@@ -613,6 +692,11 @@ export const AuthService = {
 
           // Persist the new account into the vault (does not change active yet).
           await accountVault.addAccount(accountVault.buildVaultAccount(authSession));
+          await saveRecoveryCredentialReliably(
+            authSession.validatedUser.userId,
+            canonicalEmail,
+            password
+          );
 
           const newUserId = validatedUser.userId;
           if (previousActiveUserId && previousActiveUserId !== newUserId) {
@@ -668,22 +752,38 @@ export const AuthService = {
   },
 
   getSession: async (): Promise<AuthSession | null> => {
-    // Read from SecureStore
-    const sessionStr = await getSecureItem(STORAGE_KEY);
-    if (!sessionStr) return null;
+    const session = await readPersistedAuthSession();
+    if (!session) return null;
+    // Restore the locally validated app identity immediately, even when its
+    // short-lived access token is stale. API requests still require a fresh
+    // server-accepted token; refresh runs in the background and cannot turn
+    // a slow/offline cold start into a surprise login screen.
+    if (Date.now() >= session.tokenExpiresAt - TOKEN_SKEW_SECONDS * 1000) {
+      void AuthService.refreshSession();
+    }
+    return session;
+  },
 
-    try {
-      const session = JSON.parse(sessionStr) as AuthSession;
-      // An expired access token is never treated as current authority. Attempt
-      // refresh for every role; transient failures are handled by useAuth
-      // without converting an expired cached token into a valid session.
-      if (Date.now() >= session.tokenExpiresAt) {
-        return await AuthService.refreshSession();
-      }
-      return session;
-    } catch {
+  /** Local-only read used while handling Supabase auth events. */
+  getStoredSession: async (): Promise<AuthSession | null> => {
+    return readPersistedAuthSession();
+  },
+
+  /**
+   * Persist the session Supabase already rotated. Calling refreshSession()
+   * from TOKEN_REFRESHED would rotate twice and can race the SDK storage write.
+   */
+  adoptRefreshedSession: async (
+    refreshed: Session
+  ): Promise<AuthSession | null> => {
+    const prior = await readPersistedAuthSession();
+    if (
+      !prior?.validatedUser ||
+      refreshed.user.id !== prior.validatedUser.userId
+    ) {
       return null;
     }
+    return persistSessionFromRefresh(refreshed, prior.validatedUser);
   },
 
   refreshSession: async (): Promise<AuthSession | null> => {
@@ -692,24 +792,33 @@ export const AuthService = {
     }
 
     refreshSessionInFlight = (async (): Promise<AuthSession | null> => {
-      const priorStr = await getSecureItem(STORAGE_KEY);
-      let prior: AuthSession | null = null;
-      if (priorStr) {
-        try {
-          prior = JSON.parse(priorStr) as AuthSession;
-        } catch {
-          prior = null;
-        }
-      }
+      const prior = await readPersistedAuthSession();
 
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      let { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
 
       if (refreshError || !refreshData.session) {
         if (isConfirmedRefreshRejection(refreshError)) {
-          console.log('[AUTH_OUT]', 'refresh_token_rejected', new Date().toISOString());
-          await AuthService.signOut();
-          return null;
+          // Refresh-token rejection is recoverable on native when the user
+          // previously completed a successful password login on this device.
+          // Do not erase the cached app session before trying that recovery.
+          if (prior?.validatedUser) {
+            const recovered = await recoverSessionWithSavedLogin(prior);
+            if (recovered) {
+              refreshData = { ...refreshData, session: recovered };
+              refreshError = null;
+            } else {
+              console.warn(
+                '[AUTH_REFRESH] Refresh token rejected and saved-login recovery was unavailable; cached session preserved'
+              );
+              return null;
+            }
+          } else {
+            return null;
+          }
         }
+      }
+
+      if (refreshError || !refreshData.session) {
         // Layer A fix: Don't immediately clear auth for ALL roles.
         // If we have a prior session, preserve it — the caller (useAuth handleRefresh)
         // will decide whether to retry or clear based on role and retry count.
@@ -718,8 +827,7 @@ export const AuthService = {
           console.warn('[AUTH_REFRESH] Supabase refresh failed but prior session exists — preserving for retry');
           return null; // Return null to signal failure without clearing storage
         }
-        console.log('[AUTH_OUT]', 'token_expired', new Date().toISOString());
-        await clearAuthState();
+        console.warn('[AUTH_REFRESH] No cached identity is available for recovery');
         return null;
       }
 
@@ -744,14 +852,12 @@ export const AuthService = {
         if (isTransientValidationError(err) && prior?.validatedUser) {
           return persistSessionFromRefresh(refreshData.session, prior.validatedUser);
         }
-        await AuthService.signOut();
-        console.log('[AUTH_OUT]', 'validation_failed_no_prior', new Date().toISOString());
+        console.warn('[AUTH_REFRESH] Validation failed without cached identity');
         return null;
       }
 
       if (!validatedUser) {
-        console.log('[AUTH_OUT]', 'validation_rejected', new Date().toISOString());
-        await AuthService.signOut();
+        console.warn('[AUTH_REFRESH] Empty validation response; cached session preserved');
         return null;
       }
 
@@ -796,3 +902,11 @@ export const AuthService = {
     return session?.validatedUser?.role?.code === 'driver';
   }
 };
+
+// Register at module initialization, before any screen effect can issue an API
+// request. The callback returns only the Supabase session required for retry;
+// AuthService remains the single owner of persistence and backend validation.
+registerSessionRecoveryCallback(async () => {
+  const recovered = await AuthService.refreshSession();
+  return recovered?.supabaseSession ?? null;
+});

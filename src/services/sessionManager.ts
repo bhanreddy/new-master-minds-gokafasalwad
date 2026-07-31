@@ -1,7 +1,6 @@
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { supabase } from './supabaseConfig';
 import { AppState, AppStateStatus } from 'react-native';
-import { SessionPolicy } from './sessionPolicyService';
 
 /**
  * SessionManager — Network-aware session refresh engine.
@@ -10,7 +9,7 @@ import { SessionPolicy } from './sessionPolicyService';
  * - Detects network state using NetInfo
  * - Retries failed refreshes with exponential backoff
  * - NEVER logs out on network failure
- * - Only logs out on confirmed auth rejection (invalid token, revoked session)
+ * - Never destroys persisted auth state; AuthService owns credential recovery
  * - Proactively refreshes tokens before expiry
  */
 
@@ -231,45 +230,12 @@ class SessionManagerClass {
   private async handleRefreshError(error: any): Promise<boolean> {
     if (__DEV__) { }
 
-    // Store role to handle specific fallbacks
-    const role = await SessionPolicy.getStoredRole();
-    const isStudent = role === 'student';
-
-    // FATAL: Token is permanently invalid
+    // A rejected refresh token is not a client-side logout instruction.
+    // AuthService may still recover using the native saved-login vault.
     if (isFatalAuthError(error)) {
-      if (isStudent) {
-        if (this.failedRefreshCount < 5) {
-          this.failedRefreshCount++;
-          const backoff = 2000 * Math.pow(2, this.failedRefreshCount - 1);
-          if (__DEV__) console.log(`[SessionManager] Student refresh failed. Retrying in ${backoff}ms...`);
-
-          if (this.retryTimer) clearTimeout(this.retryTimer);
-          this.retryTimer = setTimeout(() => this.attemptRefresh(), backoff);
-          return false;
-        } else if (this.failedRefreshCount === 5) {
-          // One final 5-minute grace retry
-          this.failedRefreshCount++;
-          if (__DEV__) console.log(`[SessionManager] Student refresh failed 5 times. 5 MINUTE GRACE retry initiated.`);
-
-          if (this.retryTimer) clearTimeout(this.retryTimer);
-          this.retryTimer = setTimeout(() => this.attemptRefresh(), 5 * 60 * 1000); // 5 mins
-          return false;
-        } else {
-          // Retries exhausted
-          if (this.logoutCallback) {
-            this.logoutCallback("We couldn't reconnect your session. Please login again.");
-          }
-          this.stopMonitoring();
-          return false;
-        }
-      } else {
-        // Non-students get immediate eviction on fatal token errors to respect Sunday/Access rules
-        if (this.logoutCallback) {
-          this.logoutCallback(error?.message || 'Session expired. Please log in again.');
-        }
-        this.stopMonitoring();
-        return false;
-      }
+      this.failedRefreshCount += 1;
+      this.scheduleRetry();
+      return false;
     }
 
     // TRANSIENT: Network or server issue → retry with backoff
@@ -294,8 +260,13 @@ class SessionManagerClass {
 
     if (this.retryCount >= MAX_RETRY_ATTEMPTS) {
       if (__DEV__) { }
-      // Don't logout! Just wait for network to come back (netinfo listener will trigger refresh)
+      // Keep a low-frequency retry alive even when NetInfo still reports
+      // online (for example, a captive portal or auth service outage).
       this.retryCount = 0;
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => {
+        void this.attemptRefresh();
+      }, 60000);
       return;
     }
 
@@ -345,9 +316,7 @@ class SessionManagerClass {
         if (__DEV__) { }
         this.attemptRefresh();
       }
-    } catch (error) {
-      if (__DEV__) { }
-    }
+    } catch {}
   }
 
   /**

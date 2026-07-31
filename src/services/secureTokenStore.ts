@@ -247,7 +247,11 @@ async function migrateLegacyValue(key: string): Promise<string | null> {
 
 function extractRefreshToken(sessionJson: string): string | null {
   try {
-    return JSON.parse(sessionJson)?.refresh_token ?? null;
+    const parsed = JSON.parse(sessionJson);
+    // Supabase's own storage payload keeps refresh_token at the top level,
+    // while SchoolIMS wraps it in AuthSession.supabaseSession. Back up both
+    // shapes so a valid login always has an independent Keystore recovery key.
+    return parsed?.refresh_token ?? parsed?.supabaseSession?.refresh_token ?? null;
   } catch {
     return null;
   }

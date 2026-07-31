@@ -116,4 +116,18 @@ describe('SecureTokenStore native storage', () => {
     await Promise.all([first, second]);
     await expect(SecureTokenStore.getItem('auth_session')).resolves.toBe('second');
   });
+
+  it('backs up the nested AuthSession refresh token independently', async () => {
+    await SecureTokenStore.setItem(
+      'auth_session',
+      JSON.stringify({
+        supabaseSession: { refresh_token: 'nested-refresh-token' },
+        validatedUser: { userId: 'user-1' },
+      })
+    );
+
+    expect(SecureStore.__store.get('sb_secure_refresh_token')).toBe(
+      'nested-refresh-token'
+    );
+  });
 });

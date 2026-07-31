@@ -358,6 +358,36 @@ export default function AdminDiaryViewerScreen() {
     setComposerOpen(true);
   }, [today]);
 
+  const handleDelete = useCallback(
+    (entry: DiaryEntry) => {
+      alertCompat(
+        'Delete diary entry?',
+        'This entry will be removed permanently. This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await api.delete(`/diary/${entry.id}`);
+                if (editingEntry?.id === entry.id) {
+                  setComposerOpen(false);
+                  resetComposer();
+                }
+                alertCompat('Success', 'Diary entry deleted');
+                await fetchEntries();
+              } catch (error: any) {
+                alertCompat('Error', error.message || 'Failed to delete diary entry');
+              }
+            },
+          },
+        ],
+      );
+    },
+    [editingEntry?.id, fetchEntries],
+  );
+
   const chooseFormClassGrade = (classId: string) => {
     if (editingEntry) return;
     setFormClassId(classId);
@@ -636,6 +666,7 @@ export default function AdminDiaryViewerScreen() {
                     primaryTint={primaryTint}
                     showClassBadge={!selectedClassSectionId}
                     onEdit={openEdit}
+                    onDelete={handleDelete}
                   />
                 );
               })}
@@ -915,6 +946,7 @@ const DiaryEntryCard = React.memo(function DiaryEntryCard({
   primaryTint,
   showClassBadge,
   onEdit,
+  onDelete,
 }: {
   entry: DiaryEntry;
   index: number;
@@ -927,9 +959,12 @@ const DiaryEntryCard = React.memo(function DiaryEntryCard({
   primaryTint: string;
   showClassBadge: boolean;
   onEdit: (entry: DiaryEntry) => void;
+  onDelete: (entry: DiaryEntry) => void;
 }) {
   const dueLabel = formatDisplayDate(entry.homework_due_date, 'MMM d');
   const animateIn = index < 8;
+  const danger = theme.colors.danger;
+  const dangerTint = schoolColorWithAlpha(danger, isDark ? 0.22 : 0.12);
 
   const body = (
     <View
@@ -971,12 +1006,20 @@ const DiaryEntryCard = React.memo(function DiaryEntryCard({
             </Text>
           </View>
         </View>
-        <PressScale onPress={() => onEdit(entry)} hitSlop={8}>
-          <View style={[styles.editButton, { backgroundColor: primaryTint }]}>
-            <Ionicons name="create-outline" size={15} color={primary} />
-            <Text style={[styles.editButtonText, { color: primary }]}>Edit</Text>
-          </View>
-        </PressScale>
+        <View style={styles.cardActions}>
+          <PressScale onPress={() => onEdit(entry)} hitSlop={8}>
+            <View style={[styles.editButton, { backgroundColor: primaryTint }]}>
+              <Ionicons name="create-outline" size={15} color={primary} />
+              <Text style={[styles.editButtonText, { color: primary }]}>Edit</Text>
+            </View>
+          </PressScale>
+          <PressScale onPress={() => onDelete(entry)} hitSlop={8}>
+            <View style={[styles.editButton, { backgroundColor: dangerTint }]}>
+              <Ionicons name="trash-outline" size={15} color={danger} />
+              <Text style={[styles.editButtonText, { color: danger }]}>Delete</Text>
+            </View>
+          </PressScale>
+        </View>
       </View>
 
       <Text style={[styles.cardTitle, { color: titleColor }]}>{entryTitle(entry)}</Text>
@@ -1304,6 +1347,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   typeBadgeText: { fontSize: 12, fontWeight: '600' },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,6 @@
 import { api } from './apiClient';
+import { Platform } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
 import type {
     Student,
     StudentEnrollment,
@@ -75,6 +77,44 @@ export interface UpdateStudentRequest {
     section_id?: string;
     academic_year_id?: string;
     parents?: Parent[];
+}
+
+export interface SaveStudentResponse {
+    message?: string;
+    student: Student;
+}
+
+export interface StudentPhotoResponse {
+    message?: string;
+    photo_url: string | null;
+}
+
+async function buildStudentPhotoFormData(uri: string): Promise<FormData> {
+    let processedUri = uri;
+    try {
+        const processed = await ImageManipulator.manipulateAsync(
+            uri,
+            [{ resize: { width: 1024 } }],
+            { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+        );
+        processedUri = processed.uri;
+    } catch {
+        // The backend still validates, crops, and compresses the original.
+    }
+
+    const formData = new FormData();
+    if (Platform.OS === 'web') {
+        const response = await fetch(processedUri);
+        const blob = await response.blob();
+        formData.append('photo', blob, 'student-avatar.jpg');
+    } else {
+        formData.append('photo', {
+            uri: processedUri,
+            name: 'student-avatar.jpg',
+            type: 'image/jpeg',
+        } as any);
+    }
+    return formData;
 }
 
 export interface StudentListParams {
@@ -226,8 +266,8 @@ export const StudentService = {
     /**
      * Create new student
      */
-    create: async (data: CreateStudentRequest): Promise<Student> => {
-        return api.post<Student>('/students', data);
+    create: async (data: CreateStudentRequest): Promise<SaveStudentResponse> => {
+        return api.post<SaveStudentResponse>('/students', data);
     },
 
     /**
@@ -235,6 +275,23 @@ export const StudentService = {
      */
     update: async (id: string, data: UpdateStudentRequest): Promise<{ message?: string; student?: Student; success?: boolean }> => {
         return api.put<{ message?: string; student?: Student; success?: boolean }>(`/students/${id}`, data);
+    },
+
+    /**
+     * Upload/replace a student's photo. This is deliberately separate from the
+     * self-service /users/me/photo route so an operator never overwrites their
+     * own profile while editing a student.
+     */
+    uploadPhoto: async (id: string, uri: string): Promise<string> => {
+        const formData = await buildStudentPhotoFormData(uri);
+        const result = await api.uploadFormData<StudentPhotoResponse>(`/students/${id}/photo`, formData, {
+            timeoutMs: 60000,
+        });
+        return result.photo_url || '';
+    },
+
+    removePhoto: async (id: string): Promise<void> => {
+        await api.delete(`/students/${id}/photo`);
     },
 
     /**

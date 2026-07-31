@@ -364,6 +364,34 @@ export default function StaffDiary() {
     }
   };
 
+  const handleDelete = (entry: DiaryEntry) => {
+    alertCompat(TE.confirmDeleteTitle, TE.confirmDeleteMessage, [
+      { text: TE.cancelEdit, style: 'cancel' },
+      {
+        text: TE.delete,
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await DiaryService.delete(entry.id);
+            if (existingEntry?.id === entry.id) {
+              setIsEditing(false);
+              setExistingEntry(null);
+              setTitle('');
+              setDescription('');
+              setDueDate(new Date());
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            alertCompat('Success', TE.successDelete);
+            fetchDiaryHistory();
+            if (selectedAssignment) checkExistingHomework();
+          } catch (error: any) {
+            alertCompat('Error', error.message || TE.errDelete);
+          }
+        },
+      },
+    ]);
+  };
+
   const handlePost = async () => {
     try {
       await api.post('/log', {
@@ -842,6 +870,7 @@ export default function StaffDiary() {
           diaryEntries={diaryEntries}
           displayYmd={activeTab === 'today' ? todayYmd : historyDate}
           onEdit={handleEdit}
+          onDelete={handleDelete}
           labels={TE}
           emptyActionLabel={activeTab === 'today' ? TE.emptyCta : undefined}
           onEmptyAction={
@@ -873,6 +902,7 @@ function HomeworkDayList({
   diaryEntries,
   displayYmd,
   onEdit,
+  onDelete,
   labels,
   emptyActionLabel,
   onEmptyAction,
@@ -883,6 +913,7 @@ function HomeworkDayList({
   diaryEntries: DiaryEntry[];
   displayYmd: string;
   onEdit: (entry: DiaryEntry) => void;
+  onDelete: (entry: DiaryEntry) => void;
   labels: Record<string, string>;
   emptyActionLabel?: string;
   onEmptyAction?: () => void;
@@ -991,19 +1022,36 @@ function HomeworkDayList({
                   </Text>
                 </View>
 
-                <PressScale onPress={() => onEdit(item)}>
-                  <View
-                    style={[
-                      styles.editButton,
-                      { backgroundColor: isDark ? 'rgba(99,102,241,0.16)' : '#EEF2FF' },
-                    ]}
-                  >
-                    <Ionicons name="create-outline" size={15} color={theme.colors.primary} />
-                    <Text style={[styles.editText, { color: theme.colors.primary }]}>
-                      {labels.edit}
-                    </Text>
-                  </View>
-                </PressScale>
+                <View style={styles.actionRow}>
+                  <PressScale onPress={() => onEdit(item)}>
+                    <View
+                      style={[
+                        styles.editButton,
+                        { backgroundColor: isDark ? 'rgba(99,102,241,0.16)' : '#EEF2FF' },
+                      ]}
+                    >
+                      <Ionicons name="create-outline" size={15} color={theme.colors.primary} />
+                      <Text style={[styles.editText, { color: theme.colors.primary }]}>
+                        {labels.edit}
+                      </Text>
+                    </View>
+                  </PressScale>
+                  <PressScale onPress={() => onDelete(item)}>
+                    <View
+                      style={[
+                        styles.editButton,
+                        {
+                          backgroundColor: isDark ? 'rgba(239,68,68,0.16)' : 'rgba(239,68,68,0.10)',
+                        },
+                      ]}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={theme.colors.danger} />
+                      <Text style={[styles.editText, { color: theme.colors.danger }]}>
+                        {labels.delete}
+                      </Text>
+                    </View>
+                  </PressScale>
+                </View>
               </View>
             </View>
           </Animated.View>
@@ -1334,11 +1382,13 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: 10,
+      flexWrap: 'wrap',
     },
     footerInfo: { flex: 1, gap: 3 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     dueText: { fontSize: 12, color: '#EF4444', fontWeight: '700' },
     createdText: { fontSize: 11, fontWeight: '500' },
+    actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     editButton: {
       flexDirection: 'row',
       alignItems: 'center',

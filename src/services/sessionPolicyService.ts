@@ -4,40 +4,17 @@ import { Platform } from 'react-native';
 import { Role } from '../types/models';
 
 /**
- * SessionPolicyService — Role-based session lifetime enforcement.
+ * SessionPolicyService — Persistent client-session metadata.
  *
- * Session TTL by role:
- *   student     → 365 days (managed by Supabase refresh token lifetime)
- *   staff       → 90 days  (client-side enforcement)
- *   teacher     → 90 days  (client-side enforcement)
- *   accountant  → 1 day  (client-side enforcement)
- *   driver      → 90 days  (client-side enforcement)
- *   admin       → 30 days  (client-side enforcement)
- *
- * Students are NEVER force-logged-out by TTL.
- * They can only be logged out by:
- *   - Manual logout
- *   - Password change (Supabase revokes refresh token)
- *   - Admin disables account
- *   - Refresh token revocation
+ * The client never expires or deletes a remembered login based on elapsed
+ * time/day. Role schedules and account status remain server-side authorization
+ * rules; a denied request must not destroy recoverable device credentials.
  */
 
 // ─── Configuration ───────────────────────────────────────────────────
 
-const SESSION_MAX_AGE: Record<string, number> = {
-  student: 365 * 24 * 60 * 60 * 1000, // 365 days in ms
-  staff: 90 * 24 * 60 * 60 * 1000, // 90 days
-  teacher: 90 * 24 * 60 * 60 * 1000, // 90 days
-  accountant: 1 * 24 * 60 * 60 * 1000, // 1 day
-  driver: 90 * 24 * 60 * 60 * 1000, // 90 days
-  admin: 30 * 24 * 60 * 60 * 1000 // 30 days
-};
-
 const SESSION_ROLE_KEY = 'session_policy_role';
 const SESSION_STARTED_KEY = 'session_policy_started_at';
-
-// Periodic check interval (1 hour)
-const POLICY_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 // ─── Storage Helpers ─────────────────────────────────────────────────
 
@@ -48,9 +25,7 @@ async function storeValue(key: string, value: string): Promise<void> {
     } else {
       await SecureStore.setItemAsync(key, value);
     }
-  } catch (error) {
-    if (__DEV__) { }
-  }
+  } catch {}
 }
 
 async function getValue(key: string): Promise<string | null> {
@@ -82,15 +57,10 @@ async function removeValue(key: string): Promise<void> {
 type PolicyLogoutCallback = (reason: string) => void;
 
 class SessionPolicyServiceClass {
-  private checkTimer: ReturnType<typeof setInterval> | null = null;
-  private logoutCallback: PolicyLogoutCallback | null = null;
-
   /**
-   * Register a callback for when session policy forces a logout.
+   * Kept for call-site compatibility. Session policy never logs out locally.
    */
-  setLogoutCallback(callback: PolicyLogoutCallback): void {
-    this.logoutCallback = callback;
-  }
+  setLogoutCallback(_callback: PolicyLogoutCallback): void {}
 
   /**
    * Record the start of a new session.
@@ -103,131 +73,38 @@ class SessionPolicyServiceClass {
     await storeValue(SESSION_STARTED_KEY, now);
 
     if (__DEV__) {
-      const maxAge = SESSION_MAX_AGE[role] || SESSION_MAX_AGE.staff;
-
+      // Role is persisted for recovery diagnostics and server context only.
     }
   }
 
   /**
-   * Check if the current session has exceeded the role-based TTL.
-   * Returns true if session is still valid, false if expired.
-   *
-   * Students always return true (no TTL enforcement).
+   * Client-side time never invalidates a remembered login.
    */
   async checkSessionExpiry(): Promise<boolean> {
-    const role = await getValue(SESSION_ROLE_KEY);
-    const startedAt = await getValue(SESSION_STARTED_KEY);
-
-    // No policy data stored → session is valid (first-time or migrating user)
-    // Let the authService correct this on next boot by calling startSession
-    if (!role || !startedAt) {
-      if (__DEV__) { }
-      return true;
-    }
-
-    // Students: NEVER force logout by TTL. They live or die by the Supabase refresh token.
-    if (role === 'student' || role === 'parent') {
-      if (__DEV__) { }
-      return true;
-    }
-
-    // NON-STUDENTS: Auto-logout on Sunday
-    const isSunday = new Date().getDay() === 0;
-    if (isSunday) {
-      if (__DEV__) {
-        console.log(`[SessionPolicy] Today is Sunday. Auto-logging out non-student role: ${role}`);
-      }
-      return false;
-    }
-
-    const maxAge = SESSION_MAX_AGE[role] || SESSION_MAX_AGE.staff;
-    const elapsed = Date.now() - parseInt(startedAt, 10);
-
-    if (elapsed >= maxAge) {
-
-      return false;
-    }
-
-    if (__DEV__) {
-
-    }
-
     return true;
   }
 
   /**
-   * Start periodic session expiry checks.
-   * Only relevant for non-student roles.
-   * Checks every hour while the app is active.
+   * Kept for call-site compatibility; there is no client expiry timer.
    */
-  startPeriodicCheck(): void {
-    // Already running — skip restart to avoid log noise
-    if (this.checkTimer) return;
-
-    this.checkTimer = setInterval(async () => {
-      const isValid = await this.checkSessionExpiry();
-
-      if (!isValid) {
-        if (__DEV__) { }
-        if (this.logoutCallback) {
-          this.logoutCallback('Session has expired based on your role policy. Please log in again.');
-        }
-        this.stopPeriodicCheck();
-      }
-    }, POLICY_CHECK_INTERVAL_MS);
-
-    if (__DEV__) { }
-  }
-
-  private midnightTimer: ReturnType<typeof setTimeout> | null = null;
+  startPeriodicCheck(): void {}
 
   /**
-   * Enforce Sunday check up front. Otherwise, allow.
-   * Logs out if today is Sunday and role is not student.
+   * Kept for call-site compatibility. Day-based access restrictions are
+   * enforced by the backend and never delete the saved device session.
    */
   async enforceDayPolicy(): Promise<void> {
-    const role = await getValue(SESSION_ROLE_KEY);
-    if (!role || role === 'student' || role === 'parent') return;
-
-    if (new Date().getDay() === 0) {
-      if (__DEV__) {
-        console.log(`[SessionPolicy] Enforcing Day Policy: Today is Sunday. Auto-logging out non-student role: ${role}`);
-      }
-      if (this.logoutCallback) {
-        this.logoutCallback('Access is not available on Sundays. See you Monday.');
-      }
-    }
+    return;
   }
 
-  /**
-   * Schedule a check exactly at midnight to kick active foreground sessions drifting into Sunday.
-   */
-  scheduleMidnightCheck(): void {
-    if (this.midnightTimer) clearTimeout(this.midnightTimer);
-
-    const now = new Date();
-    const midnight = new Date();
-    midnight.setHours(24, 0, 0, 0);
-    const msUntilMidnight = midnight.getTime() - now.getTime();
-
-    this.midnightTimer = setTimeout(async () => {
-      await this.enforceDayPolicy();
-      this.scheduleMidnightCheck();
-    }, msUntilMidnight);
-  }
+  /** Kept for call-site compatibility; backend policy is checked per request. */
+  scheduleMidnightCheck(): void {}
 
   /**
    * Stop periodic checks. Call on logout.
    */
   stopPeriodicCheck(): void {
-    if (this.checkTimer) {
-      clearInterval(this.checkTimer);
-      this.checkTimer = null;
-    }
-    if (this.midnightTimer) {
-      clearTimeout(this.midnightTimer);
-      this.midnightTimer = null;
-    }
+    return;
   }
 
   /**
@@ -248,19 +125,10 @@ class SessionPolicyServiceClass {
   }
 
   /**
-   * Get remaining session time in milliseconds.
-   * Returns Infinity for students.
+   * Remembered client sessions have no elapsed-time limit.
    */
   async getRemainingTime(): Promise<number> {
-    const role = await getValue(SESSION_ROLE_KEY);
-    const startedAt = await getValue(SESSION_STARTED_KEY);
-
-    if (!role || !startedAt) return Infinity;
-    if (role === 'student') return Infinity;
-
-    const maxAge = SESSION_MAX_AGE[role] || SESSION_MAX_AGE.staff;
-    const elapsed = Date.now() - parseInt(startedAt, 10);
-    return Math.max(0, maxAge - elapsed);
+    return Infinity;
   }
 }
 

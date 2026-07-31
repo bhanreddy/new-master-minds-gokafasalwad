@@ -16,7 +16,7 @@ import PremiumButton from '../src/components/PremiumButton';
 export default function ChangePasswordScreen() {
     const router = useRouter();
     const { theme } = useTheme();
-    const { user, signOut } = useAuth();
+    const { user } = useAuth();
     const styles = React.useMemo(() => getStyles(theme.colors), [theme]);
 
     const [currentPassword, setCurrentPassword] = useState('');
@@ -71,11 +71,10 @@ export default function ChangePasswordScreen() {
             if (user?.userId) {
                 await disableFingerprintForAccount(SCHOOL_ID, user.userId);
             }
-            alertCompat("Success", "Password changed successfully. Please log in again.", [
+            alertCompat("Success", "Password changed successfully. Your session remains active.", [
                 {
-                    text: 'OK', onPress: async () => {
-                        await signOut();
-                        router.replace('/welcome');
+                    text: 'OK', onPress: () => {
+                        router.back();
                     }
                 }
             ]);

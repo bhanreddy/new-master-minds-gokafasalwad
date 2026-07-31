@@ -5,6 +5,13 @@ import { api } from './apiClient';
 // publishes; student/teacher reads only ever return published timetables.
 
 export type ExamScheduleMode = 'aligned' | 'per_class';
+export type ExamWeekday =
+    | 'monday'
+    | 'tuesday'
+    | 'wednesday'
+    | 'thursday'
+    | 'friday'
+    | 'saturday';
 
 export interface ExamListItem {
     id: string;
@@ -87,11 +94,21 @@ export interface ExamGenerateParams {
     /** Exam sessions per day (1–3), each with its own timings. Overrides start/end_time. */
     sessions?: ExamSession[];
     include_saturdays?: boolean;
+    /** Explicit days on which papers may be scheduled. */
+    allowed_weekdays?: ExamWeekday[];
     exclude_holidays?: boolean;
     excluded_dates?: string[];
     gap_days?: number;
+    /** Force one eligible rest day after this many consecutive exam days. 0 disables it. */
+    max_consecutive_days?: number;
     max_marks?: number;
     passing_marks?: number;
+    /** Optional per-subject marks that override the global defaults. */
+    subject_marks?: {
+        subject_id: string;
+        max_marks: number;
+        passing_marks: number;
+    }[];
     /** Legacy priority hint; prefer subject_ids. */
     subject_order?: string[];
     /** Ordered subject selection — only these subjects, in exactly this order. */

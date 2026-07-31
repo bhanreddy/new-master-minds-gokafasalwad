@@ -44,6 +44,7 @@ jest.mock('./apiClient', () => {
   return {
     APIError,
     api: { post: jest.fn() },
+    registerSessionRecoveryCallback: jest.fn(),
   };
 });
 
@@ -51,6 +52,9 @@ jest.mock('./accountVault', () => ({
   addAccount: jest.fn(async () => {}),
   buildVaultAccount: jest.fn((session) => session),
   getBackupRefreshTokenForUser: jest.fn(async () => null),
+  getLoginRecoveryCredential: jest.fn(async () => null),
+  saveLoginRecoveryCredential: jest.fn(async () => {}),
+  removeLoginRecoveryCredential: jest.fn(async () => {}),
   listAccounts: jest.fn(async () => []),
   getActiveAccountId: jest.fn(async () => null),
   setActiveAccountId: jest.fn(async () => {}),
@@ -65,6 +69,7 @@ import { AuthService, isInternalSessionSwap } from './authService';
 const { supabase } = require('./supabaseConfig');
 const { api, APIError } = require('./apiClient');
 const secureTokenStore = require('./secureTokenStore');
+const accountVault = require('./accountVault');
 
 function savedSession() {
   return {
@@ -111,6 +116,11 @@ describe('AuthService security boundaries', () => {
       password: 'current-secret',
     });
     expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: 'new-secret' });
+    expect(accountVault.saveLoginRecoveryCredential).toHaveBeenCalledWith(
+      'user-1',
+      'admin@example.com',
+      'new-secret'
+    );
     expect(isInternalSessionSwap()).toBe(false);
   });
 
@@ -147,7 +157,7 @@ describe('AuthService security boundaries', () => {
     expect(supabase.auth.signOut).toHaveBeenCalled();
   });
 
-  it('clears cached authority when Supabase rejects the refresh token', async () => {
+  it('preserves cached identity when refresh rejection has no saved-login recovery', async () => {
     secureTokenStore.__store.set('auth_session', JSON.stringify(savedSession()));
     supabase.auth.refreshSession.mockResolvedValue({
       data: { session: null },
@@ -159,9 +169,89 @@ describe('AuthService security boundaries', () => {
     });
 
     await expect(AuthService.refreshSession()).resolves.toBeNull();
-    expect(secureTokenStore.SecureTokenStore.removeItem).toHaveBeenCalledWith(
+    expect(secureTokenStore.SecureTokenStore.removeItem).not.toHaveBeenCalledWith(
       'auth_session'
     );
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds a rejected refresh session with the Keystore-saved login', async () => {
+    const prior = savedSession();
+    const recoveredSupabaseSession = {
+      ...prior.supabaseSession,
+      access_token: 'recovered-access',
+      refresh_token: 'recovered-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(prior));
+    supabase.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: {
+        status: 400,
+        code: 'refresh_token_not_found',
+        message: 'Invalid Refresh Token',
+      },
+    });
+    accountVault.getLoginRecoveryCredential.mockResolvedValue({
+      email: 'admin@example.com',
+      password: 'saved-secret',
+      updatedAt: Date.now(),
+    });
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { session: recoveredSupabaseSession },
+      error: null,
+    });
+    api.post.mockResolvedValue(prior.validatedUser);
+
+    const recovered = await AuthService.refreshSession();
+
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      password: 'saved-secret',
+    });
+    expect(recovered?.supabaseSession.access_token).toBe('recovered-access');
+    expect(secureTokenStore.SecureTokenStore.setItem).toHaveBeenCalledWith(
+      'auth_session',
+      expect.stringContaining('recovered-access')
+    );
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('returns an expired cached identity immediately while refreshing in background', async () => {
+    const expired = {
+      ...savedSession(),
+      tokenExpiresAt: Date.now() - 1000,
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(expired));
+    supabase.auth.refreshSession.mockResolvedValue({
+      data: { session: null },
+      error: new Error('Network request failed'),
+    });
+
+    await expect(AuthService.getSession()).resolves.toEqual(expired);
+  });
+
+  it('adopts an SDK-refreshed token without rotating it a second time', async () => {
+    const prior = savedSession();
+    const sdkRefreshed = {
+      ...prior.supabaseSession,
+      access_token: 'sdk-refreshed-access',
+      refresh_token: 'sdk-refreshed-refresh',
+      user: { id: 'user-1', email: 'admin@example.com' },
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(prior));
+
+    const adopted = await AuthService.adoptRefreshedSession(
+      sdkRefreshed as any
+    );
+
+    expect(adopted?.supabaseSession.access_token).toBe(
+      'sdk-refreshed-access'
+    );
+    expect(supabase.auth.refreshSession).not.toHaveBeenCalled();
+    expect(secureTokenStore.SecureTokenStore.setItem).toHaveBeenCalledWith(
+      'auth_session',
+      expect.stringContaining('sdk-refreshed-refresh')
+    );
   });
 });

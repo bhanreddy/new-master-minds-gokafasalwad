@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { Session } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import { showAlert } from '../components/CustomAlert';
-import { API_URL, SCHOOL_ID, SUPABASE_ANON_KEY, SUPABASE_URL } from '../constants/school';
+import { API_URL, SCHOOL_ID } from '../constants/school';
 import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { getOrCreateDeviceId } from './deviceId';
@@ -107,32 +107,6 @@ export async function clearTokens(): Promise<void> {
 
 let liveSessionRepairPromise: Promise<Session | null> | null = null;
 
-async function refreshStoredSupabaseSession(refreshToken: string): Promise<Session | null> {
-  try {
-    const resp = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-
-    if (!resp.ok) {
-      if (__DEV__) console.warn('[apiClient] stored session repair refresh failed:', resp.status);
-      return null;
-    }
-
-    const data = await resp.json();
-    if (!data?.access_token || !data?.refresh_token) return null;
-    return data as Session;
-  } catch (e) {
-    if (__DEV__) console.warn('[apiClient] stored session repair refresh error:', e);
-    return null;
-  }
-}
-
 async function restoreLiveSessionFromStoredAuth(): Promise<Session | null> {
   if (liveSessionRepairPromise) return liveSessionRepairPromise;
 
@@ -145,24 +119,12 @@ async function restoreLiveSessionFromStoredAuth(): Promise<Session | null> {
       const stored = parsed?.supabaseSession as Session | undefined;
       if (!stored?.access_token || !stored?.refresh_token) return null;
 
-      const nowS = Math.floor(Date.now() / 1000);
-      const expiresAt =
-        typeof stored.expires_at === 'number'
-          ? stored.expires_at
-          : typeof parsed?.tokenExpiresAt === 'number'
-          ? Math.floor(parsed.tokenExpiresAt / 1000)
-          : 0;
-
-      let sessionForSet = stored;
-      if (!expiresAt || expiresAt <= nowS + EXPIRY_SKEW_SECONDS) {
-        const refreshed = await refreshStoredSupabaseSession(stored.refresh_token);
-        if (!refreshed) return null;
-        sessionForSet = { ...stored, ...refreshed };
-      }
-
+      // Keep refresh-token rotation inside the Supabase client. A previous
+      // direct REST refresh here raced the SDK and could invalidate a newly
+      // rotated token before the app had persisted it.
       const { data, error } = await supabase.auth.setSession({
-        access_token: sessionForSet.access_token,
-        refresh_token: sessionForSet.refresh_token,
+        access_token: stored.access_token,
+        refresh_token: stored.refresh_token,
       });
 
       if (error || !data?.session) {
@@ -192,16 +154,68 @@ async function restoreLiveSessionFromStoredAuth(): Promise<Session | null> {
   return liveSessionRepairPromise;
 }
 
-// Global Logout Callback to avoid circular dependency
-let logoutCallback: (() => Promise<void>) | null = null;
-let confirmedLogoutInFlight = false;
+type SessionRecoveryCallback = () => Promise<Session | null>;
+let sessionRecoveryCallback: SessionRecoveryCallback | null = null;
+let recoveryPromise: Promise<Session | null> | null = null;
 
-export const registerLogoutCallback = (fn: () => Promise<void>) => {
-  logoutCallback = fn;
+/**
+ * AuthService registers the one recovery pipeline here. This avoids a circular
+ * import while ensuring API 401s use the same refresh-token + saved-credential
+ * single flight as cold start and foreground recovery.
+ */
+export const registerSessionRecoveryCallback = (
+  fn: SessionRecoveryCallback
+) => {
+  sessionRecoveryCallback = fn;
 };
 
-// Single-flight refresh promise to prevent parallel redundant refreshes
-let refreshPromise: Promise<any> | null = null;
+async function attemptSessionRecovery(): Promise<Session | null> {
+  if (recoveryPromise) return recoveryPromise;
+  recoveryPromise = (async () => {
+    if (sessionRecoveryCallback) return sessionRecoveryCallback();
+    const { data, error } = await supabase.auth.refreshSession();
+    return error ? null : data.session;
+  })().finally(() => {
+    recoveryPromise = null;
+  });
+  return recoveryPromise;
+}
+
+function canRecoverAuthForEndpoint(endpoint: string): boolean {
+  return !(
+    endpoint.includes('/login') ||
+    endpoint.includes('/refresh') ||
+    endpoint.includes('/auth/validate-school-user')
+  );
+}
+
+const MAX_TRANSIENT_READ_RETRIES = 4;
+
+function transientRetryDelay(attempt: number): number {
+  return Math.min(500 * Math.pow(2, attempt), 5000);
+}
+
+async function waitForNetworkRestore(timeoutMs = 10000): Promise<void> {
+  const current = await NetInfo.fetch().catch(() => null);
+  if (current?.isConnected && current.isInternetReachable !== false) return;
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let unsubscribe = () => {};
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+      resolve();
+    };
+    unsubscribe = NetInfo.addEventListener((state) => {
+      if (state.isConnected && state.isInternetReachable !== false) finish();
+    });
+    timer = setTimeout(finish, timeoutMs);
+  });
+}
 
 // In-flight GET deduplication — identical concurrent GETs share one network call
 const inflightGets = new Map<string, Promise<unknown>>();
@@ -296,7 +310,17 @@ async function apiRequestInner<T>(
   const silent = rawSilent || transientAlertsSuppressed();
   const isMultipart = _multipart === true;
   const { data: { session: liveSession } } = await supabase.auth.getSession();
-  const session = liveSession ?? await restoreLiveSessionFromStoredAuth();
+  let session = liveSession ?? await restoreLiveSessionFromStoredAuth();
+  const sessionExpiresSoon =
+    !session?.expires_at ||
+    session.expires_at <= Math.floor(Date.now() / 1000) + EXPIRY_SKEW_SECONDS;
+  if (
+    sessionExpiresSoon &&
+    !_isRetry &&
+    canRecoverAuthForEndpoint(endpoint)
+  ) {
+    session = (await attemptSessionRecovery()) ?? session;
+  }
   const token = session?.access_token ?? null;
 
   if (__DEV__) {
@@ -397,75 +421,33 @@ async function apiRequestInner<T>(
           );
         }
 
-        // 2. TOKEN REFRESH — use Supabase SDK only (single source of truth)
-        // Layer A fix: Removed the separate backend /auth/refresh path to
-        // eliminate the triple-refresh race that could burn refresh tokens.
-        // The Supabase SDK's autoRefreshToken + startAutoRefresh() is the
-        // single authority for token refresh.
-        if (!_isRetry) {
-          if (__DEV__) console.log('[apiClient] 401 received — attempting Supabase refresh');
-
-          try {
-            if (!refreshPromise) {
-              refreshPromise = supabase.auth.refreshSession().finally(() => {
-                refreshPromise = null;
-              });
-            }
-
-            const { data, error: refreshError } = await refreshPromise;
-
-            if (!refreshError && data.session) {
-              if (__DEV__) console.log('[apiClient] Supabase refresh succeeded — retrying request');
-
-              // Update local storage tokens
-              await setTokens(data.session.access_token, data.session.refresh_token);
-
-              // Retry the original request with new token
-              return await apiRequest<T>(endpoint, {
-                ...options,
-                _isRetry: true,
-                headers: {
-                  ...options.headers,
-                  'Authorization': `Bearer ${data.session.access_token}`
-                }
-              });
-            } else {
-              if (__DEV__) console.warn('[apiClient] Supabase refresh failed:', refreshError?.message);
-            }
-          } catch (refreshErr) {
-            if (__DEV__) console.warn('[apiClient] Refresh error:', refreshErr);
+        // Every 401 enters the same single-flight recovery pipeline. It first
+        // rotates the refresh token and can fall back to the native saved login.
+        if (!_isRetry && canRecoverAuthForEndpoint(endpoint)) {
+          const recovered = await attemptSessionRecovery().catch(() => null);
+          if (recovered) {
+            await setTokens(recovered.access_token, recovered.refresh_token);
+            return await apiRequest<T>(endpoint, {
+              ...options,
+              _isRetry: true,
+              headers: {
+                ...options.headers,
+                Authorization: `Bearer ${recovered.access_token}`,
+              },
+            });
           }
         }
 
-        // 3. Network-aware error handling
-        // CRITICAL: Do NOT logout if the device is offline
+        // A failed recovery never destroys the cached app identity. The caller
+        // can keep its last data while foreground/network events retry.
         const netState = await NetInfo.fetch();
         const isOnline = netState.isConnected && netState.isInternetReachable !== false;
 
         if (!isOnline) {
-          if (__DEV__) console.log('[apiClient] 401 but device is offline — suppressing');
-          if (silent) return null as T;
-          throw new APIError('Network unavailable. Logging suspended.', 0, undefined, requestId);
+          throw new APIError('Data refresh is waiting for network.', 0, undefined, requestId);
         }
 
-        // Silent changes presentation only. A confirmed online 401 after a
-        // refresh attempt is still an authentication failure and must reach
-        // the caller instead of being converted to a successful null result.
-        if (silent) {
-          throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
-        }
-
-        // A retry with a freshly requested token also failed while online.
-        // This is confirmed rejection, not a transient connectivity failure.
-        if (logoutCallback && !confirmedLogoutInFlight) {
-          confirmedLogoutInFlight = true;
-          try {
-            await logoutCallback();
-          } finally {
-            confirmedLogoutInFlight = false;
-          }
-        }
-        throw new APIError('Session expired. Please login again.', 401, undefined, requestId);
+        throw new APIError('Session recovery is still in progress.', 401, undefined, requestId);
       }
 
       // Handle transient upstream/gateway errors — 503 (backend "auth service
@@ -474,16 +456,17 @@ async function apiRequestInner<T>(
       // and safe to retry, so they get the same silent retry-then-fail path
       // instead of surfacing as a hard error popup.
       if (response.status === 503 || response.status === 502 || response.status === 504) {
-        if (_retryCount < 2) {
-          if (__DEV__) { }
-          await new Promise((r) => setTimeout(r, 1500));
+        if (method === 'GET' && _retryCount < MAX_TRANSIENT_READ_RETRIES) {
+          await new Promise((r) => setTimeout(
+            r,
+            transientRetryDelay(_retryCount)
+          ));
           return await apiRequestInner<T>(endpoint, {
             ...options,
             _retryCount: _retryCount + 1
           });
         }
         const message = errorData.error || 'Server temporarily unavailable. Please try again.';
-        if (!silent) alertFn('Service Unavailable', message);
         throw new APIError(message, response.status, undefined, requestId);
       }
 
@@ -576,14 +559,25 @@ async function apiRequestInner<T>(
       throw error;
     }
 
-    if (error?.name === 'AbortError') {
-      if (!silent) alertFn('Network Timeout', 'The server took too long to respond. Please check your internet connection or try again later.');
-      throw new APIError('Request timed out. Please try again.');
+    if (method === 'GET' && _retryCount < MAX_TRANSIENT_READ_RETRIES) {
+      await waitForNetworkRestore();
+      await new Promise((resolve) =>
+        setTimeout(resolve, transientRetryDelay(_retryCount))
+      );
+      return apiRequestInner<T>(endpoint, {
+        ...options,
+        _retryCount: _retryCount + 1,
+      });
     }
 
-    // Network error
-    if (!silent) alertFn('Network Error', 'Please check your internet connection.');
-    throw new APIError('Network error. Please check your connection.');
+    if (error?.name === 'AbortError') {
+      throw new APIError('Data refresh timed out and will retry later.', 0);
+    }
+
+    // Do not raise a blocking connection popup. Query hooks retain cached data
+    // and retry on focus/reconnect; mutations still reject so callers never
+    // mistake an unsent write for success.
+    throw new APIError('Data refresh is temporarily unavailable.', 0);
   }
 }
 

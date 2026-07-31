@@ -33,6 +33,7 @@ import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
 import ClayPasswordToggle from '../../src/components/ClayPasswordToggle';
 import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
 import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
+import StudentPhotoField from '../../src/components/StudentPhotoField';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -463,6 +464,8 @@ export default function AddStudentScreen() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [enrolledForm, setEnrolledForm] = useState<AdmissionFormData | null>(null);
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string | null>(null);
+  const [photoSelection, setPhotoSelection] = useState<string | null | undefined>(undefined);
 
   const [formData, setFormData] = useState<CreateStudentRequest>({
     first_name: '', middle_name: '', last_name: '',
@@ -514,6 +517,8 @@ export default function AddStudentScreen() {
     try {
       const data: any = await StudentService.getById(studentId);
       if (data) {
+        setCurrentPhotoUrl(data.photo_url || null);
+        setPhotoSelection(undefined);
         setFormData({
           first_name: data.first_name || '', middle_name: data.middle_name || '',
           last_name: data.last_name || '', dob: data.dob || '',
@@ -605,19 +610,43 @@ export default function AddStudentScreen() {
           delete updatePayload.password;
         }
         const result = await StudentService.update(id as string, updatePayload as any);
+        const warnings: string[] = [];
         if ((result as any)?.authError) {
-          alertCompat(
-            'Partial Update',
-            `Profile saved, but login credentials failed to update: ${(result as any).authError}`,
-          );
-        } else {
-          alertCompat('Updated!', 'Student record updated successfully.', [{ text: 'OK', onPress: () => router.back() }]);
+          warnings.push(`Login credentials failed to update: ${(result as any).authError}`);
         }
-      } else {
-        await StudentService.create(payload);
-        setEnrolledForm(
-          buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears }),
+        try {
+          if (typeof photoSelection === 'string') {
+            await StudentService.uploadPhoto(id as string, photoSelection);
+          } else if (photoSelection === null && currentPhotoUrl) {
+            await StudentService.removePhoto(id as string);
+          }
+        } catch (error: any) {
+          warnings.push(`Profile picture failed: ${error?.message || 'The selected image could not be saved.'}`);
+        }
+        alertCompat(
+          warnings.length ? 'Student Updated with Warnings' : 'Updated!',
+          warnings.length
+            ? `Student details were saved.\n\n${warnings.join('\n')}`
+            : 'Student record updated successfully.',
+          [{ text: 'OK', onPress: () => router.back() }],
         );
+      } else {
+        const created = await StudentService.create(payload);
+        const admissionForm = buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears });
+        if (typeof photoSelection === 'string') {
+          try {
+            await StudentService.uploadPhoto(created.student.id, photoSelection);
+          } catch (error: any) {
+            const message = error?.message || 'The selected profile picture could not be saved.';
+            alertCompat(
+              'Student Created',
+              `The student was enrolled, but the profile picture failed: ${message}`,
+              [{ text: 'Continue', onPress: () => setEnrolledForm(admissionForm) }],
+            );
+            return;
+          }
+        }
+        setEnrolledForm(admissionForm);
       }
     } catch (error: unknown) {
       const message = error instanceof APIError
@@ -709,6 +738,14 @@ export default function AddStudentScreen() {
 
           {/* ── SECTION 1: PERSONAL ── */}
           <SectionCard title="Personal Details" icon="person-outline" colorKey="personal" delay={160}>
+            <StudentPhotoField
+              currentPhotoUrl={currentPhotoUrl}
+              value={photoSelection}
+              studentName={[formData.first_name, formData.last_name].filter(Boolean).join(' ')}
+              onChange={setPhotoSelection}
+              accentColor={SECTION_COLORS.personal.accent}
+              isDark={isDark}
+            />
             <View style={styles.row}>
               <View style={styles.halfInput}>
                 <InputField label="First Name" placeholder="John" value={formData.first_name}

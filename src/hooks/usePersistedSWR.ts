@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
+import NetInfo from '@react-native-community/netinfo';
+import { AppState, AppStateStatus } from 'react-native';
 import { SCHOOL_ID } from '../constants/school';
 import { persistentQueryCache } from '../services/persistentQueryCache';
 
@@ -51,6 +53,8 @@ export function usePersistedSWR<T>({
 
   const hydratedRef = useRef(false);
   const mountedRef = useRef(true);
+  const previousOnlineRef = useRef<boolean | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   // Consumers pass inline fetchers; a ref keeps runFetch's identity stable so
   // the fetch effects below run per focus/key change, not per render (an
@@ -134,6 +138,49 @@ export function usePersistedSWR<T>({
     },
     [enabled, userId, memoryKey, ttlMs, persist, cacheKey, queryKey, revalidateOnMount],
   );
+
+  // A screen can stay focused through an Android network hand-off or a long
+  // background period. Revalidate on reconnect/foreground so recovery does not
+  // depend on navigating away and back. Existing cached data remains visible.
+  useEffect(() => {
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      const online =
+        state.isConnected === true && state.isInternetReachable !== false;
+      const wasOnline = previousOnlineRef.current;
+      previousOnlineRef.current = online;
+      if (
+        wasOnline === false &&
+        online &&
+        enabled &&
+        userId &&
+        isFocused
+      ) {
+        void runFetch({ force: true, background: !!memoryCache.get(memoryKey) });
+      }
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      (nextState) => {
+        const wasActive = appStateRef.current === 'active';
+        appStateRef.current = nextState;
+        if (
+          !wasActive &&
+          nextState === 'active' &&
+          enabled &&
+          userId &&
+          isFocused
+        ) {
+          void runFetch({ force: true, background: !!memoryCache.get(memoryKey) });
+        }
+      }
+    );
+
+    return () => {
+      unsubscribeNetInfo();
+      appStateSubscription.remove();
+    };
+  }, [enabled, userId, isFocused, memoryKey, runFetch]);
 
   // Disk hydration on memory miss
   useEffect(() => {

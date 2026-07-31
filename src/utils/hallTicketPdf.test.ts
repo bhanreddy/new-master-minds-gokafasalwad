@@ -56,7 +56,7 @@ const options: HallTicketPdfOptions = {
 };
 
 describe('hallTicketPdf', () => {
-  it(`creates ${TICKETS_PER_PAGE}-row A4 pages and starts a second page for the next student`, () => {
+  it(`defaults to ${TICKETS_PER_PAGE} compact tickets and starts a second page for the next student`, () => {
     const html = buildHallTicketHtml({
       ...options,
       students: [
@@ -66,11 +66,35 @@ describe('hallTicketPdf', () => {
     });
 
     expect(TICKETS_PER_PAGE).toBe(4);
-    expect((html.match(/class="hall-sheet"/g) || []).length).toBe(2);
+    expect((html.match(/class="hall-sheet /g) || []).length).toBe(2);
     expect((html.match(/class="ticket-slot"/g) || []).length).toBe(5);
-    expect(html).toContain(`grid-template-rows: repeat(${TICKETS_PER_PAGE}, 61mm)`);
-    expect(html).toContain('height: 58mm');
+    expect(html).toContain('hall-sheet hall-sheet--4');
+    expect(html).toContain('grid-template-rows: repeat(4, 67mm)');
+    expect(html).toContain('ticket ticket--layout-4');
+    expect(html).toContain('height: 64mm');
     expect(html).toContain('border-bottom: 0.3mm dashed');
+  });
+
+  it.each([
+    [2, 'schedule-detail', 3],
+    [3, 'schedule-grid', 2],
+    [4, 'schedule', 2],
+  ] as const)('creates the distinct %i-per-page model', (ticketsPerPage, scheduleClass, expectedPages) => {
+    const html = buildHallTicketHtml({
+      ...options,
+      ticketsPerPage,
+      students: Array.from({ length: 5 }, (_, index) => ({
+        id: `student-${index + 1}`,
+        display_name: `Student ${index + 1}`,
+        admission_no: `ADM-${index + 1}`,
+        roll_number: index + 1,
+      })),
+    });
+
+    expect((html.match(/class="hall-sheet /g) || []).length).toBe(expectedPages);
+    expect(html).toContain(`hall-sheet hall-sheet--${ticketsPerPage}`);
+    expect(html).toContain(`ticket ticket--layout-${ticketsPerPage}`);
+    expect(html).toContain(`class="${scheduleClass}"`);
   });
 
   it('renders school logo in the header and as a watermark', () => {
@@ -140,7 +164,10 @@ describe('hallTicketPdf', () => {
     expect(html).not.toContain('Signature of invigilator');
     expect(html).not.toContain('Student signature');
     expect(html).not.toContain('Max 40');
-    expect(html).toContain('row-gap: 5mm');
+    expect(html).toContain('.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 3mm; }');
+    expect(html).toContain('font-size: 7pt');
+    expect(html).toContain('font-size: 5.2pt');
+    expect(html).toContain('font-weight: 800');
     expect((html.match(/2026-27/g) || []).length).toBe(1);
     expect(html).toContain(
       '<tr><th scope="col">10/08/2026</th><th scope="col">11/08/2026</th></tr>',

@@ -921,12 +921,10 @@ export default function NotificationsTriggerPage() {
           // collapse an otherwise-healthy live view.
           consecutiveErrors += 1;
           if (consecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
-            clearPollTimer();
-            setLoadingType(null);
-            alertCompat(
-              'Connection issue',
-              "We couldn't refresh the delivery status. The send is still running — reopen this notification shortly to see the final report."
-            );
+            // Stay quiet and keep polling. A delivery job continues on the
+            // server, so a temporary client connection failure is neither a
+            // failed send nor a reason to interrupt the user with a popup.
+            consecutiveErrors = POLL_MAX_CONSECUTIVE_ERRORS;
           }
         }
       };

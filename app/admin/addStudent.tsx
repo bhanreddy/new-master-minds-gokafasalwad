@@ -20,6 +20,7 @@ import LogoLoader from '../../src/components/LogoLoader';
 import ClayPasswordToggle from '../../src/components/ClayPasswordToggle';
 import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
 import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
+import StudentPhotoField from '../../src/components/StudentPhotoField';
 
 type ParentFormState = {
   first_name: string;
@@ -274,6 +275,8 @@ export default function AddStudentScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [enrolledForm, setEnrolledForm] = useState<AdmissionFormData | null>(null);
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string | null>(null);
+  const [photoSelection, setPhotoSelection] = useState<string | null | undefined>(undefined);
 
   // Form State
   const [formData, setFormData] = useState<CreateStudentRequest>({
@@ -369,6 +372,8 @@ export default function AddStudentScreen() {
     try {
       const data: any = await StudentService.getById(studentId);
       if (data) {
+        setCurrentPhotoUrl(data.photo_url || null);
+        setPhotoSelection(undefined);
         setFormData({
           first_name: data.first_name || '',
           middle_name: data.middle_name || '',
@@ -522,15 +527,39 @@ export default function AddStudentScreen() {
           alertCompat('Save Failed', (result as { message?: string }).message || 'Failed to update student');
           return;
         }
-        alertCompat('Success', result?.message || 'Student updated successfully!', [{
+        let photoError: string | null = null;
+        try {
+          if (typeof photoSelection === 'string') {
+            await StudentService.uploadPhoto(id as string, photoSelection);
+          } else if (photoSelection === null && currentPhotoUrl) {
+            await StudentService.removePhoto(id as string);
+          }
+        } catch (error: any) {
+          photoError = error?.message || 'The selected profile picture could not be saved.';
+        }
+        alertCompat(photoError ? 'Student Updated' : 'Success', photoError
+          ? `Student details were saved, but the profile picture failed: ${photoError}`
+          : result?.message || 'Student updated successfully!', [{
           text: 'OK',
           onPress: () => router.back()
         }]);
       } else {
-        await StudentService.create(payload);
-        setEnrolledForm(
-          buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears }),
-        );
+        const created = await StudentService.create(payload);
+        const admissionForm = buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears });
+        if (typeof photoSelection === 'string') {
+          try {
+            await StudentService.uploadPhoto(created.student.id, photoSelection);
+          } catch (error: any) {
+            const message = error?.message || 'The selected profile picture could not be saved.';
+            alertCompat(
+              'Student Created',
+              `The student was enrolled, but the profile picture failed: ${message}`,
+              [{ text: 'Continue', onPress: () => setEnrolledForm(admissionForm) }],
+            );
+            return;
+          }
+        }
+        setEnrolledForm(admissionForm);
       }
     } catch (error: any) {
       const msg = error?.message || error.response?.data?.error || 'Failed to save student';
@@ -569,6 +598,14 @@ export default function AddStudentScreen() {
         {/* Section: Personal Details */}
         <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.section}>
           <Text style={styles.sectionHeader}>Personal Details</Text>
+          <StudentPhotoField
+            currentPhotoUrl={currentPhotoUrl}
+            value={photoSelection}
+            studentName={[formData.first_name, formData.last_name].filter(Boolean).join(' ')}
+            onChange={setPhotoSelection}
+            accentColor={FORM.brand}
+            isDark={isDark}
+          />
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <InputField label="First Name" placeholder="John" value={formData.first_name} onChangeText={(t: string) => setFormData({
@@ -654,7 +691,7 @@ export default function AddStudentScreen() {
           <Text style={[styles.label, {
             marginTop: 10,
             color: ADMIN_THEME.colors.primary
-          }]}>Father's Details</Text>
+          }]}>Father&apos;s Details</Text>
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <InputField label="First Name" placeholder="Father Name" value={father.first_name} onChangeText={(t: string) => setFather({
@@ -681,7 +718,7 @@ export default function AddStudentScreen() {
           <Text style={[styles.label, {
             marginTop: 20,
             color: ADMIN_THEME.colors.primary
-          }]}>Mother's Details</Text>
+          }]}>Mother&apos;s Details</Text>
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <InputField label="First Name" placeholder="Mother Name" value={mother.first_name} onChangeText={(t: string) => setMother({

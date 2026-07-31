@@ -4,13 +4,12 @@ import { supabase } from '../services/supabaseConfig';
 import { AuthService, clearAuthState, isInternalSessionSwap } from '../services/authService';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { SCHOOL_ID } from '../constants/school';
-import { registerLogoutCallback, suppressTransientApiAlerts } from '../services/apiClient';
-import { isStudentRole, isPersistentSessionRole } from '../utils/roleHelpers';
-import { getBackupRefreshToken, clearBackupRefreshToken } from '../services/secureTokenStore';
+import { suppressTransientApiAlerts } from '../services/apiClient';
+import { isStudentRole } from '../utils/roleHelpers';
+import { clearBackupRefreshToken } from '../services/secureTokenStore';
 import { requireFingerprintForVaultAccount } from '../services/fingerprintGate';
 import {
   clearFingerprintTickets,
-  disableFingerprintForAccount,
 } from '../services/biometricService';
 import { SessionPolicy } from '../services/sessionPolicyService';
 import { notificationManager } from '../services/notificationManager';
@@ -94,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [portalContexts, setPortalContexts] = useState<PortalContextsPayload | null>(null);
 
   const backoffDelay = useRef(1000); // Start at 1s
+  const refreshRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSignedIn = useRef(false); // Guard against TOKEN_REFRESHED race after sign-in
   const sessionRef = useRef<AuthSession | null>(null);
   sessionRef.current = session;
@@ -213,53 +213,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   };
 
-  // Known long-lived roles retry transient connectivity/server failures with
-  // capped backoff. Confirmed token rejection and SIGNED_OUT are handled
-  // separately and always clear authority.
+  // A refresh failure must never erase an otherwise valid locally persisted
+  // identity. Retry forever with capped backoff; API requests still require a
+  // fresh server-accepted token, so preserving UI does not bypass authorization.
   const handleRefreshFailure = (currentRole: string | null) => {
     if (!sessionRef.current) return;
-    if (isPersistentSessionRole(currentRole)) {
-      // Infinite retry, capped at 60s. Session is preserved untouched.
-      const nextDelay = Math.min(backoffDelay.current * 2, 60000);
-      backoffDelay.current = nextDelay;
-      console.warn(`[useAuth] Refresh failed for persistent role "${currentRole}". Retrying in ${nextDelay}ms (session preserved, no logout)...`);
-      setTimeout(() => handleRefresh(currentRole), nextDelay);
-    } else if (backoffDelay.current <= 4000) {
-      // accountant: retry a few times, then clear.
-      const nextDelay = backoffDelay.current * 2;
-      backoffDelay.current = nextDelay;
-      console.warn(`[useAuth] Refresh failed for "${currentRole}". Retrying in ${nextDelay}ms...`);
-      setTimeout(() => handleRefresh(currentRole), nextDelay);
-    } else {
-      // Retries exhausted for non-persistent role — clear session.
-      void (async () => {
-        const expiredUserId = sessionRef.current?.validatedUser?.userId ?? null;
-        try {
-          invalidateApiQueryCache();
-        } catch (e) {
-          if (__DEV__) console.warn('[useAuth] query cache purge on auto-logout failed (non-fatal):', e);
-        }
-        if (expiredUserId) {
-          try {
-            await persistentQueryCache.removeMatching(expiredUserId);
-          } catch (e) {
-            if (__DEV__) console.warn('[useAuth] disk query cache purge on auto-logout failed (non-fatal):', e);
-          }
-          try {
-            await StorageService.clear(expiredUserId);
-          } catch (e) {
-            if (__DEV__) console.warn('[useAuth] StorageService.clear on auto-logout failed (non-fatal):', e);
-          }
-          // The session was rejected outright, so its fingerprint opt-in must
-          // not survive to unlock a dead session on the next launch.
-          await disableFingerprintForAccount(SCHOOL_ID, expiredUserId);
-        }
-        clearFingerprintTickets();
-        await clearAuthState();
-        setSession(null);
-        backoffDelay.current = 1000; // Reset for next login
-      })();
+    const nextDelay = Math.min(backoffDelay.current * 2, 60000);
+    backoffDelay.current = nextDelay;
+    if (__DEV__) {
+      console.warn(
+        `[useAuth] Refresh pending for "${currentRole || 'unknown'}"; retrying in ${nextDelay}ms`
+      );
     }
+    if (refreshRetryTimer.current) {
+      clearTimeout(refreshRetryTimer.current);
+    }
+    refreshRetryTimer.current = setTimeout(() => {
+      refreshRetryTimer.current = null;
+      void handleRefresh(currentRole);
+    }, nextDelay);
   };
 
   // Core refresh logic invoked internally or explicitly.
@@ -267,6 +239,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const newSession = await AuthService.refreshSession();
       if (newSession) {
+        if (refreshRetryTimer.current) {
+          clearTimeout(refreshRetryTimer.current);
+          refreshRetryTimer.current = null;
+        }
         setSession(newSession);
         backoffDelay.current = 1000; // Reset on success
       } else {
@@ -282,9 +258,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // Register the API client's logout callback so 401 Unauthorized triggers logout
-    registerLogoutCallback(signOut);
-
     // ── Layer A: AppState listener for Supabase auto-refresh ──
     // CRITICAL FIX: Without this, when Android kills the app process and the
     // user reopens, the Supabase SDK's internal setInterval-based auto-refresh
@@ -292,6 +265,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         supabase.auth.startAutoRefresh();
+        const roleCode = sessionRef.current?.validatedUser?.role?.code || null;
+        if (sessionRef.current) void handleRefresh(roleCode);
       } else if (nextState === 'background' || nextState === 'inactive') {
         supabase.auth.stopAutoRefresh();
       }
@@ -301,98 +276,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Start auto-refresh immediately (app is active on mount)
     supabase.auth.startAutoRefresh();
 
+    let authSubscription: { unsubscribe: () => void } | null = null;
+
     const initializeAuth = async () => {
-      // ── Layer A: Improved cold-start session restoration ──
-      // Instead of racing getSession() against a 10-second timeout (which
-      // forces a login screen when the backend is slow), we do a two-phase
-      // approach:
-      //   Phase 1: Read stored session from local storage (fast, no network)
-      //   Phase 2: Validate/refresh in background (no timeout pressure)
-      let storedSession: AuthSession | null = null;
       try {
-        // Phase 1: Fast local read — getSession() reads from SecureTokenStore.
-        // If the token is NOT expired, this returns immediately with no network call.
-        // If the token IS expired, it triggers refreshSession() which needs network.
-        // We give it a generous timeout but DO NOT log out on timeout.
-        const AUTH_INIT_TIMEOUT = 15000; // 15 seconds (generous for Render cold start)
-        storedSession = await Promise.race([
-          AuthService.getSession(),
-          new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), AUTH_INIT_TIMEOUT)
-          ),
-        ]);
-        
+        // Local Keystore state decides whether the app has a remembered login.
+        // Network speed and access-token age do not participate in this boot gate.
+        const storedSession = await AuthService.getSession();
         if (storedSession) {
           setSession(storedSession);
-          // Re-seed the role into SessionPolicy on cold start so the student
-          // 401-suppression guard is active immediately, before any refresh.
           const restoredRole = storedSession.validatedUser?.role?.code;
           if (restoredRole && !(await SessionPolicy.getStoredRole())) {
             await SessionPolicy.startSession(restoredRole as any);
           }
+          void handleRefresh(restoredRole || null);
         } else {
-          // ── Layer B: Student silent restore from SecureStore backup ──
-          // If getSession() returned null (storage cleared or timeout),
-          // attempt to recover using the backup refresh token in SecureStore.
-          // This only helps if a prior session existed — the backup refresh
-          // token is written by SecureTokenStore.setItem() on every session write.
-          const backupToken = await getBackupRefreshToken();
-          if (backupToken) {
-            if (__DEV__) console.log('[useAuth] Attempting silent restore from backup refresh token...');
-            try {
-              const { data, error } = await supabase.auth.refreshSession({
-                refresh_token: backupToken,
-              });
-              if (!error && data.session) {
-                if (__DEV__) console.log('[useAuth] Silent restore succeeded');
-                // Re-validate with backend (non-blocking — if it fails, we still have the supabase session)
-                const restoredSession = await AuthService.refreshSession();
-                if (restoredSession) {
-                  setSession(restoredSession);
-                } else {
-                  // Supabase session is valid but backend validation failed — use supabase session data
-                  // This keeps the user logged in while backend may be waking up
-                  if (__DEV__) console.warn('[useAuth] Silent restore: backend validation pending, using cached session');
-                }
-              } else {
-                if (__DEV__) console.log('[useAuth] Silent restore failed — token invalid, routing to login');
-                await clearBackupRefreshToken();
-                setSession(null);
-              }
-            } catch (restoreErr) {
-              if (__DEV__) console.error('[useAuth] Silent restore error:', restoreErr);
-              setSession(null);
-            }
-          } else {
-            setSession(null);
-          }
+          setSession(null);
         }
       } catch (e) {
         console.error('[AUTH_BOOT_FAIL]', e);
-        if (__DEV__) console.warn('[useAuth] Auth initialization failed:', e);
-        // Don't force logout on init failure — try backup restore for student
-        const backupToken = await getBackupRefreshToken();
-        if (backupToken) {
-          try {
-            const { data, error } = await supabase.auth.refreshSession({
-              refresh_token: backupToken,
-            });
-            if (!error && data.session) {
-              const restoredSession = await AuthService.refreshSession();
-              if (restoredSession) setSession(restoredSession);
-            }
-          } catch {
-            // Silent — will fall through to login screen
-          }
-        }
-        setSession(null);
       } finally {
         setLoading(false);
         setAuthChecked(true);
       }
 
       // 4. Subscribe to auth state changes from Supabase directly
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, refreshedSession) => {
         // Phase 2: suppress events fired as a side effect of OUR OWN internal
         // setSession()/signInWithPassword() during switchAccount / addAccount-
         // restore. Without this, an expired-token setSession emits TOKEN_REFRESHED
@@ -405,11 +314,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         if (event === 'SIGNED_OUT') {
-          // A Supabase SIGNED_OUT event can mean explicit logout or confirmed
-          // refresh-token rejection. Neither is safe to ignore based on a
-          // cached role.
-          await clearAuthState();
-          setSession(null);
+          // Supabase also emits SIGNED_OUT while rejecting a refresh token.
+          // Preserve a remembered app identity during silent credential
+          // recovery. Explicit logout removes auth_session before emitting,
+          // so it still reaches the null branch.
+          const remembered = await AuthService.getStoredSession();
+          if (remembered) {
+            setSession(remembered);
+            void handleRefresh(
+              remembered.validatedUser?.role?.code || null
+            );
+          } else {
+            await clearAuthState();
+            setSession(null);
+          }
         } else if (event === 'TOKEN_REFRESHED') {
           // Skip if we just signed in — Supabase fires TOKEN_REFRESHED
           // immediately after sign-in which races with the sign-in flow
@@ -417,21 +335,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (__DEV__) console.log('[useAuth] Skipping TOKEN_REFRESHED — just signed in');
             return;
           }
-          // Do not run async work inside setState — use ref for latest role
-          const roleCode = sessionRef.current?.validatedUser?.role?.code || null;
-          void handleRefresh(roleCode);
+          if (refreshedSession) {
+            const adopted = await AuthService.adoptRefreshedSession(
+              refreshedSession
+            );
+            if (adopted) {
+              if (refreshRetryTimer.current) {
+                clearTimeout(refreshRetryTimer.current);
+                refreshRetryTimer.current = null;
+              }
+              backoffDelay.current = 1000;
+              setSession(adopted);
+            }
+          }
         }
       });
-
-      return () => {
-        subscription.unsubscribe();
-      };
+      authSubscription = subscription;
     };
 
     initializeAuth();
 
     return () => {
       appStateSubscription.remove();
+      authSubscription?.unsubscribe();
+      if (refreshRetryTimer.current) {
+        clearTimeout(refreshRetryTimer.current);
+        refreshRetryTimer.current = null;
+      }
       supabase.auth.stopAutoRefresh();
     };
   }, []);
