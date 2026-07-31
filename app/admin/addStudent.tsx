@@ -392,7 +392,7 @@ export default function AddStudentScreen() {
           email: data.email || '',
           phone: data.phone || '',
           password: '',
-          academic_year_id: data.current_enrollment?.academic_year_id || data.academic_year_id || formData.academic_year_id,
+          academic_year_id: data.exit_academic_year_id || data.current_enrollment?.academic_year_id || data.academic_year_id || formData.academic_year_id,
           role_code: 'student',
           class_id: data.current_enrollment?.class_id || '',
           section_id: data.current_enrollment?.section_id || '',
@@ -574,6 +574,10 @@ export default function AddStudentScreen() {
       <Text style={styles.loadingText}>Initializing form...</Text>
     </View>;
   }
+  const isTerminalStatus = formData.status_id === 2 || formData.status_id === 3;
+  const availableStudentStatuses = isEditMode
+    ? STUDENT_STATUSES
+    : STUDENT_STATUSES.filter((status) => status.code === 'active');
   return <View style={styles.container}>
     <StatusBar barStyle="dark-content" backgroundColor="#fff" />
     <AdminHeader title={isEditMode ? "Edit Student" : "Add Student"} showBackButton={true} />
@@ -672,17 +676,25 @@ export default function AddStudentScreen() {
             ...formData,
             section_id: id
           })} placeholder="Select Section" icon="grid-outline" required={true} />
-          <SelectField label="Student Status" value={formData.status_id} options={STUDENT_STATUSES} onSelect={(id: number) => setFormData({
-            ...formData,
-            status_id: id
-          })} icon="shield-checkmark-outline" required={true} />
-          <SelectField label="Academic Year" value={formData.academic_year_id} options={academicYears.map((y) => ({
+          <SelectField label={isTerminalStatus ? 'Exit Academic Year' : 'Academic Year'} value={formData.academic_year_id} options={academicYears.map((y) => ({
             id: y.id,
             name: y.code
           }))} onSelect={(id: string) => setFormData({
             ...formData,
             academic_year_id: id
           })} placeholder="Select Year" icon="time-outline" required={true} />
+          <SelectField label="Student Status" value={formData.status_id} options={availableStudentStatuses} onSelect={(id: number) => setFormData({
+            ...formData,
+            status_id: id
+          })} icon="shield-checkmark-outline" required={true} />
+          {isEditMode && isTerminalStatus && (
+            <View style={styles.statusNotice}>
+              <Ionicons name="information-circle-outline" size={20} color="#9A3412" />
+              <Text style={styles.statusNoticeText}>
+                Saving will move this student out of active counts and close the enrollment under the selected exit academic year. All historical data will be retained.
+              </Text>
+            </View>
+          )}
         </Animated.View>
         {/* Section: Parent Details */}
         <Animated.View entering={FadeInDown.delay(150).duration(500)} style={styles.section}>
@@ -778,7 +790,13 @@ export default function AddStudentScreen() {
         <TouchableOpacity style={[styles.saveButton, loading && styles.saveButtonDisabled]} activeOpacity={0.8} onPress={handleSave} disabled={loading}>
           {loading ? <LogoLoader color="#fff" /> : <>
             <Text style={styles.saveButtonText}>
-              {isEditMode ? 'Update Student' : 'Create Student Profile'}
+              {isEditMode
+                ? formData.status_id === 2
+                  ? 'Mark as Passed Out'
+                  : formData.status_id === 3
+                    ? 'Mark as Withdrawn'
+                    : 'Update Student'
+                : 'Create Student Profile'}
             </Text>
             <Ionicons name="checkmark-circle" size={24} color="#fff" style={{
               marginLeft: 8
@@ -885,6 +903,24 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: FORM.text(isDark)
+  },
+  statusNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 13,
+    borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(154, 52, 18, 0.18)' : '#FFF7ED',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(251, 146, 60, 0.35)' : '#FED7AA',
+    marginTop: 2
+  },
+  statusNoticeText: {
+    flex: 1,
+    color: isDark ? '#FDBA74' : '#9A3412',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600'
   },
   saveButton: {
     backgroundColor: ADMIN_THEME.colors.primary,

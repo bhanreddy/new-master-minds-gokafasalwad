@@ -11,7 +11,7 @@ import AdminHeader from '../../src/components/AdminHeader';
 import Animated, { FadeInUp, useSharedValue, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { StudentService } from '../../src/services/studentService';
 import { ClassService, ClassInfo, Section } from '../../src/services/classService';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import LogoLoader from '../../src/components/LogoLoader';
 import { exportStudentCsv } from '../../src/utils/studentExport';
 import { SCHOOL_NAME } from '../../src/constants/school';
@@ -23,6 +23,8 @@ export default function AdminStudentsScreen() {
   const styles = React.useMemo(() => getStyles(theme), [theme]);
   const { t } = useTranslation();
   const router = useRouter();
+  const { view } = useLocalSearchParams<{ view?: string }>();
+  const isArchive = view === 'archive';
 
   // List & Pagination State
   const [students, setStudents] = useState<any[]>([]);
@@ -42,7 +44,7 @@ export default function AdminStudentsScreen() {
   // Reference Data
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
-  const [statuses, setStatuses] = useState<{ id: number; name: string; }[]>([]);
+  const [statuses, setStatuses] = useState<{ id: number; name: string; code: string; }[]>([]);
 
   // UI State
   const [filterModal, setFilterModal] = useState<{ visible: boolean; type: 'class' | 'section' | 'status' | 'sort' | null; }>({
@@ -98,6 +100,7 @@ export default function AdminStudentsScreen() {
         class_id: selectedClass || undefined,
         section_id: selectedSection || undefined,
         status_id: selectedStatus || undefined,
+        lifecycle: selectedStatus ? undefined : (isArchive ? 'archived' as const : 'active' as const),
         sort_by: sortBy,
         sort_order: sortOrder
       };
@@ -121,7 +124,12 @@ export default function AdminStudentsScreen() {
   // Effect for filtering/pagination
   useEffect(() => {
     fetchStudents();
-  }, [page, selectedClass, selectedSection, selectedStatus, sortBy, sortOrder]);
+  }, [page, selectedClass, selectedSection, selectedStatus, sortBy, sortOrder, isArchive]);
+
+  useEffect(() => {
+    setSelectedStatus(null);
+    setPage(1);
+  }, [isArchive]);
 
   // Debounced search effect
   useEffect(() => {
@@ -177,6 +185,7 @@ export default function AdminStudentsScreen() {
         class_id: exportClass || undefined,
         section_id: exportSection || undefined,
         status_id: selectedStatus || undefined,
+        lifecycle: selectedStatus ? undefined : (isArchive ? 'archived' : 'active'),
         sort_by: sortBy,
         sort_order: sortOrder
       });
@@ -225,6 +234,11 @@ export default function AdminStudentsScreen() {
     const fullName = item.display_name || [item.first_name, item.last_name].filter(Boolean).join(' ');
     const enrollment = item.current_enrollment || {};
     const isActive = item.status === 'active' || item.status_id === 1;
+    const statusLabel = item.status === 'graduated'
+      ? 'Passed Out'
+      : item.status === 'withdrawn'
+        ? 'Withdrawn'
+        : item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown';
 
     return (
       <Animated.View entering={FadeInUp.delay(index * 50).springify().damping(12)} style={styles.card}>
@@ -241,20 +255,29 @@ export default function AdminStudentsScreen() {
               {enrollment.class_name || enrollment.class_code || 'N/A'} - {enrollment.section_name || 'N/A'}
               {enrollment.roll_number ? ` • Roll ${enrollment.roll_number}` : ''}
             </Text>
-            <Text style={styles.subDetails}>{item.admission_no}</Text>
+            <Text style={styles.subDetails}>
+              {item.admission_no}
+              {(isArchive ? item.exit_academic_year : enrollment.academic_year)
+                ? ` • ${isArchive ? item.exit_academic_year : enrollment.academic_year}`
+                : ''}
+            </Text>
           </View>
           <View style={[styles.statusBadge, isActive ? styles.statusActive : styles.statusInactive]}>
             <Text style={[styles.statusText, isActive ? styles.statusTextActive : styles.statusTextInactive]}>
-              {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
+              {statusLabel}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={() => handleDelete(item)}>
+          {!isArchive ? (
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => handleDelete(item)}>
 
-            <Ionicons name="trash-outline" size={20} color="#DC2626" />
-          </TouchableOpacity>
+              <Ionicons name="trash-outline" size={20} color="#DC2626" />
+            </TouchableOpacity>
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} style={{ marginLeft: 10 }} />
+          )}
         </TouchableOpacity>
       </Animated.View>);
 
@@ -271,7 +294,12 @@ export default function AdminStudentsScreen() {
   const currentFilterOptions = (): any[] => {
     if (filterModal.type === 'class') return [{ id: null, name: 'All Classes' }, ...classes];
     if (filterModal.type === 'section') return [{ id: null, name: 'All Sections' }, ...sections];
-    if (filterModal.type === 'status') return [{ id: null, name: 'All Statuses' }, ...statuses];
+    if (filterModal.type === 'status') {
+      const availableStatuses = isArchive
+        ? statuses.filter((status) => status.code === 'graduated' || status.code === 'withdrawn')
+        : statuses.filter((status) => status.code === 'active');
+      return [{ id: null, name: isArchive ? 'Passed Out & Withdrawn' : 'Active Students' }, ...availableStatuses];
+    }
     if (filterModal.type === 'sort') return [
       { id: 'name', name: 'Name' },
       { id: 'roll_number', name: 'Roll Number' },
@@ -290,13 +318,38 @@ export default function AdminStudentsScreen() {
 
   return (
     <View style={styles.container}>
-      <AdminHeader title="Students" showNotification scrollY={scrollY} />
+      <AdminHeader
+        title={isArchive ? 'Student Archive' : 'Students'}
+        showNotification={!isArchive}
+        showBackButton={isArchive}
+        scrollY={scrollY}
+      />
       <View style={styles.headerArea}>
+        <TouchableOpacity
+          style={[styles.archiveCard, isArchive && styles.activeRosterCard]}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (isArchive) router.replace('/admin/students');
+            else router.push({ pathname: '/admin/students', params: { view: 'archive' } });
+          }}>
+          <View style={[styles.archiveIcon, isArchive && styles.activeRosterIcon]}>
+            <Ionicons name={isArchive ? 'people-outline' : 'archive-outline'} size={23} color={isArchive ? '#2563EB' : '#9A3412'} />
+          </View>
+          <View style={styles.archiveInfo}>
+            <Text style={styles.archiveTitle}>{isArchive ? 'Back to Active Students' : 'Passed Out & Withdrawn'}</Text>
+            <Text style={styles.archiveSubtitle}>
+              {isArchive
+                ? 'Return to the current student roster'
+                : 'View retained student records and their exit academic year'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
         <View style={[styles.searchBox, ds.searchBarWrapper]}>
           <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
           <AppTextInput
             style={[ds.inputInChrome, styles.searchInput]}
-            placeholder="Search by name or admission no..."
+            placeholder={isArchive ? 'Search archived students...' : 'Search by name or admission no...'}
             placeholderTextColor={theme.colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery} />
@@ -327,7 +380,7 @@ export default function AdminStudentsScreen() {
               </Text>
               <Ionicons name="chevron-down" size={14} color={selectedSection ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
             </TouchableOpacity>
-            <TouchableOpacity
+            {isArchive && <TouchableOpacity
               style={[styles.filterChip, selectedStatus && styles.filterChipActive]}
               onPress={() => handleOpenFilter('status')}>
 
@@ -335,7 +388,7 @@ export default function AdminStudentsScreen() {
                 {selectedStatus ? statuses.find((s) => String(s.id) === String(selectedStatus))?.name : 'Status'}
               </Text>
               <Ionicons name="chevron-down" size={14} color={selectedStatus ? theme.colors.primary : theme.colors.textSecondary} style={{ marginLeft: 4 }} />
-            </TouchableOpacity>
+            </TouchableOpacity>}
             <TouchableOpacity
               style={[styles.filterChip, sortBy !== 'name' && styles.filterChipActive]}
               onPress={() => handleOpenFilter('sort')}>
@@ -373,7 +426,9 @@ export default function AdminStudentsScreen() {
           ListEmptyComponent={
             <View style={{ padding: 40, alignItems: 'center' }}>
               <Ionicons name="people-outline" size={60} color={theme.colors.border} />
-              <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>No students found matching your criteria.</Text>
+              <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>
+                {isArchive ? 'No passed-out or withdrawn students found.' : 'No active students found matching your criteria.'}
+              </Text>
             </View>
           }
           ListFooterComponent={students.length > 0 ? () =>
@@ -560,12 +615,12 @@ export default function AdminStudentsScreen() {
           alertCompat('Deleted', `${nm ?? 'Student'} and all associated data were permanently deleted.`);
         }} />
 
-      <TouchableOpacity
+      {!isArchive && <TouchableOpacity
         style={styles.fab}
         onPress={() => router.push('/admin/addStudent')}>
 
         <Ionicons name="add" size={30} color="#fff" />
-      </TouchableOpacity>
+      </TouchableOpacity>}
     </View>);
 
 }
@@ -579,6 +634,45 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 110,
     paddingBottom: 10
+  },
+  archiveCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    padding: 14,
+    marginBottom: 14
+  },
+  activeRosterCard: {
+    borderColor: '#BFDBFE'
+  },
+  archiveIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF7ED',
+    marginRight: 12
+  },
+  activeRosterIcon: {
+    backgroundColor: '#EFF6FF'
+  },
+  archiveInfo: {
+    flex: 1
+  },
+  archiveTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 3
+  },
+  archiveSubtitle: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17
   },
   searchBox: {
     flexDirection: 'row',

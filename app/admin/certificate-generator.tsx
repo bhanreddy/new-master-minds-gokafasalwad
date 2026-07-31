@@ -135,6 +135,7 @@ interface StudentData {
   nationality: string;
   category: string;
   admissionDate: string;
+  isFormerStudent: boolean;
 }
 
 interface TCEditableFields {
@@ -557,6 +558,8 @@ function BonafideDocument({
   issueDate: string;
 }) {
   const pronouns = genderPronouns(studentData.genderId);
+  const enrolmentVerb = studentData.isFormerStudent ? 'was' : 'is';
+  const studyVerb = studentData.isFormerStudent ? 'studied' : 'is Studying';
   const logoSource = resolveSchoolLogoSource(school);
   const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
 
@@ -593,10 +596,10 @@ function BonafideDocument({
             <Text style={bfStyles.bold}>{line(studentData.name)}</Text>
           </Text>
           <Text style={bfStyles.bodyLine}>
-            S/o. D/o. Shri/Smt. <Text style={bfStyles.bold}>{line(studentData.parentName)}</Text> is a Bonafide student of this Institution.
+            S/o. D/o. Shri/Smt. <Text style={bfStyles.bold}>{line(studentData.parentName)}</Text> {enrolmentVerb} a Bonafide student of this Institution.
           </Text>
           <Text style={bfStyles.bodyLine}>
-            {pronouns.subject} is Studying from Class{' '}
+            {pronouns.subject} {studyVerb} from Class{' '}
             <Text style={bfStyles.bold}>{line(studentData.fromClass)}</Text> Year{' '}
             <Text style={bfStyles.bold}>{line(studentData.fromYear)}</Text> to Class{' '}
             <Text style={bfStyles.bold}>{line(studentData.toClass)}</Text> Year{' '}
@@ -782,8 +785,8 @@ function renderTcLegalItems(studentData: StudentData, tcFields: TCEditableFields
   return (
     <View style={cpStyles.tcList}>
       <Text style={cpStyles.tcItem}>1. Name of Pupil : <Text style={cpStyles.bold}>{studentData.name}</Text></Text>
-      <Text style={cpStyles.tcItem}>2. Father's/Guardian Name : <Text style={cpStyles.bold}>{studentData.fatherName}</Text></Text>
-      <Text style={cpStyles.tcItem}>3. Mother's Name : <Text style={cpStyles.bold}>{studentData.motherName}</Text></Text>
+      <Text style={cpStyles.tcItem}>2. Father&apos;s/Guardian Name : <Text style={cpStyles.bold}>{studentData.fatherName}</Text></Text>
+      <Text style={cpStyles.tcItem}>3. Mother&apos;s Name : <Text style={cpStyles.bold}>{studentData.motherName}</Text></Text>
       <Text style={cpStyles.tcItem}>4. Nationality : <Text style={cpStyles.bold}>{studentData.nationality}</Text></Text>
       <Text style={cpStyles.tcItem}>5. Whether Candidate belongs to SC/ST/OBC : <Text style={cpStyles.bold}>{studentData.category}</Text></Text>
       <Text style={cpStyles.tcItem}>6. Date of First Admission in the School with Class : <Text style={cpStyles.bold}>{studentData.admissionDate}</Text></Text>
@@ -1158,8 +1161,8 @@ function buildCertificateHTML(
       </div>
       <div class="bf-body">
         <p class="bf-line">This is to certify that ${studentData.genderLabel} <strong>${line(studentData.name)}</strong></p>
-        <p class="bf-line">S/o. D/o. Shri/Smt. <strong>${line(studentData.parentName)}</strong> is a Bonafide student of this Institution.</p>
-        <p class="bf-line">${pronouns.subject} is Studying from Class <strong>${line(studentData.fromClass)}</strong> Year <strong>${line(studentData.fromYear)}</strong> to Class <strong>${line(studentData.toClass)}</strong> Year <strong>${line(studentData.toYear)}</strong> during ${pronouns.possessive} study period. ${pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} Character is found Good.</p>
+        <p class="bf-line">S/o. D/o. Shri/Smt. <strong>${line(studentData.parentName)}</strong> ${studentData.isFormerStudent ? 'was' : 'is'} a Bonafide student of this Institution.</p>
+        <p class="bf-line">${pronouns.subject} ${studentData.isFormerStudent ? 'studied' : 'is Studying'} from Class <strong>${line(studentData.fromClass)}</strong> Year <strong>${line(studentData.fromYear)}</strong> to Class <strong>${line(studentData.toClass)}</strong> Year <strong>${line(studentData.toYear)}</strong> during ${pronouns.possessive} study period. ${pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} Character is found Good.</p>
         <p class="bf-line bf-line-dob">${pronouns.possessive.charAt(0).toUpperCase() + pronouns.possessive.slice(1)} date of birth according to School Admission register is <strong>${line(studentData.dob)}</strong></p>
         <p class="bf-dob-words">${line(studentData.dobWords)}</p>
       </div>
@@ -1476,7 +1479,9 @@ function buildStudentDataFromRecord(
   parents: any[],
   enrollments: any[],
 ): StudentData {
-  const enrollment = student.current_enrollment;
+  const sortedEnrollments = sortEnrollmentsChronologically(enrollments);
+  const latestEnrollment = sortedEnrollments[sortedEnrollments.length - 1];
+  const enrollment = student.current_enrollment || latestEnrollment;
   const cls = enrollment?.class_name || enrollment?.class_code || '';
   const sec = enrollment?.section_name || '';
   const fatherObj = parents?.find((p: any) => /father/i.test(p.relationship || p.relation || ''));
@@ -1486,6 +1491,10 @@ function buildStudentDataFromRecord(
   const rawDob = student.dob || student.person?.dob || '';
   const dobFormatted = rawDob ? formatDDMMYYYY(rawDob) : 'N/A';
   const studyPeriod = resolveBonafideStudyPeriod(enrollments, enrollment, student.admission_date);
+  const isFormerStudent = student.status === 'graduated' || student.status === 'withdrawn';
+  const exitAcademicYear = isFormerStudent && student.exit_academic_year
+    ? String(student.exit_academic_year)
+    : studyPeriod.toYear;
 
   return {
     id: student.id,
@@ -1499,16 +1508,17 @@ function buildStudentDataFromRecord(
     dob: dobFormatted,
     dobWords: rawDob ? dobToWords(rawDob) : 'N/A',
     admissionNo: student.admission_no,
-    academicYear: enrollment?.academic_year || studyPeriod.toYear || '2025-2026',
+    academicYear: exitAcademicYear || enrollment?.academic_year || 'N/A',
     fromClass: studyPeriod.fromClass,
     fromYear: studyPeriod.fromYear,
     toClass: studyPeriod.toClass,
-    toYear: studyPeriod.toYear,
+    toYear: exitAcademicYear,
     penNo: normalizePenNumber(student.pen_number),
     address: 'Hyderabad',
     nationality: 'Indian',
     category: student.category?.name || 'General',
     admissionDate: student.admission_date ? formatDDMMYYYY(student.admission_date) : 'N/A',
+    isFormerStudent,
   };
 }
 
@@ -1568,7 +1578,7 @@ export default function CertificateGenerator() {
     try {
       const query = studentId.trim();
       const silent = { silent: true } as const;
-      const results = await StudentService.search(query, 20);
+      const results = await StudentService.search(query, 20, { lifecycle: 'all' });
 
       if (results.length === 0) {
         try {

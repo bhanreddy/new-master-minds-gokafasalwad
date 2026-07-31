@@ -47,6 +47,7 @@ const CSV_HEADERS = [
   'Section',
   'Roll Number',
   'Status',
+  'Academic Year',
   'Date of Birth',
   'Phone',
   'Email',
@@ -82,7 +83,12 @@ export function buildStudentCsv(students: Student[], meta: StudentExportMeta): s
         e?.class_name || e?.class_code || '',
         e?.section_name || '',
         e?.roll_number || '',
-        s.status ? s.status.charAt(0).toUpperCase() + s.status.slice(1) : '',
+        s.status === 'graduated'
+          ? 'Passed Out'
+          : s.status
+            ? s.status.charAt(0).toUpperCase() + s.status.slice(1)
+            : '',
+        s.exit_academic_year || e?.academic_year || '',
         s.dob || '',
         s.phone || '',
         s.email || '',

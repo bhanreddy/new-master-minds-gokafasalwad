@@ -397,7 +397,7 @@ export default function ProgressReportGenerator() {
     setResultData(null);
     try {
       let student: any = null;
-      const searchResults = await StudentService.search(studentId);
+      const searchResults = await StudentService.search(studentId, 5, { lifecycle: 'all' });
       if (searchResults && searchResults.length > 0) {
         const exactMatch = searchResults.find(
           (s: any) => s.admission_no === studentId

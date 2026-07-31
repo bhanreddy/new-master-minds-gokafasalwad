@@ -195,7 +195,7 @@ export default function FeeAdjustmentsScreen() {
     }
     try {
       setSearching(true);
-      const results = await StudentService.search(query);
+      const results = await StudentService.search(query, 5, { lifecycle: 'all' });
       setSearchResults(results || []);
     } catch (error) {
       console.error('Student search failed:', error);

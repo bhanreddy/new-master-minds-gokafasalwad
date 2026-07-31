@@ -530,7 +530,7 @@ export default function AddStudentScreen() {
           category_id: data.category_id || 1, religion_id: data.religion_id || 1,
           blood_group_id: data.blood_group_id || 1, email: data.email || '',
           phone: data.phone || '', password: '', role_code: 'student',
-          academic_year_id: data.current_enrollment?.academic_year_id || data.academic_year_id || '',
+          academic_year_id: data.exit_academic_year_id || data.current_enrollment?.academic_year_id || data.academic_year_id || '',
           class_id: data.current_enrollment?.class_id || '',
           section_id: data.current_enrollment?.section_id || '',
           roll_number: data.current_enrollment?.roll_number,
@@ -627,7 +627,7 @@ export default function AddStudentScreen() {
           warnings.length ? 'Student Updated with Warnings' : 'Updated!',
           warnings.length
             ? `Student details were saved.\n\n${warnings.join('\n')}`
-            : 'Student record updated successfully.',
+            : (result as any)?.message || 'Student record updated successfully.',
           [{ text: 'OK', onPress: () => router.back() }],
         );
       } else {
@@ -670,6 +670,11 @@ export default function AddStudentScreen() {
       </View>
     );
   }
+
+  const isTerminalStatus = formData.status_id === 2 || formData.status_id === 3;
+  const availableStudentStatuses = isEditMode
+    ? STUDENT_STATUSES
+    : STUDENT_STATUSES.filter((status) => status.code === 'active');
 
   const gradColors: [string, string] = isEditMode
     ? ['#52467A', '#7C6FFF']
@@ -816,13 +821,21 @@ export default function AddStudentScreen() {
                   icon="grid-outline" required accentColor={SECTION_COLORS.academic.accent} />
               </View>
             </View>
-            <SelectField label="Academic Year" value={formData.academic_year_id}
+            <SelectField label={isTerminalStatus ? 'Exit Academic Year' : 'Academic Year'} value={formData.academic_year_id}
               options={academicYears.map((y: AcademicYear) => ({ id: y.id, name: y.code }))}
               onSelect={(v: string) => update('academic_year_id', v)} placeholder="Select Year"
               icon="time-outline" required accentColor={SECTION_COLORS.academic.accent} />
-            <SelectField label="Student Status" value={formData.status_id} options={STUDENT_STATUSES}
+            <SelectField label="Student Status" value={formData.status_id} options={availableStudentStatuses}
               onSelect={(v: number) => update('status_id', v)} icon="shield-checkmark-outline"
               required accentColor={SECTION_COLORS.academic.accent} />
+            {isEditMode && isTerminalStatus && (
+              <View style={styles.statusNotice}>
+                <Ionicons name="information-circle-outline" size={20} color="#9A3412" />
+                <Text style={styles.statusNoticeText}>
+                  Saving will move this student out of active counts and close the enrollment under the selected exit academic year. All historical data will be retained.
+                </Text>
+              </View>
+            )}
           </SectionCard>
 
           {/* ── SECTION 3: PARENTS ── */}
@@ -945,7 +958,13 @@ export default function AddStudentScreen() {
                       size={20} color="#fff"
                     />
                     <Text style={styles.saveButtonText}>
-                      {isEditMode ? 'Save Changes' : 'Enroll Student'}
+                      {isEditMode
+                        ? formData.status_id === 2
+                          ? 'Mark as Passed Out'
+                          : formData.status_id === 3
+                            ? 'Mark as Withdrawn'
+                            : 'Save Changes'
+                        : 'Enroll Student'}
                     </Text>
                     <View style={styles.saveArrow}>
                       <Ionicons name="arrow-forward" size={14} color="rgba(255,255,255,0.7)" />
@@ -1026,6 +1045,17 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   input: { flex: 1, fontSize: 15, color: FORM.text(isDark), fontWeight: '500' },
   inputDisabled: { color: FORM.muted(isDark) },
   selectedBadge: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  statusNotice: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    padding: 13, borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(154, 52, 18, 0.18)' : '#FFF7ED',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(251, 146, 60, 0.35)' : '#FED7AA',
+  },
+  statusNoticeText: {
+    flex: 1, color: isDark ? '#FDBA74' : '#9A3412',
+    fontSize: 12, lineHeight: 18, fontWeight: '600',
+  },
 
   // ── Row layout ──
   row: { flexDirection: 'row', gap: 10 },

@@ -75,6 +75,7 @@ export interface ExamHallTicketData {
     students: {
         id: string;
         display_name: string;
+        photo_url?: string | null;
         admission_no: string;
         roll_number?: string | number | null;
     }[];

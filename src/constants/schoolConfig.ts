@@ -330,3 +330,6 @@ export const SCHOOL_CONFIG = {
     statusBarOnRibbon: 'light' as 'light' | 'dark',
   },
 };
+
+/** Optional fallback shown on certificates when no recognition line is saved in school settings. */
+export const SCHOOL_RECOGNITION_LINE = '';

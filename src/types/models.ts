@@ -108,7 +108,11 @@ export interface Student {
     readonly name?: string;
     readonly gender_id: number;
     readonly dob: string;
+    readonly status_id?: number;
     readonly status: string;
+    readonly exit_academic_year_id?: string | null;
+    readonly exit_academic_year?: string | null;
+    readonly exit_date?: string | null;
     readonly email?: string;
     readonly phone?: string;
     readonly photo_url?: string;

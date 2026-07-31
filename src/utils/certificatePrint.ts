@@ -74,6 +74,9 @@ async function uriToDataUri(uri: string): Promise<string> {
 
   if (Platform.OS === 'web') {
     const response = await fetch(uri);
+    if (!response.ok) {
+      throw new Error(`Could not load image (${response.status})`);
+    }
     const blob = await response.blob();
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -99,15 +102,21 @@ async function uriToDataUri(uri: string): Promise<string> {
   return `data:image/${mime};base64,${base64Logo}`;
 }
 
+/** Resolve any image for embedded HTML without substituting a branded fallback. */
+export async function getImageDataUri(imageUrl?: string | null): Promise<string | null> {
+  const candidate = imageUrl?.trim();
+  if (!candidate) return null;
+  try {
+    return await uriToDataUri(candidate);
+  } catch {
+    return null;
+  }
+}
+
 /** Platform-aware base64 logo for embedded HTML / print output. */
 export async function getLogoDataUri(logoUrl?: string): Promise<string> {
-  if (logoUrl?.trim()) {
-    try {
-      return await uriToDataUri(logoUrl.trim());
-    } catch {
-      /* fall through to bundled asset */
-    }
-  }
+  const resolvedLogo = await getImageDataUri(logoUrl);
+  if (resolvedLogo) return resolvedLogo;
 
   const { bundledAssetToBase64Uri } = await import('./toBase64Uri');
   return (await bundledAssetToBase64Uri(require('../../assets/images/icon.png'), 'image/png')) ?? '';

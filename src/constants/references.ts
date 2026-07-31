@@ -11,7 +11,7 @@ export const GENDERS = [
 
 export const STUDENT_STATUSES = [
     { id: 1, name: 'Active', code: 'active' },
-    { id: 2, name: 'Graduated', code: 'graduated' },
+    { id: 2, name: 'Passed Out', code: 'graduated' },
     { id: 3, name: 'Withdrawn', code: 'withdrawn' },
 ];
 

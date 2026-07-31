@@ -14,6 +14,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import LogoLoader from '../../src/components/LogoLoader';
 import { printCollectionReport, exportCollectionCsv } from '../../src/utils/collectionReport';
 import PremiumDatePickerModal from '../../src/components/PremiumDatePickerModal';
+import { SCHOOL_NAME } from '../../src/constants/school';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -487,12 +488,12 @@ export default function AdminFinanceScreen() {
       <TouchableOpacity
         style={styles.fab}
         onPress={() => {
-          if (!transactions || transactions.length === 0) {
+          if (!filteredTransactions || filteredTransactions.length === 0) {
             alertCompat('No Transactions', 'There are no transactions to export for this date.');
             return;
           }
           const meta = {
-            schoolName: 'Samskruthe School',
+            schoolName: SCHOOL_NAME,
             accountantName: 'Admin',
             dateLabel: selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
             dateIso: selectedDate.getFullYear() + '-' + String(selectedDate.getMonth() + 1).padStart(2, '0') + '-' + String(selectedDate.getDate()).padStart(2, '0')
@@ -502,7 +503,7 @@ export default function AdminFinanceScreen() {
               text: 'Print PDF',
               onPress: async () => {
                 try {
-                  await printCollectionReport(transactions, meta);
+                  await printCollectionReport(filteredTransactions, meta);
                 } catch (e) {
                   alertCompat('Error', 'Failed to generate PDF.');
                 }
@@ -512,7 +513,7 @@ export default function AdminFinanceScreen() {
               text: 'Export CSV',
               onPress: async () => {
                 try {
-                  await exportCollectionCsv(transactions, meta);
+                  await exportCollectionCsv(filteredTransactions, meta);
                 } catch (e) {
                   alertCompat('Error', 'Failed to generate CSV.');
                 }

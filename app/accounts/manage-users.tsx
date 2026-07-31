@@ -77,6 +77,7 @@ export default function ManageUsersScreen() {
         if (tab === 'student') {
           list = await StudentService.getAllPages({
             search: trimmed || undefined,
+            lifecycle: 'active',
           });
         } else {
           list = await StaffService.getAllPages({

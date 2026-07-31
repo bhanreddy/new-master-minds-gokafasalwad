@@ -304,7 +304,7 @@ export default function DefaultersScreen() {
     }
     const t = setTimeout(async () => {
       try {
-        const results = await StudentService.search(studentQuery.trim());
+        const results = await StudentService.search(studentQuery.trim(), 5, { lifecycle: 'all' });
         setStudentResults(results);
       } catch {
         setStudentResults([]);

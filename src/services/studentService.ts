@@ -124,6 +124,8 @@ export interface StudentListParams {
     class_id?: string;
     section_id?: string;
     status_id?: number | string;
+    /** Active roster, retained passed-out/withdrawn archive, or all records. */
+    lifecycle?: 'active' | 'archived' | 'all';
     sort_by?: 'name' | 'roll_number' | 'admission_no';
     sort_order?: 'asc' | 'desc';
 }
@@ -172,15 +174,23 @@ export const StudentService = {
     /**
      * Get all available student statuses
      */
-    getStatuses: async (): Promise<{ id: number; name: string }[]> => {
-        return api.get<{ id: number; name: string }[]>('/students/statuses');
+    getStatuses: async (): Promise<{ id: number; name: string; code: string }[]> => {
+        return api.get<{ id: number; name: string; code: string }[]>('/students/statuses');
     },
 
     /**
      * Search students by name or admission number
      */
-    search: async (query: string, limit = 5): Promise<Student[]> => {
-        const response = await api.get<{ data: Student[] }>('/students', { search: query, limit });
+    search: async (
+        query: string,
+        limit = 5,
+        options: { lifecycle?: StudentListParams['lifecycle'] } = { lifecycle: 'active' },
+    ): Promise<Student[]> => {
+        const response = await api.get<{ data: Student[] }>('/students', {
+            search: query,
+            limit,
+            lifecycle: options.lifecycle ?? 'active',
+        });
         // Handle both array response and { data: [] } response formats from paginated API
         if (Array.isArray(response)) return response;
         return response.data || [];

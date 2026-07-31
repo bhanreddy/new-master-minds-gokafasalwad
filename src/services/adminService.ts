@@ -110,6 +110,19 @@ export interface AdminFinanceStats {
         payment_method?: string;
         paid_at?: string;
         student_name?: string;
+        father_name?: string;
+        admission_no?: string;
+        class_name?: string;
+        section_name?: string;
+        fee_type?: string;
+        receipt_no?: string;
+        remarks?: string;
+        transaction_ref?: string;
+        received_by?: string;
+        received_by_id?: string;
+        student_id?: string;
+        student_fee_id?: string;
+        academic_year?: string;
     }[];
 }
 
