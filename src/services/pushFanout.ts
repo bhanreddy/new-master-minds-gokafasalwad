@@ -41,6 +41,10 @@ export async function refreshAccessTokenStandalone(
   refreshToken: string
 ): Promise<{ access_token: string; refresh_token: string; expires_at: number } | null> {
   if (!refreshToken) return null;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), 15_000)
+    : null;
   try {
     const resp = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: 'POST',
@@ -50,6 +54,7 @@ export async function refreshAccessTokenStandalone(
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ refresh_token: refreshToken }),
+      ...(controller ? { signal: controller.signal } : {}),
     });
 
     if (!resp.ok) {
@@ -76,6 +81,8 @@ export async function refreshAccessTokenStandalone(
   } catch (e) {
     if (__DEV__) console.warn('[pushFanout] standalone refresh error:', e);
     return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

@@ -5,6 +5,7 @@ import * as accountVault from '../services/accountVault';
 import type { VaultAccount } from '../services/accountVault';
 import { getHomeRouteForRole } from '../utils/portalRoutes';
 import { isStudentRole } from '../utils/roleHelpers';
+import { alertCompat } from '../utils/crossPlatformAlert';
 import * as Haptics from '../utils/haptics';
 
 export function useQuickAccountSwitch(onSwitched?: () => void | Promise<void>) {
@@ -42,6 +43,7 @@ export function useQuickAccountSwitch(onSwitched?: () => void | Promise<void>) {
         const res = await switchAccount(userId);
         if (res?.error) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          alertCompat('Could not switch', res.error);
           return false;
         }
         setActiveId(userId);
@@ -55,6 +57,13 @@ export function useQuickAccountSwitch(onSwitched?: () => void | Promise<void>) {
           await onSwitched?.();
         }
         return true;
+      } catch (e: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        alertCompat(
+          'Could not switch',
+          e?.message || 'Account switch failed. Try again, or re-add the account.'
+        );
+        return false;
       } finally {
         busyRef.current = false;
         setSwitching(false);

@@ -3,7 +3,6 @@ import { SecureTokenStore, getBackupRefreshToken } from './secureTokenStore';
 import { AuthSession, ValidatedUser } from '../types/auth';
 import { SCHOOL_ID } from '../constants/school';
 import { disableFingerprintForAccount } from './biometricService';
-import { Platform } from 'react-native';
 
 /**
  * accountVault.ts — Phase 1 multi-account ("Instagram-style") session vault.
@@ -17,17 +16,18 @@ import { Platform } from 'react-native';
  *
  * STORAGE STRATEGY
  *   All vault blobs are persisted through `SecureTokenStore`, which chunks
- *   values into the native OS keychain/Keystore. Native builds retain a
- *   recovery credential only inside encrypted device-bound storage. It is
- *   used only when normal refresh-token rotation can no longer recover the
- *   session. Web builds never persist a password.
+ *   values into the native OS keychain/Keystore (AsyncStorage on web). A
+ *   recovery credential (email + password) is kept for every platform so a
+ *   revoked/expired refresh token can silently re-authenticate. It is used
+ *   only when normal refresh-token rotation can no longer recover the session
+ *   — never as the primary switch path.
  *
  *   Namespaced keys (clearly separated from the single-session keys
  *   `auth_session` / `supabase_session_enc` / `sb_secure_refresh_token`):
  *     - vault_accounts_v1          → the list of accounts
  *     - vault_active_user_id_v1    → the active-account pointer
  *     - vault_refresh_tokens_v1    → per-userId backup refresh-token MAP
- *     - vault_login_credentials_v1 → native-only recovery credentials
+ *     - vault_login_credentials_v1 → recovery credentials (all platforms)
  *     - vault_migration_v1_done    → one-time migration flag
  *
  * Every value is wrapped in a `{ __vault: <marker> }` envelope so malformed,
@@ -144,7 +144,6 @@ async function _writeRefreshMap(tokens: Record<string, string>): Promise<void> {
   await writeEnvelope(VAULT_REFRESH_MAP_KEY, { __vault: 'refresh_v1', tokens });
 }
 async function _readLoginCredentials(): Promise<Record<string, LoginRecoveryCredential>> {
-  if (Platform.OS === 'web') return {};
   const historic = await readEnvelope<LoginCredentialsEnvelope>(
     VAULT_LOGIN_CREDENTIALS_KEY,
     'login_credentials_v1'
@@ -194,7 +193,6 @@ async function _readLoginCredentials(): Promise<Record<string, LoginRecoveryCred
 async function _writeLoginCredentials(
   credentials: Record<string, LoginRecoveryCredential>
 ): Promise<void> {
-  if (Platform.OS === 'web') return;
   await writeEnvelope(VAULT_LOGIN_CREDENTIALS_KEY, {
     __vault: 'login_credentials_v1',
     credentials,
@@ -342,19 +340,20 @@ export async function removeBackupRefreshTokenForUser(userId: string): Promise<v
   }
 }
 
-// ── Native credential recovery ───────────────────────────────────────────
+// ── Login credential recovery ────────────────────────────────────────────
 
 /**
  * Save the one credential capable of rebuilding a revoked/expired refresh
- * session. SecureTokenStore keeps this entirely in Android Keystore / iOS
- * Keychain storage; web deliberately no-ops to avoid plaintext persistence.
+ * session. Persisted via SecureTokenStore (Keystore/Keychain on native,
+ * AsyncStorage on web) so account switching keeps working indefinitely
+ * without asking the user to re-enter a password.
  */
 export async function saveLoginRecoveryCredential(
   userId: string,
   email: string,
   password: string
 ): Promise<void> {
-  if (Platform.OS === 'web' || !userId || !email || !password) return;
+  if (!userId || !email || !password) return;
   await ensureMigrated();
   const credentials = await _readLoginCredentials();
   credentials[userId] = {
@@ -368,7 +367,7 @@ export async function saveLoginRecoveryCredential(
 export async function getLoginRecoveryCredential(
   userId: string
 ): Promise<LoginRecoveryCredential | null> {
-  if (Platform.OS === 'web' || !userId) return null;
+  if (!userId) return null;
   await ensureMigrated();
   const credentials = await _readLoginCredentials();
   const credential = credentials[userId];
@@ -377,7 +376,7 @@ export async function getLoginRecoveryCredential(
 }
 
 export async function removeLoginRecoveryCredential(userId: string): Promise<void> {
-  if (Platform.OS === 'web' || !userId) return;
+  if (!userId) return;
   await ensureMigrated();
   const credentials = await _readLoginCredentials();
   if (!(userId in credentials)) return;

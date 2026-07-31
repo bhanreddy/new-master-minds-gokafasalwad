@@ -112,6 +112,23 @@ describe('accountVault.removeAccount fingerprint cleanup', () => {
     );
   });
 
+  it('persists recovery credentials on web so dormant accounts can be restored', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    await accountVault.saveLoginRecoveryCredential(
+      'accounts-1',
+      'accounts@example.com',
+      'accounts-secret'
+    );
+    await expect(
+      accountVault.getLoginRecoveryCredential('accounts-1')
+    ).resolves.toEqual(
+      expect.objectContaining({
+        email: 'accounts@example.com',
+        password: 'accounts-secret',
+      })
+    );
+  });
+
   it('reads July legacy credential envelopes after an app update', async () => {
     secureTokenStore.__store.set(
       'vault_login_credentials_v1',

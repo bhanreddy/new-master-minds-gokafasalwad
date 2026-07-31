@@ -103,12 +103,13 @@ async function persistSessionFromRefresh(
 }
 
 /**
- * Last-resort native recovery. Refresh tokens remain the primary mechanism;
- * the stored password is touched only after Supabase has explicitly rejected
- * the refresh token. accountVault refuses to persist credentials on web.
+ * Last-resort recovery. Refresh tokens remain the primary mechanism; the
+ * stored password is touched only after a refresh token is missing or
+ * rejected. Credentials are persisted on every platform so switches do not
+ * silently die when a dormant account's refresh token expires.
  */
 async function recoverSessionWithSavedLogin(
-  prior: AuthSession
+  prior: Pick<AuthSession, 'validatedUser'>
 ): Promise<Session | null> {
   const credential = await accountVault.getLoginRecoveryCredential(
     prior.validatedUser.userId
@@ -132,6 +133,10 @@ async function recoverSessionWithSavedLogin(
   } finally {
     endInternalSwap();
   }
+}
+
+function vaultAccountAsPrior(target: VaultAccount): Pick<AuthSession, 'validatedUser'> {
+  return { validatedUser: target.validatedUser };
 }
 
 async function saveRecoveryCredentialReliably(
@@ -201,17 +206,18 @@ function mergeRefreshedTokensIntoSession(
 /**
  * Resolve usable access + refresh tokens for a vaulted account.
  * Uses standalone refresh (no live-client mutation) when tokens are missing or stale.
+ * Does not touch the live client or stored passwords — callers handle password
+ * recovery under the internal-swap guard.
  */
 async function resolveTargetSessionTokens(
   target: VaultAccount,
   userId: string
-): Promise<{ accessToken: string; refreshToken: string }> {
+): Promise<{ accessToken: string; refreshToken: string; needsRecovery: boolean }> {
   let refreshToken =
     target.supabaseSession?.refresh_token ??
     (await accountVault.getBackupRefreshTokenForUser(userId)) ??
     '';
   let accessToken = target.supabaseSession?.access_token ?? '';
-  let prefetchedSession: Session | null = null;
 
   const expiresAt = target.supabaseSession?.expires_at ?? 0;
   const nowS = Math.floor(Date.now() / 1000);
@@ -223,7 +229,7 @@ async function resolveTargetSessionTokens(
     if (refreshed) {
       accessToken = refreshed.access_token;
       refreshToken = refreshed.refresh_token;
-      prefetchedSession = mergeRefreshedTokensIntoSession(
+      const prefetchedSession = mergeRefreshedTokensIntoSession(
         target.supabaseSession ?? ({} as Session),
         refreshed
       );
@@ -236,10 +242,21 @@ async function resolveTargetSessionTokens(
       } catch {
         /* best-effort */
       }
+      return { accessToken, refreshToken, needsRecovery: false };
     }
+    return { accessToken, refreshToken, needsRecovery: true };
   }
 
-  return { accessToken, refreshToken };
+  const tokensLookUsable =
+    !!accessToken &&
+    !!refreshToken &&
+    !!expiresAt &&
+    expiresAt > nowS + TOKEN_SKEW_SECONDS;
+  return {
+    accessToken,
+    refreshToken,
+    needsRecovery: !tokensLookUsable,
+  };
 }
 
 async function restorePreviousLiveSession(
@@ -351,65 +368,102 @@ async function doSwitchAccount(
     await snapshotLiveAccountToVault(previousActive, previousLiveSession);
   }
 
-  const { accessToken, refreshToken } = await resolveTargetSessionTokens(
+  const { accessToken, refreshToken, needsRecovery } = await resolveTargetSessionTokens(
     target,
     userId
   );
-  if (!refreshToken) return { error: 'No saved session for this account' };
 
   beginInternalSwap();
   try {
-    const { data, error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (error || !data?.session) {
-      await restorePreviousLiveSession(previousActive, previousLiveSession);
-      return { error: mapSwitchErrorMessage(error?.message) };
-    }
+    let liveSession: Session | null = null;
+    let setSessionError: string | undefined;
 
-    const validatedUser = await api.post<ValidatedUser>(
-      '/auth/validate-school-user',
-      {},
-      {
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-        silent: true,
+    if (!needsRecovery && refreshToken) {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (!error && data?.session) {
+        liveSession = data.session;
+      } else {
+        setSessionError = error?.message;
       }
-    );
-    if (
-      !validatedUser ||
-      validatedUser.userId !== target.userId ||
-      validatedUser.schoolId !== SCHOOL_ID
-    ) {
+    }
+
+    // Refresh dead or setSession rejected → rebuild from durable login credential.
+    if (!liveSession) {
+      const recovered = await recoverSessionWithSavedLogin(vaultAccountAsPrior(target));
+      if (recovered) {
+        liveSession = recovered;
+      }
+    }
+
+    if (!liveSession) {
       await restorePreviousLiveSession(previousActive, previousLiveSession);
-      return { error: 'This saved account is no longer authorized. Sign in again.' };
+      return {
+        error: mapSwitchErrorMessage(
+          setSessionError ||
+            (refreshToken ? 'Could not restore this account\'s session' : 'No saved session for this account')
+        ),
+      };
     }
 
-    const newActive: AuthSession = {
-      supabaseSession: data.session,
-      validatedUser,
-      tokenExpiresAt: data.session.expires_at
-        ? data.session.expires_at * 1000
-        : Date.now() + 3600000,
-    };
-
-    await setSecureItem(STORAGE_KEY, JSON.stringify(newActive));
-
-    // Always refresh the vault copy so the next switch has current tokens.
-    try {
-      await syncVaultFromAuthSession(newActive);
-    } catch {
-      /* best-effort */
-    }
-    await accountVault.setActiveAccountId(userId);
-
-    return { session: newActive };
+    return await finalizeSwitchedSession(
+      liveSession,
+      target,
+      previousActive,
+      previousLiveSession
+    );
   } catch (e: any) {
     await restorePreviousLiveSession(previousActive, previousLiveSession);
     return { error: mapSwitchErrorMessage(e?.message || 'Account switch failed') };
   } finally {
     endInternalSwap();
   }
+}
+
+async function finalizeSwitchedSession(
+  liveSession: Session,
+  target: VaultAccount,
+  previousActive: VaultAccount | null,
+  previousLiveSession: Session | null
+): Promise<{ session?: AuthSession; error?: string }> {
+  const validatedUser = await api.post<ValidatedUser>(
+    '/auth/validate-school-user',
+    {},
+    {
+      headers: { Authorization: `Bearer ${liveSession.access_token}` },
+      silent: true,
+      timeoutMs: 20000,
+    }
+  );
+  if (
+    !validatedUser ||
+    validatedUser.userId !== target.userId ||
+    validatedUser.schoolId !== SCHOOL_ID
+  ) {
+    await restorePreviousLiveSession(previousActive, previousLiveSession);
+    return { error: 'This saved account is no longer authorized. Sign in again.' };
+  }
+
+  const newActive: AuthSession = {
+    supabaseSession: liveSession,
+    validatedUser,
+    tokenExpiresAt: liveSession.expires_at
+      ? liveSession.expires_at * 1000
+      : Date.now() + 3600000,
+  };
+
+  await setSecureItem(STORAGE_KEY, JSON.stringify(newActive));
+
+  try {
+    await syncVaultFromAuthSession(newActive);
+  } catch {
+    /* best-effort */
+  }
+  await accountVault.setActiveAccountId(target.userId);
+
+  return { session: newActive };
 }
 
 export const AuthService = {
@@ -738,7 +792,9 @@ export const AuthService = {
   /**
    * switchAccount — seamlessly make a vaulted account the live + active account.
    * Serialized onto the swap chain (race-safe under rapid A→B→A). Delegates to
-   * the shared doSwitchAccount core. Never prompts for a password.
+   * the shared doSwitchAccount core. Never prompts for a password; if the
+   * stored refresh token is dead it silently rebuilds the session from the
+   * durable login credential saved at sign-in / add-account time.
    */
   switchAccount: (userId: string): Promise<{ session?: AuthSession; error?: string }> =>
     enqueueSwap(() => doSwitchAccount(userId)),
