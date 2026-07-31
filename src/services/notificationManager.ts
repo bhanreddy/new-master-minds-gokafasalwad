@@ -2,7 +2,7 @@
 import { getApp } from '@react-native-firebase/app';
 import { getMessaging, getToken, onMessage, onTokenRefresh, requestPermission, AuthorizationStatus } from '@react-native-firebase/messaging';
 import * as Notifications from 'expo-notifications';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './apiClient';
 import { translateNotification } from './notificationTranslations';
@@ -71,7 +71,7 @@ class NotificationManager {
     if (this.channelsReady) return;   // skip if already created this session
     if (Platform.OS !== 'android') return;
 
-    const NOTIFICATION_CHANNEL_VERSION = '2';
+    const NOTIFICATION_CHANNEL_VERSION = '3';
     const savedVersion = await AsyncStorage.getItem('notification_channel_version');
 
     if (savedVersion === NOTIFICATION_CHANNEL_VERSION) {
@@ -94,6 +94,7 @@ class NotificationManager {
       { id: 'voice_alert', name: 'General Alerts', sound: 'voice_alert.wav', vibrate: [0, 250, 250, 250] },
       { id: 'attendance_absent_alert', name: 'Absent Alerts', sound: 'attendance_absent_alert.wav', vibrate: [0, 500, 500, 500] },
       { id: 'bus_present', name: 'Bus Boarding', sound: 'bus_present.wav', vibrate: [0, 250, 250, 250] },
+      { id: 'bus_confirmation', name: 'Bus One Stop Away', sound: 'busconfirmation.wav', vibrate: [0, 250, 250, 250] },
       { id: 'notification_default', name: 'Default Notifications', sound: 'notification_default.wav', vibrate: [0, 250, 250, 250] }
     ];
 
@@ -333,7 +334,8 @@ class NotificationManager {
     // 6. Resolve channelId
     const knownCategories = [
       'emergency', 'fee_reminder',
-      'voice_alert', 'attendance_absent_alert', 'bus_present', 'notification_default'
+      'voice_alert', 'attendance_absent_alert', 'bus_present', 'bus_confirmation',
+      'notification_default'
     ];
     const base = channelId.replace('_custom', '').replace('_default', '');
     channelId = knownCategories.includes(base)

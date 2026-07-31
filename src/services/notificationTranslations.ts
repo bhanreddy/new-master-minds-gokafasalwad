@@ -113,6 +113,28 @@ export const TELUGU_NOTIFICATION_MAP: Record<string, NotificationTranslation> = 
         title: 'యాక్సెస్ అభ్యర్థన నవీకరణ',
         body: null,
     },
+
+    // Transport
+    TRANSPORT_TRIP_STARTED: {
+        title: '🚌 బస్ ప్రారంభమైంది',
+        body: null,
+    },
+    TRANSPORT_BUS_APPROACHING: {
+        title: '🚌 బస్ ఒక స్టాప్ దూరంలో ఉంది',
+        body: null,
+    },
+    TRANSPORT_BUS_RUNNING_LATE: {
+        title: '🚌 బస్ ఆలస్యం',
+        body: null,
+    },
+    TRANSPORT_BUS_DEPARTED: {
+        title: '🚌 బస్ బయలుదేరింది',
+        body: null,
+    },
+    TRANSPORT_TRIP_CANCELLED: {
+        title: '⚠️ ప్రయాణం రద్దు',
+        body: null,
+    },
 };
 
 /**

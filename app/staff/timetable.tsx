@@ -992,9 +992,11 @@ const TimeTableScreen = () => {
       const [data, periodDefs, coverDuties] = await Promise.all([
         TimetableService.getTeacherTimetable(undefined, staffId),
         TimetableService.getPeriods().catch(() => [] as Period[]),
-        isViewingAsAdmin
-          ? Promise.resolve([] as MySubstitution[])
-          : SubstitutionService.getMine(localTodayYmd).catch(() => [] as MySubstitution[]),
+        // apiClient sends the active X-Staff-Portal-Id header while an admin is
+        // viewing a teacher's portal, so /substitutions/mine is safely resolved
+        // as that teacher too. Always load it; skipping the request here hid the
+        // one-day cover from the very timetable used to verify the assignment.
+        SubstitutionService.getMine(localTodayYmd).catch(() => [] as MySubstitution[]),
       ]);
       setSlots(data.sort((a, b) => a.period_number - b.period_number));
       setPeriods(periodDefs);
@@ -1004,7 +1006,7 @@ const TimeTableScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [isViewingAsAdmin, staffId]);
+  }, [staffId]);
 
   useFocusEffect(
     useCallback(() => {

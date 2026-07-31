@@ -27,6 +27,15 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
   EXPENSE_REJECTED: '/accounts/expenses',
   PAYROLL_SUCCESS: '/staff/payslip',
   ACCESS_RESPONSE: '/Screen/access',
+  BUS_STOP_REACHED: '/Screen/busTracker',
+  BUS_TRIP_COMPLETED: '/Screen/busTracker',
+  TRANSPORT_TRIP_STARTED: '/Screen/busTracker',
+  TRANSPORT_BUS_APPROACHING: '/Screen/busTracker',
+  TRANSPORT_BUS_RUNNING_LATE: '/Screen/busTracker',
+  TRANSPORT_BUS_DEPARTED: '/Screen/busTracker',
+  TRANSPORT_TRIP_CANCELLED: '/Screen/busTracker',
+  STUDENT_BUS_PRESENT: '/Screen/busTracker',
+  STUDENT_BUS_ABSENT: '/Screen/busTracker',
 };
 
 interface PendingNotification {
