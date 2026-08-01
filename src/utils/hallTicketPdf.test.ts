@@ -71,13 +71,13 @@ describe('hallTicketPdf', () => {
     expect((html.match(/class="hall-sheet /g) || []).length).toBe(2);
     expect((html.match(/class="ticket-slot"/g) || []).length).toBe(5);
     expect(html).toContain('hall-sheet hall-sheet--4');
-    expect(html).toContain('grid-template-rows: repeat(4, 67mm)');
+    expect(html).toContain('grid-template-rows: repeat(4, 64mm)');
     expect(html).toContain('ticket ticket--layout-4');
     expect(html).toContain('height: 64mm');
     expect(html).toContain('border-bottom: 0.3mm dashed');
-    expect(html).toContain('--cut-offset: 1mm');
-    expect(html).toContain('--cut-offset: 1.5mm');
-    expect(html).toContain('--cut-offset: 3mm');
+    expect(html).toContain('--cut-offset: 4mm');
+    expect(html).toContain('--cut-offset: 4.5mm');
+    expect(html).toContain('--cut-offset: 7mm');
     expect(html).toContain('top: calc(100% + var(--cut-offset));');
     expect(html).toContain('transform: translate(-50%, -50%);');
   });
@@ -223,16 +223,20 @@ describe('hallTicketPdf', () => {
 
     expect(html).not.toContain('Instructions');
     expect((html.match(/Sign of invigilator/g) || []).length).toBe(options.papers.length);
-    expect((html.match(/class="invigilator-sign-line"/g) || []).length).toBe(options.papers.length);
+    expect(html).not.toContain('invigilator-sign-line');
+    expect(html).not.toContain('detail-sign-line');
     expect(html).not.toContain('Signature of invigilator');
     expect(html).not.toContain('Student signature');
     expect(html).not.toContain('Max 40');
     expect(html).toContain(
-      '.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 5mm; --cut-offset: 1mm; }',
+      '.hall-sheet--4 { grid-template-rows: repeat(4, 64mm); row-gap: 8mm; --cut-offset: 4mm; }',
     );
     expect(html).toContain('font-size: 8.5pt');
     expect(html).toContain('font-size: 6.5pt');
     expect(html).toContain('font-weight: 800');
+    expect(html).toContain('align-content: center;');
+    expect(html).toContain('vertical-align: top;');
+    expect(html).toContain('padding-bottom: 3mm;');
     expect(html).toContain('flex: 1 1 auto');
     expect(html).toContain('height: 100%');
     expect((html.match(/2026-27/g) || []).length).toBe(1);
@@ -297,7 +301,6 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('.ticket--layout-4.ticket--single .schedule th { height: 7mm; font-size: 9.5pt; }');
     expect(html).toContain('font-size: 13pt;\n      line-height: 1.12;');
     expect(html).toContain('margin-top: 0.9mm;\n      font-size: 9.5pt;');
-    expect(html).toContain('width: 72%;\n      height: 4mm;');
     expect(html).toContain('font-size: 5.2pt;');
   });
 

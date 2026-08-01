@@ -109,7 +109,6 @@ function compactScheduleTable(papers: ExamPaper[]): string {
       (paper) => `<td>
         <strong>${escapeHtml(paper.subject_name)}</strong>
         <span class="subject-time">${escapeHtml(formatTimeRange(paper.start_time, paper.end_time))}</span>
-        <i class="invigilator-sign-line"></i>
         <small>Sign of invigilator</small>
       </td>`,
     )
@@ -133,7 +132,7 @@ function comfortableScheduleGrid(papers: ExamPaper[]): string {
           <div class="paper-date">${escapeHtml(formatCompactDate(paper.exam_date))}</div>
           <strong>${escapeHtml(paper.subject_name)}</strong>
           <span class="subject-time">${escapeHtml(formatTimeRange(paper.start_time, paper.end_time))}</span>
-          <div class="paper-sign"><i></i><small>Invigilator</small></div>
+          <div class="paper-sign"><small>Invigilator</small></div>
         </div>`,
       )
       .join('')}
@@ -159,7 +158,7 @@ function largeScheduleTable(papers: ExamPaper[]): string {
             <td>
               <strong>${escapeHtml(formatTimeRange(paper.start_time, paper.end_time))}</strong>
             </td>
-            <td><i class="detail-sign-line"></i></td>
+            <td class="detail-sign-space"></td>
           </tr>`,
         )
         .join('')}
@@ -330,15 +329,15 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       height: 297mm;
       padding: 4.5mm 6mm;
       display: grid;
-      align-content: start;
+      align-content: center;
       page-break-inside: avoid;
       break-inside: avoid-page;
       overflow: hidden;
       background: #fff;
     }
-    .hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 5mm; --cut-offset: 1mm; }
-    .hall-sheet--3 { grid-template-rows: repeat(3, 89mm); row-gap: 6mm; --cut-offset: 1.5mm; }
-    .hall-sheet--2 { grid-template-rows: repeat(2, 137mm); row-gap: 10mm; --cut-offset: 3mm; }
+    .hall-sheet--4 { grid-template-rows: repeat(4, 64mm); row-gap: 8mm; --cut-offset: 4mm; }
+    .hall-sheet--3 { grid-template-rows: repeat(3, 86mm); row-gap: 9mm; --cut-offset: 4.5mm; }
+    .hall-sheet--2 { grid-template-rows: repeat(2, 133mm); row-gap: 14mm; --cut-offset: 7mm; }
     .hall-sheet + .hall-sheet { page-break-before: always; break-before: page; }
 
     .ticket-slot {
@@ -601,7 +600,13 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       font-weight: 900;
     }
     .schedule tbody tr { height: auto; }
-    .schedule td { background-color: rgba(255, 255, 255, 0.9); }
+    .schedule td {
+      position: relative;
+      padding-top: 1mm;
+      padding-bottom: 3mm;
+      vertical-align: top;
+      background-color: rgba(255, 255, 255, 0.9);
+    }
     .schedule td strong {
       display: block;
       font-size: var(--schedule-subject-size, 8.5pt);
@@ -621,15 +626,12 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       color: #1e293b;
       font-weight: 800;
     }
-    .schedule td .invigilator-sign-line {
-      display: block;
-      width: 80%;
-      height: 2.5mm;
-      margin: 0.35mm auto 0;
-      border-bottom: 0.2mm solid #64748b;
-    }
     .schedule td small {
-      margin-top: 0.2mm;
+      position: absolute;
+      right: 0;
+      bottom: 0.45mm;
+      left: 0;
+      margin-top: 0;
       font-size: var(--schedule-caption-size, 3.3pt);
     }
 
@@ -701,14 +703,14 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       line-height: 1.05;
       font-weight: 800;
     }
-    .paper-sign i {
-      display: block;
-      width: 82%;
-      height: 2.3mm;
-      margin: 0.5mm auto 0.2mm;
-      border-bottom: 0.2mm solid #64748b;
+    .paper-sign {
+      flex: 1 1 auto;
+      min-height: 3mm;
+      margin-top: 0.5mm;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
     }
-    .paper-sign { margin-top: auto; }
     .paper-sign small {
       display: block;
       color: #64748b;
@@ -800,13 +802,6 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
     .ticket--layout-2.ticket--dense .schedule-detail td:nth-child(3) strong { font-size: 9pt; }
     .ticket--layout-2.ticket--very-dense .schedule-detail td:nth-child(2) strong,
     .ticket--layout-2.ticket--very-dense .schedule-detail td:nth-child(3) strong { font-size: 8.5pt; }
-    .detail-sign-line {
-      display: block;
-      width: 85%;
-      height: 2.2mm;
-      margin: 0 auto;
-      border-bottom: 0.25mm solid #64748b;
-    }
     .ticket--layout-2 .ticket-footer {
       min-height: 10mm;
       flex-basis: 10mm;
@@ -959,13 +954,7 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       font-size: 9.5pt;
       line-height: 1.1;
     }
-    .ticket--layout-4.ticket--single .schedule td .invigilator-sign-line {
-      width: 72%;
-      height: 4mm;
-      margin-top: 1.1mm;
-    }
     .ticket--layout-4.ticket--single .schedule td small {
-      margin-top: 0.35mm;
       font-size: 5.2pt;
     }
   </style>

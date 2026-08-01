@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AppTextInput from '@/src/components/AppTextInput';
 import { styles as ds } from '@/src/theme/styles';
 
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../src/hooks/useAuth';
 import { StudentService } from '../../src/services/studentService';
 import { StaffService } from '../../src/services/staffService';
+import { ClassService, ClassInfo, Section } from '../../src/services/classService';
 import { APIError } from '../../src/services/apiClient';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
@@ -25,6 +26,50 @@ import {
 } from '../../src/utils/displayHelpers';
 
 const SEARCH_DEBOUNCE_MS = 400;
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[chipStyles.chip, active ? chipStyles.chipActive : chipStyles.chipIdle]}
+    >
+      <Text style={[chipStyles.chipText, active && chipStyles.chipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipIdle: {
+    backgroundColor: '#fff',
+    borderColor: '#E2E8F0',
+  },
+  chipActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  chipTextActive: {
+    color: '#2563EB',
+  },
+});
 
 function resolvePhotoUrl(row: Record<string, unknown>): string | null {
   if (typeof row.photo_url === 'string' && row.photo_url.trim()) return row.photo_url;
@@ -55,19 +100,57 @@ export default function ManageUsersScreen() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   // Student hard-delete: drives the 3-step confirmation modal.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; subtitle: string } | null>(null);
 
   // Guards against out-of-order responses: only the latest request may commit.
   const requestSeq = useRef(0);
 
+  // Class / section options for the student tab filters.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cls, sec] = await Promise.all([
+          ClassService.getClasses(),
+          ClassService.getSections(),
+        ]);
+        if (!cancelled) {
+          setClasses(cls);
+          setSections(sec);
+        }
+      } catch {
+        if (!cancelled) {
+          setClasses([]);
+          setSections([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   /**
-   * Server-side fetch. The search term is sent to the backend (`?search=`),
-   * which applies a case-insensitive DB filter across the FULL dataset.
-   * There is no client-side `.filter()` — results always come from the API.
+   * Server-side fetch. Search + class/section are sent to the backend,
+   * which filters across the FULL dataset. No client-side `.filter()`.
    */
   const loadUsers = useCallback(
-    async (tab: 'student' | 'staff', search: string, { isSearch }: { isSearch?: boolean } = {}) => {
+    async (
+      tab: 'student' | 'staff',
+      search: string,
+      {
+        isSearch,
+        classId,
+        sectionId,
+      }: {
+        isSearch?: boolean;
+        classId?: string | null;
+        sectionId?: string | null;
+      } = {}
+    ) => {
       if (!user?.userId) return;
       const seq = ++requestSeq.current;
       if (isSearch) setSearching(true); else setLoading(true);
@@ -75,9 +158,13 @@ export default function ManageUsersScreen() {
         const trimmed = search.trim();
         let list: any[] = [];
         if (tab === 'student') {
+          const resolvedClassId = classId !== undefined ? classId : selectedClassId;
+          const resolvedSectionId = sectionId !== undefined ? sectionId : selectedSectionId;
           list = await StudentService.getAllPages({
             search: trimmed || undefined,
             lifecycle: 'active',
+            class_id: resolvedClassId || undefined,
+            section_id: resolvedSectionId || undefined,
           });
         } else {
           list = await StaffService.getAllPages({
@@ -98,18 +185,37 @@ export default function ManageUsersScreen() {
         }
       }
     },
-    [user?.userId]
+    [user?.userId, selectedClassId, selectedSectionId]
   );
 
   // Initial load + full reload whenever the tab or signed-in user changes.
-  // Switching tabs clears the search so we don't carry a stale term across tabs.
+  // Switching tabs clears search + class/section so filters don't bleed across tabs.
   useEffect(() => {
     setSearchQuery('');
-    loadUsers(activeTab, '');
-  }, [activeTab, user?.userId, loadUsers]);
+    setSelectedClassId(null);
+    setSelectedSectionId(null);
+    loadUsers(activeTab, '', { classId: null, sectionId: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on tab/user; loadUsers identity changes with filters
+  }, [activeTab, user?.userId]);
+
+  // Re-fetch when class / section filters change (student tab only).
+  const filtersMountedRef = useRef(false);
+  useEffect(() => {
+    if (!filtersMountedRef.current) {
+      filtersMountedRef.current = true;
+      return;
+    }
+    if (activeTab !== 'student') return;
+    loadUsers('student', searchQuery, {
+      classId: selectedClassId,
+      sectionId: selectedSectionId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on filter ids only
+  }, [selectedClassId, selectedSectionId]);
 
   // Debounced server-side search: re-fetch from the API as the term settles.
   // Skips the very first run so we don't double-fetch on mount / tab switch.
+  // Intentionally keyed only on searchQuery — tab/filter changes have their own loaders.
   const didMountRef = useRef(false);
   useEffect(() => {
     if (!didMountRef.current) {
@@ -120,7 +226,8 @@ export default function ManageUsersScreen() {
       loadUsers(activeTab, searchQuery, { isSearch: true });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [searchQuery, activeTab, loadUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   const handleEdit = (user: any) => {
     if (activeTab === 'student') {
@@ -223,10 +330,55 @@ export default function ManageUsersScreen() {
       <AppTextInput style={[ds.inputInChrome, styles.searchInput]} placeholder={`Search ${activeTab === 'student' ? 'Students' : 'Staff'}...`} value={searchQuery} onChangeText={setSearchQuery} />
       {searching ? <ActivityIndicator size="small" color="#3B82F6" /> : null}
     </View>
+    {/* CLASS / SECTION FILTERS (students only) */}
+    {activeTab === 'student' ? (
+      <>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
+        >
+          <FilterChip
+            label="All classes"
+            active={!selectedClassId}
+            onPress={() => setSelectedClassId(null)}
+          />
+          {classes.map((c) => (
+            <FilterChip
+              key={c.id}
+              label={c.name}
+              active={selectedClassId === c.id}
+              onPress={() => setSelectedClassId(selectedClassId === c.id ? null : c.id)}
+            />
+          ))}
+        </ScrollView>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterRow}
+        >
+          <FilterChip
+            label="All sections"
+            active={!selectedSectionId}
+            onPress={() => setSelectedSectionId(null)}
+          />
+          {sections.map((s) => (
+            <FilterChip
+              key={s.id}
+              label={s.name}
+              active={selectedSectionId === s.id}
+              onPress={() => setSelectedSectionId(selectedSectionId === s.id ? null : s.id)}
+            />
+          ))}
+        </ScrollView>
+      </>
+    ) : null}
     {/* LIST */}
     {loading ? <LogoLoader size={60} color="#3B82F6" style={{
       marginTop: 40
-    }} /> : <FlatList data={users} renderItem={renderItem} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery.trim() ? 'No matches found.' : 'No users found.'}</Text>} />}
+    }} /> : <FlatList data={users} renderItem={renderItem} keyExtractor={(item) => item.id} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery.trim() || selectedClassId || selectedSectionId ? 'No matches found.' : 'No users found.'}</Text>} />}
     {/* FAB to Add New */}
     <TouchableOpacity style={styles.fab} onPress={() => {
       if (activeTab === 'student') router.push('/accounts/addStudent'); else router.push('/accounts/addStaff');
@@ -294,6 +446,15 @@ const getStyles = (theme: Theme) => StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     fontSize: 16
+  },
+  filterScroll: {
+    maxHeight: 44,
+    marginBottom: 6,
+  },
+  filterRow: {
+    paddingHorizontal: 15,
+    gap: 8,
+    alignItems: 'center',
   },
   list: {
     padding: 15,
