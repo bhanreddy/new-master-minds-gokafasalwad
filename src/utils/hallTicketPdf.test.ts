@@ -75,6 +75,11 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('ticket ticket--layout-4');
     expect(html).toContain('height: 64mm');
     expect(html).toContain('border-bottom: 0.3mm dashed');
+    expect(html).toContain('--cut-offset: 1mm');
+    expect(html).toContain('--cut-offset: 1.5mm');
+    expect(html).toContain('--cut-offset: 3mm');
+    expect(html).toContain('top: calc(100% + var(--cut-offset));');
+    expect(html).toContain('transform: translate(-50%, -50%);');
   });
 
   it.each([
@@ -206,7 +211,8 @@ describe('hallTicketPdf', () => {
     expect(html).not.toContain('PM session');
     expect(html).toContain('10/08/2026');
     expect(html).toContain('11/08/2026');
-    expect(html).toContain('2 subjects');
+    expect(html).not.toContain('Examination schedule');
+    expect(html).not.toContain('2 subjects');
   });
 
   it('lays dates and subjects out horizontally like the compact printed hall ticket', () => {
@@ -221,7 +227,9 @@ describe('hallTicketPdf', () => {
     expect(html).not.toContain('Signature of invigilator');
     expect(html).not.toContain('Student signature');
     expect(html).not.toContain('Max 40');
-    expect(html).toContain('.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 5mm; }');
+    expect(html).toContain(
+      '.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 5mm; --cut-offset: 1mm; }',
+    );
     expect(html).toContain('font-size: 8.5pt');
     expect(html).toContain('font-size: 6.5pt');
     expect(html).toContain('font-weight: 800');
@@ -241,6 +249,7 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('Father 1');
     expect((html.match(/class="roll-number-box"/g) || []).length).toBe(options.students.length);
     expect(html).not.toContain('SECRET-ROLL-1');
+    expect(html).toContain('min-height: 7mm;');
   });
 
   it('uses white, larger date rows and edge-aligned signature blocks', () => {
