@@ -21,7 +21,7 @@ import { useTheme } from '../../../src/hooks/useTheme';
 import { Theme } from '../../../src/theme/themes';
 import LogoLoader from '../../../src/components/LogoLoader';
 import PremiumButton from '../../../src/components/PremiumButton';
-import { StudentFee, Student, FeeAdjustmentType } from '../../../src/types/models';
+import { StudentFee, Student, FeeAdjustmentType, TransportDue } from '../../../src/types/models';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { clayCard } from '../../../src/theme/clayStyles';
@@ -42,6 +42,36 @@ interface AdjustmentLog {
 type HistoryFilter = 'all' | 'waive' | 'add';
 
 const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
+function transportDueToAdjustmentFee(
+  transport: TransportDue | null | undefined,
+  studentId: string,
+): StudentFee | null {
+  if (!transport?.transport_fee_id || transport.fee_not_set || transport.fee_amount == null) {
+    return null;
+  }
+
+  const baseAmount = Number(transport.base_fee_amount ?? transport.fee_amount);
+  const addedAmount = Number(transport.added_amount || 0);
+  const waivedAmount = Number(transport.waived_amount || 0);
+  const paidAmount = Number(transport.paid_amount || 0);
+  const amountDue = baseAmount + addedAmount;
+  const balance = Math.max(amountDue - waivedAmount - paidAmount, 0);
+
+  return {
+    id: transport.transport_fee_id,
+    transport_fee_id: transport.transport_fee_id,
+    is_transport: true,
+    student_id: studentId,
+    amount_due: amountDue,
+    amount_paid: paidAmount,
+    discount: waivedAmount,
+    status: balance <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending',
+    due_date: '',
+    fee_type: 'Transport Fee',
+    adjustment_count: Number(transport.adjustment_count || 0),
+  };
+}
 
 const HistoryRow = React.memo(function HistoryRow({
   item,
@@ -220,7 +250,8 @@ export default function FeeAdjustmentsScreen() {
     try {
       setLoadingFees(true);
       const feeData = await FeeService.getStudentFees(student.id);
-      setStudentFees(feeData?.fees || []);
+      const transportFee = transportDueToAdjustmentFee(feeData?.transport_due, student.id);
+      setStudentFees([...(feeData?.fees || []), ...(transportFee ? [transportFee] : [])]);
     } catch {
       alertCompat('Error', 'Failed to load student fees');
     } finally {
@@ -269,7 +300,9 @@ export default function FeeAdjustmentsScreen() {
     try {
       setSubmitting(true);
       await FeeService.adjustFee({
-        student_fee_id: selectedFee.id,
+        ...(selectedFee.is_transport
+          ? { transport_fee_id: selectedFee.transport_fee_id || selectedFee.id, student_id: selectedStudent.id }
+          : { student_fee_id: selectedFee.id }),
         amount: parsedAmount,
         reason: reason.trim(),
         adjustment_type: adjustmentType,
@@ -282,7 +315,14 @@ export default function FeeAdjustmentsScreen() {
       setSelectedFee(null);
 
       const updatedFeeData = await FeeService.getStudentFees(selectedStudent.id);
-      setStudentFees(updatedFeeData?.fees || []);
+      const updatedTransportFee = transportDueToAdjustmentFee(
+        updatedFeeData?.transport_due,
+        selectedStudent.id,
+      );
+      setStudentFees([
+        ...(updatedFeeData?.fees || []),
+        ...(updatedTransportFee ? [updatedTransportFee] : []),
+      ]);
 
       loadHistory();
     } catch (error: any) {

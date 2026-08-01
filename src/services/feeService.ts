@@ -82,7 +82,9 @@ export interface CollectMultiFeeResult {
 }
 
 export interface AdjustFeeRequest {
-    student_fee_id: string;
+    student_fee_id?: string;
+    transport_fee_id?: string;
+    student_id?: string;
     amount: number;
     reason: string;
     adjustment_type: 'waive' | 'add';

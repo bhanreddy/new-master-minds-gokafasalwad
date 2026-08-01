@@ -5,7 +5,6 @@ import type { Session } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import { showAlert } from '../components/CustomAlert';
 import { API_URL, SCHOOL_ID } from '../constants/school';
-import { SecureTokenStore } from './secureTokenStore';
 import { supabase } from './supabaseConfig';
 import { getOrCreateDeviceId } from './deviceId';
 import { getActiveContextId } from './activeContextStore';
@@ -105,56 +104,10 @@ export async function clearTokens(): Promise<void> {
   await tokenDelete('session_expiry').catch(() => { });
 }
 
-let liveSessionRepairPromise: Promise<Session | null> | null = null;
-
-async function restoreLiveSessionFromStoredAuth(): Promise<Session | null> {
-  if (liveSessionRepairPromise) return liveSessionRepairPromise;
-
-  liveSessionRepairPromise = (async (): Promise<Session | null> => {
-    try {
-      const raw = await SecureTokenStore.getItem('auth_session');
-      if (!raw) return null;
-
-      const parsed = JSON.parse(raw);
-      const stored = parsed?.supabaseSession as Session | undefined;
-      if (!stored?.access_token || !stored?.refresh_token) return null;
-
-      // Keep refresh-token rotation inside the Supabase client. A previous
-      // direct REST refresh here raced the SDK and could invalidate a newly
-      // rotated token before the app had persisted it.
-      const { data, error } = await supabase.auth.setSession({
-        access_token: stored.access_token,
-        refresh_token: stored.refresh_token,
-      });
-
-      if (error || !data?.session) {
-        if (__DEV__) console.warn('[apiClient] stored session repair setSession failed:', error?.message);
-        return null;
-      }
-
-      await setTokens(data.session.access_token, data.session.refresh_token);
-      if (parsed?.validatedUser) {
-        parsed.supabaseSession = data.session;
-        parsed.tokenExpiresAt = data.session.expires_at
-          ? data.session.expires_at * 1000
-          : Date.now() + 3600000;
-        await SecureTokenStore.setItem('auth_session', JSON.stringify(parsed));
-      }
-
-      if (__DEV__) console.log('[apiClient] repaired missing Supabase session from stored auth_session');
-      return data.session;
-    } catch (e) {
-      if (__DEV__) console.warn('[apiClient] stored session repair failed:', e);
-      return null;
-    }
-  })().finally(() => {
-    liveSessionRepairPromise = null;
-  });
-
-  return liveSessionRepairPromise;
-}
-
-type SessionRecoveryCallback = () => Promise<Session | null>;
+export type SessionRecoveryReason = 'missing' | 'expired' | 'unauthorized';
+type SessionRecoveryCallback = (
+  reason: SessionRecoveryReason
+) => Promise<Session | null>;
 let sessionRecoveryCallback: SessionRecoveryCallback | null = null;
 let recoveryPromise: Promise<Session | null> | null = null;
 
@@ -169,10 +122,12 @@ export const registerSessionRecoveryCallback = (
   sessionRecoveryCallback = fn;
 };
 
-async function attemptSessionRecovery(): Promise<Session | null> {
+async function attemptSessionRecovery(
+  reason: SessionRecoveryReason
+): Promise<Session | null> {
   if (recoveryPromise) return recoveryPromise;
   recoveryPromise = (async () => {
-    if (sessionRecoveryCallback) return sessionRecoveryCallback();
+    if (sessionRecoveryCallback) return sessionRecoveryCallback(reason);
     const { data, error } = await supabase.auth.refreshSession();
     return error ? null : data.session;
   })().finally(() => {
@@ -310,7 +265,7 @@ async function apiRequestInner<T>(
   const silent = rawSilent || transientAlertsSuppressed();
   const isMultipart = _multipart === true;
   const { data: { session: liveSession } } = await supabase.auth.getSession();
-  let session = liveSession ?? await restoreLiveSessionFromStoredAuth();
+  let session = liveSession;
   const sessionExpiresSoon =
     !session?.expires_at ||
     session.expires_at <= Math.floor(Date.now() / 1000) + EXPIRY_SKEW_SECONDS;
@@ -319,7 +274,9 @@ async function apiRequestInner<T>(
     !_isRetry &&
     canRecoverAuthForEndpoint(endpoint)
   ) {
-    session = (await attemptSessionRecovery()) ?? session;
+    session = (
+      await attemptSessionRecovery(session ? 'expired' : 'missing')
+    ) ?? session;
   }
   const token = session?.access_token ?? null;
 
@@ -424,7 +381,7 @@ async function apiRequestInner<T>(
         // Every 401 enters the same single-flight recovery pipeline. It first
         // rotates the refresh token and can fall back to the native saved login.
         if (!_isRetry && canRecoverAuthForEndpoint(endpoint)) {
-          const recovered = await attemptSessionRecovery().catch(() => null);
+          const recovered = await attemptSessionRecovery('unauthorized').catch(() => null);
           if (recovered) {
             await setTokens(recovered.access_token, recovered.refresh_token);
             return await apiRequest<T>(endpoint, {

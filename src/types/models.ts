@@ -178,6 +178,11 @@ export interface TransportDue {
     readonly stop_name?: string | null;
     readonly transport_fee_id?: string | null;
     readonly fee_amount?: number | null;
+    readonly base_fee_amount?: number | null;
+    readonly adjustment_total?: number;
+    readonly added_amount?: number;
+    readonly waived_amount?: number;
+    readonly adjustment_count?: number;
     readonly billing_cycle?: string | null;
     readonly academic_year?: string;
     readonly paid_amount?: number;
@@ -209,7 +214,9 @@ export interface StudentFeeDueLine {
 
 export interface FeeTransaction {
     readonly id: string;
-    readonly student_fee_id: string;
+    readonly student_fee_id?: string | null;
+    readonly transaction_source?: 'tuition' | 'transport';
+    readonly can_delete?: boolean;
     readonly student_id?: string;
     readonly amount: number;
     readonly paid_at: string;
@@ -302,6 +309,8 @@ export interface StudentFee {
     readonly period_month?: number;
     readonly period_year?: number;
     readonly adjustment_count?: number;
+    readonly is_transport?: boolean;
+    readonly transport_fee_id?: string;
 }
 
 export type FeeAdjustmentType = 'waive' | 'add';

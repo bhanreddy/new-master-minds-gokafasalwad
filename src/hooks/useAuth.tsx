@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '../services/supabaseConfig';
 import { AuthService, clearAuthState, isInternalSessionSwap } from '../services/authService';
 import { AuthSession, ValidatedUser } from '../types/auth';
@@ -258,10 +258,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // ── Layer A: AppState listener for Supabase auto-refresh ──
-    // CRITICAL FIX: Without this, when Android kills the app process and the
-    // user reopens, the Supabase SDK's internal setInterval-based auto-refresh
-    // is dead. Calling startAutoRefresh() on 'active' re-arms it.
+    // ── Layer A: lifecycle listeners for Supabase auto-refresh ──
+    // Android process recreation and browser tab/page restoration can both
+    // leave a durable UI identity without a usable live SDK session.
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         supabase.auth.startAutoRefresh();
@@ -276,20 +275,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Start auto-refresh immediately (app is active on mount)
     supabase.auth.startAutoRefresh();
 
+    // React Native Web maps most visibility changes to AppState, but it does
+    // not cover every browser lifecycle. `pageshow` repairs pages restored from
+    // the back/forward cache; `online` repairs a tab that resumed while offline.
+    // refreshSession() now rehydrates the live client before rotating tokens.
+    const handleBrowserResume = () => {
+      supabase.auth.startAutoRefresh();
+      const roleCode = sessionRef.current?.validatedUser?.role?.code || null;
+      if (sessionRef.current) void handleRefresh(roleCode);
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.addEventListener('pageshow', handleBrowserResume);
+      window.addEventListener('online', handleBrowserResume);
+    }
+
     let authSubscription: { unsubscribe: () => void } | null = null;
 
     const initializeAuth = async () => {
       try {
-        // Local Keystore state decides whether the app has a remembered login.
+        // Durable local state decides whether the app has a remembered login.
         // Network speed and access-token age do not participate in this boot gate.
         const storedSession = await AuthService.getSession();
         if (storedSession) {
+          // Publish the remembered identity immediately, then block the startup
+          // overlay until the live Supabase client has been rebuilt. This
+          // prevents mounted screens from firing requests against a null SDK
+          // session after Android recreation or a browser reload.
+          sessionRef.current = storedSession;
+          authSessionSnapshotRef.current = storedSession;
           setSession(storedSession);
           const restoredRole = storedSession.validatedUser?.role?.code;
           if (restoredRole && !(await SessionPolicy.getStoredRole())) {
             await SessionPolicy.startSession(restoredRole as any);
           }
-          void handleRefresh(restoredRole || null);
+          const liveSession = await AuthService.restorePersistedSession();
+          if (liveSession) {
+            sessionRef.current = liveSession;
+            authSessionSnapshotRef.current = liveSession;
+            setSession(liveSession);
+            backoffDelay.current = 1000;
+          } else {
+            // Offline or a temporarily unavailable auth server: keep the local
+            // identity and let the existing capped retry loop repair it later.
+            void handleRefresh(restoredRole || null);
+          }
         } else {
           setSession(null);
         }
@@ -357,6 +386,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       appStateSubscription.remove();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.removeEventListener('pageshow', handleBrowserResume);
+        window.removeEventListener('online', handleBrowserResume);
+      }
       authSubscription?.unsubscribe();
       if (refreshRetryTimer.current) {
         clearTimeout(refreshRetryTimer.current);

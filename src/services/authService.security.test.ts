@@ -65,6 +65,7 @@ jest.mock('./pushFanout', () => ({
 }));
 
 import { AuthService, isInternalSessionSwap } from './authService';
+import { Platform } from 'react-native';
 
 const { supabase } = require('./supabaseConfig');
 const { api, APIError } = require('./apiClient');
@@ -92,6 +93,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   secureTokenStore.__store.clear();
   supabase.auth.signOut.mockResolvedValue({});
+  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
 });
 
 describe('AuthService security boundaries', () => {
@@ -217,18 +219,134 @@ describe('AuthService security boundaries', () => {
     expect(supabase.auth.signOut).not.toHaveBeenCalled();
   });
 
-  it('returns an expired cached identity immediately while refreshing in background', async () => {
+  it('returns an expired cached identity immediately for the boot hydrator', async () => {
     const expired = {
       ...savedSession(),
       tokenExpiresAt: Date.now() - 1000,
     };
     secureTokenStore.__store.set('auth_session', JSON.stringify(expired));
-    supabase.auth.refreshSession.mockResolvedValue({
-      data: { session: null },
-      error: new Error('Network request failed'),
-    });
 
     await expect(AuthService.getSession()).resolves.toEqual(expired);
+    expect(supabase.auth.refreshSession).not.toHaveBeenCalled();
+    expect(supabase.auth.setSession).not.toHaveBeenCalled();
+  });
+
+  it('rehydrates a missing live client from the persisted Android session', async () => {
+    const prior = savedSession();
+    const hydratedSupabaseSession = {
+      ...prior.supabaseSession,
+      access_token: 'hydrated-access',
+      refresh_token: 'hydrated-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(prior));
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+    supabase.auth.setSession.mockResolvedValue({
+      data: {
+        user: hydratedSupabaseSession.user,
+        session: hydratedSupabaseSession,
+      },
+      error: null,
+    });
+
+    const restored = await AuthService.restorePersistedSession();
+
+    expect(supabase.auth.setSession).toHaveBeenCalledWith({
+      access_token: 'old-access',
+      refresh_token: 'old-refresh',
+    });
+    expect(restored?.supabaseSession.access_token).toBe('hydrated-access');
+    expect(secureTokenStore.SecureTokenStore.setItem).toHaveBeenCalledWith(
+      'auth_session',
+      expect.stringContaining('hydrated-refresh')
+    );
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(isInternalSessionSwap()).toBe(false);
+  });
+
+  it('uses the saved web login when reload tokens are no longer accepted', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    const prior = savedSession();
+    const recoveredSupabaseSession = {
+      ...prior.supabaseSession,
+      access_token: 'cold-start-recovered-access',
+      refresh_token: 'cold-start-recovered-refresh',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(prior));
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+    supabase.auth.setSession.mockResolvedValue({
+      data: { user: null, session: null },
+      error: {
+        status: 400,
+        code: 'refresh_token_not_found',
+        message: 'Invalid Refresh Token',
+      },
+    });
+    accountVault.getLoginRecoveryCredential.mockResolvedValue({
+      email: 'admin@example.com',
+      password: 'saved-secret',
+      updatedAt: Date.now(),
+    });
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: {
+        user: recoveredSupabaseSession.user,
+        session: recoveredSupabaseSession,
+      },
+      error: null,
+    });
+
+    const restored = await AuthService.restorePersistedSession();
+
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      password: 'saved-secret',
+    });
+    expect(restored?.supabaseSession.access_token).toBe(
+      'cold-start-recovered-access'
+    );
+    expect(secureTokenStore.SecureTokenStore.removeItem).not.toHaveBeenCalledWith(
+      'auth_session'
+    );
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(isInternalSessionSwap()).toBe(false);
+  });
+
+  it('single-flights concurrent cold-start repair requests', async () => {
+    const prior = savedSession();
+    const hydratedSupabaseSession = {
+      ...prior.supabaseSession,
+      access_token: 'single-flight-access',
+      refresh_token: 'single-flight-refresh',
+    };
+    secureTokenStore.__store.set('auth_session', JSON.stringify(prior));
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+    supabase.auth.setSession.mockResolvedValue({
+      data: {
+        user: hydratedSupabaseSession.user,
+        session: hydratedSupabaseSession,
+      },
+      error: null,
+    });
+
+    const [first, second] = await Promise.all([
+      AuthService.restorePersistedSession(),
+      AuthService.restorePersistedSession(),
+    ]);
+
+    expect(first?.supabaseSession.access_token).toBe('single-flight-access');
+    expect(second?.supabaseSession.access_token).toBe('single-flight-access');
+    expect(supabase.auth.getSession).toHaveBeenCalledTimes(1);
+    expect(supabase.auth.setSession).toHaveBeenCalledTimes(1);
   });
 
   it('adopts an SDK-refreshed token without rotating it a second time', async () => {

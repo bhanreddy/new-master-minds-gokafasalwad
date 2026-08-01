@@ -467,6 +467,13 @@ export default function AdminFinanceScreen() {
                         <View style={styles.txModeChip}>
                           <Text style={styles.txModeChipText}>{tx.payment_method?.toUpperCase() || 'CASH'}</Text>
                         </View>
+                        {tx.fee_type ? (
+                          <View style={[styles.txModeChip, tx.fee_type === 'Transport Fee' && styles.txTransportChip]}>
+                            <Text style={[styles.txModeChipText, tx.fee_type === 'Transport Fee' && styles.txTransportChipText]}>
+                              {tx.fee_type}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     </View>
                     <View style={styles.txAmountContainer}>
@@ -931,6 +938,13 @@ const getStyles = (theme: Theme, isWide: boolean) => StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
     color: theme.colors.textSecondary,
+  },
+  txTransportChip: {
+    backgroundColor: '#ECFEFF',
+    borderColor: '#A5F3FC',
+  },
+  txTransportChipText: {
+    color: '#0E7490',
   },
   txAmountContainer: {
     alignItems: 'flex-end',

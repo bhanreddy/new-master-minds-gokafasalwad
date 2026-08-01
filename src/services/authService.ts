@@ -18,6 +18,8 @@ function mapRoleCodeForFrontend(code: string): string {
 
 /** Single-flight refresh so TOKEN_REFRESHED storms don't stack validate calls */
 let refreshSessionInFlight: Promise<AuthSession | null> | null = null;
+/** Single-flight cold-start repair so native and web screens cannot race session setup. */
+let restorePersistedSessionInFlight: Promise<AuthSession | null> | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Phase 2 — internal session-swap guard + serialization
@@ -326,6 +328,87 @@ async function readPersistedAuthSession(): Promise<AuthSession | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Rebuild the live Supabase client from SchoolIMS's durable auth_session.
+ *
+ * Android can kill the JavaScript process and browsers can rebuild or restore a
+ * page while leaving durable app data intact. In that state the UI identity
+ * still exists, but the newly-created Supabase client can temporarily report
+ * no session. refreshSession() without a live refresh token then returns
+ * AuthSessionMissingError and every screen appears disconnected until a manual
+ * login.
+ *
+ * This repair is deliberately non-destructive:
+ *   1. reuse a matching live session when one already exists;
+ *   2. explicitly set the persisted access + refresh tokens on the new client;
+ *   3. if those tokens are dead, silently use the saved recovery credential.
+ *
+ * No failure in this function removes the remembered identity.
+ */
+async function restorePersistedSessionCore(): Promise<AuthSession | null> {
+  const prior = await readPersistedAuthSession();
+  if (!prior?.validatedUser || !prior.supabaseSession) return null;
+
+  let liveSession: Session | null = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    liveSession = data.session;
+  } catch {
+    // Fall through to the independently persisted SchoolIMS session.
+  }
+
+  const liveMatchesRememberedUser =
+    !!liveSession?.access_token &&
+    !!liveSession?.refresh_token &&
+    liveSession.user?.id === prior.validatedUser.userId;
+  const liveExpiresAt = liveSession?.expires_at ?? 0;
+  const liveIsUsable =
+    liveMatchesRememberedUser &&
+    liveExpiresAt > Math.floor(Date.now() / 1000) + TOKEN_SKEW_SECONDS;
+
+  if (liveIsUsable && liveSession) {
+    const liveDiffersFromPersisted =
+      liveSession.access_token !== prior.supabaseSession.access_token ||
+      liveSession.refresh_token !== prior.supabaseSession.refresh_token ||
+      liveSession.expires_at !== prior.supabaseSession.expires_at;
+    return liveDiffersFromPersisted
+      ? persistSessionFromRefresh(liveSession, prior.validatedUser)
+      : prior;
+  }
+
+  const candidate = liveMatchesRememberedUser
+    ? liveSession
+    : prior.supabaseSession;
+
+  if (candidate?.access_token && candidate?.refresh_token) {
+    beginInternalSwap();
+    try {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: candidate.access_token,
+        refresh_token: candidate.refresh_token,
+      });
+      if (
+        !error &&
+        data?.session &&
+        data.session.user.id === prior.validatedUser.userId
+      ) {
+        return persistSessionFromRefresh(
+          data.session,
+          prior.validatedUser
+        );
+      }
+    } catch {
+      // Saved-login recovery below is the final repair layer.
+    } finally {
+      endInternalSwap();
+    }
+  }
+
+  const recovered = await recoverSessionWithSavedLogin(prior);
+  if (!recovered) return null;
+  return persistSessionFromRefresh(recovered, prior.validatedUser);
 }
 
 export const clearAuthState = async (): Promise<void> => {
@@ -811,18 +894,29 @@ export const AuthService = {
     const session = await readPersistedAuthSession();
     if (!session) return null;
     // Restore the locally validated app identity immediately, even when its
-    // short-lived access token is stale. API requests still require a fresh
-    // server-accepted token; refresh runs in the background and cannot turn
-    // a slow/offline cold start into a surprise login screen.
-    if (Date.now() >= session.tokenExpiresAt - TOKEN_SKEW_SECONDS * 1000) {
-      void AuthService.refreshSession();
-    }
+    // short-lived access token is stale. AuthProvider explicitly awaits live
+    // client hydration during boot; this local read never starts a second,
+    // unobserved recovery job.
     return session;
   },
 
   /** Local-only read used while handling Supabase auth events. */
   getStoredSession: async (): Promise<AuthSession | null> => {
     return readPersistedAuthSession();
+  },
+
+  /**
+   * Ensure the live Supabase client is usable after process death. Concurrent
+   * boot, foreground, and API recovery calls all share the same repair.
+   */
+  restorePersistedSession: async (): Promise<AuthSession | null> => {
+    if (restorePersistedSessionInFlight) {
+      return restorePersistedSessionInFlight;
+    }
+    restorePersistedSessionInFlight = restorePersistedSessionCore().finally(() => {
+      restorePersistedSessionInFlight = null;
+    });
+    return restorePersistedSessionInFlight;
   },
 
   /**
@@ -870,6 +964,19 @@ export const AuthService = {
             }
           } else {
             return null;
+          }
+        } else if (prior?.validatedUser) {
+          // A newly-created native or browser client may not yet have a live
+          // session even though SchoolIMS's durable auth_session survived.
+          // Rehydrate it explicitly instead of retrying "session missing"
+          // forever behind an apparently logged-in UI.
+          const restored = await AuthService.restorePersistedSession();
+          if (restored?.supabaseSession) {
+            refreshData = {
+              ...refreshData,
+              session: restored.supabaseSession,
+            };
+            refreshError = null;
           }
         }
       }
@@ -962,7 +1069,15 @@ export const AuthService = {
 // Register at module initialization, before any screen effect can issue an API
 // request. The callback returns only the Supabase session required for retry;
 // AuthService remains the single owner of persistence and backend validation.
-registerSessionRecoveryCallback(async () => {
-  const recovered = await AuthService.refreshSession();
-  return recovered?.supabaseSession ?? null;
+registerSessionRecoveryCallback(async (reason) => {
+  const restored = await AuthService.restorePersistedSession();
+  if (!restored) return null;
+
+  // A missing client session has already been repaired by setSession (which
+  // refreshes expired tokens itself). A server 401 or pre-expiry check needs an
+  // explicit rotation before retrying the original request.
+  if (reason === 'missing') return restored.supabaseSession;
+
+  const refreshed = await AuthService.refreshSession();
+  return (refreshed ?? restored).supabaseSession;
 });

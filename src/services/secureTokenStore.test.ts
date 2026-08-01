@@ -195,3 +195,34 @@ describe('SecureTokenStore native storage', () => {
     );
   });
 });
+
+describe('SecureTokenStore web persistence', () => {
+  it('round-trips the full auth session through browser local storage', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    const value = JSON.stringify({
+      supabaseSession: {
+        access_token: 'web-access',
+        refresh_token: 'web-refresh',
+      },
+      validatedUser: { userId: 'web-user' },
+      tokenExpiresAt: Date.now() + 60_000,
+    });
+
+    await SecureTokenStore.setItem('auth_session', value);
+
+    expect(AsyncStorage.__store.get('auth_session')).toBe(value);
+    await expect(SecureTokenStore.getItem('auth_session')).resolves.toBe(value);
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps the browser session across a simulated module-level reload', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    const value = '{"supabaseSession":{"refresh_token":"persisted-web-refresh"}}';
+    AsyncStorage.__store.set('auth_session', value);
+    jest.clearAllMocks();
+
+    await expect(SecureTokenStore.getItem('auth_session')).resolves.toBe(value);
+    expect(AsyncStorage.default.getItem).toHaveBeenCalledWith('auth_session');
+    expect(SecureStore.getItemAsync).not.toHaveBeenCalled();
+  });
+});
