@@ -148,9 +148,10 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     const horizontalPad = isWideWeb ? 20 : ADMIN_THEME.spacing.m;
 
     const showBack = showBackButton || isWeb;
-    const showMenu =
-        showMenuButton && (!showBackButton || (isWeb && !!onMenuPress));
-    const dualLeftNav = isWeb && showBack && showMenu;
+    // Keep the hamburger when a menu handler is provided (mobile accounts drawer),
+    // even if the back button is also visible.
+    const showMenu = showMenuButton && (!showBackButton || !!onMenuPress);
+    const dualLeftNav = showBack && showMenu;
 
     return (
         <Animated.View style={[

@@ -39,6 +39,9 @@ export interface CreateStudentRequest {
     pen_number?: string;
     apar_number?: string | null;
     village?: string | null;
+    aadhaar_number?: string | null;
+    tc_number?: string | null;
+    previous_school?: boolean | null;
     admission_date: string;
     status_id: number;
     category_id: number;
@@ -64,6 +67,9 @@ export interface UpdateStudentRequest {
     pen_number?: string;
     apar_number?: string | null;
     village?: string | null;
+    aadhaar_number?: string | null;
+    tc_number?: string | null;
+    previous_school?: boolean | null;
     admission_date?: string;
     status_id?: number;
     category_id?: number;

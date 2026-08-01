@@ -100,6 +100,9 @@ export interface Student {
     readonly pen_number?: string;
     readonly apar_number?: string | null;
     readonly village?: string | null;
+    readonly aadhaar_number?: string | null;
+    readonly tc_number?: string | null;
+    readonly previous_school?: boolean | null;
     readonly admission_date: string;
     readonly first_name: string;
     readonly middle_name?: string;

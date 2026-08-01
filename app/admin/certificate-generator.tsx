@@ -49,6 +49,8 @@ export const PAPER = {
 } as const;
 
 export type TcLayout = 'LEGAL' | 'A4_HALF';
+/** Legacy = original double-frame letterhead (default); Modern = redesigned header. */
+export type BonafideHeaderTheme = 'legacy' | 'modern';
 
 export const TC_PAPER_MAP: Record<TcLayout, typeof PAPER.EAGLE | typeof PAPER.TC_A4_HALF> = {
   LEGAL: PAPER.EAGLE,
@@ -546,22 +548,25 @@ const webWatermarkProps = Platform.OS === 'web'
   : ({} as const);
 
 // ─── Bonafide document (HALF-A4 landscape letterhead) ────────────────────────
-// Fills the full half-sheet: header pinned top, footer pinned bottom via flex,
-// so there is no dead whitespace like the old full-A4 version produced.
+// Frame, meta, body, and footer stay identical for both themes.
+// Only the school letterhead (logo + name/address + certificate title) changes.
 function BonafideDocument({
   studentData,
   school,
   issueDate,
+  headerTheme = 'legacy',
 }: {
   studentData: StudentData;
   school: SchoolProfile;
   issueDate: string;
+  headerTheme?: BonafideHeaderTheme;
 }) {
   const pronouns = genderPronouns(studentData.genderId);
   const enrolmentVerb = studentData.isFormerStudent ? 'was' : 'is';
   const studyVerb = studentData.isFormerStudent ? 'studied' : 'is Studying';
   const logoSource = resolveSchoolLogoSource(school);
   const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const isLegacy = headerTheme === 'legacy';
 
   return (
     <View style={bfStyles.outerFrame}>
@@ -570,24 +575,54 @@ function BonafideDocument({
           <Image source={logoSource} style={bfStyles.watermarkImg} />
         </View>
 
-        <View style={bfStyles.headerRow}>
-          <Image source={logoSource} style={bfStyles.headerLogo} />
-          <View style={bfStyles.headerCenter}>
-            <Text style={bfStyles.schoolName}>{school.name.toUpperCase()}</Text>
-            {recognitionLine ? (
-              <Text style={bfStyles.schoolRecognition}>{recognitionLine}</Text>
-            ) : null}
-            <Text style={bfStyles.schoolAddr}>{school.address}</Text>
-          </View>
-        </View>
-
-        <View style={bfStyles.titleBox}>
-          <Text style={bfStyles.titleText}>BONAFIDE & CONDUCT CERTIFICATE</Text>
-        </View>
+        {isLegacy ? (
+          <>
+            <View style={bfStyles.headerRow}>
+              <Image source={logoSource} style={bfStyles.headerLogo} />
+              <View style={bfStyles.headerCenter}>
+                <Text style={bfStyles.schoolName}>{school.name.toUpperCase()}</Text>
+                {recognitionLine ? (
+                  <Text style={bfStyles.schoolRecognition}>{recognitionLine}</Text>
+                ) : null}
+                <Text style={bfStyles.schoolAddr}>{school.address}</Text>
+              </View>
+            </View>
+            <View style={bfStyles.titleBox}>
+              <Text style={bfStyles.titleText}>BONAFIDE & CONDUCT CERTIFICATE</Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={bfModernStyles.headerBand}>
+              <View style={bfModernStyles.headerRow}>
+                <Image source={logoSource} style={bfModernStyles.headerLogo} />
+                <View style={bfModernStyles.headerCenter}>
+                  <Text style={bfModernStyles.schoolName}>{school.name.toUpperCase()}</Text>
+                  {recognitionLine ? (
+                    <Text style={bfModernStyles.schoolRecognition}>{recognitionLine}</Text>
+                  ) : null}
+                  <Text style={bfModernStyles.schoolAddr}>{school.address}</Text>
+                  <View style={bfModernStyles.nameUnderline} />
+                </View>
+              </View>
+            </View>
+            <View style={bfModernStyles.titleWrap}>
+              <View style={bfModernStyles.titleRule} />
+              <View style={bfModernStyles.titleBox}>
+                <Text style={bfModernStyles.titleText}>BONAFIDE & CONDUCT CERTIFICATE</Text>
+              </View>
+              <View style={bfModernStyles.titleRule} />
+            </View>
+          </>
+        )}
 
         <View style={bfStyles.metaRow}>
-          <Text style={bfStyles.metaText}>Admission No. <Text style={bfStyles.metaVal}>{line(studentData.admissionNo)}</Text></Text>
-          <Text style={bfStyles.metaText}>Date <Text style={bfStyles.metaVal}>{line(issueDate)}</Text></Text>
+          <Text style={bfStyles.metaText}>
+            Admission No. <Text style={bfStyles.metaVal}>{line(studentData.admissionNo)}</Text>
+          </Text>
+          <Text style={bfStyles.metaText}>
+            Date <Text style={bfStyles.metaVal}>{line(issueDate)}</Text>
+          </Text>
         </View>
 
         <View style={bfStyles.body}>
@@ -679,6 +714,86 @@ const bfStyles = StyleSheet.create({
   footerSign: { fontSize: 18, fontWeight: '800', color: BONAFIDE_BLUE, textAlign: 'right', minWidth: 140 },
 });
 
+/** Modern header only — same double frame + body as legacy. */
+const bfModernStyles = StyleSheet.create({
+  headerBand: {
+    zIndex: 1,
+    marginHorizontal: -8,
+    marginTop: -4,
+    marginBottom: 8,
+    paddingHorizontal: 8,
+    paddingTop: 20,
+    paddingBottom: 14,
+    backgroundColor: '#F4F7FB',
+    borderBottomWidth: 2,
+    borderBottomColor: BONAFIDE_BLUE,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  headerLogo: { width: 128, height: 128, resizeMode: 'contain' },
+  headerCenter: { flex: 1, alignItems: 'center', paddingRight: 12 },
+  schoolName: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: BONAFIDE_BLUE,
+    letterSpacing: 1.4,
+    textAlign: 'center',
+    lineHeight: 36,
+  },
+  schoolRecognition: {
+    fontSize: 13,
+    color: BONAFIDE_BLUE,
+    textAlign: 'center',
+    marginTop: 4,
+    fontWeight: '700',
+    opacity: 0.85,
+  },
+  schoolAddr: {
+    fontSize: 14,
+    color: BONAFIDE_BLUE,
+    textAlign: 'center',
+    marginTop: 5,
+    lineHeight: 20,
+    fontWeight: '600',
+    opacity: 0.9,
+  },
+  nameUnderline: {
+    width: 72,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: BONAFIDE_BLUE,
+    marginTop: 10,
+    opacity: 0.35,
+  },
+  titleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 6,
+    marginBottom: 28,
+    zIndex: 1,
+  },
+  titleRule: { flex: 1, height: 1.5, backgroundColor: BONAFIDE_BLUE, opacity: 0.35 },
+  titleBox: {
+    borderWidth: 1.5,
+    borderColor: BONAFIDE_BLUE,
+    backgroundColor: '#EEF3FB',
+    borderRadius: 6,
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+  },
+  titleText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: BONAFIDE_BLUE,
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+});
+
 const cpStyles = StyleSheet.create({
   wrap: { marginTop: 20, gap: 16 },
   paperBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
@@ -690,6 +805,30 @@ const cpStyles = StyleSheet.create({
   layoutPillActive: { backgroundColor: '#4F46E5' },
   layoutPillText: { fontSize: 10, fontWeight: '700', color: '#6B7280' },
   layoutPillTextActive: { color: '#FFFFFF' },
+  headerThemeToggle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerThemeLabel: { fontSize: 11, fontWeight: '700', color: '#94A3B8' },
+  headerThemeLabelActive: { color: '#059669' },
+  headerThemeTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#CBD5E1',
+    padding: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  headerThemeTrackOn: { backgroundColor: '#059669', justifyContent: 'flex-end' },
+  headerThemeThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2 },
+      android: { elevation: 2 },
+    }),
+  },
   serialText: { fontSize: 11, fontWeight: '600', color: '#94A3B8' },
   paper: { backgroundColor: '#FFFFFF', borderRadius: 4, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', position: 'relative', ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20 }, android: { elevation: 8 } }) },
   tcPaper: { width: 816, minHeight: 1247 },
@@ -866,11 +1005,14 @@ const CertificatePreview = React.forwardRef<View, {
   school: SchoolProfile;
   tcLayout: TcLayout;
   setTcLayout: (layout: TcLayout) => void;
+  bonafideHeaderTheme: BonafideHeaderTheme;
+  setBonafideHeaderTheme: (theme: BonafideHeaderTheme) => void;
   onEdit: () => void;
   onPrint: () => void;
   onDownload: () => void;
 }>(function CertificatePreview({
-  studentData, tcFields, selectedType, serialNo, school, tcLayout, setTcLayout, onEdit, onPrint, onDownload,
+  studentData, tcFields, selectedType, serialNo, school, tcLayout, setTcLayout,
+  bonafideHeaderTheme, setBonafideHeaderTheme, onEdit, onPrint, onDownload,
 }, certificateRef) {
   if (!selectedType) return null;
   const cfg = CERT_CONFIG[selectedType];
@@ -885,6 +1027,7 @@ const CertificatePreview = React.forwardRef<View, {
   const logoSource = resolveSchoolLogoSource(school);
   const affiliationLine = school.affiliation?.trim() || '';
   const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const modernOn = bonafideHeaderTheme === 'modern';
 
   return (
     <Animated.View entering={FadeInDown.springify().damping(18)} style={cpStyles.wrap}>
@@ -916,7 +1059,22 @@ const CertificatePreview = React.forwardRef<View, {
                 </Text>
               </TouchableOpacity>
             </View>
-          ) : null}
+          ) : (
+            <View style={cpStyles.headerThemeToggle}>
+              <Text style={cpStyles.headerThemeLabel}>Legacy</Text>
+              <TouchableOpacity
+                style={[cpStyles.headerThemeTrack, modernOn && cpStyles.headerThemeTrackOn]}
+                onPress={() => setBonafideHeaderTheme(modernOn ? 'legacy' : 'modern')}
+                activeOpacity={0.85}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: modernOn }}
+                accessibilityLabel="Modern header"
+              >
+                <View style={cpStyles.headerThemeThumb} />
+              </TouchableOpacity>
+              <Text style={[cpStyles.headerThemeLabel, modernOn && cpStyles.headerThemeLabelActive]}>Modern</Text>
+            </View>
+          )}
         </View>
         <Text style={cpStyles.serialText}>No. {serialNo}</Text>
       </View>
@@ -999,7 +1157,12 @@ const CertificatePreview = React.forwardRef<View, {
             </>
           )
         ) : (
-          <BonafideDocument studentData={studentData} school={school} issueDate={today} />
+          <BonafideDocument
+            studentData={studentData}
+            school={school}
+            issueDate={today}
+            headerTheme={bonafideHeaderTheme}
+          />
         )}
       </View>
 
@@ -1071,11 +1234,13 @@ function buildCertificateHTML(
   logoDataUri: string,
   school: SchoolProfile,
   tcLayout: TcLayout = 'LEGAL',
+  bonafideHeaderTheme: BonafideHeaderTheme = 'legacy',
 ): string {
   if (!type) return '';
   const cfg = CERT_CONFIG[type];
   const isTC = type === 'TC';
   const isHalfTc = isTC && tcLayout === 'A4_HALF';
+  const isBfLegacy = !isTC && bonafideHeaderTheme === 'legacy';
   const today = formatDDMMYYYY(new Date());
   const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE & CONDUCT CERTIFICATE';
   const logoImg = logoDataUri
@@ -1144,17 +1309,7 @@ function buildCertificateHTML(
       <div class="tc-col">${tcRightCol}</div>
     </div>`;
 
-  const bonafideBody = `
-    <div class="bf-outer"><div class="bf-inner">
-      <div class="bf-header">
-        ${logoImg}
-        <div class="bf-header-center">
-          <div class="bf-school-name">${school.name.toUpperCase()}</div>
-          ${recognitionLine ? `<div class="bf-school-recognition">${recognitionLine}</div>` : ''}
-          <div class="bf-school-addr">${escAddr}</div>
-        </div>
-      </div>
-      <div class="bf-title-box">${title}</div>
+  const bonafideSharedBody = `
       <div class="bf-meta">
         <span>Admission No. <u>${line(studentData.admissionNo)}</u></span>
         <span>Date <u>${line(today)}</u></span>
@@ -1169,7 +1324,41 @@ function buildCertificateHTML(
       <div class="bf-footer">
         <span>PEN No. <strong>${line(studentData.penNo)}</strong></span>
         <span>${school.principal}</span>
+      </div>`;
+
+  const bonafideHeaderLegacy = `
+      <div class="bf-header">
+        ${logoImg}
+        <div class="bf-header-center">
+          <div class="bf-school-name">${school.name.toUpperCase()}</div>
+          ${recognitionLine ? `<div class="bf-school-recognition">${recognitionLine}</div>` : ''}
+          <div class="bf-school-addr">${escAddr}</div>
+        </div>
       </div>
+      <div class="bf-title-box">${title}</div>`;
+
+  const bonafideHeaderModern = `
+      <div class="bfm-header-band">
+        <div class="bfm-header">
+          ${logoImg}
+          <div class="bfm-header-center">
+            <div class="bfm-school-name">${school.name.toUpperCase()}</div>
+            ${recognitionLine ? `<div class="bfm-school-recognition">${recognitionLine}</div>` : ''}
+            <div class="bfm-school-addr">${escAddr}</div>
+            <div class="bfm-name-underline"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bfm-title-wrap">
+        <div class="bfm-title-rule"></div>
+        <div class="bfm-title-box">${title}</div>
+        <div class="bfm-title-rule"></div>
+      </div>`;
+
+  const bonafideBody = `
+    <div class="bf-outer"><div class="bf-inner">
+      ${isBfLegacy ? bonafideHeaderLegacy : bonafideHeaderModern}
+      ${bonafideSharedBody}
     </div></div>`;
 
   // Bonafide now prints on HALF an A4 sheet (A5 landscape: 210mm × 148.5mm).
@@ -1311,6 +1500,30 @@ function buildCertificateHTML(
     .bf-dob-words { font-size: 18px; color: ${BONAFIDE_BLUE}; font-weight: 700; text-decoration: underline; margin: 5px 0 12px; }
     .bf-footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; padding-top: 8px; font-size: 17px; color: ${BONAFIDE_BLUE}; font-weight: 600; }
     .bf-footer strong { font-size: 19px; font-weight: 800; }
+
+    /* ── Bonafide modern header only (same frame/body as legacy) ─────────── */
+    .bfm-header-band {
+      margin: -4px -6px 6px;
+      padding: 10px 8px 12px;
+      background: #F4F7FB;
+      border-bottom: 2px solid ${BONAFIDE_BLUE};
+    }
+    .bfm-header { display: flex; align-items: center; gap: 14px; }
+    .bfm-header .header-logo-img { width: 110px; height: 110px; object-fit: contain; margin: 0; }
+    .bfm-header-center { flex: 1; text-align: center; }
+    .bfm-school-name { font-size: 28px; font-weight: 900; color: ${BONAFIDE_BLUE}; letter-spacing: 1.4px; line-height: 1.2; }
+    .bfm-school-recognition { font-size: 12px; color: ${BONAFIDE_BLUE}; margin-top: 3px; font-weight: 700; opacity: 0.85; }
+    .bfm-school-addr { font-size: 13px; color: ${BONAFIDE_BLUE}; margin-top: 4px; font-weight: 600; white-space: pre-line; line-height: 1.4; opacity: 0.9; }
+    .bfm-name-underline { width: 64px; height: 3px; border-radius: 2px; background: ${BONAFIDE_BLUE}; opacity: 0.35; margin: 8px auto 0; }
+    .bfm-title-wrap { display: flex; align-items: center; gap: 12px; margin: 4px 0 22px; }
+    .bfm-title-rule { flex: 1; height: 1.5px; background: ${BONAFIDE_BLUE}; opacity: 0.35; }
+    .bfm-title-box {
+      border: 1.5px solid ${BONAFIDE_BLUE};
+      background: #EEF3FB;
+      border-radius: 6px;
+      padding: 7px 18px;
+      font-size: 16px; font-weight: 800; color: ${BONAFIDE_BLUE}; letter-spacing: 1px; white-space: nowrap;
+    }
   </style></head><body>
   <div class="certificate-print-root">
     ${logoDataUri ? `<div class="certificate-watermark"><img src="${logoDataUri}" alt="" /></div>` : ''}
@@ -1541,6 +1754,8 @@ export default function CertificateGenerator() {
   const [saving, setSaving] = useState(false);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(() => mapSchoolSettings({}));
   const [tcLayout, setTcLayout] = useState<TcLayout>('LEGAL');
+  /** Legacy is the default. Toggle ON switches to the modern header. */
+  const [bonafideHeaderTheme, setBonafideHeaderTheme] = useState<BonafideHeaderTheme>('legacy');
   const certificateRef = useRef<View>(null);
 
   const step = generated ? 3 : studentData ? 2 : 1;
@@ -1677,7 +1892,9 @@ export default function CertificateGenerator() {
       }
 
       const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
-      const html = buildCertificateHTML(studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout);
+      const html = buildCertificateHTML(
+        studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout, bonafideHeaderTheme,
+      );
       const Print = await import('expo-print');
       await Print.printAsync({
         html,
@@ -1703,7 +1920,9 @@ export default function CertificateGenerator() {
         await downloadCertificatePdf(element, pdfFormat, fileName);
       } else {
         const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
-        const html = buildCertificateHTML(studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout);
+        const html = buildCertificateHTML(
+          studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout, bonafideHeaderTheme,
+        );
         const Print = await import('expo-print');
         const { uri } = await Print.printToFileAsync({
           html,
@@ -1909,6 +2128,8 @@ export default function CertificateGenerator() {
               school={schoolProfile}
               tcLayout={tcLayout}
               setTcLayout={setTcLayout}
+              bonafideHeaderTheme={bonafideHeaderTheme}
+              setBonafideHeaderTheme={setBonafideHeaderTheme}
               onEdit={() => setShowEdit(true)}
               onPrint={handlePrint}
               onDownload={handleDownload}

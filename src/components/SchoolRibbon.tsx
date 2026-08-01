@@ -750,12 +750,23 @@ const CLAY_PILL_SHADOW = [
   `0 1.5px 1px ${schoolColorWithAlpha(CLAY_SURFACE, 0.28)}`,      // Outward bottom edge light catch
 ].join(', ');
 
+/** Full letterhead (motto / campus / contact) only on landing + dashboard surfaces. */
+function shouldUseFullLetterhead(pathname: string): boolean {
+  const p = pathname.toLowerCase();
+  if (!p || p === '/') return true;
+  if (p.includes('/login') || p.includes('/welcome') || p.includes('/home')) return true;
+  if (p.includes('/dashboard')) return true;
+  return false;
+}
+
 function StaticLetterheadRibbon() {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const pathname = usePathname() || '';
   /** Driver portal needs trip controls above the fold — drop motto/address chrome. */
   const isDriverPortal = pathname.includes('/driver');
+  /** Interior app pages: slim brand bar so lists/forms sit above the fold. */
+  const isSlimLetterhead = isDriverPortal || !shouldUseFullLetterhead(pathname);
 
   const schoolName =
     SCHOOL_NAME || SCHOOL_CONFIG.name;
@@ -775,15 +786,15 @@ function StaticLetterheadRibbon() {
   const email =
     SCHOOL_CONFIG.email?.trim() || '';
 
-  const compactInfo = width < 720 || isDriverPortal;
-  const titleFallbackWidth = isDriverPortal
+  const compactInfo = width < 720 || isSlimLetterhead;
+  const titleFallbackWidth = isSlimLetterhead
     ? Math.max(0, width - 100)
     : compactInfo
       ? Math.max(0, width - 120)
       : Math.max(0, width * 0.4 - 80);
 
   const columns = useMemo(() => {
-    if (isDriverPortal) return [];
+    if (isSlimLetterhead) return [];
 
     const items: {
       key: string;
@@ -822,36 +833,36 @@ function StaticLetterheadRibbon() {
       });
 
     return items;
-  }, [isDriverPortal, motto, address, phone, email, t]);
+  }, [isSlimLetterhead, motto, address, phone, email, t]);
 
   return (
-    <View style={[styles.column, isDriverPortal && styles.columnDriver]}>
-      <View style={[styles.clayCard, isDriverPortal && styles.clayCardDriver]}>
+    <View style={[styles.column, isSlimLetterhead && styles.columnDriver]}>
+      <View style={[styles.clayCard, isSlimLetterhead && styles.clayCardDriver]}>
         {/* Radial key light falling on the top-left of the clay surface. */}
         <View pointerEvents="none" style={styles.clayKeyLight} />
         {/* Glossy sheen sweeping across the top of the clay surface. */}
         <View pointerEvents="none" style={styles.claySheen} />
         {/* Crisp accent cap — SchoolTheme's accent colour, used exactly for its documented role. */}
-        <View pointerEvents="none" style={[styles.clayAccentCap, isDriverPortal && styles.clayAccentCapDriver]} />
+        <View pointerEvents="none" style={[styles.clayAccentCap, isSlimLetterhead && styles.clayAccentCapDriver]} />
 
         <View
           style={[
             styles.inner,
             compactInfo && styles.innerCompact,
-            isDriverPortal && styles.innerDriver,
+            isSlimLetterhead && styles.innerDriver,
           ]}
         >
           <View
             style={[
               styles.brandRow,
               compactInfo && styles.brandRowCompact,
-              isDriverPortal && styles.brandRowDriver,
+              isSlimLetterhead && styles.brandRowDriver,
             ]}
           >
-            <View style={[styles.logoFrame, isDriverPortal && styles.logoFrameDriver]}>
+            <View style={[styles.logoFrame, isSlimLetterhead && styles.logoFrameDriver]}>
               <Image
                 source={SCHOOL_CONFIG.logo}
-                style={[styles.logo, isDriverPortal && styles.logoDriver]}
+                style={[styles.logo, isSlimLetterhead && styles.logoDriver]}
                 resizeMode="contain"
               />
             </View>
@@ -859,15 +870,15 @@ function StaticLetterheadRibbon() {
             <View style={styles.titleBlock}>
               <AdaptiveSchoolName
                 text={schoolName}
-                baseStyle={[styles.schoolName, isDriverPortal && styles.schoolNameDriver]}
-                maxFontSize={isDriverPortal ? 18 : 23}
+                baseStyle={[styles.schoolName, isSlimLetterhead && styles.schoolNameDriver]}
+                maxFontSize={isSlimLetterhead ? 18 : 23}
                 minFontSize={11}
                 fallbackWidth={titleFallbackWidth}
               />
 
-              {!isDriverPortal ? <View style={styles.titleUnderline} /> : null}
+              {!isSlimLetterhead ? <View style={styles.titleUnderline} /> : null}
 
-              {tagline && !isDriverPortal ? (
+              {tagline && !isSlimLetterhead ? (
                 <Text style={styles.tagline} numberOfLines={2}>
                   {`“${tagline}”`}
                 </Text>

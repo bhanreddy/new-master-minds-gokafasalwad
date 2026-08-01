@@ -188,6 +188,11 @@ export interface PendingFeeExportFilters {
     overdue_only?: boolean;
 }
 
+export interface CollectionReceiptExportFilters {
+    from_date: string;
+    to_date: string;
+}
+
 export const FeeService = {
     getFeeMode: async (): Promise<FeeMode> => {
         const result = await api.get<{ fee_mode: FeeMode }>('/fees/fee-mode');
@@ -377,6 +382,18 @@ export const FeeService = {
         return api.downloadFile(
             `/admin/pending-fees/export${query ? `?${query}` : ''}`,
             `pending-fees-due-list-${stamp}.xlsx`,
+        );
+    },
+
+    /** Download fee + transport collection receipts for a date range as Excel. */
+    exportCollectionReceipts: async (filters: CollectionReceiptExportFilters): Promise<void> => {
+        const params = new URLSearchParams({
+            from_date: filters.from_date,
+            to_date: filters.to_date,
+        });
+        return api.downloadFile(
+            `/admin/collection-receipts/export?${params.toString()}`,
+            `fee-collection-receipts-${filters.from_date}-to-${filters.to_date}.xlsx`,
         );
     },
 

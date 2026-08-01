@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -41,12 +41,13 @@ function routeIsActive(pathname: string, itemRoute: string): boolean {
 }
 
 const SECTION_LABELS = {
-  workspace: 'WORKSPACE',
-  people: 'PEOPLE',
-  system: 'SYSTEM',
+  workspace: 'Workspace',
+  people: 'People',
+  system: 'System',
 } as const;
 
-const DEFAULT_NAV: AccountsSidebarNavItem[] = [
+/** Shared accounts portal nav — used by the desktop sidebar and the mobile drawer. */
+export const ACCOUNTS_SIDEBAR_NAV: AccountsSidebarNavItem[] = [
   {
     title: 'Dashboard',
     icon: 'grid-outline',
@@ -66,14 +67,14 @@ const DEFAULT_NAV: AccountsSidebarNavItem[] = [
     icon: 'bar-chart-outline',
     route: '/accounts/invoices',
     gradient: ['#8B5CF6', '#6D28D9'],
-    category: 'Documents',
+    category: 'Invoices',
   },
   {
     title: 'Certificates',
     icon: 'ribbon-outline',
     route: '/accounts/certificate-generator',
     gradient: ['#1E40AF', '#06B6D4'],
-    category: 'Documents',
+    category: 'Certificates',
     permission: 'certificates.issue',
   },
   {
@@ -104,6 +105,121 @@ interface AccountsWebSidebarProps {
   pendingEnrollmentsBadge?: number;
 }
 
+function NavRow({
+  item,
+  collapsed,
+  active,
+  isDark,
+  onNavigate,
+  styles,
+}: {
+  item: AccountsSidebarNavItem;
+  collapsed: boolean;
+  active: boolean;
+  isDark: boolean;
+  onNavigate: (route: string) => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const showBadge = item.badge !== undefined && item.badge > 0;
+  const [g0, g1] = item.gradient;
+  const accentDeep = g1;
+  const soft = `${g0}1F`;
+  const softDark = `${g0}2E`;
+
+  return (
+    <Pressable
+      onPress={() => onNavigate(item.route)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      style={[Platform.OS === 'web' && { cursor: 'pointer' }]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <View
+        style={[
+          styles.row,
+          collapsed && styles.rowCollapsed,
+          active && styles.rowActiveShell,
+          !active &&
+            hovered && {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
+              transform: [{ translateX: 2 }],
+            },
+          !active &&
+            !hovered && {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.55)',
+            },
+        ]}
+      >
+        {active ? (
+          <LinearGradient
+            colors={[g0, g1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
+            pointerEvents="none"
+          />
+        ) : null}
+
+        <View
+          style={[
+            styles.iconWrap,
+            collapsed && styles.iconWrapCollapsed,
+            active
+              ? {
+                  backgroundColor: 'rgba(255,255,255,0.22)',
+                  borderColor: 'rgba(255,255,255,0.28)',
+                }
+              : {
+                  backgroundColor: isDark ? softDark : soft,
+                  borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)',
+                },
+          ]}
+        >
+          <Ionicons
+            name={item.icon}
+            size={collapsed ? 17 : 14}
+            color={active ? '#FFFFFF' : accentDeep}
+          />
+          {collapsed && showBadge ? <View style={styles.badgeDot} /> : null}
+        </View>
+
+        {!collapsed ? (
+          <View style={styles.meta}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.itemTitle, active && styles.itemTitleActive]} numberOfLines={1}>
+                {item.title}
+              </Text>
+              {showBadge ? (
+                <View
+                  style={[
+                    styles.badge,
+                    {
+                      backgroundColor: active
+                        ? 'rgba(255,255,255,0.24)'
+                        : isDark
+                          ? 'rgba(255,255,255,0.12)'
+                          : accentDeep,
+                    },
+                  ]}
+                >
+                  <Text style={styles.badgeText}>{item.badge! > 99 ? '99+' : item.badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            {item.category ? (
+              <Text style={[styles.category, active && styles.categoryActive]} numberOfLines={1}>
+                {item.category.toUpperCase()}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 export default function AccountsWebSidebar({
   collapsed,
   pendingEnrollmentsBadge = 0,
@@ -113,6 +229,7 @@ export default function AccountsWebSidebar({
   const router = useRouter();
   const { signOut } = useAuth();
   const { hasPermission } = usePermissions();
+  const [logoutHovered, setLogoutHovered] = useState(false);
 
   const widthSV = useSharedValue(
     collapsed ? DASHBOARD_SIDEBAR_COLLAPSED : DASHBOARD_SIDEBAR_EXPANDED,
@@ -131,7 +248,7 @@ export default function AccountsWebSidebar({
   }));
 
   const items = useMemo(() => {
-    return DEFAULT_NAV
+    return ACCOUNTS_SIDEBAR_NAV
       .filter((it) => !it.permission || hasPermission(it.permission))
       .map((it) =>
         it.route === '/accounts/pending-enrollments' && pendingEnrollmentsBadge > 0
@@ -161,11 +278,9 @@ export default function AccountsWebSidebar({
 
   const onNavigate = useCallback(
     (route: string) => {
-      console.debug('[AccountsWebSidebar] onNavigate start', { route });
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push(route as any);
-        console.debug('[AccountsWebSidebar] onNavigate end', { route });
       } catch (e) {
         console.error('Button action failed:', e);
       }
@@ -174,213 +289,62 @@ export default function AccountsWebSidebar({
   );
 
   const onLogout = useCallback(async () => {
-    console.debug('[AccountsWebSidebar] onLogout start');
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
       await AsyncStorage.removeItem('accounts_auto_login');
       await signOut();
       router.replace('/welcome');
-      console.debug('[AccountsWebSidebar] onLogout end');
     } catch (e) {
       console.error('Button action failed:', e);
     }
   }, [router, signOut]);
 
-  const accentTop = '#3B82F6';
-
-  const renderRow = (item: AccountsSidebarNavItem) => {
-    const active = routeIsActive(pathname, item.route);
-    const [g0, g1] = item.gradient;
-    const showBadge = item.badge !== undefined && item.badge > 0;
-    const restingShadow = isDark
-      ? '7px 8px 18px rgba(0,0,0,0.28), -5px -5px 14px rgba(255,255,255,0.025), inset 1.5px 1.5px 3px rgba(255,255,255,0.06), inset -2px -2px 5px rgba(0,0,0,0.18)'
-      : '7px 9px 18px rgba(100,116,139,0.13), -6px -6px 16px rgba(255,255,255,0.96), inset 2px 2px 4px rgba(255,255,255,0.82), inset -2.5px -2.5px 6px rgba(100,116,139,0.10)';
-    const activeShadow = isDark
-      ? `8px 11px 22px ${g1}66, -5px -5px 14px rgba(255,255,255,0.035), inset 2px 2px 4px rgba(255,255,255,0.24), inset -3px -4px 7px rgba(0,0,0,0.22)`
-      : `8px 12px 22px ${g1}42, -6px -6px 16px rgba(255,255,255,0.98), inset 2px 2px 5px rgba(255,255,255,0.34), inset -3px -4px 7px rgba(15,23,42,0.16)`;
-
-    return (
-      <Pressable
-        key={item.route}
-        onPress={() => onNavigate(item.route)}
-        style={({ pressed }: any) => [
-          styles.row,
-          collapsed && styles.rowCollapsed,
-          {
-            borderRadius: 18,
-            marginBottom: 10,
-            backgroundColor: active ? g0 : (isDark ? '#182235' : '#F2F5FB'),
-            borderWidth: 1,
-            borderColor: active
-              ? 'rgba(255,255,255,0.34)'
-              : isDark ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.86)',
-            shadowColor: active ? g1 : (isDark ? '#000000' : '#64748B'),
-            shadowOffset: { width: pressed ? 2 : 6, height: pressed ? 3 : 9 },
-            shadowOpacity: pressed ? 0.14 : (active ? 0.26 : 0.12),
-            shadowRadius: pressed ? 5 : 12,
-            elevation: pressed ? 2 : 5,
-            transform: [{ translateY: pressed ? 2 : 0 }, { scale: pressed ? 0.988 : 1 }],
-            ...(Platform.OS === 'web' ? ({
-              cursor: 'pointer',
-              boxShadow: pressed
-                ? 'inset 4px 5px 9px rgba(15,23,42,0.19), inset -2px -2px 5px rgba(255,255,255,0.14), 2px 3px 8px rgba(15,23,42,0.10)'
-                : active ? activeShadow : restingShadow,
-              transition: 'transform 120ms ease, box-shadow 150ms ease, border-color 150ms ease',
-            } as any) : {}),
-          },
-        ]}
-      >
-        <View style={[StyleSheet.absoluteFill, { borderRadius: 18, overflow: 'hidden' }]}>
-          <LinearGradient
-            colors={active
-              ? [g0, g1]
-              : isDark ? ['#202C43', '#151E2F'] : ['#FAFCFF', '#E9EEF7']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
+  return (
+    <Animated.View style={[styles.shellOuter, shellAnimStyle]}>
+      <View style={styles.shellInner}>
+        <LinearGradient
+          colors={isDark ? ['#070B14', '#0F172A', '#111827'] : ['#E8EEF8', '#F3F6FC', '#EEF2F9']}
+          locations={[0, 0.45, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        {Platform.OS === 'web' ? (
           <View
             pointerEvents="none"
             style={[
               StyleSheet.absoluteFill,
-              Platform.OS === 'web' && ({
-                backgroundImage: 'radial-gradient(105% 95% at 2% -10%, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.12) 42%, rgba(255,255,255,0) 70%)',
-              } as any),
+              {
+                backgroundImage: isDark
+                  ? 'radial-gradient(80% 45% at 10% 0%, rgba(59,130,246,0.22) 0%, transparent 55%), radial-gradient(70% 40% at 100% 100%, rgba(20,184,166,0.12) 0%, transparent 50%)'
+                  : 'radial-gradient(90% 50% at 0% 0%, rgba(59,130,246,0.16) 0%, transparent 52%), radial-gradient(70% 40% at 100% 85%, rgba(20,184,166,0.10) 0%, transparent 48%), radial-gradient(50% 30% at 50% 100%, rgba(251,146,60,0.06) 0%, transparent 55%)',
+              } as any,
             ]}
           />
-          <View style={styles.topSpecular} pointerEvents="none" />
-        </View>
-
-        <View
-          style={[
-            styles.iconWrap,
-            collapsed && styles.iconWrapCollapsed,
-            {
-              backgroundColor: active
-                ? 'rgba(255,255,255,0.20)'
-                : isDark ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.64)',
-              borderWidth: 1,
-              borderColor: active
-                ? 'rgba(255,255,255,0.28)'
-                : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.82)',
-              shadowColor: active ? g1 : '#64748B',
-              shadowOffset: { width: 2, height: 3 },
-              shadowOpacity: active ? 0.28 : 0.12,
-              shadowRadius: 5,
-              elevation: 2,
-              ...(Platform.OS === 'web' ? ({
-                boxShadow: active
-                  ? 'inset 2px 2px 4px rgba(255,255,255,0.32), inset -3px -3px 6px rgba(15,23,42,0.17), 3px 5px 9px rgba(15,23,42,0.18)'
-                  : isDark
-                    ? 'inset 2px 2px 4px rgba(255,255,255,0.07), inset -3px -3px 6px rgba(0,0,0,0.20), 3px 5px 9px rgba(0,0,0,0.16)'
-                    : 'inset 2px 2px 4px rgba(255,255,255,0.96), inset -3px -3px 6px rgba(100,116,139,0.14), 3px 5px 9px rgba(100,116,139,0.13)',
-              } as any) : {}),
-            },
-          ]}
-        >
-          <Ionicons
-            name={item.icon}
-            size={22}
-            color={
-              active
-                ? '#FFFFFF'
-                : isDark
-                  ? 'rgba(255,255,255,0.45)'
-                  : 'rgba(15,23,42,0.5)'
-            }
-          />
-          {collapsed && showBadge ? <View style={styles.badgeDot} /> : null}
-        </View>
-
-        {!collapsed ? (
-          <View style={styles.meta}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.itemTitle, active && { color: '#FFFFFF', textShadowColor: 'rgba(15,23,42,0.20)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }]} numberOfLines={2}>
-                {item.title}
-              </Text>
-              {showBadge ? (
-                <View style={[
-                  styles.badge,
-                  {
-                    backgroundColor: active ? 'rgba(255,255,255,0.22)' : g0,
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.38)',
-                    ...(Platform.OS === 'web' ? ({ boxShadow: 'inset 1px 1px 2px rgba(255,255,255,0.34), inset -2px -2px 4px rgba(15,23,42,0.18), 2px 3px 7px rgba(15,23,42,0.16)' } as any) : {}),
-                  },
-                ]}>
-                  <Text style={styles.badgeText}>{item.badge! > 99 ? '99+' : item.badge}</Text>
-                </View>
-              ) : null}
-            </View>
-            {item.category ? (
-              <Text style={[styles.category, active && { color: 'rgba(255,255,255,0.76)' }]} numberOfLines={1}>
-                {item.category.toUpperCase()}
-              </Text>
-            ) : null}
-          </View>
         ) : null}
-      </Pressable>
-    );
-  };
-
-  return (
-    <Animated.View style={[styles.shellOuter, shellAnimStyle]}>
-      <View style={styles.shellInner}>
-        <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#0D1120' : '#E9EEF7' }]}
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.34)',
-            },
-          ]}
-        />
-        <LinearGradient
-          pointerEvents="none"
-          colors={[`${accentTop}55`, `${accentTop}00`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.rightBorderGradient}
-        />
 
         <View style={[styles.topBrand, !collapsed && styles.topBrandExpanded]}>
           <LinearGradient
-            colors={isDark ? ['#3B82F6', '#7C3AED'] : ['#6366F1', '#8B5CF6']}
+            colors={isDark ? ['#1E3A8A', '#1D4ED8', '#0F766E'] : ['#1E40AF', '#2563EB', '#0D9488']}
+            locations={[0, 0.55, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[
-              styles.brandPill,
-              Platform.OS === 'web' && ({
-                boxShadow: isDark
-                  ? '8px 11px 24px rgba(30,41,100,0.50), -5px -5px 14px rgba(255,255,255,0.025), inset 2px 2px 5px rgba(255,255,255,0.28), inset -4px -5px 8px rgba(15,23,42,0.20)'
-                  : '8px 12px 25px rgba(79,70,229,0.30), -6px -6px 16px rgba(255,255,255,0.92), inset 2px 2px 5px rgba(255,255,255,0.32), inset -4px -5px 8px rgba(30,27,75,0.18)',
-              } as any),
-            ]}
+            style={styles.brandPill}
           >
-            <View style={[
-              styles.brandOrbInner,
-              Platform.OS === 'web' && ({
-                boxShadow: 'inset 2px 2px 4px rgba(255,255,255,0.24), inset -3px -3px 6px rgba(15,23,42,0.18), 3px 5px 10px rgba(15,23,42,0.22)',
-              } as any),
-            ]}>
-              <LinearGradient
-                colors={['rgba(255,255,255,0.25)', 'rgba(255,255,255,0)']}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              <Ionicons name="wallet" size={collapsed ? 20 : 22} color="#FFFFFF" />
+            <View style={styles.brandSheen} pointerEvents="none" />
+            <View style={styles.brandOrb}>
+              <Ionicons name="wallet" size={collapsed ? 17 : 19} color="#FFFFFF" />
             </View>
             {!collapsed ? (
               <View style={styles.brandTextWrap}>
                 <Text style={styles.brandName} numberOfLines={1}>
                   {SCHOOL_NAME || 'SchoolIMS'}
                 </Text>
-                <Text style={styles.brandSub}>Accounts</Text>
+                <View style={styles.brandSubRow}>
+                  <View style={styles.brandLiveDot} />
+                  <Text style={styles.brandSub}>Accounts</Text>
+                </View>
               </View>
             ) : null}
           </LinearGradient>
@@ -392,80 +356,69 @@ export default function AccountsWebSidebar({
           contentContainerStyle={styles.scrollContent}
         >
           {collapsed
-            ? flatForCollapsed.map((item) => renderRow(item))
+            ? flatForCollapsed.map((item) => (
+                <NavRow
+                  key={item.route}
+                  item={item}
+                  collapsed
+                  active={routeIsActive(pathname, item.route)}
+                  isDark={isDark}
+                  onNavigate={onNavigate}
+                  styles={styles}
+                />
+              ))
             : grouped.map((group) => (
                 <View key={group.key} style={styles.sectionBlock}>
-                  <Text style={styles.sectionLabel}>{group.label}</Text>
-                  {group.items.map((item) => renderRow(item))}
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionHeadLabel}>{group.label}</Text>
+                    <View style={styles.sectionHeadLine} />
+                  </View>
+                  <View style={styles.navStack}>
+                    {group.items.map((item) => (
+                      <NavRow
+                        key={item.route}
+                        item={item}
+                        collapsed={false}
+                        active={routeIsActive(pathname, item.route)}
+                        isDark={isDark}
+                        onNavigate={onNavigate}
+                        styles={styles}
+                      />
+                    ))}
+                  </View>
                 </View>
               ))}
         </ScrollView>
 
         <Pressable
           onPress={onLogout}
-          style={({ pressed }: any) => [
-            styles.logoutRow,
-            collapsed && styles.logoutRowCollapsed,
-            {
-              borderRadius: 18,
-              borderWidth: 1,
-              backgroundColor: isDark ? '#3B2028' : '#FDE2E5',
-              borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.82)',
-              shadowColor: isDark ? '#000' : '#DC2626',
-              shadowOffset: { width: pressed ? 2 : 6, height: pressed ? 3 : 9 },
-              shadowOpacity: pressed ? 0.10 : (isDark ? 0.24 : 0.16),
-              shadowRadius: pressed ? 5 : 12,
-              elevation: pressed ? 2 : 5,
-              paddingVertical: 10,
-              paddingHorizontal: 10,
-              marginHorizontal: 10,
-              marginBottom: 16,
-              marginTop: 10,
-              transform: [{ translateY: pressed ? 2 : 0 }, { scale: pressed ? 0.988 : 1 }],
-              ...(Platform.OS === 'web' ? ({
-                cursor: 'pointer',
-                boxShadow: pressed
-                  ? 'inset 4px 5px 9px rgba(127,29,29,0.18), inset -2px -2px 5px rgba(255,255,255,0.26), 2px 3px 8px rgba(127,29,29,0.08)'
-                  : isDark
-                    ? '7px 9px 19px rgba(0,0,0,0.30), -5px -5px 14px rgba(255,255,255,0.025), inset 2px 2px 4px rgba(255,255,255,0.07), inset -3px -3px 6px rgba(0,0,0,0.18)'
-                    : '7px 10px 20px rgba(220,38,38,0.16), -6px -6px 16px rgba(255,255,255,0.95), inset 2px 2px 4px rgba(255,255,255,0.74), inset -3px -3px 6px rgba(190,24,93,0.10)',
-                transition: 'transform 120ms ease, box-shadow 150ms ease',
-              } as any) : {}),
-            },
-          ]}
+          onHoverIn={() => setLogoutHovered(true)}
+          onHoverOut={() => setLogoutHovered(false)}
+          style={[Platform.OS === 'web' && { cursor: 'pointer' }]}
+          accessibilityRole="button"
         >
-          <View style={[StyleSheet.absoluteFill, { borderRadius: 18, overflow: 'hidden' }]}>
-            <LinearGradient
-              colors={isDark ? ['#4A2731', '#301A22'] : ['#FFF2F3', '#F8D5D9']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            <View style={styles.topSpecular} pointerEvents="none" />
+          <View
+            style={[
+              styles.logoutRow,
+              collapsed && styles.logoutRowCollapsed,
+              logoutHovered && {
+                backgroundColor: isDark ? 'rgba(239,68,68,0.14)' : 'rgba(254,226,226,0.95)',
+                transform: [{ translateX: 2 }],
+              },
+              !logoutHovered && {
+                backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(254,242,242,0.75)',
+              },
+            ]}
+          >
+            <View style={styles.iconWrapLogout}>
+              <Ionicons
+                name="log-out-outline"
+                size={collapsed ? 17 : 14}
+                color={isDark ? 'rgba(248,113,113,0.95)' : '#DC2626'}
+              />
+            </View>
+            {!collapsed ? <Text style={styles.logoutLabel}>Logout</Text> : null}
           </View>
-          <View style={[
-            styles.iconWrapLogout,
-            {
-              backgroundColor: isDark ? 'rgba(0,0,0,0.20)' : 'rgba(255,255,255,0.58)',
-              marginLeft: 0,
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.82)',
-              ...(Platform.OS === 'web' ? ({
-                boxShadow: isDark
-                  ? 'inset 2px 2px 4px rgba(255,255,255,0.06), inset -3px -3px 6px rgba(0,0,0,0.22), 3px 5px 9px rgba(0,0,0,0.16)'
-                  : 'inset 2px 2px 4px rgba(255,255,255,0.95), inset -3px -3px 6px rgba(190,24,93,0.10), 3px 5px 9px rgba(190,24,93,0.12)',
-              } as any) : {}),
-            },
-          ]}>
-            <Ionicons
-              name="log-out-outline"
-              size={22}
-              color={isDark ? 'rgba(248,113,113,0.95)' : '#DC2626'}
-            />
-          </View>
-          {!collapsed ? (
-            <Text style={[styles.logoutLabel, { marginLeft: 10 }]}>Logout</Text>
-          ) : null}
         </Pressable>
       </View>
     </Animated.View>
@@ -473,8 +426,7 @@ export default function AccountsWebSidebar({
 }
 
 function createStyles(isDark: boolean, collapsed: boolean) {
-  const fg = isDark ? '#F8FAFC' : '#0F172A';
-  const fgMuted = isDark ? 'rgba(248,250,252,0.5)' : 'rgba(15,23,42,0.45)';
+  const fgMuted = isDark ? 'rgba(248,250,252,0.45)' : 'rgba(15,23,42,0.42)';
 
   return StyleSheet.create({
     shellOuter: {
@@ -486,23 +438,22 @@ function createStyles(isDark: boolean, collapsed: boolean) {
       alignSelf: 'stretch',
       position: 'relative',
       overflow: 'hidden',
-    },
-    rightBorderGradient: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      width: 2,
-      bottom: 0,
-      zIndex: 4,
+      borderRightWidth: 1,
+      borderRightColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(148,163,184,0.25)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow: isDark
+              ? '4px 0 24px rgba(0,0,0,0.35)'
+              : '4px 0 24px rgba(15,23,42,0.05)',
+          } as any)
+        : {}),
     },
     topBrand: {
-      paddingHorizontal: collapsed ? 8 : 12,
-      paddingVertical: 14,
+      paddingHorizontal: collapsed ? 10 : 14,
+      paddingTop: 16,
+      paddingBottom: 8,
       justifyContent: 'center',
       alignItems: 'center',
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-      minHeight: 72,
       zIndex: 2,
     },
     topBrandExpanded: {
@@ -511,29 +462,44 @@ function createStyles(isDark: boolean, collapsed: boolean) {
     brandPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 20,
-      paddingVertical: 10,
-      paddingHorizontal: collapsed ? 10 : 12,
-      gap: 12,
+      borderRadius: 18,
+      paddingVertical: 12,
+      paddingHorizontal: collapsed ? 12 : 13,
+      gap: 11,
       overflow: 'hidden',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.32)',
-      shadowColor: '#4338CA',
-      shadowOffset: { width: 7, height: 10 },
-      shadowOpacity: 0.28,
-      shadowRadius: 14,
-      elevation: 6,
+      borderColor: 'rgba(255,255,255,0.2)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow:
+              '0 14px 32px rgba(29,78,216,0.32), 0 2px 0 rgba(255,255,255,0.2) inset',
+          } as any)
+        : {
+            shadowColor: '#1D4ED8',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            elevation: 8,
+          }),
     },
-    brandOrbInner: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
+    brandSheen: {
+      ...StyleSheet.absoluteFillObject,
+      ...(Platform.OS === 'web'
+        ? ({
+            backgroundImage:
+              'linear-gradient(115deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 38%, transparent 55%)',
+          } as any)
+        : { backgroundColor: 'rgba(255,255,255,0.08)' }),
+    },
+    brandOrb: {
+      width: 38,
+      height: 38,
+      borderRadius: 13,
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden',
-      backgroundColor: 'rgba(0,0,0,0.15)',
+      backgroundColor: 'rgba(255,255,255,0.18)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.24)',
+      borderColor: 'rgba(255,255,255,0.3)',
     },
     brandTextWrap: {
       flex: 1,
@@ -543,108 +509,126 @@ function createStyles(isDark: boolean, collapsed: boolean) {
       fontSize: 14,
       fontWeight: '800',
       color: '#FFFFFF',
-      letterSpacing: -0.2,
+      letterSpacing: -0.3,
+    },
+    brandSubRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 3,
+    },
+    brandLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: '#5EEAD4',
     },
     brandSub: {
-      fontSize: 10,
+      fontSize: 9.5,
       fontWeight: '700',
-      letterSpacing: 1.2,
-      color: 'rgba(255,255,255,0.8)',
-      marginTop: 2,
+      letterSpacing: 1.3,
+      color: 'rgba(255,255,255,0.78)',
       textTransform: 'uppercase',
     },
     scroll: { flex: 1, minHeight: 0, zIndex: 2 },
     scrollContent: {
-      paddingVertical: 12,
-      paddingHorizontal: collapsed ? 8 : 10,
-      paddingBottom: 12,
+      paddingHorizontal: collapsed ? 10 : 12,
+      paddingBottom: 16,
+      paddingTop: 6,
     },
     sectionBlock: {
-      marginBottom: 8,
+      marginBottom: 10,
     },
-    sectionLabel: {
+    sectionHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 8,
+      paddingHorizontal: 4,
+    },
+    sectionHeadLabel: {
       fontSize: 10,
       fontWeight: '800',
-      letterSpacing: 2,
-      color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.4)',
-      marginBottom: 8,
-      marginTop: 4,
-      paddingHorizontal: 4,
+      letterSpacing: 1.8,
+      color: fgMuted,
+      textTransform: 'uppercase',
+    },
+    sectionHeadLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+    },
+    navStack: {
+      gap: 5,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 18,
-      marginBottom: 10,
+      borderRadius: 12,
+      minHeight: 44,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      gap: 9,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.55)',
       overflow: 'hidden',
-      minHeight: 54,
       position: 'relative',
-    },
-    topSpecular: {
-      position: 'absolute',
-      top: 1,
-      left: 14,
-      right: 14,
-      height: 1,
-      borderRadius: 1,
-      backgroundColor: 'rgba(255,255,255,0.48)',
+      ...(Platform.OS === 'web'
+        ? ({
+            transition: 'transform 140ms ease, background-color 140ms ease, box-shadow 160ms ease',
+          } as any)
+        : {}),
     },
     rowCollapsed: {
       justifyContent: 'center',
+      minHeight: 44,
+      marginBottom: 5,
       paddingHorizontal: 0,
+      borderRadius: 13,
     },
-    rowActiveFill: {
-      borderRadius: 14,
-    },
-    rowGhost: {
-      ...StyleSheet.absoluteFillObject,
-      borderRadius: 14,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(15,23,42,0.02)',
-    },
-    activeLeftGlow: {
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      width: 56,
-      borderRadius: 14,
-      zIndex: 1,
+    rowActiveShell: {
+      borderColor: 'rgba(255,255,255,0.25)',
+      ...(Platform.OS === 'web'
+        ? ({
+            boxShadow: '0 8px 18px rgba(15,23,42,0.18)',
+          } as any)
+        : {
+            shadowColor: '#0F172A',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.18,
+            shadowRadius: 10,
+            elevation: 4,
+          }),
     },
     iconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: 26,
+      height: 26,
+      borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
-      marginLeft: 8,
-      marginRight: 10,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)',
-      zIndex: 2,
-    },
-    iconWrapActive: {
-      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: 1,
+      zIndex: 1,
     },
     iconWrapCollapsed: {
-      marginLeft: 0,
-      marginRight: 0,
+      width: 40,
+      height: 40,
+      borderRadius: 12,
     },
     badgeDot: {
       position: 'absolute',
-      top: 6,
-      right: 6,
-      width: 8,
-      height: 8,
+      top: 4,
+      right: 4,
+      width: 7,
+      height: 7,
       borderRadius: 4,
-      backgroundColor: '#EF4444',
+      backgroundColor: '#FB7185',
       borderWidth: 1.5,
-      borderColor: isDark ? '#0D1120' : '#F8FAFF',
+      borderColor: isDark ? '#070B14' : '#E8EEF8',
     },
     meta: {
       flex: 1,
       minWidth: 0,
-      paddingRight: 10,
-      paddingVertical: 6,
-      zIndex: 2,
+      zIndex: 1,
     },
     titleRow: {
       flexDirection: 'row',
@@ -653,66 +637,77 @@ function createStyles(isDark: boolean, collapsed: boolean) {
     },
     itemTitle: {
       flex: 1,
-      fontSize: 13,
-      fontWeight: '700',
-      color: fg,
-      letterSpacing: -0.2,
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: isDark ? 'rgba(248,250,252,0.82)' : 'rgba(15,23,42,0.78)',
+      letterSpacing: -0.15,
     },
     itemTitleActive: {
       color: '#FFFFFF',
+      fontWeight: '700',
     },
     category: {
       fontSize: 9,
-      fontWeight: '800',
-      letterSpacing: 1,
+      fontWeight: '700',
+      letterSpacing: 0.8,
       color: fgMuted,
-      marginTop: 4,
+      marginTop: 2,
     },
     categoryActive: {
       color: 'rgba(255,255,255,0.75)',
     },
     badge: {
-      minWidth: 22,
-      height: 22,
+      minWidth: 20,
+      height: 20,
       paddingHorizontal: 6,
-      borderRadius: 11,
+      borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
+      zIndex: 1,
     },
     badgeText: {
       color: '#FFFFFF',
       fontSize: 10,
-      fontWeight: '900',
+      fontWeight: '800',
     },
     logoutRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 14,
-      paddingHorizontal: collapsed ? 0 : 10,
-      marginHorizontal: collapsed ? 0 : 10,
-      marginBottom: 12,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+      marginHorizontal: collapsed ? 10 : 12,
+      marginBottom: 16,
+      marginTop: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(254,202,202,0.8)',
+      gap: 9,
       zIndex: 2,
+      ...(Platform.OS === 'web'
+        ? ({
+            transition: 'transform 140ms ease, background-color 140ms ease',
+          } as any)
+        : {}),
     },
     logoutRowCollapsed: {
       justifyContent: 'center',
+      paddingHorizontal: 0,
     },
     iconWrapLogout: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
+      width: collapsed ? 40 : 26,
+      height: collapsed ? 40 : 26,
+      borderRadius: collapsed ? 12 : 8,
       alignItems: 'center',
       justifyContent: 'center',
-      marginLeft: collapsed ? 0 : 8,
-      marginRight: collapsed ? 0 : 10,
       backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(239,68,68,0.2)' : 'rgba(254,202,202,0.9)',
     },
     logoutLabel: {
-      fontSize: 14,
-      fontWeight: '800',
+      fontSize: 12.5,
+      fontWeight: '700',
       color: isDark ? 'rgba(248,113,113,0.95)' : '#DC2626',
-      letterSpacing: -0.2,
+      letterSpacing: -0.15,
     },
   });
 }

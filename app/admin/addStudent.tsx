@@ -1,9 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import AppTextInput from '@/src/components/AppTextInput';
-
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Platform, Modal, FlatList, Keyboard } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AppDatePicker, { toYMD } from '@/src/components/AppDatePicker';
@@ -13,14 +9,32 @@ import AdminHeader from '../../src/components/AdminHeader';
 import { ADMIN_THEME } from '../../src/constants/adminTheme';
 import { StudentService, CreateStudentRequest, UpdateStudentRequest } from '../../src/services/studentService';
 import { ClassService, ClassInfo, Section, AcademicYear } from '../../src/services/classService';
-import { GENDERS, BLOOD_GROUPS, RELIGIONS, STUDENT_CATEGORIES, STUDENT_STATUSES } from '../../src/constants/references';
+import { BLOOD_GROUPS, RELIGIONS, STUDENT_CATEGORIES, STUDENT_STATUSES } from '../../src/constants/references';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
 import LogoLoader from '../../src/components/LogoLoader';
-import ClayPasswordToggle from '../../src/components/ClayPasswordToggle';
+import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
 import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
+import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import StudentPhotoField from '../../src/components/StudentPhotoField';
+import {
+  AadhaarNumberField,
+  DateOfBirthPartsField,
+  GenderBoyGirlSelector,
+  PreviousSchoolYesNoSelector,
+} from '../../src/components/studentFormControls';
+import {
+  SECTION_COLORS,
+  InputField,
+  SelectField,
+  SectionCard,
+  ProgressRail,
+  LiveAvatar,
+  SubSectionLabel,
+  StickySaveBar,
+  HeroMetaChip,
+  getAdmissionStyles,
+} from '../../src/components/studentAdmissionChrome';
 
 type ParentFormState = {
   first_name: string;
@@ -29,11 +43,13 @@ type ParentFormState = {
   occupation: string;
 };
 
+type FieldErrors = Partial<Record<string, string>>;
+
 const emptyParentState = (): ParentFormState => ({
   first_name: '',
   last_name: '',
   phone: '',
-  occupation: ''
+  occupation: '',
 });
 
 function normalizeDateInput(value?: string | null): string {
@@ -57,284 +73,97 @@ function mapParentByRelation(
     first_name: match.first_name || '',
     last_name: match.last_name || '',
     phone: match.phone || '',
-    occupation: match.occupation || ''
+    occupation: match.occupation || '',
   };
 }
 
-// ─── Form palette (brand-aligned clay) ────────────────────────────────────────
-const FORM = {
-  brand: ADMIN_THEME.colors.primary,
-  violet: '#7C6FFF',
-  coral: ADMIN_THEME.colors.secondary,
-  sage: '#5BAA9A',
-  surface: (isDark: boolean) => (isDark ? '#1A1726' : '#FDFCFF'),
-  field: (isDark: boolean) => (isDark ? '#221F30' : '#F3EFF8'),
-  border: (isDark: boolean) => (isDark ? 'rgba(124, 111, 255, 0.18)' : 'rgba(102, 89, 144, 0.14)'),
-  label: (isDark: boolean) => (isDark ? '#A89EC4' : '#6B6280'),
-  text: (isDark: boolean) => (isDark ? '#EDE8F5' : '#2D2640'),
-  muted: (isDark: boolean) => (isDark ? '#7A718F' : '#9B92AD'),
-};
-
-// ─── Claymorphism helpers ─────────────────────────────────────────────────────
-function clayField(isDark: boolean) {
-  if (Platform.OS === 'web') {
-    const drop = isDark ? 'rgba(45, 30, 70, 0.55)' : 'rgba(102, 89, 144, 0.20)';
-    const light = isDark ? 'rgba(124, 111, 255, 0.07)' : 'rgba(255, 255, 255, 0.92)';
-    const innerHi = isDark ? 'rgba(124, 111, 255, 0.10)' : 'rgba(255, 255, 255, 0.80)';
-    const innerLo = isDark ? 'rgba(20, 15, 35, 0.35)' : 'rgba(102, 89, 144, 0.12)';
-    return {
-      boxShadow:
-        `5px 5px 14px ${drop}, -4px -4px 11px ${light}, ` +
-        `inset 1.5px 1.5px 2px ${innerHi}, inset -1.5px -1.5px 2px ${innerLo}`,
-    } as any;
-  }
-  return {
-    shadowColor: isDark ? '#3D2858' : '#665990',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: isDark ? 0.38 : 0.18,
-    shadowRadius: 11,
-    elevation: 4,
-  } as any;
-}
-
-function clayCard(isDark: boolean) {
-  if (Platform.OS === 'web') {
-    const drop = isDark ? 'rgba(35, 22, 55, 0.58)' : 'rgba(102, 89, 144, 0.22)';
-    const light = isDark ? 'rgba(124, 111, 255, 0.06)' : 'rgba(255, 255, 255, 0.96)';
-    return { boxShadow: `8px 8px 22px ${drop}, -6px -6px 18px ${light}` } as any;
-  }
-  return {
-    shadowColor: isDark ? '#3D2858' : '#665990',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: isDark ? 0.42 : 0.16,
-    shadowRadius: 15,
-    elevation: 6,
-  } as any;
-}
-
-type AutofillMode = 'off' | 'password' | 'tel';
-
-function fieldAutofill(fieldKey: string, mode: AutofillMode = 'off') {
-  const base: Record<string, unknown> = {
-    autoComplete: mode === 'password' ? 'new-password' : 'off',
-    textContentType: mode === 'password' ? 'newPassword' : 'none',
-    autoCorrect: false,
-  };
-  if (Platform.OS !== 'web') return base;
-  return {
-    ...base,
-    nativeID: fieldKey,
-    id: fieldKey,
-    name: fieldKey,
-    'data-1p-ignore': 'true',
-    'data-lpignore': 'true',
-    'data-form-type': 'other',
-  };
-}
-
-// Reusable Components
-const InputField = ({
-  label,
-  placeholder,
-  value,
-  onChangeText,
-  keyboardType = 'default',
-  icon,
-  required = false,
-  secureTextEntry = false,
-  editable = true,
-  fieldKey,
-  autofillMode = 'off',
-  ...rest
-}: any) => {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-  const [showPassword, setShowPassword] = useState(false);
-  const [webReadOnly, setWebReadOnly] = useState(Platform.OS === 'web');
-  const isPassword = !!secureTextEntry;
-  const autofill = fieldKey ? fieldAutofill(fieldKey, autofillMode) : fieldAutofill('ims-stu-field', autofillMode);
-
-  return <View style={styles.inputGroup}>
-    <Text style={styles.label}>
-      {label} {required && <Text style={{
-        color: ADMIN_THEME.colors.danger
-      }}>*</Text>}
-    </Text>
-    <View style={[styles.inputWrapper, !editable && { opacity: 0.65 }]}>
-      <Ionicons name={icon} size={20} color={FORM.muted(isDark)} style={styles.inputIcon} />
-      <AppTextInput
-        style={[styles.input, { color: FORM.text(isDark) }]}
-        placeholder={placeholder}
-        placeholderTextColor={FORM.muted(isDark)}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType as any}
-        secureTextEntry={isPassword && !showPassword}
-        editable={editable}
-        readOnly={editable ? webReadOnly : undefined}
-        onFocus={() => { if (webReadOnly) setWebReadOnly(false); }}
-        {...autofill}
-        {...rest}
-      />
-      {isPassword && editable && (
-        <ClayPasswordToggle
-          visible={showPassword}
-          onToggle={() => setShowPassword(v => !v)}
-          isDark={isDark}
-          accentColor={FORM.brand}
-        />
-      )}
-    </View>
-  </View>;
-};
-const SelectField = ({
-  label,
-  value,
-  options,
-  onSelect,
-  placeholder,
-  icon,
-  required = false,
-  loading = false
-}: any) => {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const selectedOption = options.find((opt: any) => opt.id.toString() === value?.toString());
-  return <View style={styles.inputGroup}>
-    <Text style={styles.label}>
-      {label} {required && <Text style={{
-        color: ADMIN_THEME.colors.danger
-      }}>*</Text>}
-    </Text>
-    <TouchableOpacity style={styles.inputWrapper} onPress={() => {
-      Keyboard.dismiss();
-      if (!loading) setModalVisible(true);
-    }} disabled={loading}>
-      <Ionicons name={icon} size={20} color={ADMIN_THEME.colors.text.muted} style={styles.inputIcon} />
-      <Text style={[styles.input, !selectedOption && {
-        color: ADMIN_THEME.colors.text.muted
-      }, {
-        paddingTop: 12
-      }]}>
-        {loading ? 'Loading...' : selectedOption ? selectedOption.name : placeholder}
-      </Text>
-      <Ionicons name="chevron-down" size={20} color={ADMIN_THEME.colors.text.muted} />
-    </TouchableOpacity>
-    <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select {label}</Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{
-              top: 10,
-              bottom: 10,
-              left: 10,
-              right: 10
-            }}>
-              <Ionicons name="close" size={24} color={ADMIN_THEME.colors.text.primary} />
-            </TouchableOpacity>
-          </View>
-          <FlatList data={options} keyExtractor={(item) => item.id.toString()} contentContainerStyle={{
-            paddingBottom: 50
-          }} renderItem={({
-            item
-          }) => {
-            return <TouchableOpacity style={[styles.optionItem, value?.toString() === item.id.toString() && styles.selectedOption]} onPress={() => {
-              onSelect(item.id);
-              setModalVisible(false);
-            }}>
-              <Text style={[styles.optionText, value?.toString() === item.id.toString() && styles.selectedOptionText]}>
-                {item.name}
-              </Text>
-              {value?.toString() === item.id.toString() && <Ionicons name="checkmark" size={20} color={ADMIN_THEME.colors.primary} />}
-            </TouchableOpacity>;
-          }} />
-        </View>
-      </View>
-    </Modal>
-  </View>;
-};
 export default function AddStudentScreen() {
-  const {
-    theme,
-    isDark
-  } = useTheme();
-  const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+  const { theme, isDark } = useTheme();
+  const styles = useMemo(() => getAdmissionStyles(theme, isDark), [theme, isDark]);
   const router = useRouter();
-  const {
-    id
-  } = useLocalSearchParams();
+  const { id } = useLocalSearchParams();
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [enrolledForm, setEnrolledForm] = useState<AdmissionFormData | null>(null);
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState<string | null>(null);
   const [photoSelection, setPhotoSelection] = useState<string | null | undefined>(undefined);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  // Form State
   const [formData, setFormData] = useState<CreateStudentRequest>({
     first_name: '',
     middle_name: '',
     last_name: '',
     dob: '',
     gender_id: 1,
-    // Default: Male
     admission_no: '',
     pen_number: '',
     apar_number: '',
     village: '',
+    aadhaar_number: '',
+    tc_number: '',
+    previous_school: null,
     admission_date: new Date().toISOString().split('T')[0],
     status_id: 1,
-    // Default: Active
     category_id: 1,
-    // Default: General
     religion_id: 1,
-    // Default: Hindu
     blood_group_id: 1,
-    // Default: A+
     email: '',
     phone: '',
     password: '',
     role_code: 'student',
     class_id: '',
     section_id: '',
-    academic_year_id: ''
+    academic_year_id: '',
   });
 
-  // Reference Data State
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
 
-  // Date Picker State
-
-  // Parent State
-  const [father, setFather] = useState({
-    first_name: '',
-    last_name: '',
-    phone: '',
-    occupation: ''
-  });
-  const [mother, setMother] = useState({
-    first_name: '',
-    last_name: '',
-    phone: '',
-    occupation: ''
-  });
+  const [father, setFather] = useState(emptyParentState());
+  const [mother, setMother] = useState(emptyParentState());
   const [guardian, setGuardian] = useState({
-    first_name: '',
-    last_name: '',
-    phone: '',
+    ...emptyParentState(),
     relation: '',
-    occupation: ''
-  }); // Guardian needs custom relation? Or just 'Guardian'
+  });
+
+  const clearError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const personalComplete = !!formData.first_name?.trim();
+  const academicComplete = !!(formData.admission_no?.trim() && formData.class_id && formData.section_id && formData.academic_year_id && formData.admission_date);
+  const parentsComplete = !!(father.first_name?.trim() || mother.first_name?.trim() || guardian.first_name?.trim());
+  const detailsComplete = !!(formData.category_id && formData.religion_id && formData.blood_group_id);
+  const loginComplete = isEditMode
+    ? !!(formData.email?.trim() || formData.phone?.trim())
+    : !!(formData.password && formData.password.length >= 6);
+
+  const completedSteps = [personalComplete, academicComplete, parentsComplete, detailsComplete, loginComplete];
+  const activeStep = Math.min(
+    completedSteps.findIndex((done) => !done) === -1 ? 4 : completedSteps.findIndex((done) => !done),
+    4,
+  );
+  const progressPercent = (completedSteps.filter(Boolean).length / completedSteps.length) * 100;
+
+  const missingRequired = [
+    !formData.first_name?.trim() && 'First name',
+    !formData.admission_no?.trim() && 'Admission no',
+    !formData.admission_date && 'Admission date',
+    !formData.class_id && 'Class',
+    !formData.section_id && 'Section',
+    !isEditMode && !formData.password && 'Password',
+    formData.previous_school === true && !formData.tc_number?.trim() && 'TC number',
+  ].filter(Boolean) as string[];
+
+  const selectedClass = classes.find((c) => c.id?.toString() === formData.class_id?.toString());
+  const selectedSection = sections.find((s) => s.id?.toString() === formData.section_id?.toString());
 
   useEffect(() => {
     loadReferenceData();
@@ -343,14 +172,18 @@ export default function AddStudentScreen() {
       loadStudentData(id as string);
     }
   }, [id]);
+
   const loadReferenceData = async () => {
     try {
-      const [classesData, sectionsData, yearsData] = await Promise.all([ClassService.getClasses(), ClassService.getSections(), ClassService.getAcademicYears()]);
+      const [classesData, sectionsData, yearsData] = await Promise.all([
+        ClassService.getClasses(),
+        ClassService.getSections(),
+        ClassService.getAcademicYears(),
+      ]);
       setClasses(classesData);
       setSections(sectionsData);
       setAcademicYears(yearsData);
 
-      // Set current academic year as default
       const currentYear = yearsData.find((y) => {
         const now = new Date();
         return new Date(y.start_date) <= now && new Date(y.end_date) >= now;
@@ -358,16 +191,16 @@ export default function AddStudentScreen() {
       if (currentYear) {
         setFormData((prev) => ({
           ...prev,
-          academic_year_id: currentYear.id
+          academic_year_id: currentYear.id,
         }));
       }
-    } catch (error) {
-
+    } catch {
       alertCompat('Error', 'Failed to load classes and academic years');
     } finally {
       setInitialLoading(false);
     }
   };
+
   const loadStudentData = async (studentId: string) => {
     try {
       const data: any = await StudentService.getById(studentId);
@@ -384,6 +217,9 @@ export default function AddStudentScreen() {
           pen_number: data.pen_number || '',
           apar_number: data.apar_number || '',
           village: data.village || '',
+          aadhaar_number: data.aadhaar_number || '',
+          tc_number: data.tc_number || '',
+          previous_school: typeof data.previous_school === 'boolean' ? data.previous_school : null,
           admission_date: normalizeDateInput(data.admission_date),
           status_id: data.status_id || 1,
           category_id: data.category_id || 1,
@@ -396,107 +232,95 @@ export default function AddStudentScreen() {
           role_code: 'student',
           class_id: data.current_enrollment?.class_id || '',
           section_id: data.current_enrollment?.section_id || '',
-          roll_number: data.current_enrollment?.roll_number
+          roll_number: data.current_enrollment?.roll_number,
         } as any);
         setFather(mapParentByRelation(data.parents, 'Father'));
         setMother(mapParentByRelation(data.parents, 'Mother'));
         setGuardian({
           ...mapParentByRelation(data.parents, 'Guardian'),
-          relation: 'Guardian'
+          relation: 'Guardian',
         });
       }
-    } catch (error) {
-
+    } catch {
       alertCompat('Error', 'Failed to load student details');
     }
   };
-  const handleSave = async () => {
-    // Validation
-    if (!formData.first_name || !formData.admission_no || !formData.admission_date || !formData.class_id || !formData.section_id) {
-      alertCompat('Required Fields', 'Please fill all mandatory fields (First Name, Admission No, Class, Section)');
-      return;
-    }
-    if (!isEditMode && !formData.password) {
-      alertCompat('Security', 'Password is required for new students');
-      return;
-    }
 
-    // Password length check
-    if (formData.password && formData.password.length < 6) {
-      alertCompat('Weak Password', 'Password must be at least 6 characters long.');
-      return;
-    }
-
-    // Email format validation
-    if (formData.email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        alertCompat('Invalid Email', 'Please enter a valid email address.');
-        return;
-      }
-    }
-
-    // Phone number validation (10 digits)
-    if (formData.phone) {
-      const phoneClean = formData.phone.replace(/\D/g, '');
-      if (phoneClean.length < 10) {
-        alertCompat('Invalid Phone', 'Phone number must be at least 10 digits.');
-        return;
-      }
-    }
-
-    // DOB: prevent future dates
-    if (formData.dob) {
-      const dobDate = new Date(formData.dob);
-      if (dobDate > new Date()) {
-        alertCompat('Invalid DOB', 'Date of birth cannot be in the future.');
-        return;
-      }
-    }
-
+  const validate = (): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (!formData.first_name?.trim()) errors.first_name = 'First name is required';
+    if (!formData.admission_no?.trim()) errors.admission_no = 'Admission number is required';
+    if (!formData.admission_date) errors.admission_date = 'Admission date is required';
+    if (!formData.class_id) errors.class_id = 'Select a class';
+    if (!formData.section_id) errors.section_id = 'Select a section';
+    if (!isEditMode && !formData.password) errors.password = 'Password is required for new students';
+    if (formData.password && formData.password.length < 6) errors.password = 'Password must be at least 6 characters';
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.email = 'Enter a valid email';
+    if (formData.phone && formData.phone.replace(/\D/g, '').length < 10) errors.phone = 'Phone must be at least 10 digits';
+    if (formData.dob && new Date(formData.dob) > new Date()) errors.dob = 'Date of birth cannot be in the future';
     if (formData.pen_number?.trim()) {
       const pen = formData.pen_number.trim();
-      if (pen.length > 30 || !/^[A-Za-z0-9]+$/.test(pen)) {
-        alertCompat('Invalid PEN Number', 'PEN must be alphanumeric and at most 30 characters.');
-        return;
-      }
+      if (pen.length > 30 || !/^[A-Za-z0-9]+$/.test(pen)) errors.pen_number = 'PEN must be alphanumeric (max 30)';
     }
-
-    // A parent is saved when it has a first name (last name optional). If other
-    // fields are filled but the first name is blank, warn instead of silently dropping.
+    const aadhaarDigits = String(formData.aadhaar_number || '').replace(/\D/g, '');
+    if (aadhaarDigits && aadhaarDigits.length !== 12) errors.aadhaar_number = 'Aadhaar must be exactly 12 digits';
+    if (formData.previous_school === true && !formData.tc_number?.trim()) {
+      errors.tc_number = 'TC number is required for transfer students';
+    }
     const partialParent = ([['Father', father], ['Mother', mother], ['Guardian', guardian]] as const)
       .find(([, p]) => !p.first_name?.trim() && (p.last_name?.trim() || p.phone?.trim() || p.occupation?.trim()));
     if (partialParent) {
-      alertCompat('Incomplete Parent', `Enter a first name for the ${partialParent[0].toLowerCase()}, or clear the other ${partialParent[0].toLowerCase()} fields.`);
+      errors.parent = `Enter a first name for the ${partialParent[0].toLowerCase()}, or clear the other fields`;
+    }
+    return errors;
+  };
+
+  const update = (key: keyof CreateStudentRequest, val: any) => {
+    clearError(String(key));
+    setFormData((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const handleSave = async () => {
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      const first = Object.values(errors)[0];
+      alertCompat('Check the form', first || 'Please fill all mandatory fields');
       return;
     }
 
     setLoading(true);
     try {
+      const aadhaarDigits = String(formData.aadhaar_number || '').replace(/\D/g, '');
       const parents: NonNullable<CreateStudentRequest['parents']> = [];
       if (father.first_name?.trim()) {
         parents.push({
           ...father,
           relation: 'Father' as const,
-          is_primary: true
+          is_primary: true,
         });
       }
       if (mother.first_name?.trim()) {
         parents.push({
           ...mother,
-          relation: 'Mother' as const
+          relation: 'Mother' as const,
         });
       }
       if (guardian.first_name?.trim()) {
         parents.push({
           ...guardian,
           relation: 'Guardian' as const,
-          is_guardian: true
+          is_guardian: true,
         });
       }
+      const previousSchool = typeof formData.previous_school === 'boolean' ? formData.previous_school : null;
+      const tcNumber = previousSchool === true ? (formData.tc_number?.trim() || null) : null;
       const payload: CreateStudentRequest = {
         ...formData,
-        parents
+        aadhaar_number: aadhaarDigits || null,
+        tc_number: tcNumber,
+        previous_school: previousSchool,
+        parents,
       };
       if (isEditMode) {
         const updatePayload: UpdateStudentRequest = {
@@ -509,6 +333,9 @@ export default function AddStudentScreen() {
           ...(formData.pen_number?.trim() ? { pen_number: formData.pen_number.trim() } : {}),
           apar_number: formData.apar_number || null,
           village: formData.village?.trim() || null,
+          aadhaar_number: aadhaarDigits || null,
+          tc_number: tcNumber,
+          previous_school: previousSchool,
           admission_date: formData.admission_date,
           status_id: formData.status_id,
           category_id: formData.category_id,
@@ -541,11 +368,21 @@ export default function AddStudentScreen() {
           ? `Student details were saved, but the profile picture failed: ${photoError}`
           : result?.message || 'Student updated successfully!', [{
           text: 'OK',
-          onPress: () => router.back()
+          onPress: () => router.back(),
         }]);
       } else {
         const created = await StudentService.create(payload);
-        const admissionForm = buildAdmissionFormData({ formData, father, mother, guardian, classes, sections, academicYears });
+        const admissionPhotoUri = typeof photoSelection === 'string' ? photoSelection : null;
+        const admissionForm = buildAdmissionFormData({
+          formData: payload,
+          father,
+          mother,
+          guardian,
+          classes,
+          sections,
+          academicYears,
+          photoUri: admissionPhotoUri,
+        });
         if (typeof photoSelection === 'string') {
           try {
             await StudentService.uploadPhoto(created.student.id, photoSelection);
@@ -568,125 +405,318 @@ export default function AddStudentScreen() {
       setLoading(false);
     }
   };
+
   if (initialLoading) {
-    return <View style={styles.loadingContainer}>
-      <LogoLoader size={60} color={ADMIN_THEME.colors.primary} />
-      <Text style={styles.loadingText}>Initializing form...</Text>
-    </View>;
+    return (
+      <View style={styles.loadingContainer}>
+        <LogoLoader size={60} color={ADMIN_THEME.colors.primary} />
+        <Text style={styles.loadingTitle}>Setting up form</Text>
+        <Text style={styles.loadingSubtitle}>Loading classes and reference data…</Text>
+      </View>
+    );
   }
+
   const isTerminalStatus = formData.status_id === 2 || formData.status_id === 3;
   const availableStudentStatuses = isEditMode
     ? STUDENT_STATUSES
     : STUDENT_STATUSES.filter((status) => status.code === 'active');
-  return <View style={styles.container}>
-    <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-    <AdminHeader title={isEditMode ? "Edit Student" : "Add Student"} showBackButton={true} />
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
-      flex: 1
-    }}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Header Info Card */}
-        <LinearGradient colors={[ADMIN_THEME.colors.primary, ADMIN_THEME.colors.secondary]} style={styles.headerCard} start={{
-          x: 0,
-          y: 0
-        }} end={{
-          x: 1,
-          y: 1
-        }}>
-          <Ionicons name="school" size={40} color="#fff" />
-          <Text style={styles.headerTitle}>{isEditMode ? 'Update Record' : 'Enroll New Student'}</Text>
-          <Text style={styles.headerSubtitle}>
-            {isEditMode ? 'Modify existing student profile' : 'Add a new student to the school database'}
-          </Text>
-        </LinearGradient>
-        {/* Section: Personal Details */}
-        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.section}>
-          <Text style={styles.sectionHeader}>Personal Details</Text>
+
+  const gradColors: [string, string] = isEditMode
+    ? ['#52467A', '#7C6FFF']
+    : ['#4A3F6B', '#665990'];
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
+      <AdminHeader title={isEditMode ? 'Edit Student' : 'Add Student'} showBackButton />
+
+      <KeyboardAwareScreen
+        variant="scroll"
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bottomOffset={24}
+        extraScrollPadding={100}
+      >
+        <Animated.View entering={FadeInDown.duration(500)}>
+          <LinearGradient
+            colors={gradColors}
+            style={styles.heroCard}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.95, y: 1 }}
+          >
+            <View style={styles.heroBlob1} />
+            <View style={styles.heroBlob2} />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.15)', 'rgba(255,255,255,0)']}
+              style={styles.heroGloss}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+            />
+
+            <LiveAvatar
+              firstName={formData.first_name || undefined}
+              lastName={formData.last_name || undefined}
+              genderId={formData.gender_id}
+            />
+
+            <Text style={styles.heroName}>
+              {formData.first_name || formData.last_name
+                ? [formData.first_name, formData.last_name].filter(Boolean).join(' ')
+                : (isEditMode ? 'Edit Profile' : 'New Student')}
+            </Text>
+            <Text style={styles.heroSub}>
+              {isEditMode
+                ? `Editing · Adm# ${formData.admission_no || '—'}`
+                : 'A polished enrollment flow for every new student'}
+            </Text>
+
+            {(selectedClass || selectedSection || formData.admission_no) ? (
+              <View style={styles.heroChips}>
+                {formData.admission_no ? (
+                  <HeroMetaChip icon="card-outline" label={formData.admission_no} />
+                ) : null}
+                {selectedClass ? (
+                  <HeroMetaChip icon="school-outline" label={selectedClass.name} />
+                ) : null}
+                {selectedSection ? (
+                  <HeroMetaChip icon="grid-outline" label={selectedSection.name} />
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={styles.modePill}>
+              <Ionicons name={isEditMode ? 'pencil' : 'person-add-outline'} size={11} color="#fff" />
+              <Text style={styles.modePillText}>{isEditMode ? 'EDIT MODE' : 'NEW ENROLLMENT'}</Text>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(100).duration(400)}>
+          <ProgressRail
+            activeStep={activeStep}
+            completedSteps={completedSteps}
+            percent={progressPercent}
+            isDark={isDark}
+          />
+        </Animated.View>
+
+        <SectionCard
+          title="Personal Details"
+          icon="person-outline"
+          colorKey="personal"
+          delay={140}
+          complete={personalComplete}
+          meta={personalComplete ? 'Identity started' : 'Name, photo & identity'}
+        >
           <StudentPhotoField
             currentPhotoUrl={currentPhotoUrl}
             value={photoSelection}
             studentName={[formData.first_name, formData.last_name].filter(Boolean).join(' ')}
             onChange={setPhotoSelection}
-            accentColor={FORM.brand}
+            accentColor={SECTION_COLORS.personal.accent}
             isDark={isDark}
           />
           <View style={styles.row}>
             <View style={styles.halfInput}>
-              <InputField label="First Name" placeholder="John" value={formData.first_name} onChangeText={(t: string) => setFormData({
-                ...formData,
-                first_name: t
-              })} icon="person-outline" required={true} fieldKey="ims-stu-given-name" />
+              <InputField
+                label="First Name"
+                placeholder="John"
+                value={formData.first_name}
+                onChangeText={(t: string) => update('first_name', t)}
+                icon="person-outline"
+                required
+                accentColor={SECTION_COLORS.personal.accent}
+                fieldKey="ims-stu-given-name"
+                error={fieldErrors.first_name}
+              />
             </View>
             <View style={styles.halfInput}>
-              <InputField label="Last Name" placeholder="Last Name (optional)" value={formData.last_name} onChangeText={(t: string) => setFormData({
-                ...formData,
-                last_name: t
-              })} icon="person-outline" fieldKey="ims-stu-family-name" />
+              <InputField
+                label="Last Name"
+                placeholder="Last Name (optional)"
+                value={formData.last_name}
+                onChangeText={(t: string) => update('last_name', t)}
+                icon="person-outline"
+                accentColor={SECTION_COLORS.personal.accent}
+                fieldKey="ims-stu-family-name"
+              />
             </View>
           </View>
-          <InputField label="Middle Name" placeholder="Optional" value={formData.middle_name} onChangeText={(t: string) => setFormData({
-            ...formData,
-            middle_name: t
-          })} icon="person-outline" fieldKey="ims-stu-middle-name" />
-          <SelectField label="Gender" value={formData.gender_id} options={GENDERS} onSelect={(id: number) => setFormData({
-            ...formData,
-            gender_id: id
-          })} icon="transgender-outline" required={true} />
-          <AppDatePicker
-            label="Date of Birth"
-            value={formData.dob || ''}
-            onChange={(d) => setFormData({ ...formData, dob: d })}
-            maximumDate={new Date()}
-            containerStyle={styles.inputGroup}
+          <InputField
+            label="Middle Name"
+            placeholder="Optional"
+            value={formData.middle_name}
+            onChangeText={(t: string) => update('middle_name', t)}
+            icon="person-outline"
+            accentColor={SECTION_COLORS.personal.accent}
+            fieldKey="ims-stu-middle-name"
           />
-          <InputField label="Village" placeholder="Village (optional)" value={formData.village || ''} onChangeText={(t: string) => setFormData({
-            ...formData,
-            village: t
-          })} icon="location-outline" fieldKey="ims-stu-village" />
-        </Animated.View>
-        {/* Section: Academic Info */}
-        <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.section}>
-          <Text style={styles.sectionHeader}>Academic Information</Text>
-          <InputField label="Admission Number" placeholder="ADM2024001" value={formData.admission_no} onChangeText={(t: string) => setFormData({
-            ...formData,
-            admission_no: t
-          })} icon="card-outline" required={true} fieldKey="ims-stu-adm-code" />
-          <InputField label="APAR Number" placeholder="Enter APAR number (optional)" value={formData.apar_number || ''} onChangeText={(t: string) => setFormData({
-            ...formData,
-            apar_number: t
-          })} icon="document-text-outline" fieldKey="ims-stu-apar-code" />
-          <InputField label="PEN Number" placeholder="PEN2025001 (optional)" value={formData.pen_number || ''} onChangeText={(t: string) => setFormData({
-            ...formData,
-            pen_number: t
-          })} icon="id-card-outline" autoCapitalize="characters" fieldKey="ims-stu-pen-code" />
-          {/* 🆕 Roll Number Field */}
-          <InputField label="Roll Number" placeholder="Auto-generated" value={(formData as any).roll_number ? String((formData as any).roll_number) : 'Auto-generated'} editable={false} icon="list-outline" fieldKey="ims-stu-roll-num" />
+          <GenderBoyGirlSelector
+            value={formData.gender_id}
+            onSelect={(gid) => update('gender_id', gid)}
+            required
+            accentColor={SECTION_COLORS.personal.accent}
+            isDark={isDark}
+          />
+          <DateOfBirthPartsField
+            value={formData.dob || ''}
+            onChange={(d) => update('dob', d)}
+            accentColor={SECTION_COLORS.personal.accent}
+            isDark={isDark}
+          />
+          {fieldErrors.dob ? (
+            <Text style={{ color: '#EF4444', fontSize: 11.5, fontWeight: '600', marginBottom: 10 }}>{fieldErrors.dob}</Text>
+          ) : null}
+          <AadhaarNumberField
+            value={formData.aadhaar_number || ''}
+            onChange={(digits) => update('aadhaar_number', digits)}
+            accentColor={SECTION_COLORS.personal.accent}
+            isDark={isDark}
+          />
+          {fieldErrors.aadhaar_number ? (
+            <Text style={{ color: '#EF4444', fontSize: 11.5, fontWeight: '600', marginBottom: 10 }}>{fieldErrors.aadhaar_number}</Text>
+          ) : null}
+          <PreviousSchoolYesNoSelector
+            value={formData.previous_school}
+            onSelect={(v) => setFormData({
+              ...formData,
+              previous_school: v,
+              tc_number: v ? formData.tc_number : '',
+            })}
+            accentColor={SECTION_COLORS.personal.accent}
+            isDark={isDark}
+          />
+          {formData.previous_school === true && (
+            <InputField
+              label="TC Number"
+              placeholder="Enter TC number from previous school"
+              value={formData.tc_number || ''}
+              onChangeText={(t: string) => update('tc_number', t)}
+              icon="document-outline"
+              accentColor={SECTION_COLORS.personal.accent}
+              fieldKey="ims-stu-tc-number"
+              required
+              error={fieldErrors.tc_number}
+            />
+          )}
+          <InputField
+            label="Village"
+            placeholder="Village (optional)"
+            value={formData.village || ''}
+            onChangeText={(t: string) => update('village', t)}
+            icon="location-outline"
+            accentColor={SECTION_COLORS.personal.accent}
+            fieldKey="ims-stu-village"
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Academic Information"
+          icon="school-outline"
+          colorKey="academic"
+          delay={200}
+          complete={academicComplete}
+          meta={academicComplete ? 'Class placement set' : 'Admission, class & year'}
+        >
+          <InputField
+            label="Admission Number"
+            placeholder="ADM2024001"
+            value={formData.admission_no}
+            onChangeText={(t: string) => update('admission_no', t)}
+            icon="card-outline"
+            required
+            accentColor={SECTION_COLORS.academic.accent}
+            fieldKey="ims-stu-adm-code"
+            error={fieldErrors.admission_no}
+          />
+          <InputField
+            label="APAR Number"
+            placeholder="Enter APAR number (optional)"
+            value={formData.apar_number || ''}
+            onChangeText={(t: string) => update('apar_number', t)}
+            icon="document-text-outline"
+            accentColor={SECTION_COLORS.academic.accent}
+            fieldKey="ims-stu-apar-code"
+          />
+          <InputField
+            label="PEN Number"
+            placeholder="PEN2025001 (optional)"
+            value={formData.pen_number || ''}
+            onChangeText={(t: string) => update('pen_number', t)}
+            icon="id-card-outline"
+            autoCapitalize="characters"
+            accentColor={SECTION_COLORS.academic.accent}
+            fieldKey="ims-stu-pen-code"
+            error={fieldErrors.pen_number}
+          />
+          <InputField
+            label="Roll Number"
+            placeholder="Auto-generated"
+            value={(formData as any).roll_number ? String((formData as any).roll_number) : ''}
+            editable={false}
+            icon="list-outline"
+            accentColor={SECTION_COLORS.academic.accent}
+            fieldKey="ims-stu-roll-num"
+            hint="Assigned automatically after enrollment"
+          />
           <AppDatePicker
             label="Admission Date"
             value={formData.admission_date || ''}
-            onChange={(d) => setFormData({ ...formData, admission_date: d })}
+            onChange={(d) => update('admission_date', d)}
             maximumDate={new Date()}
+            required
+            accentColor={SECTION_COLORS.academic.accent}
+            isDark={isDark}
+            showSelectedBadge
             containerStyle={styles.inputGroup}
           />
-          <SelectField label="Class" value={formData.class_id} options={classes} onSelect={(id: string) => setFormData({
-            ...formData,
-            class_id: id
-          })} placeholder="Select Class" icon="business-outline" required={true} />
-          <SelectField label="Section" value={formData.section_id} options={sections} onSelect={(id: string) => setFormData({
-            ...formData,
-            section_id: id
-          })} placeholder="Select Section" icon="grid-outline" required={true} />
-          <SelectField label={isTerminalStatus ? 'Exit Academic Year' : 'Academic Year'} value={formData.academic_year_id} options={academicYears.map((y) => ({
-            id: y.id,
-            name: y.code
-          }))} onSelect={(id: string) => setFormData({
-            ...formData,
-            academic_year_id: id
-          })} placeholder="Select Year" icon="time-outline" required={true} />
-          <SelectField label="Student Status" value={formData.status_id} options={availableStudentStatuses} onSelect={(id: number) => setFormData({
-            ...formData,
-            status_id: id
-          })} icon="shield-checkmark-outline" required={true} />
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <SelectField
+                label="Class"
+                value={formData.class_id}
+                options={classes}
+                onSelect={(gid: string) => update('class_id', gid)}
+                placeholder="Class"
+                icon="business-outline"
+                required
+                accentColor={SECTION_COLORS.academic.accent}
+                error={fieldErrors.class_id}
+              />
+            </View>
+            <View style={styles.halfInput}>
+              <SelectField
+                label="Section"
+                value={formData.section_id}
+                options={sections}
+                onSelect={(gid: string) => update('section_id', gid)}
+                placeholder="Section"
+                icon="grid-outline"
+                required
+                accentColor={SECTION_COLORS.academic.accent}
+                error={fieldErrors.section_id}
+              />
+            </View>
+          </View>
+          <SelectField
+            label={isTerminalStatus ? 'Exit Academic Year' : 'Academic Year'}
+            value={formData.academic_year_id}
+            options={academicYears.map((y) => ({ id: y.id, name: y.code }))}
+            onSelect={(gid: string) => update('academic_year_id', gid)}
+            placeholder="Select Year"
+            icon="time-outline"
+            required
+            accentColor={SECTION_COLORS.academic.accent}
+          />
+          <SelectField
+            label="Student Status"
+            value={formData.status_id}
+            options={availableStudentStatuses}
+            onSelect={(gid: number) => update('status_id', gid)}
+            icon="shield-checkmark-outline"
+            required
+            accentColor={SECTION_COLORS.academic.accent}
+          />
           {isEditMode && isTerminalStatus && (
             <View style={styles.statusNotice}>
               <Ionicons name="information-circle-outline" size={20} color="#9A3412" />
@@ -695,297 +725,221 @@ export default function AddStudentScreen() {
               </Text>
             </View>
           )}
-        </Animated.View>
-        {/* Section: Parent Details */}
-        <Animated.View entering={FadeInDown.delay(150).duration(500)} style={styles.section}>
-          <Text style={styles.sectionHeader}>Parent / Guardian Details</Text>
-          {/* Father */}
-          <Text style={[styles.label, {
-            marginTop: 10,
-            color: ADMIN_THEME.colors.primary
-          }]}>Father&apos;s Details</Text>
+        </SectionCard>
+
+        <SectionCard
+          title="Parent / Guardian"
+          icon="people-outline"
+          colorKey="parents"
+          delay={260}
+          complete={parentsComplete}
+          meta={parentsComplete ? 'Family contact added' : 'Optional — add when available'}
+        >
+          {fieldErrors.parent ? (
+            <Text style={{ color: '#EF4444', fontSize: 11.5, fontWeight: '600', marginBottom: 8 }}>{fieldErrors.parent}</Text>
+          ) : null}
+          <SubSectionLabel label="Father" accentColor={SECTION_COLORS.parents.accent} />
           <View style={styles.row}>
             <View style={styles.halfInput}>
-              <InputField label="First Name" placeholder="Father Name" value={father.first_name} onChangeText={(t: string) => setFather({
-                ...father,
-                first_name: t
-              })} icon="person-outline" fieldKey="ims-stu-father-given" />
+              <InputField
+                label="First Name"
+                placeholder="Father's name"
+                value={father.first_name}
+                onChangeText={(t: string) => { clearError('parent'); setFather({ ...father, first_name: t }); }}
+                icon="person-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-father-given"
+              />
             </View>
             <View style={styles.halfInput}>
-              <InputField label="Last Name" placeholder="Surname" value={father.last_name} onChangeText={(t: string) => setFather({
-                ...father,
-                last_name: t
-              })} icon="person-outline" fieldKey="ims-stu-father-family" />
+              <InputField
+                label="Last Name"
+                placeholder="Surname"
+                value={father.last_name}
+                onChangeText={(t: string) => setFather({ ...father, last_name: t })}
+                icon="person-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-father-family"
+              />
             </View>
           </View>
-          <InputField label="Phone" placeholder="Mobile Number" value={father.phone} onChangeText={(t: string) => setFather({
-            ...father,
-            phone: t
-          })} keyboardType="phone-pad" icon="call-outline" fieldKey="ims-stu-father-mobile" autofillMode="tel" />
-          <InputField label="Occupation" placeholder="Designation" value={father.occupation} onChangeText={(t: string) => setFather({
-            ...father,
-            occupation: t
-          })} icon="briefcase-outline" fieldKey="ims-stu-father-job" />
-          {/* Mother */}
-          <Text style={[styles.label, {
-            marginTop: 20,
-            color: ADMIN_THEME.colors.primary
-          }]}>Mother&apos;s Details</Text>
           <View style={styles.row}>
             <View style={styles.halfInput}>
-              <InputField label="First Name" placeholder="Mother Name" value={mother.first_name} onChangeText={(t: string) => setMother({
-                ...mother,
-                first_name: t
-              })} icon="person-outline" fieldKey="ims-stu-mother-given" />
+              <InputField
+                label="Phone"
+                placeholder="Mobile"
+                value={father.phone}
+                onChangeText={(t: string) => setFather({ ...father, phone: t })}
+                keyboardType="phone-pad"
+                icon="call-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-father-mobile"
+                autofillMode="tel"
+              />
             </View>
             <View style={styles.halfInput}>
-              <InputField label="Last Name" placeholder="Surname" value={mother.last_name} onChangeText={(t: string) => setMother({
-                ...mother,
-                last_name: t
-              })} icon="person-outline" fieldKey="ims-stu-mother-family" />
+              <InputField
+                label="Occupation"
+                placeholder="Job title"
+                value={father.occupation}
+                onChangeText={(t: string) => setFather({ ...father, occupation: t })}
+                icon="briefcase-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-father-job"
+              />
             </View>
           </View>
-          <InputField label="Phone" placeholder="Mobile Number" value={mother.phone} onChangeText={(t: string) => setMother({
-            ...mother,
-            phone: t
-          })} keyboardType="phone-pad" icon="call-outline" fieldKey="ims-stu-mother-mobile" autofillMode="tel" />
-          <InputField label="Occupation" placeholder="Designation" value={mother.occupation} onChangeText={(t: string) => setMother({
-            ...mother,
-            occupation: t
-          })} icon="briefcase-outline" fieldKey="ims-stu-mother-job" />
-        </Animated.View>
-        {/* Section: Additional Details */}
-        <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.section}>
-          <Text style={styles.sectionHeader}>Additional Details</Text>
-          <SelectField label="Category" value={formData.category_id} options={STUDENT_CATEGORIES} onSelect={(id: number) => setFormData({
-            ...formData,
-            category_id: id
-          })} icon="list-outline" />
-          <SelectField label="Religion" value={formData.religion_id} options={RELIGIONS} onSelect={(id: number) => setFormData({
-            ...formData,
-            religion_id: id
-          })} icon="heart-outline" />
-          <SelectField label="Blood Group" value={formData.blood_group_id} options={BLOOD_GROUPS} onSelect={(id: number) => setFormData({
-            ...formData,
-            blood_group_id: id
-          })} icon="water-outline" />
-        </Animated.View>
-        {/* Section: Contact & Login */}
-        <Animated.View entering={FadeInDown.delay(400).duration(500)} style={styles.section}>
-          <Text style={styles.sectionHeader}>Contact & Login Credentials</Text>
-          <InputField label="Email Address (Login ID)" placeholder="student@example.com" value={formData.email} onChangeText={(t: string) => setFormData({
-            ...formData,
-            email: t
-          })} keyboardType="email-address" icon="mail-outline" fieldKey="ims-stu-contact-addr" autoCapitalize="none" />
-          <InputField label="Phone Number" placeholder="+91 9876543210" value={formData.phone} onChangeText={(t: string) => setFormData({
-            ...formData,
-            phone: t
-          })} keyboardType="phone-pad" icon="call-outline" fieldKey="ims-stu-mobile-line" autofillMode="tel" />
-          <InputField label={isEditMode ? "Password" : "Initial Password"} placeholder={isEditMode ? "Leave blank to keep current" : "Min 6 characters"} value={formData.password} onChangeText={(t: string) => setFormData({
-            ...formData,
-            password: t
-          })} icon="lock-closed-outline" required={!isEditMode} secureTextEntry={true} fieldKey="ims-stu-portal-secret" autofillMode="password" />
-        </Animated.View>
-        {/* Submit Button */}
-        <TouchableOpacity style={[styles.saveButton, loading && styles.saveButtonDisabled]} activeOpacity={0.8} onPress={handleSave} disabled={loading}>
-          {loading ? <LogoLoader color="#fff" /> : <>
-            <Text style={styles.saveButtonText}>
-              {isEditMode
-                ? formData.status_id === 2
-                  ? 'Mark as Passed Out'
-                  : formData.status_id === 3
-                    ? 'Mark as Withdrawn'
-                    : 'Update Student'
-                : 'Create Student Profile'}
-            </Text>
-            <Ionicons name="checkmark-circle" size={24} color="#fff" style={{
-              marginLeft: 8
-            }} />
-          </>}
-        </TouchableOpacity>
-        {/* Date Pickers */}
-      </ScrollView>
-    </KeyboardAvoidingView>
-    <AdmissionSuccessModal
-      visible={!!enrolledForm}
-      data={enrolledForm}
-      onClose={() => { setEnrolledForm(null); router.back(); }}
-    />
-  </View>;
+
+          <SubSectionLabel label="Mother" accentColor={SECTION_COLORS.parents.accent} />
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <InputField
+                label="First Name"
+                placeholder="Mother's name"
+                value={mother.first_name}
+                onChangeText={(t: string) => { clearError('parent'); setMother({ ...mother, first_name: t }); }}
+                icon="person-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-mother-given"
+              />
+            </View>
+            <View style={styles.halfInput}>
+              <InputField
+                label="Last Name"
+                placeholder="Surname"
+                value={mother.last_name}
+                onChangeText={(t: string) => setMother({ ...mother, last_name: t })}
+                icon="person-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-mother-family"
+              />
+            </View>
+          </View>
+          <View style={styles.row}>
+            <View style={styles.halfInput}>
+              <InputField
+                label="Phone"
+                placeholder="Mobile"
+                value={mother.phone}
+                onChangeText={(t: string) => setMother({ ...mother, phone: t })}
+                keyboardType="phone-pad"
+                icon="call-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-mother-mobile"
+                autofillMode="tel"
+              />
+            </View>
+            <View style={styles.halfInput}>
+              <InputField
+                label="Occupation"
+                placeholder="Job title"
+                value={mother.occupation}
+                onChangeText={(t: string) => setMother({ ...mother, occupation: t })}
+                icon="briefcase-outline"
+                accentColor={SECTION_COLORS.parents.accent}
+                fieldKey="ims-stu-mother-job"
+              />
+            </View>
+          </View>
+        </SectionCard>
+
+        <SectionCard
+          title="Additional Details"
+          icon="options-outline"
+          colorKey="additional"
+          delay={320}
+          complete={detailsComplete}
+          meta="Category, religion & blood group"
+        >
+          <SelectField
+            label="Category"
+            value={formData.category_id}
+            options={STUDENT_CATEGORIES}
+            onSelect={(gid: number) => update('category_id', gid)}
+            icon="list-outline"
+            accentColor={SECTION_COLORS.additional.accent}
+          />
+          <SelectField
+            label="Religion"
+            value={formData.religion_id}
+            options={RELIGIONS}
+            onSelect={(gid: number) => update('religion_id', gid)}
+            icon="heart-outline"
+            accentColor={SECTION_COLORS.additional.accent}
+          />
+          <SelectField
+            label="Blood Group"
+            value={formData.blood_group_id}
+            options={BLOOD_GROUPS}
+            onSelect={(gid: number) => update('blood_group_id', gid)}
+            icon="water-outline"
+            accentColor={SECTION_COLORS.additional.accent}
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Contact & Login"
+          icon="lock-closed-outline"
+          colorKey="credentials"
+          delay={380}
+          complete={loginComplete}
+          meta={isEditMode ? 'Update credentials if needed' : 'Portal access for the student'}
+        >
+          <InputField
+            label="Email Address"
+            placeholder="student@school.edu"
+            value={formData.email}
+            onChangeText={(t: string) => update('email', t)}
+            keyboardType="email-address"
+            icon="mail-outline"
+            accentColor={SECTION_COLORS.credentials.accent}
+            fieldKey="ims-stu-contact-addr"
+            autoCapitalize="none"
+            error={fieldErrors.email}
+          />
+          <InputField
+            label="Phone Number"
+            placeholder="+91 9876543210"
+            value={formData.phone}
+            onChangeText={(t: string) => update('phone', t)}
+            keyboardType="phone-pad"
+            icon="call-outline"
+            accentColor={SECTION_COLORS.credentials.accent}
+            fieldKey="ims-stu-mobile-line"
+            autofillMode="tel"
+            error={fieldErrors.phone}
+          />
+          <InputField
+            label={isEditMode ? 'New Password (optional)' : 'Initial Password'}
+            placeholder={isEditMode ? 'Leave empty to keep current' : 'Min 6 characters'}
+            value={formData.password}
+            onChangeText={(t: string) => update('password', t)}
+            icon="lock-closed-outline"
+            required={!isEditMode}
+            secureTextEntry
+            accentColor={SECTION_COLORS.credentials.accent}
+            fieldKey="ims-stu-portal-secret"
+            autofillMode="password"
+            error={fieldErrors.password}
+            hint={!isEditMode ? 'Students use this password for first login' : undefined}
+          />
+        </SectionCard>
+      </KeyboardAwareScreen>
+
+      <StickySaveBar
+        loading={loading}
+        isEditMode={isEditMode}
+        statusId={formData.status_id}
+        missingCount={missingRequired.length}
+        onPress={handleSave}
+        isDark={isDark}
+      />
+
+      <AdmissionSuccessModal
+        visible={!!enrolledForm}
+        data={enrolledForm}
+        onClose={() => { setEnrolledForm(null); router.back(); }}
+      />
+    </View>
+  );
 }
-const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent'
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background
-  },
-  loadingText: {
-    marginTop: 10,
-    color: ADMIN_THEME.colors.text.secondary,
-    fontSize: 16
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 50
-  },
-  headerCard: {
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 24
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.background,
-    marginTop: 12
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: 8,
-    textAlign: 'center'
-  },
-  section: {
-    backgroundColor: FORM.surface(isDark),
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: FORM.border(isDark),
-    ...clayCard(isDark),
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: FORM.brand,
-    marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: FORM.border(isDark),
-    paddingBottom: 8
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12
-  },
-  halfInput: {
-    flex: 1
-  },
-  inputGroup: {
-    marginBottom: 16
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: FORM.label(isDark),
-    marginBottom: 8
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: FORM.field(isDark),
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: FORM.border(isDark),
-    paddingHorizontal: 15,
-    height: 50,
-    ...clayField(isDark),
-  },
-  inputIcon: {
-    marginRight: 10
-  },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: FORM.text(isDark)
-  },
-  statusNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 13,
-    borderRadius: 14,
-    backgroundColor: isDark ? 'rgba(154, 52, 18, 0.18)' : '#FFF7ED',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(251, 146, 60, 0.35)' : '#FED7AA',
-    marginTop: 2
-  },
-  statusNoticeText: {
-    flex: 1,
-    color: isDark ? '#FDBA74' : '#9A3412',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '600'
-  },
-  saveButton: {
-    backgroundColor: ADMIN_THEME.colors.primary,
-    borderRadius: 18,
-    height: 56,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    shadowColor: '#665990',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.32,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  saveButtonDisabled: {
-    opacity: 0.7
-  },
-  saveButtonText: {
-    color: theme.colors.background,
-    fontSize: 18,
-    fontWeight: 'bold'
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end'
-  },
-  modalContent: {
-    backgroundColor: FORM.surface(isDark),
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    padding: 20,
-    maxHeight: '80%',
-    width: '100%'
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: FORM.text(isDark)
-  },
-  optionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: FORM.border(isDark)
-  },
-  selectedOption: {
-    backgroundColor: isDark ? '#221F30' : '#F3EFF8'
-  },
-  optionText: {
-    fontSize: 16,
-    color: FORM.label(isDark)
-  },
-  selectedOptionText: {
-    color: FORM.brand,
-    fontWeight: '600'
-  }
-});

@@ -5,6 +5,7 @@ import { styles as ds } from '@/src/theme/styles';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, ScrollView, Modal, Alert, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../src/hooks/useTheme';
 import { Theme } from '../../src/theme/themes';
 import AdminHeader from '../../src/components/AdminHeader';
@@ -316,6 +317,14 @@ export default function AdminStudentsScreen() {
     return null;
   };
 
+  const selectedClassName = selectedClass
+    ? classes.find((c) => c.id === selectedClass)?.name
+    : null;
+  const selectedSectionName = selectedSection
+    ? sections.find((s) => s.id === selectedSection)?.name
+    : null;
+  const showClassCountCard = Boolean(selectedClass && selectedSection);
+
   return (
     <View style={styles.container}>
       <AdminHeader
@@ -408,6 +417,51 @@ export default function AdminStudentsScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
+        {showClassCountCard ? (
+          <Animated.View entering={FadeInUp.springify().damping(14)} style={styles.countCardWrap}>
+            <LinearGradient
+              colors={['#4F46E5', '#6366F1', '#7C3AED']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.countCard}
+            >
+              <View style={styles.countOrbLg} />
+              <View style={styles.countOrbSm} />
+
+              <View style={styles.countHero}>
+                <View style={styles.countIconRing}>
+                  <Ionicons name="people" size={18} color="#fff" />
+                </View>
+                {loading && !refreshing ? (
+                  <ActivityIndicator size="small" color="#fff" style={{ marginLeft: 12 }} />
+                ) : (
+                  <View style={styles.countValueBlock}>
+                    <Text style={styles.countNumber}>{pagination.total}</Text>
+                    <Text style={styles.countUnit}>
+                      {pagination.total === 1 ? 'Student' : 'Students'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.countDivider} />
+
+              <View style={styles.countMeta}>
+                <Text style={styles.countEyebrow}>
+                  {isArchive ? 'ARCHIVE ROSTER' : 'CLASS STRENGTH'}
+                </Text>
+                <Text style={styles.countTitle} numberOfLines={1}>
+                  {selectedClassName} — Section {selectedSectionName}
+                </Text>
+                <Text style={styles.countSubtitle} numberOfLines={1}>
+                  {isArchive
+                    ? 'Passed out & withdrawn in this section'
+                    : 'Currently enrolled in this section'}
+                </Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        ) : null}
       </View>
       {loading && !refreshing ?
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -695,6 +749,111 @@ const getStyles = (theme: Theme) => StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     marginBottom: 8
+  },
+  countCardWrap: {
+    marginTop: 8,
+    marginBottom: 6,
+    borderRadius: 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.22,
+        shadowRadius: 14
+      },
+      android: {
+        elevation: 5
+      }
+    })
+  },
+  countCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingLeft: 14,
+    paddingRight: 16,
+    overflow: 'hidden'
+  },
+  countOrbLg: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    top: -34,
+    right: -18
+  },
+  countOrbSm: {
+    position: 'absolute',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    bottom: -22,
+    left: 72
+  },
+  countHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1
+  },
+  countIconRing: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  countValueBlock: {
+    marginLeft: 10
+  },
+  countNumber: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#fff',
+    lineHeight: 34,
+    letterSpacing: -0.8
+  },
+  countUnit: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 1
+  },
+  countDivider: {
+    width: 1,
+    height: 42,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    marginHorizontal: 14,
+    zIndex: 1
+  },
+  countMeta: {
+    flex: 1,
+    zIndex: 1,
+    minWidth: 0
+  },
+  countEyebrow: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.8,
+    marginBottom: 3
+  },
+  countTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 2
+  },
+  countSubtitle: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500'
   },
   filterChip: {
     flexDirection: 'row',

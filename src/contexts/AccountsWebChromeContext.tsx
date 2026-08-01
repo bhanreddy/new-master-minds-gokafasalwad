@@ -5,12 +5,15 @@ export type AccountsWebChromeContextValue = {
   shellActive: boolean;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Opens the accounts nav drawer on narrow / native layouts (no persistent sidebar). */
+  openMobileNav: () => void;
 };
 
 const AccountsWebChromeContext = createContext<AccountsWebChromeContextValue>({
   shellActive: false,
   sidebarCollapsed: false,
   setSidebarCollapsed: () => {},
+  openMobileNav: () => {},
 });
 
 export function AccountsWebChromeProvider({

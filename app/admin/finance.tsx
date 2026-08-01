@@ -14,6 +14,14 @@ import { useAuth } from '../../src/hooks/useAuth';
 import LogoLoader from '../../src/components/LogoLoader';
 import { printCollectionReport, exportCollectionCsv } from '../../src/utils/collectionReport';
 import PremiumDatePickerModal from '../../src/components/PremiumDatePickerModal';
+import AppDatePicker from '../../src/components/AppDatePicker';
+import {
+  daysAgoInput,
+  formatDateShort,
+  lastMonthRange,
+  monthStartInput,
+  todayDateInput,
+} from '../../src/components/expenses/expenseConstants';
 import { SCHOOL_NAME } from '../../src/constants/school';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -67,6 +75,9 @@ export default function AdminFinanceScreen() {
   const [dueVillageId, setDueVillageId] = useState<string>('');
   const [dueOverdueOnly, setDueOverdueOnly] = useState(false);
   const [dueExporting, setDueExporting] = useState(false);
+  const [receiptFromDate, setReceiptFromDate] = useState(todayDateInput());
+  const [receiptToDate, setReceiptToDate] = useState(todayDateInput());
+  const [receiptExporting, setReceiptExporting] = useState(false);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
@@ -203,6 +214,51 @@ export default function AdminFinanceScreen() {
       alertCompat('Download failed', error?.message || 'Unable to download the pending-fees due list.');
     } finally {
       setDueExporting(false);
+    }
+  };
+
+  const applyReceiptPreset = (preset: 'today' | 'last_7' | 'this_month' | 'last_month') => {
+    if (preset === 'today') {
+      const today = todayDateInput();
+      setReceiptFromDate(today);
+      setReceiptToDate(today);
+      return;
+    }
+    if (preset === 'last_7') {
+      setReceiptFromDate(daysAgoInput(6));
+      setReceiptToDate(todayDateInput());
+      return;
+    }
+    if (preset === 'this_month') {
+      setReceiptFromDate(monthStartInput());
+      setReceiptToDate(todayDateInput());
+      return;
+    }
+    const range = lastMonthRange();
+    setReceiptFromDate(range.from);
+    setReceiptToDate(range.to);
+  };
+
+  const exportReceiptList = async () => {
+    if (receiptExporting) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(receiptFromDate) || !/^\d{4}-\d{2}-\d{2}$/.test(receiptToDate)) {
+      alertCompat('Invalid dates', 'Please select a valid from and to date.');
+      return;
+    }
+    if (receiptFromDate > receiptToDate) {
+      alertCompat('Invalid range', 'From date must be on or before the to date.');
+      return;
+    }
+    setReceiptExporting(true);
+    try {
+      await FeeService.exportCollectionReceipts({
+        from_date: receiptFromDate,
+        to_date: receiptToDate,
+      });
+    } catch (error: any) {
+      alertCompat('Download failed', error?.message || 'Unable to download the fee collection receipts list.');
+    } finally {
+      setReceiptExporting(false);
     }
   };
 
@@ -362,7 +418,7 @@ export default function AdminFinanceScreen() {
               </View>
             </View>
             <Text style={styles.dueListDescription}>
-              Download school total fee, discount given, final fee, paid fee and due amount. Village is taken from the student’s active transport stop.
+              Download school total fee, waiver/discount given, final fee, paid fee and due amount. Students with fee waivers are included even when their balance is zero. Village is taken from the student’s active transport stop.
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dueFilterChips}>
               <TouchableOpacity
@@ -408,6 +464,84 @@ export default function AdminFinanceScreen() {
             >
               <Ionicons name={dueExporting ? 'hourglass-outline' : 'download-outline'} size={18} color="#fff" />
               <Text style={styles.dueDownloadButtonText}>{dueExporting ? 'Preparing Excel…' : 'Download Excel Due List'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Fee collection receipts export ── */}
+          <View style={styles.dueListCard}>
+            <View style={styles.dueListHeader}>
+              <View style={[styles.dueListIcon, { backgroundColor: '#7C3AED18' }]}>
+                <Ionicons name="receipt-outline" size={22} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dueListTitle}>Fee Collection Receipts</Text>
+                <Text style={styles.dueListSubtitle}>
+                  {formatDateShort(receiptFromDate)} → {formatDateShort(receiptToDate)}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.dueListDescription}>
+              Select a date range and download the full fee collection receipts list, including school fees and transport payments.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dueFilterChips}>
+              {([
+                { id: 'today', label: 'Today' },
+                { id: 'last_7', label: 'Last 7 days' },
+                { id: 'this_month', label: 'This month' },
+                { id: 'last_month', label: 'Last month' },
+              ] as const).map((preset) => {
+                const active =
+                  (preset.id === 'today' && receiptFromDate === todayDateInput() && receiptToDate === todayDateInput()) ||
+                  (preset.id === 'last_7' && receiptFromDate === daysAgoInput(6) && receiptToDate === todayDateInput()) ||
+                  (preset.id === 'this_month' && receiptFromDate === monthStartInput() && receiptToDate === todayDateInput()) ||
+                  (preset.id === 'last_month' && (() => {
+                    const range = lastMonthRange();
+                    return receiptFromDate === range.from && receiptToDate === range.to;
+                  })());
+                return (
+                  <TouchableOpacity
+                    key={preset.id}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => applyReceiptPreset(preset.id)}
+                  >
+                    <Text style={[styles.filterChipText, active && { color: theme.colors.primary }]}>{preset.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.receiptDateRow}>
+              <AppDatePicker
+                label="From date"
+                value={receiptFromDate}
+                onChange={setReceiptFromDate}
+                maximumDate={receiptToDate}
+                variant="compact"
+                isDark={isDark}
+                accentColor={theme.colors.primary}
+                containerStyle={styles.receiptDateField}
+              />
+              <AppDatePicker
+                label="To date"
+                value={receiptToDate}
+                onChange={setReceiptToDate}
+                minimumDate={receiptFromDate}
+                maximumDate={todayDateInput()}
+                variant="compact"
+                isDark={isDark}
+                accentColor={theme.colors.primary}
+                containerStyle={styles.receiptDateField}
+              />
+            </View>
+            <TouchableOpacity
+              disabled={receiptExporting}
+              style={[styles.dueDownloadButton, receiptExporting && styles.dueDownloadButtonDisabled]}
+              onPress={exportReceiptList}
+              activeOpacity={0.85}
+            >
+              <Ionicons name={receiptExporting ? 'hourglass-outline' : 'download-outline'} size={18} color="#fff" />
+              <Text style={styles.dueDownloadButtonText}>
+                {receiptExporting ? 'Preparing Excel…' : 'Download Receipts List'}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -820,6 +954,15 @@ const getStyles = (theme: Theme, isWide: boolean) => StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '800',
+  },
+  receiptDateRow: {
+    flexDirection: isWide ? 'row' : 'column',
+    gap: 10,
+    marginBottom: 14,
+  },
+  receiptDateField: {
+    flex: 1,
+    marginBottom: 0,
   },
 
   /* Filters */

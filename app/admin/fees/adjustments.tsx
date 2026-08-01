@@ -21,7 +21,7 @@ import { useTheme } from '../../../src/hooks/useTheme';
 import { Theme } from '../../../src/theme/themes';
 import LogoLoader from '../../../src/components/LogoLoader';
 import PremiumButton from '../../../src/components/PremiumButton';
-import { StudentFee, Student, FeeAdjustmentType, TransportDue } from '../../../src/types/models';
+import { StudentFee, Student, FeeAdjustmentType, FeeResponse, TransportDue } from '../../../src/types/models';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { clayCard } from '../../../src/theme/clayStyles';
@@ -40,8 +40,13 @@ interface AdjustmentLog {
 }
 
 type HistoryFilter = 'all' | 'waive' | 'add';
+type TransportHint = 'none' | 'no_assignment' | 'fee_not_set';
 
 const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
+function resolveTransportDue(feeData: FeeResponse | null | undefined): TransportDue | null {
+  return feeData?.transport_due ?? feeData?.summary?.transport_due ?? null;
+}
 
 function transportDueToAdjustmentFee(
   transport: TransportDue | null | undefined,
@@ -57,6 +62,7 @@ function transportDueToAdjustmentFee(
   const paidAmount = Number(transport.paid_amount || 0);
   const amountDue = baseAmount + addedAmount;
   const balance = Math.max(amountDue - waivedAmount - paidAmount, 0);
+  const stopLabel = transport.stop_name?.trim();
 
   return {
     id: transport.transport_fee_id,
@@ -68,9 +74,15 @@ function transportDueToAdjustmentFee(
     discount: waivedAmount,
     status: balance <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'pending',
     due_date: '',
-    fee_type: 'Transport Fee',
+    fee_type: stopLabel ? `Transport · ${stopLabel}` : 'Transport Fee',
     adjustment_count: Number(transport.adjustment_count || 0),
   };
+}
+
+function transportHintFor(transport: TransportDue | null, transportFee: StudentFee | null): TransportHint {
+  if (transportFee) return 'none';
+  if (transport && (transport.fee_not_set || !transport.transport_fee_id)) return 'fee_not_set';
+  return 'no_assignment';
 }
 
 const HistoryRow = React.memo(function HistoryRow({
@@ -189,6 +201,7 @@ export default function FeeAdjustmentsScreen() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   const [studentFees, setStudentFees] = useState<StudentFee[]>([]);
+  const [transportHint, setTransportHint] = useState<TransportHint>('none');
   const [loadingFees, setLoadingFees] = useState(false);
   const [selectedFee, setSelectedFee] = useState<StudentFee | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<FeeAdjustmentType>('waive');
@@ -239,6 +252,13 @@ export default function FeeAdjustmentsScreen() {
     setSearchResults([]);
   };
 
+  const applyStudentFeeData = (student: Student, feeData: FeeResponse | null | undefined) => {
+    const transportDue = resolveTransportDue(feeData);
+    const transportFee = transportDueToAdjustmentFee(transportDue, student.id);
+    setStudentFees([...(feeData?.fees || []), ...(transportFee ? [transportFee] : [])]);
+    setTransportHint(transportHintFor(transportDue, transportFee));
+  };
+
   const handleSelectStudent = async (student: Student) => {
     setSelectedStudent(student);
     setSearchQuery('');
@@ -246,12 +266,12 @@ export default function FeeAdjustmentsScreen() {
     setSelectedFee(null);
     setAdjustAmount('');
     setReason('');
+    setTransportHint('none');
 
     try {
       setLoadingFees(true);
       const feeData = await FeeService.getStudentFees(student.id);
-      const transportFee = transportDueToAdjustmentFee(feeData?.transport_due, student.id);
-      setStudentFees([...(feeData?.fees || []), ...(transportFee ? [transportFee] : [])]);
+      applyStudentFeeData(student, feeData);
     } catch {
       alertCompat('Error', 'Failed to load student fees');
     } finally {
@@ -262,6 +282,7 @@ export default function FeeAdjustmentsScreen() {
   const clearStudent = () => {
     setSelectedStudent(null);
     setStudentFees([]);
+    setTransportHint('none');
     setSelectedFee(null);
     setAdjustAmount('');
     setReason('');
@@ -315,14 +336,7 @@ export default function FeeAdjustmentsScreen() {
       setSelectedFee(null);
 
       const updatedFeeData = await FeeService.getStudentFees(selectedStudent.id);
-      const updatedTransportFee = transportDueToAdjustmentFee(
-        updatedFeeData?.transport_due,
-        selectedStudent.id,
-      );
-      setStudentFees([
-        ...(updatedFeeData?.fees || []),
-        ...(updatedTransportFee ? [updatedTransportFee] : []),
-      ]);
+      applyStudentFeeData(selectedStudent, updatedFeeData);
 
       loadHistory();
     } catch (error: any) {
@@ -601,6 +615,7 @@ export default function FeeAdjustmentsScreen() {
                         style={({ pressed }) => [
                           styles.feeChip,
                           isSelected && styles.feeChipActive,
+                          fee.is_transport && !isSelected && styles.feeChipTransport,
                           chipDisabled && styles.feeChipDisabled,
                           pressed && !chipDisabled && { transform: [{ scale: 0.98 }], opacity: 0.92 },
                         ]}
@@ -611,13 +626,21 @@ export default function FeeAdjustmentsScreen() {
                             <Ionicons name="checkmark" size={10} color="#fff" />
                           </View>
                         )}
+                        {fee.is_transport ? (
+                          <Ionicons
+                            name="bus-outline"
+                            size={14}
+                            color={isSelected ? '#fff' : '#0E7490'}
+                            style={{ marginBottom: 4 }}
+                          />
+                        ) : null}
                         <Text
                           style={[
                             styles.feeChipText,
                             isSelected && styles.feeChipTextActive,
                             chipDisabled && styles.feeChipTextDisabled,
                           ]}
-                          numberOfLines={1}
+                          numberOfLines={2}
                         >
                           {fee.fee_type}
                         </Text>
@@ -636,6 +659,17 @@ export default function FeeAdjustmentsScreen() {
                   })}
                 </View>
               )}
+
+              {!loadingFees && selectedStudent && transportHint !== 'none' ? (
+                <View style={styles.transportHint}>
+                  <Ionicons name="bus-outline" size={16} color="#0E7490" />
+                  <Text style={styles.transportHintText}>
+                    {transportHint === 'fee_not_set'
+                      ? 'This student is on a bus route, but Accounts has not set a stop fee yet. Set it under Accounts → Transport Fees, then refresh.'
+                      : 'Transport fee appears only after this student is assigned to a bus route/stop. Stop fees set in Accounts apply to assigned students — assign the route under Transport, then reopen this student.'}
+                  </Text>
+                </View>
+              ) : null}
             </>
           )}
 
@@ -1278,10 +1312,33 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       borderColor: ADMIN_THEME.colors.primary,
       backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : '#EEF2FF',
     },
+    feeChipTransport: {
+      borderColor: isDark ? 'rgba(14,116,144,0.45)' : '#A5F3FC',
+      backgroundColor: isDark ? 'rgba(14,116,144,0.12)' : '#ECFEFF',
+    },
     feeChipDisabled: {
       opacity: 0.45,
       backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
       borderColor: 'transparent',
+    },
+    transportHint: {
+      marginTop: 12,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(14,116,144,0.35)' : '#A5F3FC',
+      backgroundColor: isDark ? 'rgba(14,116,144,0.12)' : '#ECFEFF',
+    },
+    transportHintText: {
+      flex: 1,
+      fontSize: 12,
+      lineHeight: 17,
+      fontWeight: '600',
+      color: isDark ? '#A5F3FC' : '#0F766E',
     },
     feeChipCheck: {
       position: 'absolute',
