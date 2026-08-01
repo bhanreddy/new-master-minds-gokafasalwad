@@ -290,15 +290,14 @@ function ticketHtml(
       <div class="schedule-wrap">${scheduleMarkup(options.papers, ticketsPerPage)}</div>
 
       <footer class="ticket-footer">
-        <div class="sign-block">
-          <i></i>
+        <div class="sign-block class-teacher-sign-block">
           <span>Class teacher</span>
         </div>
         <div class="sign-block principal-sign-block${options.principalSignatureDataUri ? ' principal-sign-block--signed' : ''}">
+          <span>Principal</span>
           ${options.principalSignatureDataUri
             ? `<div class="principal-signature-line"><img class="principal-signature" src="${escapeHtml(options.principalSignatureDataUri)}" alt="" /></div>`
             : '<i></i>'}
-          <span>Principal</span>
         </div>
       </footer>
     </article>
@@ -531,7 +530,7 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
 
     .student-meta {
       display: grid;
-      grid-template-columns: 1.8fr 1.65fr 1.05fr 1.15fr 0.65fr;
+      grid-template-columns: 1.7fr 1.55fr 1fr 1.1fr 1fr;
       gap: 0;
       padding: 0.75mm 1.1mm;
       margin-bottom: 0.7mm;
@@ -564,8 +563,11 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
     }
     .meta-wide strong { font-size: 7pt; color: #172554; }
     .student-meta .roll-number-box {
-      width: 8mm;
-      min-height: 3mm;
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 14mm;
+      min-height: 4.2mm;
       margin-top: 0.35mm;
       border: 0.25mm solid #64748b;
       border-radius: 0.5mm;
@@ -868,7 +870,16 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       font-weight: 600;
     }
     .sign-block:first-child { align-items: flex-start; padding-left: 0; }
-    .principal-sign-block { align-items: flex-end; padding-right: 0; text-align: right; }
+    .class-teacher-sign-block { justify-content: flex-end; }
+    .principal-sign-block {
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 1.8mm;
+      padding-top: 0;
+      padding-right: 0;
+      text-align: right;
+    }
     .sign-block + .sign-block { border-left: 0; }
     .sign-block i {
       display: block;
@@ -877,6 +888,12 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       min-height: 2.4mm;
       border-bottom: 0.25mm solid #64748b;
       margin: 0 0 0.5mm;
+    }
+    .principal-sign-block > i {
+      flex: 0 0 28mm;
+      width: 28mm;
+      min-height: 4mm;
+      margin: 0;
     }
     .principal-signature-line {
       display: flex;
@@ -898,13 +915,11 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       max-height: 3.5mm;
       object-fit: contain;
       object-position: right bottom;
+      image-rendering: auto;
+      filter: contrast(1.35);
     }
     .principal-sign-block--signed {
-      flex-direction: row;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 1.5mm;
-      padding-top: 0;
+      gap: 1.8mm;
     }
     .principal-sign-block--signed .principal-signature-line {
       flex: 0 1 auto;
@@ -915,11 +930,11 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       overflow: visible;
     }
     .principal-sign-block--signed .principal-signature {
-      max-width: 32mm;
-      max-height: 5.5mm;
+      max-width: 36mm;
+      max-height: 7mm;
     }
-    .ticket--layout-3 .principal-sign-block--signed .principal-signature { max-height: 7mm; }
-    .ticket--layout-2 .principal-sign-block--signed .principal-signature { max-height: 8.5mm; }
+    .ticket--layout-3 .principal-sign-block--signed .principal-signature { max-height: 8mm; }
+    .ticket--layout-2 .principal-sign-block--signed .principal-signature { max-height: 9mm; }
 
     .ticket--layout-4 .student-meta {
       padding: 1.3mm 1.4mm;
@@ -1131,7 +1146,7 @@ async function downloadHallTicketsWeb(options: HallTicketPdfOptions, fileName: s
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     for (let index = 0; index < sheets.length; index += 1) {
       const canvas = await html2canvas(sheets[index], {
-        scale: 2,
+        scale: 3,
         backgroundColor: '#ffffff',
         useCORS: true,
         allowTaint: false,

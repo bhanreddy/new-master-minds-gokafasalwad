@@ -89,6 +89,19 @@ export interface StudentPhotoResponse {
     photo_url: string | null;
 }
 
+export interface StudentHardDeletePreview {
+    has_fee_records: boolean;
+    fee_record_count: number;
+    active_fee_record_count: number;
+    payment_transaction_count: number;
+    receipt_count: number;
+    related_financial_record_count: number;
+    total_due: number;
+    total_discount: number;
+    total_paid: number;
+    balance: number;
+}
+
 async function buildStudentPhotoFormData(uri: string): Promise<FormData> {
     let processedUri = uri;
     try {
@@ -366,13 +379,27 @@ export const StudentService = {
     },
 
     /**
+     * Check for fee/payment history before starting the permanent-delete flow.
+     */
+    getHardDeletePreview: async (id: string): Promise<StudentHardDeletePreview> => {
+        return api.get<StudentHardDeletePreview>(`/students/${id}/hard-delete-preview`, undefined, { silent: true });
+    },
+
+    /**
      * PERMANENTLY delete a student and ALL of their data (fees, receipts, marks,
      * attendance, transport, parent links, login accounts…). Irreversible.
      * Requires explicit confirmation — the caller must have run the multi-step
      * confirmation flow before invoking this.
      */
-    hardDelete: async (id: string): Promise<{ stats?: Record<string, number>; authFailures?: unknown[] }> => {
-        return api.post(`/students/${id}/hard-delete`, { confirm: true });
+    hardDelete: async (id: string, confirmFeeDeletion = false): Promise<{ stats?: Record<string, number>; authFailures?: unknown[] }> => {
+        return api.post(
+            `/students/${id}/hard-delete`,
+            {
+                confirm: true,
+                confirm_fee_deletion: confirmFeeDeletion,
+            },
+            { silent: true },
+        );
     },
 
     /**

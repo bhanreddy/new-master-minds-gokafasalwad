@@ -9,11 +9,12 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
+  Switch,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
-import { StudentService } from '../../services/studentService';
+import { type StudentHardDeletePreview, StudentService } from '../../services/studentService';
 import { APIError } from '../../services/apiClient';
 
 interface Props {
@@ -54,16 +55,45 @@ export default function HardDeleteStudentModal({
   const [typed, setTyped] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<StudentHardDeletePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [deleteFeeRecords, setDeleteFeeRecords] = useState(false);
 
   // Reset to a clean state every time the modal (re)opens.
   useEffect(() => {
+    let cancelled = false;
+
     if (visible) {
       setStep(1);
       setTyped('');
       setDeleting(false);
       setError(null);
+      setPreview(null);
+      setDeleteFeeRecords(false);
+
+      if (!studentId) {
+        setPreviewLoading(false);
+      } else {
+        setPreviewLoading(true);
+        StudentService.getHardDeletePreview(studentId)
+          .then((result) => {
+            if (!cancelled) setPreview(result);
+          })
+          .catch((e) => {
+            if (!cancelled) {
+              setError(e instanceof APIError ? e.message : 'Could not check this student\'s fee records.');
+            }
+          })
+          .finally(() => {
+            if (!cancelled) setPreviewLoading(false);
+          });
+      }
     }
-  }, [visible]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, studentId]);
 
   const nameMatches = typed.trim().toLowerCase() === studentName.trim().toLowerCase();
 
@@ -72,16 +102,39 @@ export default function HardDeleteStudentModal({
     setDeleting(true);
     setError(null);
     try {
-      await StudentService.hardDelete(studentId);
+      await StudentService.hardDelete(studentId, deleteFeeRecords);
       onDeleted();
     } catch (e) {
-      setError(e instanceof APIError ? e.message : 'Failed to delete student. Please try again.');
+      if (e instanceof APIError && e.statusCode === 409) {
+        setStep(1);
+        setDeleteFeeRecords(false);
+        setPreviewLoading(true);
+        try {
+          setPreview(await StudentService.getHardDeletePreview(studentId));
+          setError('Fee records changed after the first check. Review them and enable the toggle to continue.');
+        } catch {
+          setPreview(null);
+          setError('Fee records changed, but the latest details could not be loaded. Close this dialog and try again.');
+        } finally {
+          setPreviewLoading(false);
+        }
+      } else {
+        setError(e instanceof APIError ? e.message : 'Failed to delete student. Please try again.');
+      }
       setDeleting(false);
     }
   };
 
   const s = getStyles(isDark);
   const danger = '#DC2626';
+  const requiresFeeConfirmation = preview?.has_fee_records === true;
+  const canContinueFromFirstStep = !previewLoading
+    && preview !== null
+    && (!requiresFeeConfirmation || deleteFeeRecords);
+  const formatINR = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={deleting ? undefined : onClose}>
@@ -112,12 +165,78 @@ export default function HardDeleteStudentModal({
                     </View>
                   ))}
                 </View>
+
+                {previewLoading && (
+                  <View style={[s.feeCheckBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}>
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                    <Text style={[s.feeCheckLoading, { color: theme.colors.textSecondary }]}>Checking fee records…</Text>
+                  </View>
+                )}
+
+                {!previewLoading && preview && !preview.has_fee_records && (
+                  <View style={[s.feeCheckBox, { borderColor: isDark ? 'rgba(22,163,74,0.35)' : '#BBF7D0', backgroundColor: isDark ? 'rgba(22,163,74,0.10)' : '#F0FDF4' }]}>
+                    <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.feeCheckHeading, { color: '#16A34A' }]}>No fee or payment records found</Text>
+                      <Text style={[s.feeCheckCopy, { color: theme.colors.textSecondary }]}>No financial records need separate confirmation.</Text>
+                    </View>
+                  </View>
+                )}
+
+                {!previewLoading && preview?.has_fee_records && (
+                  <View style={[s.feePanel, { borderColor: isDark ? 'rgba(234,88,12,0.45)' : '#FDBA74', backgroundColor: isDark ? 'rgba(234,88,12,0.10)' : '#FFF7ED' }]}>
+                    <View style={s.feePanelHeader}>
+                      <Ionicons name="cash-outline" size={21} color="#EA580C" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.feeCheckHeading, { color: '#C2410C' }]}>Fee records found</Text>
+                        <Text style={[s.feeCheckCopy, { color: theme.colors.textSecondary }]}>These financial records will also be permanently erased.</Text>
+                      </View>
+                    </View>
+
+                    <View style={s.feeStatsGrid}>
+                      <View style={s.feeStat}>
+                        <Text style={[s.feeStatValue, { color: theme.colors.textStrong }]}>{preview.fee_record_count}</Text>
+                        <Text style={[s.feeStatLabel, { color: theme.colors.textMuted }]}>{preview.active_fee_record_count} active fees</Text>
+                      </View>
+                      <View style={s.feeStat}>
+                        <Text style={[s.feeStatValue, { color: theme.colors.textStrong }]}>{preview.payment_transaction_count}</Text>
+                        <Text style={[s.feeStatLabel, { color: theme.colors.textMuted }]}>Transactions</Text>
+                      </View>
+                      <View style={s.feeStat}>
+                        <Text style={[s.feeStatValue, { color: theme.colors.textStrong }]}>{preview.receipt_count}</Text>
+                        <Text style={[s.feeStatLabel, { color: theme.colors.textMuted }]}>Receipts</Text>
+                      </View>
+                    </View>
+
+                    <View style={[s.amountRow, { borderTopColor: isDark ? 'rgba(234,88,12,0.25)' : '#FED7AA' }]}>
+                      <Text style={[s.amountText, { color: theme.colors.textSecondary }]}>Assigned fee total: {formatINR(preview.total_due - preview.total_discount)}</Text>
+                      <Text style={[s.amountText, { color: theme.colors.textSecondary }]}>Assigned fee paid: {formatINR(preview.total_paid)}</Text>
+                      <Text style={[s.amountBalance, { color: danger }]}>Assigned fee balance: {formatINR(preview.balance)}</Text>
+                      {preview.related_financial_record_count > 0 && (
+                        <Text style={[s.amountText, { color: theme.colors.textSecondary }]}>Other financial records: {preview.related_financial_record_count}</Text>
+                      )}
+                    </View>
+
+                    <View style={[s.feeToggleRow, { borderTopColor: isDark ? 'rgba(234,88,12,0.25)' : '#FED7AA' }]}>
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={[s.feeToggleTitle, { color: theme.colors.textStrong }]}>Delete fee and payment records</Text>
+                        <Text style={[s.feeToggleCopy, { color: theme.colors.textSecondary }]}>Off by default. Turn this on to allow permanent deletion.</Text>
+                      </View>
+                      <Switch
+                        value={deleteFeeRecords}
+                        onValueChange={setDeleteFeeRecords}
+                        trackColor={{ false: '#D1D5DB', true: '#FCA5A5' }}
+                        thumbColor={deleteFeeRecords ? danger : '#F9FAFB'}
+                      />
+                    </View>
+                  </View>
+                )}
               </>
             )}
 
             {step === 2 && (
               <>
-                <Text style={[s.title, { color: theme.colors.textStrong }]}>Confirm the student's name</Text>
+                <Text style={[s.title, { color: theme.colors.textStrong }]}>Confirm the student’s name</Text>
                 <Text style={[s.helper, { color: theme.colors.textSecondary }]}>
                   To make sure this is intentional, type the full name exactly as shown:
                 </Text>
@@ -139,7 +258,7 @@ export default function HardDeleteStudentModal({
                   ]}
                 />
                 {typed.length > 0 && !nameMatches && (
-                  <Text style={[s.mismatch, { color: danger }]}>The name doesn't match yet.</Text>
+                  <Text style={[s.mismatch, { color: danger }]}>The name doesn’t match yet.</Text>
                 )}
               </>
             )}
@@ -148,7 +267,7 @@ export default function HardDeleteStudentModal({
               <>
                 <Text style={[s.title, { color: theme.colors.textStrong }]}>Last chance</Text>
                 <Text style={[s.helper, { color: theme.colors.textSecondary }]}>
-                  You're about to permanently delete{' '}
+                  You’re about to permanently delete{' '}
                   <Text style={{ fontWeight: '800', color: theme.colors.textStrong }}>{studentName}</Text>{' '}
                   and every record belonging to them. This is irreversible.
                 </Text>
@@ -169,7 +288,10 @@ export default function HardDeleteStudentModal({
             </TouchableOpacity>
 
             {step === 1 && (
-              <TouchableOpacity onPress={() => setStep(2)} style={[s.btn, { backgroundColor: danger }]}>
+              <TouchableOpacity
+                onPress={() => setStep(2)}
+                disabled={!canContinueFromFirstStep}
+                style={[s.btn, { backgroundColor: danger, opacity: canContinueFromFirstStep ? 1 : 0.4 }]}>
                 <Text style={s.btnText}>I understand, continue</Text>
               </TouchableOpacity>
             )}
@@ -232,6 +354,22 @@ const getStyles = (isDark: boolean) =>
     nameToType: { fontSize: 17, fontWeight: '800', textAlign: 'center', marginTop: 12, marginBottom: 12 },
     input: { borderWidth: 1.5, borderRadius: 12, height: 48, paddingHorizontal: 14, fontSize: 16 },
     mismatch: { fontSize: 12, marginTop: 6, textAlign: 'center' },
+    feeCheckBox: { borderRadius: 14, borderWidth: 1, padding: 14, marginTop: 12, flexDirection: 'row', gap: 10, alignItems: 'center' },
+    feeCheckLoading: { fontSize: 13, fontWeight: '600' },
+    feeCheckHeading: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
+    feeCheckCopy: { fontSize: 12, lineHeight: 17 },
+    feePanel: { borderRadius: 14, borderWidth: 1, padding: 14, marginTop: 12 },
+    feePanelHeader: { flexDirection: 'row', gap: 9, alignItems: 'flex-start' },
+    feeStatsGrid: { flexDirection: 'row', gap: 8, marginTop: 13 },
+    feeStat: { flex: 1 },
+    feeStatValue: { fontSize: 16, fontWeight: '800' },
+    feeStatLabel: { fontSize: 10, fontWeight: '600', marginTop: 1 },
+    amountRow: { borderTopWidth: 1, marginTop: 12, paddingTop: 10, gap: 3 },
+    amountText: { fontSize: 12, fontWeight: '600' },
+    amountBalance: { fontSize: 12, fontWeight: '800' },
+    feeToggleRow: { borderTopWidth: 1, marginTop: 12, paddingTop: 12, flexDirection: 'row', alignItems: 'center' },
+    feeToggleTitle: { fontSize: 13, fontWeight: '800' },
+    feeToggleCopy: { fontSize: 11, lineHeight: 16, marginTop: 2 },
     error: { fontSize: 13, marginTop: 12, textAlign: 'center', fontWeight: '600' },
     actions: { flexDirection: 'row', gap: 10, marginTop: 20 },
     btn: { flex: 1, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },

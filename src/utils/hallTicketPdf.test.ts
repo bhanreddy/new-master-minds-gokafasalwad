@@ -163,10 +163,23 @@ describe('hallTicketPdf', () => {
     ).toBe(options.students.length);
     expect(html).toContain('data:image/png;base64,signature');
     expect(html).toContain('<span>Principal</span>');
+    expect(html).toMatch(/<span>Principal<\/span>[\s\S]*?<div class="principal-signature-line">/);
     expect(html).toContain('width: auto;\n      height: auto;\n      max-width: 100%;');
     expect(html).toContain('flex-direction: row;');
     expect(html).toContain('margin: 0;\n      border: 0;');
-    expect(html).toContain('max-width: 32mm;\n      max-height: 5.5mm;');
+    expect(html).toContain('max-width: 36mm;\n      max-height: 7mm;');
+    expect(html).toContain('filter: contrast(1.35);');
+  });
+
+  it('removes the class-teacher line and keeps its label', () => {
+    const html = buildHallTicketHtml({
+      ...options,
+      students: options.students.slice(0, 1),
+    });
+
+    expect(html).toContain('<div class="sign-block class-teacher-sign-block">');
+    expect(html).toMatch(/class-teacher-sign-block">\s*<span>Class teacher<\/span>/);
+    expect(html).not.toMatch(/class-teacher-sign-block">\s*<i>/);
   });
 
   it('keeps a blank principal signing line when no signature is configured', () => {
@@ -178,6 +191,7 @@ describe('hallTicketPdf', () => {
 
     expect(html).not.toContain('class="principal-signature"');
     expect(html).toContain('<div class="sign-block principal-sign-block">');
+    expect(html).toMatch(/<span>Principal<\/span>\s*<i><\/i>/);
     expect(html).toContain('<i></i>');
   });
 
@@ -237,7 +251,8 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('.paper-date {');
     expect(html).toContain('font-size: 7.2pt');
     expect(html).toContain('.sign-block:first-child { align-items: flex-start; padding-left: 0; }');
-    expect(html).toContain('.principal-sign-block { align-items: flex-end; padding-right: 0; text-align: right; }');
+    expect(html).toContain('.class-teacher-sign-block { justify-content: flex-end; }');
+    expect(html).toContain('gap: 1.8mm;');
   });
 
   it('continuously scales compact schedule typography as subject columns increase', () => {
