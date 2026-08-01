@@ -26,7 +26,7 @@ import AppTextInput from '../../src/components/AppTextInput';
 import AppDatePicker from '../../src/components/AppDatePicker';
 import LogoLoader from '../../src/components/LogoLoader';
 import { useTheme } from '../../src/hooks/useTheme';
-import { Theme } from '../../src/theme/themes';
+import { Theme, Shadows } from '../../src/theme/themes';
 import { t_field } from '../../src/utils/lang';
 import { ClassService, ClassInfo, AcademicYear, ClassSection } from '../../src/services/classService';
 import { ResultService } from '../../src/services/commonServices';
@@ -133,7 +133,58 @@ function fmtDate(date?: string | null): string {
   return d.toLocaleDateString('default', { weekday: 'short', day: '2-digit', month: 'short' });
 }
 
+function fmtDateRange(start?: string | null, end?: string | null): string {
+  if (!start) return 'Not scheduled';
+  const startLabel = fmtDate(start);
+  if (startLabel === 'Unscheduled') return 'Not scheduled';
+  if (!end || end.slice(0, 10) === start.slice(0, 10)) return startLabel;
+  const endLabel = fmtDate(end);
+  if (endLabel === 'Unscheduled') return startLabel;
+  return `${startLabel} – ${endLabel}`;
+}
+
+function pluralCount(n: number, singular: string, pluralForm?: string): string {
+  return `${n} ${n === 1 ? singular : pluralForm || `${singular}s`}`;
+}
+
 const TIME_INPUT_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+const SESSION_TIME_INPUT_RE = /^(0?[1-9]|1[0-2]):[0-5]\d$/;
+type Meridiem = 'AM' | 'PM';
+type ExamSessionDraft = ExamSession & {
+  start_period: Meridiem;
+  end_period: Meridiem;
+};
+
+function to12HourTime(time?: string | null): { time: string; period: Meridiem } {
+  const hhmm = toHHMM(time);
+  if (!TIME_INPUT_RE.test(hhmm)) return { time: hhmm, period: 'AM' };
+  const [hours, minutes] = hhmm.split(':').map(Number);
+  const period: Meridiem = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return { time: `${String(hour12).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, period };
+}
+
+function to24HourTime(time: string, period: Meridiem): string {
+  if (!SESSION_TIME_INPUT_RE.test(time)) return time;
+  const [hourText, minuteText] = time.split(':');
+  const hour12 = Number(hourText);
+  const hours = period === 'AM'
+    ? hour12 === 12 ? 0 : hour12
+    : hour12 === 12 ? 12 : hour12 + 12;
+  return `${String(hours).padStart(2, '0')}:${minuteText}`;
+}
+
+function toSessionDraft(session: ExamSession): ExamSessionDraft {
+  const start = to12HourTime(session.start_time);
+  const end = to12HourTime(session.end_time);
+  return {
+    start_time: start.time || null,
+    end_time: end.time || null,
+    start_period: start.period,
+    end_period: end.period,
+  };
+}
+
 const EXAM_WEEKDAYS: { id: ExamWeekday; short: string; label: string }[] = [
   { id: 'monday', short: 'Mon', label: 'Monday' },
   { id: 'tuesday', short: 'Tue', label: 'Tuesday' },
@@ -269,6 +320,16 @@ export default function AdminExams() {
   const [roomDetail, setRoomDetail] = useState<ExamRoomAllocation | null>(null);
   const [addRoomSitting, setAddRoomSitting] = useState<{ exam_date: string; session_start: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const allocationClasses = useMemo(() => {
+    const scheduled = new Map<string, string>();
+    for (const paper of detail?.papers || []) scheduled.set(paper.class_id, paper.class_name);
+    const known = classes.filter((item) => scheduled.has(item.id));
+    const knownIds = new Set(known.map((item) => item.id));
+    return [
+      ...known,
+      ...[...scheduled].filter(([id]) => !knownIds.has(id)).map(([id, name]) => ({ id, name })),
+    ];
+  }, [classes, detail?.papers]);
 
   const loadExams = useCallback(async () => {
     try {
@@ -371,63 +432,44 @@ export default function AdminExams() {
     }
   }, [detail, refreshDetail, allocations.length]);
 
-  /** One-click seating: reuse last params, or all rooms + all staff. */
-  const handleQuickAllocate = useCallback(async () => {
-    if (!detail) return;
-
-    const run = async () => {
+  const handleDeleteExam = useCallback(() => {
+    if (!detail || saving) return;
+    const examId = detail.exam.id;
+    const examName = t_field(detail.exam.name, detail.exam.name_te);
+    const remove = async () => {
       try {
         setSaving(true);
-        let params = allocParams;
-        if (!params?.room_ids?.length) {
-          const [rooms, teachers] = await Promise.all([
-            ExamAllocationService.getRooms(),
-            TimetableService.getTeacherOptions().catch(() => [] as TimetableTeacher[]),
-          ]);
-          if (rooms.length === 0) {
-            alertCompat(
-              'Add rooms first',
-              'Define at least one exam room, then seating can be allocated automatically.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Manage rooms', onPress: () => setRoomsVisible(true) },
-              ]
-            );
-            return;
-          }
-          params = {
-            room_ids: rooms.map((r) => r.id),
-            strategy: 'sequential',
-            invigilator_staff_ids: teachers.map((t) => t.id),
-          };
-        }
-        const result = await ExamAllocationService.generate(detail.exam.id, params);
-        await refreshDetail();
-        const lines = [
-          `${result.students_seated} student(s) seated across ${result.sittings} sitting(s).`,
-          ...(result.warnings || []),
-        ];
-        alertCompat('Seating ready', lines.join('\n'));
+        await ResultService.deleteExam(examId, true);
+        setExams((current) => current.filter((exam) => exam.id !== examId));
+        setSelectedExamId(null);
+        setDetail(null);
+        setAllocations([]);
+        setAllocParams(null);
+        setHallTicketExam(null);
+        setCreateVisible(true);
+        void loadExams();
       } catch (err: any) {
-        alertCompat('Could not allocate', err?.message || 'Allocation failed');
+        alertCompat('Could not delete exam', err?.message || 'Delete failed.');
       } finally {
         setSaving(false);
       }
     };
 
-    if (allocations.length > 0) {
-      alertCompat(
-        'Reallocate seating?',
-        'Current room and invigilator assignments will be replaced.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Reallocate', onPress: () => { void run(); } },
-        ]
-      );
-    } else {
-      await run();
-    }
-  }, [detail, allocParams, refreshDetail, allocations.length]);
+    alertCompat(
+      'Delete entire exam and start over?',
+      `${examName} and all of its timetable papers, marks, seating and invigilation will be permanently deleted. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete & start over', style: 'destructive', onPress: () => { void remove(); } },
+      ]
+    );
+  }, [detail, saving, loadExams]);
+
+  /** Auto-seat now opens the parameter editor instead of silently using a
+   * same-class sequential fill. The wizard remembers the previous choices. */
+  const handleQuickAllocate = useCallback(() => {
+    setAllocVisible(true);
+  }, []);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -456,6 +498,7 @@ export default function AdminExams() {
             onOpenRoom={setRoomDetail}
             onAddRoomToSitting={setAddRoomSitting}
             onHallTickets={() => setHallTicketExam(detail.exam)}
+            onDeleteExam={handleDeleteExam}
           />
         )
       ) : loading ? (
@@ -574,6 +617,7 @@ export default function AdminExams() {
           visible={allocVisible}
           styles={styles}
           theme={theme}
+          classes={allocationClasses}
           initialParams={allocParams}
           hasExisting={allocations.length > 0}
           roomsVisible={roomsVisible}
@@ -719,8 +763,8 @@ const ExamCard = React.memo(function ExamCard({
         </View>
         <Text style={styles.examCardSub} numberOfLines={1}>
           {category.title}
-          {exam.start_date ? ` · ${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : ' · Not scheduled'}
-          {hasPapers ? ` · ${exam.papers_count} papers` : ''}
+          {` · ${fmtDateRange(exam.start_date, exam.end_date)}`}
+          {hasPapers ? ` · ${pluralCount(exam.papers_count || 0, 'paper')}` : ''}
         </Text>
         {nextHint && (
           <Text style={styles.examCardHint} numberOfLines={1}>
@@ -956,8 +1000,6 @@ function PrincipalSignatureModal({
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 1],
       quality: 0.95,
     });
     if (result.canceled || !result.assets?.length) return;
@@ -1049,7 +1091,7 @@ function PrincipalSignatureModal({
               <View style={styles.hallTicketInfo}>
                 <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
                 <Text style={styles.hallTicketInfoText}>
-                  Use a clear signature on a plain white or transparent background. The image is trimmed and resized automatically.
+                  Use a clear signature on a plain white or transparent background. Its original aspect ratio is preserved automatically.
                 </Text>
               </View>
 
@@ -1405,6 +1447,7 @@ function ExamDetailView({
   onOpenRoom,
   onAddRoomToSitting,
   onHallTickets,
+  onDeleteExam,
 }: {
   styles: Styles;
   theme: Theme;
@@ -1421,6 +1464,7 @@ function ExamDetailView({
   onOpenRoom: (a: ExamRoomAllocation) => void;
   onAddRoomToSitting: (s: { exam_date: string; session_start: string }) => void;
   onHallTickets: () => void;
+  onDeleteExam: () => void;
 }) {
   const { exam, papers } = detail;
   const category = examCategoryFor(exam.exam_type);
@@ -1453,6 +1497,13 @@ function ExamDetailView({
   ).size;
   const missingInvigilators = allocations.filter((a) => !a.invigilator_staff_id).length;
 
+  const progressSteps = [
+    { label: 'Schedule', done: papers.length > 0 },
+    { label: 'Seating', done: hasSeating },
+    { label: 'Live', done: published },
+  ];
+  const progressCurrentIdx = progressSteps.findIndex((s) => !s.done);
+
   // One clear next step — never show three competing primary buttons.
   // Publish stays on the bottom bar once schedule + seating are done.
   type NextStep =
@@ -1483,7 +1534,14 @@ function ExamDetailView({
   return (
     <View style={styles.flex}>
       <ScrollView contentContainerStyle={styles.detailContent}>
-        <TouchableOpacity style={styles.backRow} onPress={onBack} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.backRow}
+          onPress={onBack}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Back to all exams"
+        >
           <Ionicons name="arrow-back" size={16} color={theme.colors.primary} />
           <Text style={styles.backRowText}>All exams</Text>
         </TouchableOpacity>
@@ -1501,95 +1559,191 @@ function ExamDetailView({
                 colors={categoryGradient(exam.exam_type, category.color)}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={styles.examCardIconGradient}
+                style={styles.summaryIcon}
               >
-                <Ionicons name={category.icon} size={20} color="#FFFFFF" />
+                <Ionicons name={category.icon} size={22} color="#FFFFFF" />
               </LinearGradient>
               <View style={styles.flex}>
-                <Text style={styles.detailTitle}>{t_field(exam.name, exam.name_te)}</Text>
-                <Text style={styles.examCardSub}>
+                <View style={styles.summaryTitleRow}>
+                  <Text style={styles.detailTitle} numberOfLines={1}>
+                    {t_field(exam.name, exam.name_te)}
+                  </Text>
+                  <View
+                    style={[
+                      styles.statusPill,
+                      {
+                        backgroundColor: published
+                          ? `${theme.colors.success}14`
+                          : `${theme.colors.warning}16`,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor: published
+                            ? theme.colors.success
+                            : theme.colors.warning,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.statusPillText,
+                        {
+                          color: published
+                            ? theme.colors.success
+                            : theme.colors.warning,
+                        },
+                      ]}
+                    >
+                      {published ? 'Live' : 'Draft'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.examCardSub} numberOfLines={1}>
                   {category.title}
                   {exam.academic_year ? ` · ${exam.academic_year}` : ''}
                 </Text>
               </View>
-              <View
-                style={[
-                  styles.statusPill,
-                  { backgroundColor: published ? `${theme.colors.success}14` : `${theme.colors.warning}16` },
-                ]}
-              >
-                <View
-                  style={[styles.statusDot, { backgroundColor: published ? theme.colors.success : theme.colors.warning }]}
-                />
-                <Text
-                  style={[styles.statusPillText, { color: published ? theme.colors.success : theme.colors.warning }]}
-                >
-                  {published ? 'Live' : 'Draft'}
-                </Text>
-              </View>
             </View>
 
-            <Text style={styles.summaryMetaLine} numberOfLines={1}>
-              {exam.start_date ? `${fmtDate(exam.start_date)} – ${fmtDate(exam.end_date)}` : 'Not scheduled'}
-              {papers.length > 0 ? ` · ${papers.length} papers` : ''}
-              {hasSeating ? ` · ${seatedCount} seated` : ''}
-            </Text>
+            <View style={styles.summaryMetaRow}>
+              <View style={styles.metaChip}>
+                <Ionicons name="calendar-outline" size={12} color={theme.colors.textSecondary} />
+                <Text style={styles.metaChipText}>{fmtDateRange(exam.start_date, exam.end_date)}</Text>
+              </View>
+              {papers.length > 0 && (
+                <View style={styles.metaChip}>
+                  <Ionicons name="document-text-outline" size={12} color={theme.colors.textSecondary} />
+                  <Text style={styles.metaChipText}>{pluralCount(papers.length, 'paper')}</Text>
+                </View>
+              )}
+              {hasSeating && (
+                <View style={styles.metaChip}>
+                  <Ionicons name="people-outline" size={12} color={theme.colors.textSecondary} />
+                  <Text style={styles.metaChipText}>{`${seatedCount} seated`}</Text>
+                </View>
+              )}
+            </View>
 
             {/* Progress: Schedule → Seating → Live */}
-            <View style={styles.progressRow}>
-              {[
-                { label: 'Schedule', done: papers.length > 0 },
-                { label: 'Seating', done: hasSeating },
-                { label: 'Live', done: published },
-              ].map((step, i, arr) => (
-                <React.Fragment key={step.label}>
-                  <View style={styles.progressStep}>
-                    <View
-                      style={[
-                        styles.progressDot,
-                        {
-                          backgroundColor: step.done ? theme.colors.success : theme.colors.borderLight,
-                        },
-                      ]}
-                    >
-                      {step.done && <Ionicons name="checkmark" size={10} color="#FFFFFF" />}
+            <View style={styles.progressTrack}>
+              {progressSteps.map((step, i) => {
+                const isCurrent = i === progressCurrentIdx;
+                return (
+                  <React.Fragment key={step.label}>
+                    <View style={styles.progressStepCol}>
+                      <View
+                        style={[
+                          styles.progressDot,
+                          step.done && {
+                            backgroundColor: theme.colors.success,
+                            borderColor: theme.colors.success,
+                          },
+                          isCurrent && {
+                            backgroundColor: `${theme.colors.primary}14`,
+                            borderColor: theme.colors.primary,
+                          },
+                          !step.done &&
+                            !isCurrent && {
+                              backgroundColor: theme.colors.borderLight,
+                              borderColor: theme.colors.border,
+                            },
+                        ]}
+                      >
+                        {step.done ? (
+                          <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+                        ) : isCurrent ? (
+                          <View
+                            style={[
+                              styles.progressDotInner,
+                              { backgroundColor: theme.colors.primary },
+                            ]}
+                          />
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[
+                          styles.progressLabel,
+                          {
+                            color: step.done || isCurrent
+                              ? theme.colors.textStrong
+                              : theme.colors.textTertiary,
+                          },
+                          isCurrent && styles.progressLabelCurrent,
+                        ]}
+                      >
+                        {step.label}
+                      </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.progressLabel,
-                        { color: step.done ? theme.colors.textStrong : theme.colors.textTertiary },
-                      ]}
-                    >
-                      {step.label}
-                    </Text>
-                  </View>
-                  {i < arr.length - 1 && (
-                    <View
-                      style={[
-                        styles.progressLine,
-                        { backgroundColor: step.done ? theme.colors.success : theme.colors.borderLight },
-                      ]}
-                    />
-                  )}
-                </React.Fragment>
-              ))}
+                    {i < progressSteps.length - 1 && (
+                      <View
+                        style={[
+                          styles.progressLine,
+                          {
+                            backgroundColor: step.done
+                              ? theme.colors.success
+                              : theme.colors.borderLight,
+                          },
+                        ]}
+                      />
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </View>
 
-            {papers.length > 0 && (
-              <View style={styles.quietActions}>
-                <TouchableOpacity onPress={onGenerate} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
-                  <Text style={styles.quietActionText}>Regenerate</Text>
-                </TouchableOpacity>
-                <Text style={styles.quietActionDot}>·</Text>
-                <TouchableOpacity onPress={onHallTickets} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
-                  <Text style={styles.quietActionText}>Hall tickets</Text>
-                </TouchableOpacity>
-                <Text style={styles.quietActionDot}>·</Text>
-                <TouchableOpacity onPress={onManageRooms} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6 }}>
-                  <Text style={styles.quietActionText}>Rooms</Text>
-                </TouchableOpacity>
+            <View style={styles.summaryActions}>
+              <View style={styles.summaryActionsPrimary}>
+                {papers.length > 0 && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.actionChip}
+                      onPress={onGenerate}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Regenerate timetable"
+                    >
+                      <Ionicons name="refresh-outline" size={14} color={theme.colors.primary} />
+                      <Text style={styles.actionChipText}>Regenerate</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionChip}
+                      onPress={onHallTickets}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Download hall tickets"
+                    >
+                      <Ionicons name="ticket-outline" size={14} color={theme.colors.primary} />
+                      <Text style={styles.actionChipText}>Hall tickets</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionChip}
+                      onPress={onManageRooms}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Manage rooms"
+                    >
+                      <Ionicons name="business-outline" size={14} color={theme.colors.primary} />
+                      <Text style={styles.actionChipText}>Rooms</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
-            )}
+              <TouchableOpacity
+                style={[styles.actionChip, styles.actionChipDanger]}
+                onPress={onDeleteExam}
+                disabled={saving}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${exam.name} and start over`}
+              >
+                <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
+                <Text style={[styles.actionChipText, { color: theme.colors.danger }]}>Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Animated.View>
 
@@ -2127,9 +2281,10 @@ function GenerateModal({
   const [classIds, setClassIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [sessions, setSessions] = useState<ExamSession[]>([
-    DEFAULT_SESSION_TIMES[0],
+  const [sessions, setSessions] = useState<ExamSessionDraft[]>([
+    toSessionDraft(DEFAULT_SESSION_TIMES[0]),
   ]);
+  const [startingSessionIndex, setStartingSessionIndex] = useState(0);
   const [allowedWeekdays, setAllowedWeekdays] = useState<ExamWeekday[]>(DEFAULT_EXAM_WEEKDAYS);
   const [excludeHolidays, setExcludeHolidays] = useState(true);
   const [excludedDates, setExcludedDates] = useState<string[]>([]);
@@ -2164,19 +2319,25 @@ function GenerateModal({
       setClassIds((initialParams.class_ids || []).filter((id) => availableClassIds.has(id)));
       setStartDate(initialParams.start_date || '');
       setEndDate(initialParams.end_date || '');
-      const savedSessions = (initialParams.sessions || []).map((s) => ({
-        start_time: toHHMM(s.start_time) || null,
-        end_time: toHHMM(s.end_time) || null,
-      }));
-      setSessions(
+      const savedSessions = (initialParams.sessions || []).map(toSessionDraft);
+      const nextSessions =
         savedSessions.length > 0
           ? savedSessions
           : [
-              {
+              toSessionDraft({
                 start_time: toHHMM(initialParams.start_time) || '09:30',
                 end_time: toHHMM(initialParams.end_time) || '12:30',
-              },
-            ]
+              }),
+            ];
+      setSessions(nextSessions);
+      const savedStartingSessionIndex = initialParams.starting_session_index;
+      setStartingSessionIndex(
+        typeof savedStartingSessionIndex === 'number' &&
+          Number.isInteger(savedStartingSessionIndex) &&
+          savedStartingSessionIndex >= 0 &&
+          savedStartingSessionIndex < nextSessions.length
+          ? savedStartingSessionIndex
+          : 0
       );
       setAllowedWeekdays(
         initialParams.allowed_weekdays?.length
@@ -2210,7 +2371,8 @@ function GenerateModal({
       setClassIds([]);
       setStartDate('');
       setEndDate('');
-      setSessions([DEFAULT_SESSION_TIMES[0]]);
+      setSessions([toSessionDraft(DEFAULT_SESSION_TIMES[0])]);
+      setStartingSessionIndex(0);
       setAllowedWeekdays(DEFAULT_EXAM_WEEKDAYS);
       setExcludeHolidays(true);
       setExcludedDates([]);
@@ -2309,15 +2471,28 @@ function GenerateModal({
 
   const addSession = () => {
     setSessions((prev) =>
-      prev.length >= 3 ? prev : [...prev, { ...DEFAULT_SESSION_TIMES[prev.length] }]
+      prev.length >= 3 ? prev : [...prev, toSessionDraft(DEFAULT_SESSION_TIMES[prev.length])]
     );
   };
 
   const removeSession = (index: number) => {
+    setStartingSessionIndex((current) => {
+      if (current > index) return current - 1;
+      if (current === index) return Math.min(index, sessions.length - 2);
+      return current;
+    });
     setSessions((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const setSessionTime = (index: number, field: 'start_time' | 'end_time', value: string) => {
+    setSessions((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+  };
+
+  const setSessionPeriod = (
+    index: number,
+    field: 'start_period' | 'end_period',
+    value: Meridiem
+  ) => {
     setSessions((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   };
 
@@ -2367,7 +2542,10 @@ function GenerateModal({
       }),
     [startDate, endDate, allowedWeekdays, excludedDates, gapDays, maxConsecutiveDays]
   );
-  const requiredDateCount = Math.ceil(subjectSel.length / Math.max(1, sessions.length));
+  const requiredDateCount = Math.ceil(
+    (subjectSel.length + Math.min(startingSessionIndex, sessions.length - 1)) /
+      Math.max(1, sessions.length)
+  );
   const plannedPaperCount = subjectSel.reduce(
     (count, id) => count + (subjectOptions.find((option) => option.id === id)?.class_count || 0),
     0
@@ -2411,15 +2589,17 @@ function GenerateModal({
     for (let i = 0; i < sessions.length; i++) {
       const s = sessions[i];
       const needTimes = sessions.length > 1;
-      if ((needTimes || s.start_time) && !TIME_INPUT_RE.test(s.start_time || '')) {
-        alertCompat('Invalid time', `Session ${i + 1} start must look like 09:30 (24h).`);
+      if ((needTimes || s.start_time) && !SESSION_TIME_INPUT_RE.test(s.start_time || '')) {
+        alertCompat('Invalid time', `Session ${i + 1} start must look like 09:30 or 1:30.`);
         return;
       }
-      if ((needTimes || s.end_time) && !TIME_INPUT_RE.test(s.end_time || '')) {
-        alertCompat('Invalid time', `Session ${i + 1} end must look like 12:30 (24h).`);
+      if ((needTimes || s.end_time) && !SESSION_TIME_INPUT_RE.test(s.end_time || '')) {
+        alertCompat('Invalid time', `Session ${i + 1} end must look like 12:30 or 3:30.`);
         return;
       }
-      if (s.start_time && s.end_time && s.end_time <= s.start_time) {
+      const start24 = s.start_time ? to24HourTime(s.start_time, s.start_period) : '';
+      const end24 = s.end_time ? to24HourTime(s.end_time, s.end_period) : '';
+      if (start24 && end24 && end24 <= start24) {
         alertCompat('Invalid time', `Session ${i + 1} must end after it starts.`);
         return;
       }
@@ -2471,9 +2651,10 @@ function GenerateModal({
       start_date: startDate,
       end_date: endDate,
       sessions: sessions.map((s) => ({
-        start_time: s.start_time || null,
-        end_time: s.end_time || null,
+        start_time: s.start_time ? to24HourTime(s.start_time, s.start_period) : null,
+        end_time: s.end_time ? to24HourTime(s.end_time, s.end_period) : null,
       })),
+      starting_session_index: startingSessionIndex,
       subject_ids: subjectSel,
       allowed_weekdays: allowedWeekdays,
       include_saturdays: allowedWeekdays.includes('saturday'),
@@ -2825,28 +3006,99 @@ function GenerateModal({
                     </TouchableOpacity>
                   )}
                 </View>
-                <View style={styles.rowTwo}>
+                <View style={[styles.rowTwo, compactLayout && styles.columnStack]}>
                   <View style={styles.flex}>
                     <Text style={styles.inputSubLabel}>Starts</Text>
-                    <AppTextInput
-                      value={session.start_time || ''}
-                      onChangeText={(value: string) => setSessionTime(i, 'start_time', value)}
-                      placeholder="09:30"
-                      style={styles.input}
-                    />
+                    <View style={styles.timeEditorRow}>
+                      <AppTextInput
+                        value={session.start_time || ''}
+                        onChangeText={(value: string) => setSessionTime(i, 'start_time', value)}
+                        placeholder="09:30"
+                        style={styles.timeEditorInput}
+                      />
+                      <View style={styles.meridiemToggle}>
+                        {(['AM', 'PM'] as const).map((period) => {
+                          const active = session.start_period === period;
+                          return (
+                            <TouchableOpacity
+                              key={period}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: active }}
+                              style={[styles.meridiemOption, active && styles.meridiemOptionActive]}
+                              onPress={() => setSessionPeriod(i, 'start_period', period)}
+                            >
+                              <Text style={[styles.meridiemText, active && styles.meridiemTextActive]}>
+                                {period}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
                   </View>
                   <View style={styles.flex}>
                     <Text style={styles.inputSubLabel}>Ends</Text>
-                    <AppTextInput
-                      value={session.end_time || ''}
-                      onChangeText={(value: string) => setSessionTime(i, 'end_time', value)}
-                      placeholder="12:30"
-                      style={styles.input}
-                    />
+                    <View style={styles.timeEditorRow}>
+                      <AppTextInput
+                        value={session.end_time || ''}
+                        onChangeText={(value: string) => setSessionTime(i, 'end_time', value)}
+                        placeholder="12:30"
+                        style={styles.timeEditorInput}
+                      />
+                      <View style={styles.meridiemToggle}>
+                        {(['AM', 'PM'] as const).map((period) => {
+                          const active = session.end_period === period;
+                          return (
+                            <TouchableOpacity
+                              key={period}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: active }}
+                              style={[styles.meridiemOption, active && styles.meridiemOptionActive]}
+                              onPress={() => setSessionPeriod(i, 'end_period', period)}
+                            >
+                              <Text style={[styles.meridiemText, active && styles.meridiemTextActive]}>
+                                {period}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
                   </View>
                 </View>
               </View>
             ))}
+
+            {sessions.length > 1 && (
+              <View style={styles.parameterPanel}>
+                <Text style={styles.parameterLabel}>Starting session</Text>
+                <Text style={styles.parameterHint}>
+                  The first exam date starts here. Every later date can use all sessions.
+                </Text>
+                <View style={styles.chipWrap}>
+                  {sessions.map((session, i) => {
+                    const active = startingSessionIndex === i;
+                    const timeRange = session.start_time && session.end_time
+                      ? `${session.start_time} ${session.start_period}–${session.end_time} ${session.end_period}`
+                      : '';
+                    return (
+                      <TouchableOpacity
+                        key={i}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() => setStartingSessionIndex(i)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          Session {i + 1}{timeRange ? ` · ${timeRange}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>Scheduling rules</Text>
             <View style={styles.segment}>
@@ -3328,17 +3580,20 @@ function RoomsModal({
   visible,
   styles,
   theme,
+  initialRoom = null,
   onClose,
 }: {
   visible: boolean;
   styles: Styles;
   theme: Theme;
+  initialRoom?: ExamRoom | null;
   onClose: () => void;
 }) {
   const [rooms, setRooms] = useState<ExamRoom[]>([]);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
-  const [capacity, setCapacity] = useState('30');
+  const [rowCount, setRowCount] = useState('5');
+  const [columnCount, setColumnCount] = useState('6');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -3356,32 +3611,39 @@ function RoomsModal({
   useEffect(() => {
     if (visible) {
       load();
-      setEditingId(null);
-      setName('');
-      setCapacity('30');
+      setEditingId(initialRoom?.id || null);
+      setName(initialRoom?.name || '');
+      setRowCount(String(initialRoom?.rows || 5));
+      setColumnCount(String(initialRoom?.columns || 6));
     }
-  }, [visible, load]);
+  }, [visible, load, initialRoom]);
 
   const submit = async () => {
     const trimmed = name.trim();
-    const cap = Number(capacity);
+    const rows = Number(rowCount);
+    const columns = Number(columnCount);
     if (!trimmed) {
       alertCompat('Missing name', 'Give the room a name, e.g. Hall A.');
       return;
     }
-    if (!(cap > 0)) {
-      alertCompat('Invalid capacity', 'Capacity must be a positive number.');
+    if (!Number.isInteger(rows) || rows < 1 || rows > 100) {
+      alertCompat('Invalid rows', 'Rows must be a whole number between 1 and 100.');
+      return;
+    }
+    if (!Number.isInteger(columns) || columns < 1 || columns > 100) {
+      alertCompat('Invalid columns', 'Columns must be a whole number between 1 and 100.');
       return;
     }
     try {
       setBusy(true);
       if (editingId) {
-        await ExamAllocationService.updateRoom(editingId, { name: trimmed, capacity: cap });
+        await ExamAllocationService.updateRoom(editingId, { name: trimmed, rows, columns });
       } else {
-        await ExamAllocationService.addRoom({ name: trimmed, capacity: cap });
+        await ExamAllocationService.addRoom({ name: trimmed, rows, columns });
       }
       setName('');
-      setCapacity('30');
+      setRowCount('5');
+      setColumnCount('6');
       setEditingId(null);
       await load();
     } catch (err: any) {
@@ -3392,7 +3654,7 @@ function RoomsModal({
   };
 
   const remove = (room: ExamRoom) => {
-    alertCompat('Remove room?', `${room.name} (capacity ${room.capacity})`, [
+    alertCompat('Remove room?', `${room.name} (${room.rows} × ${room.columns}, ${room.capacity} seats)`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -3435,7 +3697,9 @@ function RoomsModal({
                     <Ionicons name="business-outline" size={16} color={theme.colors.textSecondary} />
                     <View style={styles.flex}>
                       <Text style={styles.subjectName}>{room.name}</Text>
-                      <Text style={styles.subjectHint}>Capacity {room.capacity}</Text>
+                      <Text style={styles.subjectHint}>
+                        {room.rows} rows × {room.columns} columns · {room.capacity} seats
+                      </Text>
                     </View>
                     <View style={styles.orderArrows}>
                       <TouchableOpacity
@@ -3444,7 +3708,8 @@ function RoomsModal({
                         onPress={() => {
                           setEditingId(room.id);
                           setName(room.name);
-                          setCapacity(String(room.capacity));
+                          setRowCount(String(room.rows));
+                          setColumnCount(String(room.columns));
                         }}
                       >
                         <Ionicons name="pencil-outline" size={14} color={theme.colors.textSecondary} />
@@ -3464,27 +3729,41 @@ function RoomsModal({
 
             <Text style={styles.fieldLabel}>{editingId ? 'Edit room' : 'Add room'}</Text>
             <View style={styles.rowTwo}>
-              <View style={[styles.flex, { flexGrow: 2 }]}>
+              <View style={[styles.flex, { flexGrow: 2.2 }]}>
                 <Text style={styles.inputSubLabel}>Room name</Text>
                 <AppTextInput value={name} onChangeText={setName} placeholder="e.g. Hall A" style={styles.input} />
               </View>
               <View style={styles.flex}>
-                <Text style={styles.inputSubLabel}>Capacity</Text>
+                <Text style={styles.inputSubLabel}>Rows</Text>
                 <AppTextInput
-                  value={capacity}
-                  onChangeText={setCapacity}
-                  placeholder="30"
+                  value={rowCount}
+                  onChangeText={setRowCount}
+                  placeholder="5"
+                  keyboardType="numeric"
+                  style={styles.input}
+                />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.inputSubLabel}>Columns</Text>
+                <AppTextInput
+                  value={columnCount}
+                  onChangeText={setColumnCount}
+                  placeholder="6"
                   keyboardType="numeric"
                   style={styles.input}
                 />
               </View>
             </View>
+            <Text style={styles.helperText}>
+              Capacity: {(Number(rowCount) || 0) * (Number(columnCount) || 0)} seats
+            </Text>
             {editingId && (
               <TouchableOpacity
                 onPress={() => {
                   setEditingId(null);
                   setName('');
-                  setCapacity('30');
+                  setRowCount('5');
+                  setColumnCount('6');
                 }}
               >
                 <Text style={[styles.helperText, { color: theme.colors.primary }]}>Cancel edit</Text>
@@ -3514,6 +3793,7 @@ function AllocateModal({
   visible,
   styles,
   theme,
+  classes,
   initialParams,
   hasExisting,
   roomsVisible,
@@ -3525,6 +3805,7 @@ function AllocateModal({
   visible: boolean;
   styles: Styles;
   theme: Theme;
+  classes: ClassInfo[];
   initialParams: ExamAllocationParams | null;
   hasExisting: boolean;
   roomsVisible: boolean;
@@ -3536,8 +3817,10 @@ function AllocateModal({
   const [rooms, setRooms] = useState<ExamRoom[]>([]);
   const [teachers, setTeachers] = useState<TimetableTeacher[]>([]);
   const [roomSel, setRoomSel] = useState<string[]>([]);
+  const [roomClassSel, setRoomClassSel] = useState<Record<string, string[]>>({});
   const [staffSel, setStaffSel] = useState<string[]>([]);
-  const [strategy, setStrategy] = useState<SeatingStrategy>('sequential');
+  const [strategy, setStrategy] = useState<SeatingStrategy>('maximize');
+  const [roomToEdit, setRoomToEdit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -3550,24 +3833,43 @@ function AllocateModal({
         ]);
         setRooms(roomData);
         setTeachers(teacherData);
+        const liveRoomIds = new Set(roomData.map((r) => r.id));
+        const liveStaffIds = new Set(teacherData.map((t) => t.id));
+        const examClassIds = classes.map((item) => item.id);
+        const savedConfigByRoom = new Map(
+          (initialParams?.room_configs || []).map((config) => [config.room_id, config.class_ids])
+        );
+        const selectedRooms = initialParams?.room_ids?.length
+          ? initialParams.room_ids.filter((id) => liveRoomIds.has(id))
+          : roomData.map((room) => room.id);
+        setRoomSel(selectedRooms);
+        setRoomClassSel(
+          Object.fromEntries(
+            selectedRooms.map((roomId) => {
+              const saved = (savedConfigByRoom.get(roomId) || []).filter((id) =>
+                examClassIds.includes(id)
+              );
+              return [roomId, saved.length > 0 ? saved : examClassIds];
+            })
+          )
+        );
         if (initialParams) {
-          const roomIds = new Set(roomData.map((r) => r.id));
-          const staffIds = new Set(teacherData.map((t) => t.id));
-          setRoomSel((initialParams.room_ids || []).filter((id) => roomIds.has(id)));
-          setStaffSel((initialParams.invigilator_staff_ids || []).filter((id) => staffIds.has(id)));
+          setStaffSel((initialParams.invigilator_staff_ids || []).filter((id) => liveStaffIds.has(id)));
           setStrategy(
-            initialParams.strategy === 'mixed' || initialParams.strategy === 'balanced'
+            ['sequential', 'mixed', 'balanced', 'maximize'].includes(initialParams.strategy)
               ? initialParams.strategy
-              : 'sequential'
+              : 'maximize'
           );
         } else {
           setStaffSel(teacherData.map((t) => t.id));
+          setStrategy('maximize');
         }
+        setRoomToEdit(null);
       } catch {
         // fields stay empty; user can close and retry
       }
     })();
-  }, [visible]);
+  }, [visible, initialParams, classes]);
 
   // Re-fetch the room list after the nested rooms manager closes, so freshly
   // added/edited rooms appear immediately; selection is pruned to live rooms.
@@ -3576,13 +3878,36 @@ function AllocateModal({
       const roomData = await ExamAllocationService.getRooms();
       setRooms(roomData);
       setRoomSel((prev) => prev.filter((id) => roomData.some((r) => r.id === id)));
+      setRoomClassSel((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([id]) => roomData.some((room) => room.id === id)))
+      );
     } catch {
       // keep the stale list
     }
   }, []);
 
   const toggleRoom = (id: string) => {
-    setRoomSel((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]));
+    const adding = !roomSel.includes(id);
+    setRoomSel((prev) => (adding ? [...prev, id] : prev.filter((roomId) => roomId !== id)));
+    setRoomClassSel((prev) => {
+      if (adding) return { ...prev, [id]: prev[id]?.length ? prev[id] : classes.map((item) => item.id) };
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+  const toggleRoomClass = (roomId: string, classId: string) => {
+    const current = roomClassSel[roomId] || classes.map((item) => item.id);
+    if (current.includes(classId) && current.length === 1) {
+      alertCompat('Select a class', 'Every selected room must allow at least one exam class.');
+      return;
+    }
+    setRoomClassSel((prev) => ({
+      ...prev,
+      [roomId]: current.includes(classId)
+        ? current.filter((id) => id !== classId)
+        : [...current, classId],
+    }));
   };
   const toggleStaff = (id: string) => {
     setStaffSel((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
@@ -3601,10 +3926,23 @@ function AllocateModal({
       alertCompat('Select rooms', 'Pick at least one room, in the order they should fill.');
       return;
     }
+    const incompleteRoom = roomSel.find((roomId) => !(roomClassSel[roomId] || []).length);
+    if (incompleteRoom) {
+      alertCompat('Select classes', 'Every selected room must allow at least one exam class.');
+      return;
+    }
     const run = async () => {
       setBusy(true);
       try {
-        await onSubmit({ room_ids: roomSel, strategy, invigilator_staff_ids: staffSel });
+        await onSubmit({
+          room_ids: roomSel,
+          room_configs: roomSel.map((roomId) => ({
+            room_id: roomId,
+            class_ids: roomClassSel[roomId] || [],
+          })),
+          strategy,
+          invigilator_staff_ids: staffSel,
+        });
       } finally {
         setBusy(false);
       }
@@ -3639,7 +3977,13 @@ function AllocateModal({
               <Text style={[styles.fieldLabel, { marginTop: 0, marginBottom: 0 }]}>
                 Rooms (fill order) · capacity {selectedCapacity}
               </Text>
-              <TouchableOpacity onPress={onManageRooms} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={() => {
+                  setRoomToEdit(null);
+                  onManageRooms();
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.seatingLink}>Manage rooms</Text>
               </TouchableOpacity>
             </View>
@@ -3658,7 +4002,7 @@ function AllocateModal({
                       activeOpacity={0.7}
                     >
                       <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                        {active ? `${idx + 1}. ` : ''}{room.name} ({room.capacity})
+                        {active ? `${idx + 1}. ` : ''}{room.name} ({room.rows}×{room.columns})
                       </Text>
                     </TouchableOpacity>
                   );
@@ -3666,20 +4010,79 @@ function AllocateModal({
               </View>
             )}
 
-            <Text style={styles.fieldLabel}>Seating style</Text>
-            <View style={styles.segment}>
+            {roomSel.length > 0 && (
+              <>
+                <Text style={styles.fieldLabel}>Room parameters</Text>
+                <View style={styles.roomParameterList}>
+                  {roomSel.map((roomId) => {
+                    const room = rooms.find((item) => item.id === roomId);
+                    if (!room) return null;
+                    const allowedClasses = roomClassSel[roomId] || classes.map((item) => item.id);
+                    return (
+                      <View key={room.id} style={styles.roomParameterCard}>
+                        <View style={styles.roomParameterHeader}>
+                          <View style={styles.flex}>
+                            <Text style={styles.subjectName}>{room.name}</Text>
+                            <Text style={styles.subjectHint}>
+                              {room.rows} rows × {room.columns} columns = {room.capacity} seats
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.roomEditButton}
+                            onPress={() => {
+                              setRoomToEdit(room.id);
+                              onManageRooms();
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="pencil-outline" size={13} color={theme.colors.primary} />
+                            <Text style={styles.roomEditButtonText}>Edit</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.roomClassLabel}>Classes allowed in this room</Text>
+                        <View style={styles.chipWrap}>
+                          {classes.map((item) => {
+                            const active = allowedClasses.includes(item.id);
+                            return (
+                              <TouchableOpacity
+                                key={item.id}
+                                style={[styles.chip, styles.roomClassChip, active && styles.chipActive]}
+                                onPress={() => toggleRoomClass(room.id, item.id)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                                  {item.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            <Text style={styles.fieldLabel}>Optimization algorithm</Text>
+            <View style={[styles.segment, styles.allocationStrategyGrid]}>
               {(
                 [
+                  ['maximize', 'Maximize mix', 'Best use of rooms with no same-class side/front neighbours where possible'],
+                  ['mixed', 'Alternate', 'Round-robin classes seat by seat'],
+                  ['balanced', 'Even share', 'Give every room a similar share of each class'],
                   ['sequential', 'By class', 'Each class as a block, room after room'],
-                  ['balanced', 'Even split', 'Every room seats an equal share of each class'],
-                  ['mixed', 'Mixed', 'Alternate classes seat-by-seat (anti-copying)'],
                 ] as const
               ).map(([value, label, hint]) => {
                 const active = strategy === value;
                 return (
                   <TouchableOpacity
                     key={value}
-                    style={[styles.segmentItem, active && styles.segmentItemActive]}
+                    style={[
+                      styles.segmentItem,
+                      styles.allocationStrategyItem,
+                      active && styles.segmentItemActive,
+                    ]}
                     onPress={() => setStrategy(value)}
                     activeOpacity={0.8}
                   >
@@ -3752,8 +4155,10 @@ function AllocateModal({
           visible={roomsVisible}
           styles={styles}
           theme={theme}
+          initialRoom={roomToEdit ? rooms.find((room) => room.id === roomToEdit) || null : null}
           onClose={() => {
             onCloseRooms();
+            setRoomToEdit(null);
             reloadRooms();
           }}
         />
@@ -3840,7 +4245,9 @@ function AddRoomToSittingModal({
                     <Ionicons name="business-outline" size={16} color={theme.colors.textSecondary} />
                     <View style={styles.flex}>
                       <Text style={styles.subjectName}>{room.name}</Text>
-                      <Text style={styles.subjectHint}>Capacity {room.capacity}</Text>
+                      <Text style={styles.subjectHint}>
+                        {room.rows} rows × {room.columns} columns · {room.capacity} seats
+                      </Text>
                     </View>
                     <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
                   </TouchableOpacity>
@@ -4334,38 +4741,136 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     emptyCtaText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 
     // detail
-    backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+    backRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+      marginBottom: 10,
+    },
     backRowText: { fontSize: 13, fontWeight: '600', color: theme.colors.primary },
     summaryCard: {
       backgroundColor: theme.colors.card,
-      borderRadius: 18,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: isDark ? theme.colors.border : theme.colors.borderLight,
       marginBottom: 14,
       flexDirection: 'row',
       overflow: 'hidden',
+      ...Shadows.sm,
     },
     summaryAccent: { width: 4 },
-    summaryInner: { flex: 1, padding: 14, gap: 10 },
+    summaryInner: { flex: 1, padding: 16, gap: 14 },
     summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    detailTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, color: theme.colors.textStrong },
+    summaryIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    summaryTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    detailTitle: {
+      flexShrink: 1,
+      fontSize: 18,
+      fontWeight: '800',
+      letterSpacing: -0.3,
+      color: theme.colors.textStrong,
+    },
     summaryDates: { fontSize: 13, color: theme.colors.textSecondary },
     summaryMetaLine: { fontSize: 12.5, color: theme.colors.textSecondary },
+    summaryMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    progressTrack: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: 4,
+      paddingHorizontal: 2,
+    },
     progressRow: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingTop: 2,
     },
     progressStep: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    progressStepCol: {
+      alignItems: 'center',
+      gap: 6,
+      minWidth: 56,
+    },
     progressDot: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.borderLight,
     },
-    progressLabel: { fontSize: 11.5, fontWeight: '700' },
-    progressLine: { flex: 1, height: 2, marginHorizontal: 8, borderRadius: 1 },
+    progressDotInner: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    progressLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+    progressLabelCurrent: { fontWeight: '800', color: theme.colors.primary },
+    progressLine: {
+      flex: 1,
+      height: 2,
+      marginHorizontal: 6,
+      marginTop: 9,
+      borderRadius: 1,
+    },
+    summaryActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? theme.colors.border : theme.colors.borderLight,
+      marginTop: 2,
+      paddingTop: 12,
+    },
+    summaryActionsPrimary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+      flex: 1,
+    },
+    actionChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      minHeight: 34,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : `${theme.colors.primary}0A`,
+      borderWidth: 1,
+      borderColor: isDark ? theme.colors.border : `${theme.colors.primary}18`,
+    },
+    actionChipDanger: {
+      backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : `${theme.colors.danger}0A`,
+      borderColor: isDark ? 'rgba(239,68,68,0.25)' : `${theme.colors.danger}22`,
+      flexShrink: 0,
+    },
+    actionChipText: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: theme.colors.primary,
+    },
     quietActions: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -4552,6 +5057,37 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     },
     seatingEmptyText: { fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary },
     seatingEmptyActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    roomParameterList: { gap: 10 },
+    roomParameterCard: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 12,
+      padding: 12,
+      gap: 10,
+      backgroundColor: isDark ? `${theme.colors.background}88` : theme.colors.background,
+    },
+    roomParameterHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    roomEditButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: `${theme.colors.primary}44`,
+      backgroundColor: `${theme.colors.primary}0D`,
+    },
+    roomEditButtonText: { fontSize: 11.5, fontWeight: '700', color: theme.colors.primary },
+    roomClassLabel: { fontSize: 11.5, fontWeight: '700', color: theme.colors.textSecondary },
+    roomClassChip: { paddingHorizontal: 10, paddingVertical: 6 },
+    allocationStrategyGrid: { flexWrap: 'wrap' },
+    allocationStrategyItem: { flexBasis: '47%', flexGrow: 1, flexShrink: 0 },
     inlinePrimaryBtn: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -5062,6 +5598,26 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     },
     sessionNumberText: { fontSize: 11.5, fontWeight: '800', color: theme.colors.primary },
     sessionCardTitle: { flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.colors.textStrong },
+    timeEditorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    timeEditorInput: { flex: 1, minWidth: 76, marginBottom: 0 },
+    meridiemToggle: {
+      flexDirection: 'row',
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: 9,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.card,
+    },
+    meridiemOption: {
+      minWidth: 34,
+      minHeight: 40,
+      paddingHorizontal: 7,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    meridiemOptionActive: { backgroundColor: `${theme.colors.primary}18` },
+    meridiemText: { fontSize: 10.5, fontWeight: '700', color: theme.colors.textTertiary },
+    meridiemTextActive: { color: theme.colors.primary, fontWeight: '800' },
     iconRemoveBtn: {
       width: 30,
       height: 30,

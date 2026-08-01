@@ -75,6 +75,7 @@ export interface ExamHallTicketData {
     students: {
         id: string;
         display_name: string;
+        father_name?: string | null;
         photo_url?: string | null;
         admission_no: string;
         roll_number?: string | number | null;
@@ -94,6 +95,8 @@ export interface ExamGenerateParams {
     end_time?: string | null;
     /** Exam sessions per day (1–3), each with its own timings. Overrides start/end_time. */
     sessions?: ExamSession[];
+    /** Zero-based session index used by the first paper on the first exam date. */
+    starting_session_index?: number;
     include_saturdays?: boolean;
     /** Explicit days on which papers may be scheduled. */
     allowed_weekdays?: ExamWeekday[];
@@ -236,15 +239,25 @@ export const ExamTimetableService = {
 export interface ExamRoom {
     id: string;
     name: string;
+    rows: number;
+    columns: number;
     capacity: number;
     sort_order: number;
 }
 
-export type SeatingStrategy = 'sequential' | 'mixed' | 'balanced';
+export type SeatingStrategy = 'sequential' | 'mixed' | 'balanced' | 'maximize';
+
+export interface ExamRoomClassConfig {
+    room_id: string;
+    /** Empty means every class scheduled in the exam. */
+    class_ids: string[];
+}
 
 export interface ExamAllocationParams {
     /** Rooms in fill order. */
     room_ids: string[];
+    /** Classes permitted in each selected room. */
+    room_configs?: ExamRoomClassConfig[];
     strategy: SeatingStrategy;
     invigilator_staff_ids: string[];
 }
@@ -256,6 +269,8 @@ export interface ExamRoomAllocation {
     session_start: string; // "09:30:00"; "00:00:00" = untimed sitting
     room_id: string;
     room_name: string;
+    rows: number;
+    columns: number;
     capacity: number;
     invigilator_staff_id: string | null;
     invigilator_name: string | null;
@@ -303,10 +318,10 @@ export const ExamAllocationService = {
     getRooms: async (): Promise<ExamRoom[]> => {
         return api.get<ExamRoom[]>('/results/exam-rooms');
     },
-    addRoom: async (data: { name: string; capacity: number }): Promise<void> => {
+    addRoom: async (data: { name: string; rows: number; columns: number }): Promise<void> => {
         return api.post('/results/exam-rooms', data, { silent: true });
     },
-    updateRoom: async (id: string, data: { name?: string; capacity?: number }): Promise<void> => {
+    updateRoom: async (id: string, data: { name?: string; rows?: number; columns?: number }): Promise<void> => {
         return api.patch(`/results/exam-rooms/${id}`, data, { silent: true });
     },
     deleteRoom: async (id: string): Promise<void> => {

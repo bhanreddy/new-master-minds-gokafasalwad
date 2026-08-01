@@ -22,9 +22,10 @@ const options: HallTicketPdfOptions = {
   students: Array.from({ length: 4 }, (_, index) => ({
     id: `student-${index + 1}`,
     display_name: `Student ${index + 1}`,
+    father_name: `Father ${index + 1}`,
     photo_url: index === 0 ? 'data:image/jpeg;base64,student-photo' : null,
     admission_no: `ADM-${index + 1}`,
-    roll_number: index + 1,
+    roll_number: `SECRET-ROLL-${index + 1}`,
   })),
   papers: [
     {
@@ -32,8 +33,8 @@ const options: HallTicketPdfOptions = {
       class_id: 'class-5',
       subject_id: 'math',
       exam_date: '2026-08-10',
-      start_time: '09:30:00',
-      end_time: '10:30:00',
+      start_time: '13:30:00',
+      end_time: '14:30:00',
       max_marks: 40,
       passing_marks: 14,
       class_name: '5',
@@ -155,8 +156,17 @@ describe('hallTicketPdf', () => {
     const html = buildHallTicketHtml(options);
 
     expect((html.match(/class="principal-signature"/g) || []).length).toBe(options.students.length);
+    expect((html.match(/class="principal-signature-line"/g) || []).length).toBe(options.students.length);
+    expect(
+      (html.match(/class="sign-block principal-sign-block principal-sign-block--signed"/g) || [])
+        .length,
+    ).toBe(options.students.length);
     expect(html).toContain('data:image/png;base64,signature');
     expect(html).toContain('<span>Principal</span>');
+    expect(html).toContain('width: auto;\n      height: auto;\n      max-width: 100%;');
+    expect(html).toContain('flex-direction: row;');
+    expect(html).toContain('margin: 0;\n      border: 0;');
+    expect(html).toContain('max-width: 32mm;\n      max-height: 5.5mm;');
   });
 
   it('keeps a blank principal signing line when no signature is configured', () => {
@@ -176,7 +186,10 @@ describe('hallTicketPdf', () => {
 
     expect((html.match(/Mathematics/g) || []).length).toBe(options.students.length);
     expect((html.match(/Science/g) || []).length).toBe(options.students.length);
-    expect((html.match(/9:30 AM - 10:30 AM/g) || []).length).toBe(options.students.length * 2);
+    expect((html.match(/9:30 AM - 10:30 AM/g) || []).length).toBe(options.students.length);
+    expect((html.match(/1:30 PM - 2:30 PM/g) || []).length).toBe(options.students.length);
+    expect(html).not.toContain('AM session');
+    expect(html).not.toContain('PM session');
     expect(html).toContain('10/08/2026');
     expect(html).toContain('11/08/2026');
     expect(html).toContain('2 subjects');
@@ -194,7 +207,7 @@ describe('hallTicketPdf', () => {
     expect(html).not.toContain('Signature of invigilator');
     expect(html).not.toContain('Student signature');
     expect(html).not.toContain('Max 40');
-    expect(html).toContain('.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 3mm; }');
+    expect(html).toContain('.hall-sheet--4 { grid-template-rows: repeat(4, 67mm); row-gap: 5mm; }');
     expect(html).toContain('font-size: 8.5pt');
     expect(html).toContain('font-size: 6.5pt');
     expect(html).toContain('font-weight: 800');
@@ -207,6 +220,46 @@ describe('hallTicketPdf', () => {
     expect(html).toMatch(/<tbody><tr><td>[\s\S]*Mathematics[\s\S]*Science[\s\S]*<\/tr><\/tbody>/);
   });
 
+  it('shows father names and leaves roll numbers as empty boxes', () => {
+    const html = buildHallTicketHtml(options);
+
+    expect((html.match(/Father name/g) || []).length).toBe(options.students.length);
+    expect(html).toContain('Father 1');
+    expect((html.match(/class="roll-number-box"/g) || []).length).toBe(options.students.length);
+    expect(html).not.toContain('SECRET-ROLL-1');
+  });
+
+  it('uses white, larger date rows and edge-aligned signature blocks', () => {
+    const html = buildHallTicketHtml(options);
+
+    expect(html).toContain('height: var(--schedule-date-height, 6mm);');
+    expect(html).toContain('font-size: var(--schedule-date-size, 8.5pt);');
+    expect(html).toContain('.paper-date {');
+    expect(html).toContain('font-size: 7.2pt');
+    expect(html).toContain('.sign-block:first-child { align-items: flex-start; padding-left: 0; }');
+    expect(html).toContain('.principal-sign-block { align-items: flex-end; padding-right: 0; text-align: right; }');
+  });
+
+  it('continuously scales compact schedule typography as subject columns increase', () => {
+    const twoSubjectHtml = buildHallTicketHtml(options);
+    const sixSubjectHtml = buildHallTicketHtml({
+      ...options,
+      papers: Array.from({ length: 6 }, (_, index) => ({
+        ...options.papers[index % options.papers.length],
+        id: `paper-${index + 1}`,
+        exam_date: `2026-08-${String(index + 10).padStart(2, '0')}`,
+      })),
+    });
+
+    expect(twoSubjectHtml).toContain('data-subject-count="2"');
+    expect(twoSubjectHtml).toContain('--schedule-subject-size:9.8pt');
+    expect(twoSubjectHtml).toContain('--schedule-padding-x:0.45mm');
+    expect(sixSubjectHtml).toContain('data-subject-count="6"');
+    expect(sixSubjectHtml).toContain('--schedule-subject-size:7.48pt');
+    expect(sixSubjectHtml).toContain('--schedule-time-size:5.92pt');
+    expect(sixSubjectHtml).toContain('--schedule-padding-x:0.29mm');
+  });
+
   it('scales header, subject, and timing text by hall-ticket model', () => {
     const html = buildHallTicketHtml(options);
 
@@ -217,8 +270,11 @@ describe('hallTicketPdf', () => {
     expect(html).toContain('.ticket--layout-2 .school-name { font-size: 16pt; }');
     expect(html).toContain('.ticket--layout-2 .hall-ticket-title { font-size: 11pt; }');
     expect(html).toContain('font-size: 10pt');
-    expect(html).toContain('.ticket--layout-4.ticket--single .schedule td strong { font-size: 9.5pt; }');
-    expect(html).toContain('.ticket--layout-4.ticket--single .schedule td .subject-time { font-size: 7.2pt; }');
+    expect(html).toContain('.ticket--layout-4.ticket--single .schedule th { height: 7mm; font-size: 9.5pt; }');
+    expect(html).toContain('font-size: 13pt;\n      line-height: 1.12;');
+    expect(html).toContain('margin-top: 0.9mm;\n      font-size: 9.5pt;');
+    expect(html).toContain('width: 72%;\n      height: 4mm;');
+    expect(html).toContain('font-size: 5.2pt;');
   });
 
   it('gives the compact student-details card more space and reduces the schedule whitespace', () => {

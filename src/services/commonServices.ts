@@ -365,8 +365,8 @@ export const ResultService = {
     updateExam: async (id: string, data: Partial<Exam>): Promise<Exam> => {
         return api.put<Exam>(`/results/exams/${id}`, data);
     },
-    deleteExam: async (id: string): Promise<void> => {
-        return api.delete(`/results/exams/${id}`);
+    deleteExam: async (id: string, force = false): Promise<void> => {
+        return api.delete(`/results/exams/${id}${force ? '?force=true' : ''}`);
     },
 
     upload: async (data: ExamResultUpload): Promise<{ success: boolean }> => {
