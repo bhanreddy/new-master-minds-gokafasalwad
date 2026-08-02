@@ -22,6 +22,93 @@ export interface CollectionTotals {
   byMode: Record<string, { count: number; total: number }>;
 }
 
+export interface CollectionReportOptions {
+  includeDenominations?: boolean;
+}
+
+export interface CashDenominationRow {
+  denomination: number;
+  pieces: number;
+  amount: number;
+}
+
+export interface CashDenominationBreakdown {
+  rows: CashDenominationRow[];
+  allocatedTotal: number;
+  remainder: number;
+}
+
+/** Commonly circulating notes/coins, deliberately excluding the withdrawn-from-circulation ₹2000 note. */
+export const CASH_DENOMINATIONS = [500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
+
+/** Greedy minimum-piece suggestion. This is not a physical cash-count record. */
+export function calculateCashDenominations(cashTotal: number): CashDenominationBreakdown {
+  const safeTotal = Math.max(0, Number.isFinite(Number(cashTotal)) ? Number(cashTotal) : 0);
+  let remainingPaise = Math.round(safeTotal * 100);
+  const rows = CASH_DENOMINATIONS.map((denomination) => {
+    const denominationPaise = denomination * 100;
+    const pieces = Math.floor(remainingPaise / denominationPaise);
+    remainingPaise -= pieces * denominationPaise;
+    return { denomination, pieces, amount: pieces * denomination };
+  });
+  const allocatedTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+  return { rows, allocatedTotal, remainder: remainingPaise / 100 };
+}
+
+export const COLLECTION_REPORT_COLUMNS = [
+  { key: 'fee_type', label: 'Fee type', heading: 'Fee type' },
+  { key: 'receipt_no', label: 'Receipt number', heading: 'Receipt no' },
+  { key: 'student_name', label: 'Student name', heading: 'Student' },
+  { key: 'father_name', label: 'Father name', heading: 'Father' },
+  { key: 'admission_no', label: 'Admission number', heading: 'Adm no' },
+  { key: 'class_section', label: 'Class & section', heading: 'Class · Section' },
+  { key: 'payment_method', label: 'Payment mode', heading: 'Payment mode' },
+  { key: 'time', label: 'Time', heading: 'Time' },
+  { key: 'transaction_ref', label: 'Transaction reference', heading: 'Reference' },
+  { key: 'remarks', label: 'Remarks', heading: 'Remarks' },
+  { key: 'received_by', label: 'Collected by', heading: 'Collected by' },
+  { key: 'amount', label: 'Amount', heading: 'Amount', numeric: true },
+] as const;
+
+export type CollectionReportColumnKey = typeof COLLECTION_REPORT_COLUMNS[number]['key'];
+
+export const COLLECTION_REPORT_COLUMN_KEYS: readonly CollectionReportColumnKey[] =
+  COLLECTION_REPORT_COLUMNS.map((column) => column.key);
+
+/** Preserve the report's previous layout until the user opts into the new columns. */
+export const DEFAULT_COLLECTION_REPORT_COLUMNS: readonly CollectionReportColumnKey[] = [
+  'fee_type',
+  'receipt_no',
+  'student_name',
+  'father_name',
+  'admission_no',
+  'class_section',
+  'time',
+  'amount',
+];
+
+const VALID_COLLECTION_REPORT_COLUMN_KEYS = new Set<CollectionReportColumnKey>(COLLECTION_REPORT_COLUMN_KEYS);
+
+/**
+ * Keeps saved column preferences valid when columns are added or removed in a later app version.
+ * At least one column is always returned so the printable table can never be empty.
+ */
+export function normalizeCollectionReportColumns(value: unknown): CollectionReportColumnKey[] {
+  if (!Array.isArray(value)) return [...DEFAULT_COLLECTION_REPORT_COLUMNS];
+
+  const normalized: CollectionReportColumnKey[] = [];
+  for (const key of value) {
+    if (
+      typeof key === 'string' &&
+      VALID_COLLECTION_REPORT_COLUMN_KEYS.has(key as CollectionReportColumnKey) &&
+      !normalized.includes(key as CollectionReportColumnKey)
+    ) {
+      normalized.push(key as CollectionReportColumnKey);
+    }
+  }
+  return normalized.length > 0 ? normalized : [...DEFAULT_COLLECTION_REPORT_COLUMNS];
+}
+
 export function formatPaymentMethod(method?: string | null): string {
   const map: Record<string, string> = {
     cash: 'Cash',
@@ -99,47 +186,95 @@ export function getCollectionCsvFileName(meta: CollectionReportMeta): string {
   return `collection_${fileSafe(meta.accountantName)}_${meta.dateIso}.csv`;
 }
 
-export function buildCollectionCsv(rows: FeeTransaction[], meta: CollectionReportMeta): string {
+function getCollectionColumnValue(
+  row: FeeTransaction,
+  key: CollectionReportColumnKey,
+  output: 'display' | 'csv',
+): string {
+  switch (key) {
+    case 'fee_type': return row.fee_type ?? '—';
+    case 'receipt_no': return row.receipt_no ?? '—';
+    case 'student_name': return row.student_name ?? '—';
+    case 'father_name': return row.father_name ?? '—';
+    case 'admission_no': return row.admission_no ?? '—';
+    case 'class_section': return formatClassSection(row.class_name, row.section_name);
+    case 'payment_method': return formatPaymentMethod(row.payment_method);
+    case 'time': return formatTime(row.paid_at);
+    case 'transaction_ref': return row.transaction_ref ?? '—';
+    case 'remarks': return row.remarks?.trim() || '—';
+    case 'received_by': return row.received_by?.trim() || '—';
+    case 'amount':
+      return output === 'csv'
+        ? Number(row.amount || 0).toFixed(2)
+        : formatAmount(Number(row.amount || 0));
+  }
+}
+
+function buildCsvSummaryRow(
+  columns: readonly CollectionReportColumnKey[],
+  label: string,
+  amount: string,
+  countLabel?: string,
+): string {
+  const cells = columns.map(() => '');
+  const amountIndex = columns.indexOf('amount');
+
+  if (cells.length === 1) {
+    cells[0] = `${label}${countLabel ? ` · ${countLabel}` : ''}: ${amount}`;
+  } else {
+    cells[0] = label;
+    const valueIndex = amountIndex >= 0 ? amountIndex : cells.length - 1;
+    cells[valueIndex] = amount;
+    if (countLabel) {
+      if (valueIndex > 1) cells[valueIndex - 1] = countLabel;
+      else cells[0] = `${label} · ${countLabel}`;
+    }
+  }
+
+  return cells.map(escapeCsv).join(',');
+}
+
+export function buildCollectionCsv(
+  rows: FeeTransaction[],
+  meta: CollectionReportMeta,
+  columns: readonly CollectionReportColumnKey[] = DEFAULT_COLLECTION_REPORT_COLUMNS,
+): string {
   const totals = computeCollectionTotals(rows);
+  const selectedColumns = normalizeCollectionReportColumns(columns);
   const lines: string[] = [
     escapeCsv(meta.schoolName),
     `Accountant,${escapeCsv(meta.accountantName)}`,
     `Date,${escapeCsv(meta.dateLabel)}`,
     ...(meta.filterNote ? [`Filters,${escapeCsv(meta.filterNote)}`] : []),
     '',
-    [
-      'Fee type',
-      'Receipt no',
-      'Student name',
-      'Father name',
-      'Admission no',
-      'Class · Section',
-      'Time',
-      'Amount',
-    ].map(escapeCsv).join(','),
+    selectedColumns
+      .map((key) => COLLECTION_REPORT_COLUMNS.find((column) => column.key === key)!.heading)
+      .map(escapeCsv)
+      .join(','),
   ];
 
   for (const row of rows) {
     lines.push(
-      [
-        row.fee_type ?? '—',
-        row.receipt_no ?? '—',
-        row.student_name ?? '—',
-        row.father_name ?? '—',
-        row.admission_no ?? '—',
-        formatClassSection(row.class_name, row.section_name),
-        formatTime(row.paid_at),
-        Number(row.amount || 0).toFixed(2),
-      ].map(escapeCsv).join(','),
+      selectedColumns
+        .map((key) => getCollectionColumnValue(row, key, 'csv'))
+        .map(escapeCsv)
+        .join(','),
     );
   }
 
   lines.push('');
-  lines.push(`Grand total,,,,,,,${totals.grandTotal.toFixed(2)}`);
+  lines.push(buildCsvSummaryRow(selectedColumns, 'Grand total', totals.grandTotal.toFixed(2)));
   for (const mode of PAYMENT_MODES) {
     const bucket = totals.byMode[mode];
     if (!bucket || bucket.count === 0) continue;
-    lines.push(`${formatPaymentMethod(mode)} subtotal,,,,,,${bucket.count} txn,${bucket.total.toFixed(2)}`);
+    lines.push(
+      buildCsvSummaryRow(
+        selectedColumns,
+        `${formatPaymentMethod(mode)} subtotal`,
+        bucket.total.toFixed(2),
+        `${bucket.count} transaction${bucket.count === 1 ? '' : 's'}`,
+      ),
+    );
   }
 
   return lines.join('\n');
@@ -170,8 +305,12 @@ async function shareCsvNative(csv: string, fileName: string): Promise<void> {
   throw new Error('Sharing is not available on this device.');
 }
 
-export async function exportCollectionCsv(rows: FeeTransaction[], meta: CollectionReportMeta): Promise<string> {
-  const csv = buildCollectionCsv(rows, meta);
+export async function exportCollectionCsv(
+  rows: FeeTransaction[],
+  meta: CollectionReportMeta,
+  columns: readonly CollectionReportColumnKey[] = DEFAULT_COLLECTION_REPORT_COLUMNS,
+): Promise<string> {
+  const csv = buildCollectionCsv(rows, meta, columns);
   const fileName = getCollectionCsvFileName(meta);
   if (Platform.OS === 'web') {
     await shareCsvWeb(csv, fileName);
@@ -181,9 +320,19 @@ export async function exportCollectionCsv(rows: FeeTransaction[], meta: Collecti
   return fileName;
 }
 
-function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta): string {
+export function buildCollectionHtml(
+  rows: FeeTransaction[],
+  meta: CollectionReportMeta,
+  columns: readonly CollectionReportColumnKey[] = DEFAULT_COLLECTION_REPORT_COLUMNS,
+  options: CollectionReportOptions = {},
+): string {
   const totals = computeCollectionTotals(rows);
-  const modeSummary = PAYMENT_MODES
+  const selectedColumns = normalizeCollectionReportColumns(columns);
+  const selectedDefinitions = selectedColumns.map(
+    (key) => COLLECTION_REPORT_COLUMNS.find((column) => column.key === key)!,
+  );
+  const useLandscape = selectedDefinitions.length > 8 || Boolean(options.includeDenominations);
+  const modeSummaryRows = PAYMENT_MODES
     .map((mode) => {
       const bucket = totals.byMode[mode];
       if (!bucket || bucket.count === 0) return '';
@@ -191,21 +340,52 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
     })
     .filter(Boolean)
     .join('');
+  const cashTotal = totals.byMode.cash?.total || 0;
+  const digitalTotal = totals.grandTotal - cashTotal;
+  const denominationBreakdown = calculateCashDenominations(cashTotal);
+  const feeTypeTotals = new Map<string, { count: number; total: number }>();
+  for (const row of rows) {
+    const feeType = row.fee_type?.trim() || 'Other';
+    const current = feeTypeTotals.get(feeType) || { count: 0, total: 0 };
+    current.count += 1;
+    current.total += Number(row.amount || 0);
+    feeTypeTotals.set(feeType, current);
+  }
+  const feeTypeSummaryRows = Array.from(feeTypeTotals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([feeType, bucket]) => `<tr><td>${escapeHtml(feeType)}</td><td class="num">${bucket.count}</td><td class="num">${escapeHtml(formatAmount(bucket.total))}</td></tr>`)
+    .join('');
+  const denominationRows = denominationBreakdown.rows
+    .map((row) => `<tr><td class="num">${escapeHtml(formatAmount(row.denomination))}</td><td class="num">${row.pieces}</td><td class="num">${escapeHtml(formatAmount(row.amount))}</td></tr>`)
+    .join('');
+
+  const reportHeadings = selectedDefinitions
+    .map((column) => `<th${'numeric' in column && column.numeric ? ' class="num"' : ''}>${escapeHtml(column.heading)}</th>`)
+    .join('');
 
   const tableRows = rows
-    .map(
-      (row) => `<tr>
-        <td>${escapeHtml(row.fee_type ?? '—')}</td>
-        <td>${escapeHtml(row.receipt_no ?? '—')}</td>
-        <td>${escapeHtml(row.student_name ?? '—')}</td>
-        <td>${escapeHtml(row.father_name ?? '—')}</td>
-        <td>${escapeHtml(row.admission_no ?? '—')}</td>
-        <td>${escapeHtml(formatClassSection(row.class_name, row.section_name))}</td>
-        <td>${escapeHtml(formatTime(row.paid_at))}</td>
-        <td class="num">${escapeHtml(formatAmount(Number(row.amount || 0)))}</td>
-      </tr>`,
-    )
+    .map((row) => {
+      const cells = selectedDefinitions
+        .map((column) => {
+          const classNames = ['numeric' in column && column.numeric ? 'num' : '', column.key === 'remarks' ? 'remarks' : '']
+            .filter(Boolean)
+            .join(' ');
+          return `<td${classNames ? ` class="${classNames}"` : ''}>${escapeHtml(getCollectionColumnValue(row, column.key, 'display'))}</td>`;
+        })
+        .join('');
+      return `<tr>${cells}</tr>`;
+    })
     .join('');
+
+  const amountVisible = selectedColumns.includes('amount');
+  const amountIndex = selectedColumns.indexOf('amount');
+  const totalFooter = amountVisible
+    ? amountIndex === 0
+      ? `<td class="num"><strong>Grand total (${totals.count} transactions): ${escapeHtml(formatAmount(totals.grandTotal))}</strong></td>`
+      : `<td colspan="${amountIndex}"><strong>Grand total (${totals.count} transactions)</strong></td>
+          <td class="num"><strong>${escapeHtml(formatAmount(totals.grandTotal))}</strong></td>
+          ${selectedColumns.length - amountIndex - 1 > 0 ? `<td colspan="${selectedColumns.length - amountIndex - 1}"></td>` : ''}`
+    : `<td colspan="${selectedColumns.length}" class="num"><strong>Grand total (${totals.count} transactions): ${escapeHtml(formatAmount(totals.grandTotal))}</strong></td>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -213,6 +393,7 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
   <meta charset="utf-8" />
   <title>Today's Collection</title>
   <style>
+    @page { size: A4 ${useLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; margin: 0; padding: 24px; background: #fff; }
     .sheet { max-width: 980px; margin: 0 auto; }
@@ -224,11 +405,20 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
     .summary-card { border: 1px solid #E2E8F0; border-radius: 10px; padding: 10px 12px; background: #F8FAFC; }
     .summary-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748B; letter-spacing: 0.4px; }
     .summary-value { font-size: 18px; font-weight: 800; margin-top: 4px; color: #0F766E; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; font-size: ${useLandscape ? '9px' : '10px'}; }
     th, td { border: 1px solid #CBD5E1; padding: 6px 7px; text-align: left; vertical-align: top; }
     th { background: #EEF2FF; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
     td.num, th.num { text-align: right; white-space: nowrap; }
+    td.remarks { min-width: 90px; overflow-wrap: anywhere; }
     .totals { margin-top: 14px; width: 320px; margin-left: auto; }
+    .reconciliation { margin-top: 20px; break-inside: avoid; page-break-inside: avoid; border: 1px solid #CBD5E1; border-radius: 10px; overflow: hidden; }
+    .reconciliation-title { background: #DDBA86; color: #111827; text-align: center; padding: 8px 10px; font-size: 13px; font-weight: 800; }
+    .reconciliation-grid { display: grid; grid-template-columns: ${options.includeDenominations ? '1fr 1fr 1.15fr' : '1fr 1fr'}; gap: 14px; padding: 14px; align-items: start; }
+    .reconciliation h3 { font-size: 11px; margin: 0 0 7px; color: #334155; text-transform: uppercase; letter-spacing: 0.35px; }
+    .reconciliation table { font-size: 9px; }
+    .reconciliation th, .reconciliation td { padding: 5px 6px; }
+    .reconciliation .total-row td { font-weight: 800; background: #F8FAFC; border-top: 2px solid #94A3B8; }
+    .denomination-note { color: #64748B; font-size: 8px; line-height: 1.35; margin: 0 0 7px; }
     .signatures { margin-top: 36px; display: flex; justify-content: space-between; gap: 24px; }
     .sign-box { flex: 1; border-top: 1px solid #94A3B8; padding-top: 8px; font-size: 12px; color: #475569; }
     @media print {
@@ -263,38 +453,54 @@ function buildCollectionHtml(rows: FeeTransaction[], meta: CollectionReportMeta)
 
     <table>
       <thead>
-        <tr>
-          <th>Mode summary</th>
-          <th class="num">Count</th>
-          <th class="num">Amount</th>
-        </tr>
-      </thead>
-      <tbody>${modeSummary}</tbody>
-    </table>
-
-    <table style="margin-top:16px;">
-      <thead>
-        <tr>
-          <th>Fee type</th>
-          <th>Receipt no</th>
-          <th>Student</th>
-          <th>Father</th>
-          <th>Adm no</th>
-          <th>Class · Section</th>
-          <th>Time</th>
-          <th class="num">Amount</th>
-        </tr>
+        <tr>${reportHeadings}</tr>
       </thead>
       <tbody>
-        ${tableRows || '<tr><td colspan="8">No collections recorded today.</td></tr>'}
+        ${tableRows || `<tr><td colspan="${selectedColumns.length}">No collections recorded today.</td></tr>`}
       </tbody>
-      <tfoot>
-        <tr>
-          <td colspan="7"><strong>Grand total (${totals.count} transactions)</strong></td>
-          <td class="num"><strong>${escapeHtml(formatAmount(totals.grandTotal))}</strong></td>
-        </tr>
-      </tfoot>
+      <tbody class="report-total">
+        <tr>${totalFooter}</tr>
+      </tbody>
     </table>
+
+    <section class="reconciliation">
+      <div class="reconciliation-title">Collection Reconciliation</div>
+      <div class="reconciliation-grid">
+        <div>
+          <h3>Payment totals</h3>
+          <table>
+            <thead><tr><th>Mode</th><th class="num">Count</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              ${modeSummaryRows || '<tr><td colspan="3">No payments</td></tr>'}
+              <tr class="total-row"><td colspan="2">Non-cash total</td><td class="num">${escapeHtml(formatAmount(digitalTotal))}</td></tr>
+              <tr class="total-row"><td colspan="2">Grand total</td><td class="num">${escapeHtml(formatAmount(totals.grandTotal))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h3>Fee type totals</h3>
+          <table>
+            <thead><tr><th>Fee type</th><th class="num">Count</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              ${feeTypeSummaryRows || '<tr><td colspan="3">No fees</td></tr>'}
+              <tr class="total-row"><td colspan="2">Total fee types</td><td class="num">${escapeHtml(formatAmount(totals.grandTotal))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        ${options.includeDenominations ? `<div>
+          <h3>Cash denominations</h3>
+          <p class="denomination-note">Auto-calculated minimum-piece suggestion for the cash total. Verify against physical cash.</p>
+          <table>
+            <thead><tr><th class="num">Denomination</th><th class="num">Pieces</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              ${denominationRows}
+              <tr class="total-row"><td>Total</td><td class="num">${denominationBreakdown.rows.reduce((sum, row) => sum + row.pieces, 0)}</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
+              ${denominationBreakdown.remainder > 0 ? `<tr><td colspan="2">Non-denomination remainder</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.remainder))}</td></tr>` : ''}
+            </tbody>
+          </table>
+        </div>` : ''}
+      </div>
+    </section>
 
     <div class="signatures">
       <div class="sign-box">Collected by ____________________</div>
@@ -320,8 +526,13 @@ async function printCollectionNative(html: string): Promise<void> {
   await Print.printAsync({ uri });
 }
 
-export async function printCollectionReport(rows: FeeTransaction[], meta: CollectionReportMeta): Promise<void> {
-  const html = buildCollectionHtml(rows, meta);
+export async function printCollectionReport(
+  rows: FeeTransaction[],
+  meta: CollectionReportMeta,
+  columns: readonly CollectionReportColumnKey[] = DEFAULT_COLLECTION_REPORT_COLUMNS,
+  options: CollectionReportOptions = {},
+): Promise<void> {
+  const html = buildCollectionHtml(rows, meta, columns, options);
   if (Platform.OS === 'web') {
     await printHtmlOnWeb(html);
     return;

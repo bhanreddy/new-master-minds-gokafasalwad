@@ -166,7 +166,6 @@ const TRIGGERS: TriggerCard[] = [
 ];
 
 const POLL_INTERVAL_MS = 2500;
-const POLL_MAX_ATTEMPTS = 120;
 // A flaky network shouldn't tear down the live delivery view — keep polling
 // through short blips and only surface a failure after this many in a row.
 const POLL_MAX_CONSECUTIVE_ERRORS = 5;
@@ -579,6 +578,7 @@ function DeliveryStatusModal({
   status,
   channel,
   retrying,
+  pollingWarning,
   styles,
   THEME_COLORS,
 }: {
@@ -588,6 +588,7 @@ function DeliveryStatusModal({
   status: BroadcastStatus | null;
   channel: TriggerCard | null;
   retrying: boolean;
+  pollingWarning: string | null;
   styles: ReturnType<typeof getStyles>;
   THEME_COLORS: any;
 }) {
@@ -662,7 +663,8 @@ function DeliveryStatusModal({
                 {total.toLocaleString()} target device{total === 1 ? '' : 's'}…
               </Text>
               <Text style={styles.modalProcessingHint}>
-                Backend progress updates after each broadcast chunk. Keep this open to watch it count down.
+                {pollingWarning ||
+                  'Backend progress updates after each broadcast chunk. Keep this open to watch it count down.'}
               </Text>
             </View>
           ) : (
@@ -835,6 +837,7 @@ export default function NotificationsTriggerPage() {
   const [activeStatus, setActiveStatus] = useState<BroadcastStatus | null>(null);
   const [activeChannel, setActiveChannel] = useState<TriggerCard | null>(null);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [pollingWarning, setPollingWarning] = useState<string | null>(null);
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmChannel, setConfirmChannel] = useState<TriggerCard | null>(null);
@@ -885,13 +888,11 @@ export default function NotificationsTriggerPage() {
   }, [selectedType, classTargetsByChannel, targetsLoadingByChannel, fetchClassTargets]);
 
   const pollBroadcastStatus = useCallback(
-    (batchId: string, channel: TriggerCard) => {
+    (batchId: string) => {
       clearPollTimer();
-      let attempts = 0;
       let consecutiveErrors = 0;
 
       const poll = async () => {
-        attempts += 1;
         try {
           const status = await api.get<BroadcastStatus>(
             `/admin/notifications/broadcast/${batchId}`,
@@ -899,6 +900,7 @@ export default function NotificationsTriggerPage() {
             { silent: true }
           );
           consecutiveErrors = 0;
+          setPollingWarning(null);
           setActiveStatus(status);
           if (status.status !== 'processing') {
             clearPollTimer();
@@ -908,23 +910,14 @@ export default function NotificationsTriggerPage() {
             }
             return;
           }
-          if (attempts >= POLL_MAX_ATTEMPTS) {
-            // The send is still running on the server; the batch keeps advancing
-            // and the stuck-batch reaper backstops a crash. Stop polling but keep
-            // the last known progress on screen instead of raising a hard error.
-            clearPollTimer();
-            setLoadingType(null);
-          }
         } catch {
           // Tolerate transient blips (auth refresh, brief 5xx, offline moment).
           // Only give up after several failures in a row — one bad poll must not
           // collapse an otherwise-healthy live view.
           consecutiveErrors += 1;
           if (consecutiveErrors >= POLL_MAX_CONSECUTIVE_ERRORS) {
-            // Stay quiet and keep polling. A delivery job continues on the
-            // server, so a temporary client connection failure is neither a
-            // failed send nor a reason to interrupt the user with a popup.
             consecutiveErrors = POLL_MAX_CONSECUTIVE_ERRORS;
+            setPollingWarning('Connection interrupted. Retrying automatically…');
           }
         }
       };
@@ -936,6 +929,7 @@ export default function NotificationsTriggerPage() {
   );
 
   const openStatusModal = useCallback((channel: TriggerCard, result: BroadcastResult) => {
+    setPollingWarning(null);
     setActiveChannel(channel);
     setActiveBatchId(result.batch_id);
     setActiveStatus({
@@ -972,7 +966,7 @@ export default function NotificationsTriggerPage() {
         openStatusModal(channel, result);
 
         if (result.mode === 'async' && result.status === 'processing') {
-          pollBroadcastStatus(result.batch_id, channel);
+          pollBroadcastStatus(result.batch_id);
         } else {
           setLoadingType(null);
           if (result.status === 'completed' && (result.failure_count ?? 0) === 0) {
@@ -1024,6 +1018,7 @@ export default function NotificationsTriggerPage() {
 
   const handleRetry = useCallback(async () => {
     if (!activeBatchId || !activeChannel) return;
+    setPollingWarning(null);
     setRetrying(true);
     try {
       const result = await api.post<BroadcastResult>(
@@ -1049,7 +1044,7 @@ export default function NotificationsTriggerPage() {
       // A large recovery run may come back still processing — keep the live
       // view counting down instead of freezing on a partial report.
       if (result.status === 'processing') {
-        pollBroadcastStatus(result.batch_id, activeChannel);
+        pollBroadcastStatus(result.batch_id);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -1064,6 +1059,7 @@ export default function NotificationsTriggerPage() {
     clearPollTimer();
     setStatusModalVisible(false);
     setLoadingType(null);
+    setPollingWarning(null);
   }, [clearPollTimer]);
 
   const confirmSelected = confirmChannel ? selectedClassesByChannel[confirmChannel.id] || [] : [];
@@ -1250,6 +1246,7 @@ export default function NotificationsTriggerPage() {
         status={activeStatus}
         channel={activeChannel}
         retrying={retrying}
+        pollingWarning={pollingWarning}
         styles={styles}
         THEME_COLORS={THEME_COLORS}
       />

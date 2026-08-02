@@ -26,7 +26,12 @@ import Animated, {
 import AdminHeader from '../../../src/components/AdminHeader';
 import LogoLoader from '../../../src/components/LogoLoader';
 import PaymentDeletionActions from '../../../src/components/accounts/PaymentDeletionActions';
+import CollectionReportColumnSelector from '../../../src/components/accounts/CollectionReportColumnSelector';
 import { useAuth } from '../../../src/hooks/useAuth';
+import {
+  useCollectionReportColumns,
+  useCollectionReportDenominations,
+} from '../../../src/hooks/useCollectionReportColumns';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../../src/contexts/AccountsWebChromeContext';
 import { FeeService } from '../../../src/services/feeService';
@@ -676,6 +681,18 @@ export default function TodayCollectionScreen() {
   const accountantId = user?.userId || user?.id || null;
   const accountantName =
     user?.displayName || user?.display_name || user?.name || 'Accountant';
+  const {
+    columns: reportColumns,
+    hydrated: reportColumnsHydrated,
+    saveError: reportColumnsSaveError,
+    toggleColumn: toggleReportColumn,
+  } = useCollectionReportColumns(String(accountantId || 'accounts'));
+  const {
+    includeDenominations,
+    hydrated: denominationsHydrated,
+    saveError: denominationsSaveError,
+    toggleDenominations,
+  } = useCollectionReportDenominations(String(accountantId || 'accounts'));
 
   const reportMeta = useMemo(
     () => ({
@@ -772,26 +789,26 @@ export default function TodayCollectionScreen() {
     try {
       const fresh = await loadData();
       const exportRows = applyCollectionFilters(fresh, filters);
-      await exportCollectionCsv(exportRows, reportMeta);
+      await exportCollectionCsv(exportRows, reportMeta, reportColumns);
     } catch {
       alertCompat('Error', 'Failed to export collection report.');
     } finally {
       setExporting(false);
     }
-  }, [filters, loadData, reportMeta]);
+  }, [filters, loadData, reportColumns, reportMeta]);
 
   const handlePrint = useCallback(async () => {
     setPrinting(true);
     try {
       const fresh = await loadData();
       const exportRows = applyCollectionFilters(fresh, filters);
-      await printCollectionReport(exportRows, reportMeta);
+      await printCollectionReport(exportRows, reportMeta, reportColumns, { includeDenominations });
     } catch {
       alertCompat('Error', 'Failed to print collection report.');
     } finally {
       setPrinting(false);
     }
-  }, [filters, loadData, reportMeta]);
+  }, [filters, includeDenominations, loadData, reportColumns, reportMeta]);
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
@@ -856,6 +873,18 @@ export default function TodayCollectionScreen() {
         allRows={allRows}
       />
 
+      <CollectionReportColumnSelector
+        columns={reportColumns}
+        hydrated={reportColumnsHydrated}
+        isDark={isDark}
+        onToggle={toggleReportColumn}
+        saveError={reportColumnsSaveError || denominationsSaveError}
+        accentColor={ACCENT}
+        includeDenominations={includeDenominations}
+        denominationsHydrated={denominationsHydrated}
+        onToggleDenominations={toggleDenominations}
+      />
+
       <Animated.View
         entering={FadeInDown.delay(140).duration(360)}
         style={[
@@ -903,7 +932,7 @@ export default function TodayCollectionScreen() {
 
           <PressableScale
             onPress={handleExport}
-            disabled={exporting || loading}
+            disabled={exporting || loading || !reportColumnsHydrated}
             accessibilityLabel="Export current collection as CSV"
             containerStyle={[styles.actionBtnSlot, isCompact && styles.actionBtnSlotCompact]}
             style={[
@@ -927,7 +956,7 @@ export default function TodayCollectionScreen() {
 
           <PressableScale
             onPress={handlePrint}
-            disabled={printing || loading}
+            disabled={printing || loading || !reportColumnsHydrated || !denominationsHydrated}
             accessibilityLabel="Print current collection report"
             containerStyle={[styles.actionBtnSlot, styles.primaryActionSlot, isCompact && styles.actionBtnSlotCompact]}
             style={[

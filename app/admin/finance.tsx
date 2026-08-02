@@ -12,7 +12,12 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { FeeService, PendingFeeFilterOptions } from '../../src/services/feeService';
 import { useAuth } from '../../src/hooks/useAuth';
 import LogoLoader from '../../src/components/LogoLoader';
+import CollectionReportColumnSelector from '../../src/components/accounts/CollectionReportColumnSelector';
 import { printCollectionReport, exportCollectionCsv } from '../../src/utils/collectionReport';
+import {
+  useCollectionReportColumns,
+  useCollectionReportDenominations,
+} from '../../src/hooks/useCollectionReportColumns';
 import PremiumDatePickerModal from '../../src/components/PremiumDatePickerModal';
 import AppDatePicker from '../../src/components/AppDatePicker';
 import {
@@ -46,7 +51,7 @@ type FinanceStats = {
 
 export default function AdminFinanceScreen() {
   const { theme, isDark } = useTheme();
-  const { authChecked } = useAuth();
+  const { authChecked, user } = useAuth();
   const { width } = useWindowDimensions();
   const isWide = Platform.OS === 'web' && width >= 768;
   const styles = useMemo(() => getStyles(theme, isWide), [theme, isWide]);
@@ -78,6 +83,18 @@ export default function AdminFinanceScreen() {
   const [receiptFromDate, setReceiptFromDate] = useState(todayDateInput());
   const [receiptToDate, setReceiptToDate] = useState(todayDateInput());
   const [receiptExporting, setReceiptExporting] = useState(false);
+  const {
+    columns: reportColumns,
+    hydrated: reportColumnsHydrated,
+    saveError: reportColumnsSaveError,
+    toggleColumn: toggleReportColumn,
+  } = useCollectionReportColumns(String(user?.id || 'admin'));
+  const {
+    includeDenominations,
+    hydrated: denominationsHydrated,
+    saveError: denominationsSaveError,
+    toggleDenominations,
+  } = useCollectionReportDenominations(String(user?.id || 'admin'));
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({
@@ -254,6 +271,7 @@ export default function AdminFinanceScreen() {
       await FeeService.exportCollectionReceipts({
         from_date: receiptFromDate,
         to_date: receiptToDate,
+        columns: reportColumns,
       });
     } catch (error: any) {
       alertCompat('Download failed', error?.message || 'Unable to download the fee collection receipts list.');
@@ -532,9 +550,26 @@ export default function AdminFinanceScreen() {
                 containerStyle={styles.receiptDateField}
               />
             </View>
+            <CollectionReportColumnSelector
+              columns={reportColumns}
+              hydrated={reportColumnsHydrated}
+              isDark={isDark}
+              onToggle={toggleReportColumn}
+              saveError={reportColumnsSaveError || denominationsSaveError}
+              accentColor={theme.colors.primary}
+              title="Receipt export columns"
+              description="Columns follow selection order; turn one off/on to move it last. Applies to Excel and PDF/CSV; S.No. and Date stay in Excel."
+              embedded
+              includeDenominations={includeDenominations}
+              denominationsHydrated={denominationsHydrated}
+              onToggleDenominations={toggleDenominations}
+            />
             <TouchableOpacity
-              disabled={receiptExporting}
-              style={[styles.dueDownloadButton, receiptExporting && styles.dueDownloadButtonDisabled]}
+              disabled={receiptExporting || !reportColumnsHydrated}
+              style={[
+                styles.dueDownloadButton,
+                (receiptExporting || !reportColumnsHydrated) && styles.dueDownloadButtonDisabled,
+              ]}
               onPress={exportReceiptList}
               activeOpacity={0.85}
             >
@@ -627,7 +662,11 @@ export default function AdminFinanceScreen() {
       }
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={styles.fab}
+        disabled={!reportColumnsHydrated || !denominationsHydrated}
+        style={[
+          styles.fab,
+          (!reportColumnsHydrated || !denominationsHydrated) && { opacity: 0.55 },
+        ]}
         onPress={() => {
           if (!filteredTransactions || filteredTransactions.length === 0) {
             alertCompat('No Transactions', 'There are no transactions to export for this date.');
@@ -644,7 +683,7 @@ export default function AdminFinanceScreen() {
               text: 'Print PDF',
               onPress: async () => {
                 try {
-                  await printCollectionReport(filteredTransactions, meta);
+                  await printCollectionReport(filteredTransactions, meta, reportColumns, { includeDenominations });
                 } catch (e) {
                   alertCompat('Error', 'Failed to generate PDF.');
                 }
@@ -654,7 +693,7 @@ export default function AdminFinanceScreen() {
               text: 'Export CSV',
               onPress: async () => {
                 try {
-                  await exportCollectionCsv(filteredTransactions, meta);
+                  await exportCollectionCsv(filteredTransactions, meta, reportColumns);
                 } catch (e) {
                   alertCompat('Error', 'Failed to generate CSV.');
                 }

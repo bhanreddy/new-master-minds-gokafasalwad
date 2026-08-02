@@ -11,6 +11,7 @@ import {
     FeeType
 } from '../types/models';
 import { sortStudentFeesByConfiguredOrder } from '../utils/feeOrdering';
+import type { CollectionReportColumnKey } from '../utils/collectionReport';
 
 export { FeeType };
 export type { FeeMode, FeeStructureListResponse };
@@ -191,6 +192,7 @@ export interface PendingFeeExportFilters {
 export interface CollectionReceiptExportFilters {
     from_date: string;
     to_date: string;
+    columns?: readonly CollectionReportColumnKey[];
 }
 
 export const FeeService = {
@@ -390,6 +392,7 @@ export const FeeService = {
         const params = new URLSearchParams({
             from_date: filters.from_date,
             to_date: filters.to_date,
+            ...(filters.columns?.length ? { columns: filters.columns.join(',') } : {}),
         });
         return api.downloadFile(
             `/admin/collection-receipts/export?${params.toString()}`,
