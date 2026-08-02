@@ -40,7 +40,7 @@ import DiaryEntry from '../../src/database/models/DiaryEntry';
 import { sync, hasRemoteDiaryChanges } from '../../src/database/sync';
 import { useTheme, SchoolTheme } from '../../src/hooks/useTheme';
 import { IconBadgeColors, IconBadgeColorsDark } from '../../src/theme/themes';
-import { t_field } from '../../src/utils/lang';
+import { isTelugu, t_field } from '../../src/utils/lang';
 import AppDatePicker from '@/src/components/AppDatePicker';
 import LogoLoader from '../../src/components/LogoLoader';
 
@@ -48,9 +48,8 @@ import LogoLoader from '../../src/components/LogoLoader';
 
 const DIARY_HISTORY_PRIOR_DAYS = 14;
 const CONTENT_MAX_WIDTH = 580;
-const WEEK_DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
 type TabId = 'today' | 'history';
+type HistoryCounts = Record<string, number>;
 
 // ─── Subject Config ───────────────────────────────────────────────────────────
 
@@ -82,7 +81,15 @@ function getSubjectStyle(subject: string = ''): SubjectConfig {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toYmd(date: Date) {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function fromYmd(ymd: string) {
+  const [year, month, day] = ymd.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
 
 function priorHistoryYmds(anchor: Date): string[] {
@@ -115,12 +122,18 @@ function MiniCalendar({
   selectedYmd,
   onSelect,
   availableYmds,
+  minimumYmd,
+  maximumYmd,
 }: {
   selectedYmd: string;
   onSelect: (ymd: string) => void;
   availableYmds: string[];
+  minimumYmd: string;
+  maximumYmd: string;
 }) {
   const { theme, isDark } = useTheme();
+  const { i18n: translationI18n } = useTranslation();
+  const dateLocale = isTelugu(translationI18n.language) ? 'te-IN' : 'en-IN';
   const todayYmd = toYmd(new Date());
 
   const [viewYear, setViewYear] = useState(() => parseInt(selectedYmd.split('-')[0]));
@@ -129,9 +142,15 @@ function MiniCalendar({
   const cells = buildCalendarMonth(viewYear, viewMonth);
   const availableSet = new Set(availableYmds);
 
-  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(undefined, {
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(dateLocale, {
     month: 'long', year: 'numeric',
   });
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) =>
+      new Date(2024, 0, 7 + index).toLocaleDateString(dateLocale, { weekday: 'narrow' }).toUpperCase()
+    ),
+    [dateLocale]
+  );
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -188,8 +207,8 @@ function MiniCalendar({
 
       {/* Weekday headers */}
       <View style={{ width: CAL_TOTAL_W, flexDirection: 'row', marginBottom: 4 }}>
-        {WEEK_DAYS.map(d => (
-          <View key={d} style={{ width: CAL_CELL, alignItems: 'center', paddingVertical: 4 }}>
+        {weekDays.map((d, index) => (
+          <View key={`${d}-${index}`} style={{ width: CAL_CELL, alignItems: 'center', paddingVertical: 4 }}>
             <Text style={{
               fontSize: 10, fontWeight: '800',
               color: theme.colors.textMuted, letterSpacing: 0.8,
@@ -212,19 +231,19 @@ function MiniCalendar({
           const isSelected = ymd === selectedYmd;
           const isToday = ymd === todayYmd;
           const hasData = availableSet.has(ymd);
-          const isFuture = ymd > todayYmd;
+          const isOutsideHistory = ymd < minimumYmd || ymd > maximumYmd;
 
           return (
             <Pressable
               key={ymd}
-              onPress={() => !isFuture && onSelect(ymd)}
-              disabled={isFuture}
+              onPress={() => !isOutsideHistory && onSelect(ymd)}
+              disabled={isOutsideHistory}
               style={{
                 width: CAL_CELL,
                 height: CAL_CELL,
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: isFuture ? 0.3 : 1,
+                opacity: isOutsideHistory ? 0.28 : 1,
               }}
             >
               {/* Day circle */}
@@ -282,17 +301,22 @@ function DatePickerSheet({
   visible,
   selectedYmd,
   availableYmds,
+  minimumYmd,
+  maximumYmd,
   onSelect,
   onClose,
 }: {
   visible: boolean;
   selectedYmd: string;
   availableYmds: string[];
+  minimumYmd: string;
+  maximumYmd: string;
   onSelect: (ymd: string) => void;
   onClose: () => void;
 }) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+  const { t } = useTranslation();
 
   if (!visible) return null;
 
@@ -325,9 +349,9 @@ function DatePickerSheet({
           {/* Header */}
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.sheetTitle}>Pick a Date</Text>
+              <Text style={styles.sheetTitle}>{t('studentDiary.pickDate')}</Text>
               <Text style={styles.sheetSubtitle}>
-                Dots mark days with homework
+                {t('studentDiary.calendarHint')}
               </Text>
             </View>
             <Pressable
@@ -344,6 +368,8 @@ function DatePickerSheet({
             selectedYmd={selectedYmd}
             onSelect={(ymd) => { onSelect(ymd); onClose(); }}
             availableYmds={availableYmds}
+            minimumYmd={minimumYmd}
+            maximumYmd={maximumYmd}
           />
         </LinearGradient>
       </Animated.View>
@@ -356,10 +382,11 @@ function DatePickerSheet({
 function TabSwitcher({ active, onChange }: { active: TabId; onChange: (t: TabId) => void }) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+  const { t } = useTranslation();
 
   const tabs: { id: TabId; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-    { id: 'today', icon: 'today-outline', label: "Today's HW" },
-    { id: 'history', icon: 'time-outline', label: 'History' },
+    { id: 'today', icon: 'today-outline', label: t('studentDiary.todayTab') },
+    { id: 'history', icon: 'time-outline', label: t('studentDiary.historyTab') },
   ];
 
   return (
@@ -403,13 +430,19 @@ function DateSelectorButton({
   selectedYmd,
   onPress,
   onSelect,
+  minimumYmd,
+  maximumYmd,
 }: {
   selectedYmd: string;
   onPress: () => void;
   onSelect?: (ymd: string) => void;
+  minimumYmd: string;
+  maximumYmd: string;
 }) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+  const { t, i18n: translationI18n } = useTranslation();
+  const dateLocale = isTelugu(translationI18n.language) ? 'te-IN' : 'en-IN';
 
   if (Platform.OS === 'web' && onSelect) {
     return (
@@ -419,10 +452,11 @@ function DateSelectorButton({
         style={styles.dateSelectorWrap}
       >
         <AppDatePicker
-          label="Pick a date"
+          label={t('studentDiary.pickDate')}
           value={selectedYmd}
           onChange={onSelect}
-          maximumDate={new Date()}
+          minimumDate={minimumYmd}
+          maximumDate={maximumYmd}
           isDark={isDark}
           containerStyle={{ marginBottom: 0 }}
         />
@@ -434,16 +468,15 @@ function DateSelectorButton({
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  const [y, m, d] = selectedYmd.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
+  const date = fromYmd(selectedYmd);
 
   let relLabel = '';
   const diff = Math.round((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  if (date.toDateString() === yesterday.toDateString()) relLabel = 'Yesterday';
-  else if (diff <= 7) relLabel = `${diff} days ago`;
-  else relLabel = `${Math.round(diff / 7)} week${Math.round(diff / 7) !== 1 ? 's' : ''} ago`;
+  if (date.toDateString() === yesterday.toDateString()) relLabel = t('studentDiary.yesterday');
+  else if (diff <= 7) relLabel = t('studentDiary.daysAgo', { count: diff });
+  else relLabel = t('studentDiary.weeksAgo', { count: Math.round(diff / 7) });
 
-  const fullLabel = date.toLocaleDateString(undefined, {
+  const fullLabel = date.toLocaleDateString(dateLocale, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
 
@@ -484,14 +517,133 @@ function DateSelectorButton({
   );
 }
 
+// ─── Clear history overview ──────────────────────────────────────────────────
+
+function HistoryOverview({
+  dates,
+  counts,
+  selectedYmd,
+  onSelect,
+}: {
+  dates: string[];
+  counts: HistoryCounts;
+  selectedYmd: string;
+  onSelect: (ymd: string) => void;
+}) {
+  const { theme, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
+  const { t, i18n: translationI18n } = useTranslation();
+  const dateLocale = isTelugu(translationI18n.language) ? 'te-IN' : 'en-IN';
+  const daysWithEntries = Object.values(counts).filter(count => count > 0).length;
+  const railRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const selectedIndex = dates.indexOf(selectedYmd);
+    if (selectedIndex < 0) return;
+    // Keep an auto-selected older date visible instead of leaving the rail at yesterday.
+    requestAnimationFrame(() => {
+      railRef.current?.scrollTo({ x: Math.max(0, selectedIndex * 78 - 32), animated: true });
+    });
+  }, [dates, selectedYmd]);
+
+  return (
+    <Animated.View entering={FadeInDown.duration(320).springify()} style={styles.historyPanel}>
+      <View style={styles.historyHeader}>
+        <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.historyIconBox}>
+          <Ionicons name="time-outline" size={19} color="#FFFFFF" />
+        </LinearGradient>
+        <View style={styles.historyHeaderText}>
+          <Text style={styles.historyTitle}>{t('studentDiary.historyTitle')}</Text>
+          <Text style={styles.historyWindow}>{t('studentDiary.historyWindow')}</Text>
+        </View>
+        <View style={[styles.historyCountBadge, {
+          backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.1)',
+        }]}>
+          <Text style={[styles.historyCountNumber, { color: theme.colors.primary }]}>{daysWithEntries}</Text>
+          <Text style={styles.historyCountLabel}>{t('studentDiary.daysWithEntries')}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.historyHint}>
+        {daysWithEntries > 0
+          ? t('studentDiary.historyHint')
+          : t('studentDiary.noRecentHistory')}
+      </Text>
+
+      <ScrollView
+        ref={railRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.historyDateRail}
+        accessibilityRole="tablist"
+      >
+        {dates.map((ymd) => {
+          const date = fromYmd(ymd);
+          const count = counts[ymd] ?? 0;
+          const selected = ymd === selectedYmd;
+          return (
+            <Pressable
+              key={ymd}
+              onPress={() => onSelect(ymd)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${date.toLocaleDateString(dateLocale, { dateStyle: 'full' })}, ${t('studentDiary.entryCount', { count })}`}
+              style={[
+                styles.historyDateChip,
+                {
+                  backgroundColor: selected
+                    ? theme.colors.primary
+                    : isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+                  borderColor: selected
+                    ? theme.colors.primary
+                    : count > 0
+                      ? isDark ? 'rgba(99,102,241,0.45)' : 'rgba(99,102,241,0.28)'
+                      : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(148,163,184,0.2)',
+                },
+              ]}
+            >
+              <Text style={[styles.historyChipWeekday, { color: selected ? 'rgba(255,255,255,0.8)' : theme.colors.textMuted }]}>
+                {date.toLocaleDateString(dateLocale, { weekday: 'short' })}
+              </Text>
+              <Text style={[styles.historyChipDay, { color: selected ? '#FFFFFF' : theme.colors.textStrong }]}>
+                {date.getDate()}
+              </Text>
+              <Text style={[styles.historyChipMonth, { color: selected ? 'rgba(255,255,255,0.8)' : theme.colors.textSecondary }]}>
+                {date.toLocaleDateString(dateLocale, { month: 'short' })}
+              </Text>
+              <View style={[
+                styles.historyEntryBadge,
+                { backgroundColor: selected ? 'rgba(255,255,255,0.2)' : count > 0 ? theme.colors.primary + '18' : 'transparent' },
+              ]}>
+                <Ionicons
+                  name={count > 0 ? 'document-text' : 'remove'}
+                  size={10}
+                  color={selected ? '#FFFFFF' : count > 0 ? theme.colors.primary : theme.colors.textMuted}
+                />
+                <Text style={[
+                  styles.historyEntryCount,
+                  { color: selected ? '#FFFFFF' : count > 0 ? theme.colors.primary : theme.colors.textMuted },
+                ]}>
+                  {count}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
 function TaskCard({ item, index }: { item: DiaryEntry; index: number }) {
-  useTranslation(); // Subscribe so t_field(title/content) updates on language change.
+  const { t, i18n: translationI18n } = useTranslation();
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const subj = getSubjectStyle(item.subjectName || item.title);
   const pressed = useSharedValue(0);
+  const dateLocale = isTelugu(translationI18n.language) ? 'te-IN' : 'en-IN';
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.975], Extrapolation.CLAMP) }],
@@ -521,12 +673,14 @@ function TaskCard({ item, index }: { item: DiaryEntry; index: number }) {
               {item.homeworkDueDate ? (
                 <View style={[styles.dueChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }]}>
                   <Ionicons name="time-outline" size={11} color={theme.colors.textMuted} />
-                  <Text style={styles.dueText}>Due {new Date(item.homeworkDueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+                  <Text style={styles.dueText}>
+                    {t('studentDiary.due')} {fromYmd(item.homeworkDueDate.slice(0, 10)).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' })}
+                  </Text>
                 </View>
               ) : null}
             </View>
-            {item.title ? <Text style={styles.taskTitle} numberOfLines={2}>{t_field(item.title, item.titleTe)}</Text> : null}
-            <Text style={styles.taskBody} numberOfLines={3}>{t_field(item.content, item.contentTe)}</Text>
+            {item.title ? <Text style={styles.taskTitle}>{t_field(item.title, item.titleTe)}</Text> : null}
+            <Text style={styles.taskBody}>{t_field(item.content, item.contentTe)}</Text>
           </View>
         </View>
       </Pressable>
@@ -536,7 +690,15 @@ function TaskCard({ item, index }: { item: DiaryEntry; index: number }) {
 
 // ─── DiaryTaskList ────────────────────────────────────────────────────────────
 
-function DiaryTaskList({ tasks, emptyLabel }: { tasks: DiaryEntry[]; emptyLabel?: string }) {
+function DiaryTaskList({
+  tasks,
+  emptyTitle,
+  emptyLabel,
+}: {
+  tasks: DiaryEntry[];
+  emptyTitle?: string;
+  emptyLabel?: string;
+}) {
   const { theme, isDark } = useTheme();
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { t } = useTranslation();
@@ -555,8 +717,8 @@ function DiaryTaskList({ tasks, emptyLabel }: { tasks: DiaryEntry[]; emptyLabel?
           <LinearGradient colors={isDark ? ['rgba(99,102,241,0.3)', 'rgba(56,189,248,0.15)'] : ['rgba(99,102,241,0.12)', 'rgba(56,189,248,0.08)']} style={styles.emptyIconCircle}>
             <Ionicons name="sparkles" size={30} color={badge.icon} />
           </LinearGradient>
-          <Text style={styles.emptyTitle}>{t('diary.all_caught_up', 'All caught up!')}</Text>
-          <Text style={styles.emptyBody}>{emptyLabel ?? t('diary.no_homework', 'No homework for this day 🎉')}</Text>
+          <Text style={styles.emptyTitle}>{emptyTitle ?? t('studentDiary.allCaughtUp')}</Text>
+          <Text style={styles.emptyBody}>{emptyLabel ?? t('studentDiary.noHomeworkToday')}</Text>
         </LinearGradient>
       </Animated.View>
     );
@@ -571,7 +733,15 @@ function DiaryTaskList({ tasks, emptyLabel }: { tasks: DiaryEntry[]; emptyLabel?
 
 // ─── WatermelonDB observers ───────────────────────────────────────────────────
 
-const DiaryForDateRaw = ({ tasks }: { tasks: DiaryEntry[] }) => <DiaryTaskList tasks={tasks} />;
+const DiaryForDateRaw = ({
+  tasks,
+  emptyTitle,
+  emptyLabel,
+}: {
+  tasks: DiaryEntry[];
+  emptyTitle?: string;
+  emptyLabel?: string;
+}) => <DiaryTaskList tasks={tasks} emptyTitle={emptyTitle} emptyLabel={emptyLabel} />;
 
 // The class filter is ALWAYS applied — never conditionally. The local WatermelonDB is a
 // single device-wide store shared by every account a parent has switched into, so a query
@@ -591,13 +761,20 @@ const DiaryListForDate = enhanceForDate(DiaryForDateRaw);
 // Silent observer: tells us which history dates have entries (for calendar dots)
 const DiaryHistoryDotsRaw = ({
   tasks,
-  onDatesWithData,
+  classId,
+  historyContextKey,
+  onHistoryCounts,
 }: {
   tasks: DiaryEntry[];
-  onDatesWithData: (ymds: string[]) => void;
+  classId: string;
+  historyContextKey: string;
+  onHistoryCounts: (contextKey: string, counts: HistoryCounts) => void;
 }) => {
-  const ymds = useMemo(() => Array.from(new Set(tasks.map(t => t.entryDate))), [tasks]);
-  useEffect(() => { onDatesWithData(ymds); }, [ymds.join(',')]);
+  const counts = useMemo(() => tasks.filter(task => task.classSectionId === classId).reduce<HistoryCounts>((result, task) => {
+    result[task.entryDate] = (result[task.entryDate] ?? 0) + 1;
+    return result;
+  }, {}), [classId, tasks]);
+  useEffect(() => { onHistoryCounts(historyContextKey, counts); }, [counts, historyContextKey, onHistoryCounts]);
   return null;
 };
 
@@ -620,15 +797,21 @@ export default function DiaryScreen() {
   const { user } = useAuth();
 
   const today = useMemo(() => new Date(), []);
-  const todayYmd = useMemo(() => toYmd(today), []);
-  const priorDates = useMemo(() => priorHistoryYmds(today), [todayYmd]);
+  const todayYmd = useMemo(() => toYmd(today), [today]);
+  const priorDates = useMemo(() => priorHistoryYmds(today), [today]);
 
   const [activeTab, setActiveTab] = useState<TabId>('today');
   const [historyDate, setHistoryDate] = useState(() => priorDates[0]); // default: yesterday
-  const [datesWithData, setDatesWithData] = useState<string[]>([]);
+  const [historyState, setHistoryState] = useState<{ contextKey: string; counts: HistoryCounts }>({
+    contextKey: '',
+    counts: {},
+  });
   const [pickerVisible, setPickerVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // If History is opened before the local observer finishes, select the newest
+  // populated date as soon as counts arrive. A manual date choice cancels this.
+  const pendingHistoryAutoSelectRef = useRef(false);
   // Guards against a pull-to-refresh and a probe-triggered sync overlapping.
   const syncingRef = useRef(false);
   // Which account the local store was last synced for, so a switch forces a full pull.
@@ -640,6 +823,49 @@ export default function DiaryScreen() {
   const winW = Dimensions.get('window').width;
   const hPad = winW >= CONTENT_MAX_WIDTH + 40 ? Math.max(20, (winW - CONTENT_MAX_WIDTH) / 2) : 20;
   const classId = (user as any)?.classId || '';
+  const historyContextKey = `${user?.userId ?? ''}:${classId}`;
+  // Context-keying makes stale counts impossible to display during a sibling switch.
+  const historyCounts = useMemo(
+    () => historyState.contextKey === historyContextKey ? historyState.counts : {},
+    [historyContextKey, historyState]
+  );
+  const datesWithData = useMemo(
+    () => Object.keys(historyCounts).filter(date => historyCounts[date] > 0).sort((a, b) => b.localeCompare(a)),
+    [historyCounts]
+  );
+  const historyMinimumYmd = priorDates[priorDates.length - 1];
+  const historyMaximumYmd = priorDates[0];
+
+  const onHistoryCounts = useCallback((contextKey: string, counts: HistoryCounts) => {
+    setHistoryState({ contextKey, counts });
+  }, []);
+
+  const onHistoryDateSelect = useCallback((ymd: string) => {
+    pendingHistoryAutoSelectRef.current = false;
+    setHistoryDate(ymd);
+  }, []);
+
+  const onTabChange = useCallback((tab: TabId) => {
+    if (tab === 'history') {
+      // Never open history on a blank yesterday when an older retained day has entries.
+      setHistoryDate(datesWithData[0] ?? priorDates[0]);
+      pendingHistoryAutoSelectRef.current = datesWithData.length === 0;
+    }
+    setActiveTab(tab);
+  }, [datesWithData, priorDates]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && pendingHistoryAutoSelectRef.current && datesWithData.length > 0) {
+      setHistoryDate(datesWithData[0]);
+      pendingHistoryAutoSelectRef.current = false;
+    }
+  }, [activeTab, datesWithData]);
+
+  useEffect(() => {
+    setActiveTab('today');
+    setHistoryDate(priorDates[0]);
+    pendingHistoryAutoSelectRef.current = false;
+  }, [historyContextKey, priorDates]);
 
   // Automatic refresh is gated on the cheap /diary/sync-state probe: we only spend a
   // full pull when the live diary has actually changed. On an unchanged window this
@@ -688,7 +914,7 @@ export default function DiaryScreen() {
     setSyncing(true);
     // Pass the signed-in account so sync can drop another student's rows from the
     // shared local DB before pulling this one's.
-    try { await sync(user.userId); } catch (_) { } finally {
+    try { await sync(user.userId); } catch { } finally {
       didInitialSyncRef.current = true;
       syncingRef.current = false;
       setSyncing(false);
@@ -704,10 +930,11 @@ export default function DiaryScreen() {
   }, [user?.userId]);
 
   // Hero metadata
-  const monthShort = today.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
+  const dateLocale = isTelugu(i18n.language) ? 'te-IN' : 'en-IN';
+  const monthShort = today.toLocaleDateString(dateLocale, { month: 'short' }).toUpperCase();
   const dayNum = today.getDate().toString();
-  const weekday = today.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
-  const todayFull = today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const weekday = today.toLocaleDateString(dateLocale, { weekday: 'short' }).toUpperCase();
+  const todayFull = today.toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric' });
 
   const activeDate = activeTab === 'today' ? todayYmd : historyDate;
 
@@ -733,7 +960,8 @@ export default function DiaryScreen() {
         <DiaryHistoryDots
           historyDates={priorDates}
           classId={classId}
-          onDatesWithData={setDatesWithData}
+          historyContextKey={historyContextKey}
+          onHistoryCounts={onHistoryCounts}
         />
       ) : null}
 
@@ -782,7 +1010,7 @@ export default function DiaryScreen() {
                 <View style={styles.heroTextBlock}>
                   <Text style={styles.heroTitle}>{t('home.diary', 'Diary')}</Text>
                   <Text style={[styles.heroDate, { color: theme.colors.primary }]}>{todayFull}</Text>
-                  <Text style={styles.heroTagline}>{t('diary.hero_tagline', 'Stay on top of your assignments.')}</Text>
+                  <Text style={styles.heroTagline}>{t('studentDiary.heroTagline')}</Text>
                 </View>
                 <View style={[styles.syncChip, {
                   backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)',
@@ -798,16 +1026,32 @@ export default function DiaryScreen() {
 
           {/* ── Tab Switcher ──────────────────────────── */}
           <Animated.View entering={FadeInDown.delay(120).duration(500).springify()} style={styles.tabWrap}>
-            <TabSwitcher active={activeTab} onChange={setActiveTab} />
+            <TabSwitcher active={activeTab} onChange={onTabChange} />
           </Animated.View>
 
           {/* ── History: date selector ────────────────── */}
           {activeTab === 'history' ? (
-            <DateSelectorButton
-              selectedYmd={historyDate}
-              onPress={() => setPickerVisible(true)}
-              onSelect={setHistoryDate}
-            />
+            <>
+              <HistoryOverview
+                dates={priorDates}
+                counts={historyCounts}
+                selectedYmd={historyDate}
+                onSelect={onHistoryDateSelect}
+              />
+              <DateSelectorButton
+                selectedYmd={historyDate}
+                onPress={() => setPickerVisible(true)}
+                onSelect={onHistoryDateSelect}
+                minimumYmd={historyMinimumYmd}
+                maximumYmd={historyMaximumYmd}
+              />
+              <View style={styles.selectedDateHeading}>
+                <Text style={styles.selectedDateTitle}>{t('studentDiary.entriesForDate')}</Text>
+                <Text style={[styles.selectedDateCount, { color: theme.colors.primary }]}>
+                  {t('studentDiary.entryCount', { count: historyCounts[historyDate] ?? 0 })}
+                </Text>
+              </View>
+            </>
           ) : null}
 
           {/* ── Task content ──────────────────────────── */}
@@ -820,6 +1064,8 @@ export default function DiaryScreen() {
                 key={`${i18n.language}-${activeDate}`}
                 date={activeDate}
                 classId={classId}
+                emptyTitle={activeTab === 'history' ? t('studentDiary.noEntriesTitle') : undefined}
+                emptyLabel={activeTab === 'history' ? t('studentDiary.noDiaryForDate') : undefined}
               />
             ) : user ? (
               // Class not resolved yet (profile still syncing, or no active enrolment).
@@ -827,9 +1073,9 @@ export default function DiaryScreen() {
               // unfiltered list would leak another student's diary — so say what's true.
               <DiaryTaskList
                 tasks={[]}
+                emptyTitle={t('studentDiary.classLoadingTitle')}
                 emptyLabel={t(
-                  'diary.no_class_assigned',
-                  "We're still loading this student's class. Pull down or reopen in a moment."
+                  'studentDiary.noClassAssigned'
                 )}
               />
             ) : null}
@@ -842,8 +1088,10 @@ export default function DiaryScreen() {
       <DatePickerSheet
         visible={pickerVisible}
         selectedYmd={historyDate}
-        availableYmds={[...datesWithData, ...priorDates]}
-        onSelect={setHistoryDate}
+        availableYmds={datesWithData}
+        minimumYmd={historyMinimumYmd}
+        maximumYmd={historyMaximumYmd}
+        onSelect={onHistoryDateSelect}
         onClose={() => setPickerVisible(false)}
       />
     </View>
@@ -893,6 +1141,41 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) =>
       gap: 7, paddingVertical: 12, borderRadius: 12, overflow: 'hidden',
     },
     tabLabel: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
+
+    // History overview
+    historyPanel: {
+      marginBottom: 14, padding: 16, borderRadius: 20, borderWidth: 1,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.92)',
+      borderColor: isDark ? 'rgba(99,102,241,0.22)' : 'rgba(99,102,241,0.16)',
+    },
+    historyHeader: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+    historyIconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    historyHeaderText: { flex: 1, gap: 2 },
+    historyTitle: { fontSize: 17, fontWeight: '800', color: theme.colors.textStrong, letterSpacing: -0.4 },
+    historyWindow: { fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600' },
+    historyCountBadge: { minWidth: 64, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7, alignItems: 'center' },
+    historyCountNumber: { fontSize: 17, fontWeight: '800', lineHeight: 19 },
+    historyCountLabel: { fontSize: 9, color: theme.colors.textMuted, fontWeight: '700', textAlign: 'center' },
+    historyHint: { fontSize: 12, color: theme.colors.textSecondary, lineHeight: 18, marginTop: 12, marginBottom: 12 },
+    historyDateRail: { gap: 8, paddingRight: 4 },
+    historyDateChip: {
+      width: 70, minHeight: 100, borderRadius: 15, borderWidth: 1,
+      alignItems: 'center', justifyContent: 'center', paddingVertical: 9,
+    },
+    historyChipWeekday: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+    historyChipDay: { fontSize: 23, fontWeight: '800', lineHeight: 27, marginTop: 1 },
+    historyChipMonth: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+    historyEntryBadge: {
+      minWidth: 34, height: 20, borderRadius: 10, paddingHorizontal: 6, marginTop: 6,
+      flexDirection: 'row', gap: 3, alignItems: 'center', justifyContent: 'center',
+    },
+    historyEntryCount: { fontSize: 10, fontWeight: '800' },
+    selectedDateHeading: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      marginBottom: 10, paddingHorizontal: 2, gap: 12,
+    },
+    selectedDateTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: theme.colors.textStrong },
+    selectedDateCount: { fontSize: 12, fontWeight: '700' },
 
     // Date selector button
     dateSelectorWrap: { marginBottom: 14 },
