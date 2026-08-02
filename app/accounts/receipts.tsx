@@ -43,6 +43,58 @@ const todayInput = () => toDateInput(new Date());
 
 const isAdminRole = (role?: string | null) => role === 'admin' || role === 'principal';
 
+/**
+ * Match receipt numbers by full value, contiguous substring (prefix/suffix/middle),
+ * or digit-only serial (e.g. "235" / "0235" against "RCT-20260731-0235").
+ */
+function matchesReceiptNo(receiptNo: unknown, query: string): boolean {
+  const raw = String(receiptNo ?? '').trim().toLowerCase();
+  if (!raw || !query) return false;
+  if (raw.includes(query)) return true;
+
+  const compact = raw.replace(/[^a-z0-9]/g, '');
+  const compactQuery = query.replace(/[^a-z0-9]/g, '');
+  if (compactQuery && compact.includes(compactQuery)) return true;
+
+  const serial = (raw.match(/(\d+)\s*$/) || [])[1] || '';
+  if (!serial) return false;
+
+  const digitsOnly = query.replace(/\D/g, '');
+  if (!digitsOnly) return false;
+  // Exact serial, or serial with/without leading zeros (prefix & suffix of the serial).
+  const serialNorm = serial.replace(/^0+/, '') || '0';
+  const queryNorm = digitsOnly.replace(/^0+/, '') || '0';
+  return (
+    serial.includes(digitsOnly) ||
+    digitsOnly.includes(serial) ||
+    serialNorm === queryNorm ||
+    serialNorm.endsWith(queryNorm) ||
+    queryNorm.endsWith(serialNorm)
+  );
+}
+
+function matchesReceiptSearch(row: {
+  student?: string | null;
+  admission_no?: string | null;
+  id?: string | null;
+  receipt_no?: string | null;
+  transaction_ref?: string | null;
+}, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const name = (row.student || '').toLowerCase();
+  const adm = String(row.admission_no ?? '').toLowerCase();
+  const ref = String(row.transaction_ref ?? '').toLowerCase();
+  const id = String(row.id ?? '').toLowerCase();
+  return (
+    name.includes(q) ||
+    adm.includes(q) ||
+    ref.includes(q) ||
+    id.includes(q) ||
+    matchesReceiptNo(row.receipt_no, q)
+  );
+}
+
 /** Map API fee_type label to Receipts filter chip (fee_types are school-defined names). */
 function feeTypeToFilterCategory(feeType: string | undefined): 'Fees' | 'Uniform' | 'Transport' | 'Other' {
   const n = (feeType || '').toLowerCase().trim();
@@ -122,6 +174,7 @@ export default function ReceiptsScreen() {
         id: tx.id,
         student: tx.student_name,
         admission_no: tx.admission_no,
+        receipt_no: tx.receipt_no || null,
         amount: `₹${Number(tx.amount || 0).toLocaleString('en-IN')}`,
         date: new Date(tx.paid_at).toLocaleDateString('en-IN', {
           day: '2-digit',
@@ -155,15 +208,20 @@ export default function ReceiptsScreen() {
     if (selectedFilter !== 'All') {
       list = list.filter((r) => feeTypeToFilterCategory(r.raw?.fee_type) === selectedFilter);
     }
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim();
     if (q) {
-      list = list.filter((r) => {
-        const name = (r.student || '').toLowerCase();
-        const adm = String(r.admission_no ?? '').toLowerCase();
-        const ref = String(r.raw?.transaction_ref ?? '').toLowerCase();
-        const id = String(r.id ?? '').toLowerCase();
-        return name.includes(q) || adm.includes(q) || ref.includes(q) || id.includes(q);
-      });
+      list = list.filter((r) =>
+        matchesReceiptSearch(
+          {
+            student: r.student,
+            admission_no: r.admission_no,
+            id: r.id,
+            receipt_no: r.receipt_no ?? r.raw?.receipt_no,
+            transaction_ref: r.raw?.transaction_ref,
+          },
+          q
+        )
+      );
     }
     return list;
   }, [receipts, selectedFilter, searchQuery]);
@@ -198,20 +256,26 @@ export default function ReceiptsScreen() {
         received_by: receivedBy,
       });
 
-      const q = searchQuery.trim().toLowerCase();
+      const q = searchQuery.trim();
       const rows = allRows.filter((tx) => {
         if (tx.deletion_status === 'DELETED') return false;
         if (selectedFilter !== 'All' && feeTypeToFilterCategory(tx.fee_type) !== selectedFilter) {
           return false;
         }
-        if (q) {
-          const name = (tx.student_name || '').toLowerCase();
-          const adm = String(tx.admission_no ?? '').toLowerCase();
-          const ref = String(tx.transaction_ref ?? '').toLowerCase();
-          const id = String(tx.id ?? '').toLowerCase();
-          if (!(name.includes(q) || adm.includes(q) || ref.includes(q) || id.includes(q))) {
-            return false;
-          }
+        if (
+          q &&
+          !matchesReceiptSearch(
+            {
+              student: tx.student_name,
+              admission_no: tx.admission_no,
+              id: tx.id,
+              receipt_no: tx.receipt_no,
+              transaction_ref: tx.transaction_ref,
+            },
+            q
+          )
+        ) {
+          return false;
         }
         return true;
       });
@@ -285,7 +349,10 @@ export default function ReceiptsScreen() {
           flex: 1
         }}>
           <Text style={styles.studentName} numberOfLines={1}>{item.student}</Text>
-          <Text style={styles.receiptDetails}>{item.admission_no} • {item.classLabel}</Text>
+          <Text style={styles.receiptDetails}>
+            {item.receipt_no ? `${item.receipt_no} • ` : ''}
+            {item.admission_no} • {item.classLabel}
+          </Text>
           <Text style={styles.collectorText}>Collected by {item.collector}</Text>
           {(role === 'accounts' || role === 'accountant') && item.raw?.received_by_id === currentUserId ? (
             <PaymentDeletionActions
@@ -686,7 +753,7 @@ export default function ReceiptsScreen() {
           />
           <AppTextInput
             style={[ds.inputInChrome, styles.searchInput, { zIndex: 2 }]}
-            placeholder="Search by transaction ID or Name"
+            placeholder="Search by receipt no, name, or admission no"
             placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : '#9CA3AF'}
             value={searchQuery}
             onChangeText={setSearchQuery}
