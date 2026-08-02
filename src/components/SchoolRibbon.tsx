@@ -750,13 +750,9 @@ const CLAY_PILL_SHADOW = [
   `0 1.5px 1px ${schoolColorWithAlpha(CLAY_SURFACE, 0.28)}`,      // Outward bottom edge light catch
 ].join(', ');
 
-/** Full letterhead (motto / campus / contact) only on landing + dashboard surfaces. */
-function shouldUseFullLetterhead(pathname: string): boolean {
-  const p = pathname.toLowerCase();
-  if (!p || p === '/') return true;
-  if (p.includes('/login') || p.includes('/welcome') || p.includes('/home')) return true;
-  if (p.includes('/dashboard')) return true;
-  return false;
+/** Full letterhead (motto / campus / contact) on all surfaces except driver portal. */
+function shouldUseFullLetterhead(_pathname: string): boolean {
+  return true;
 }
 
 function StaticLetterheadRibbon() {
@@ -765,7 +761,6 @@ function StaticLetterheadRibbon() {
   const pathname = usePathname() || '';
   /** Driver portal needs trip controls above the fold — drop motto/address chrome. */
   const isDriverPortal = pathname.includes('/driver');
-  /** Interior app pages: slim brand bar so lists/forms sit above the fold. */
   const isSlimLetterhead = isDriverPortal || !shouldUseFullLetterhead(pathname);
 
   const schoolName =

@@ -29,12 +29,8 @@ import { usePersistedSWR } from '../../src/hooks/usePersistedSWR';
 import LogoLoader from '../../src/components/LogoLoader';
 import AdminHeaderCard from '../../src/components/AdminHeaderCard';
 import { useTheme } from '../../src/hooks/useTheme';
+import { driverDateLocale, translateDriverDirection } from '../../src/utils/driverI18n';
 
-const PINK = '#EC4899';
-const PINK_DARK = '#BE185D';
-const PINK_GRADIENT: [string, string] = ['#EC4899', '#BE185D'];
-const GREEN = '#10B981';
-const RED = '#EF4444';
 const HEARTBEAT_INTERVAL = 30000;
 const AUTO_TRANSITION_RETRY_MS = 30000;
 /** Auto-mark "arrived" when the bus is within this distance of the next stop. */
@@ -108,11 +104,6 @@ type GpsFix = {
 /** A fix older than this is not trustworthy as "where the stop is". */
 const FIX_MAX_AGE_MS = 60_000;
 
-const LEG_LABEL: Record<TripLeg, string> = {
-  morning: 'Morning (pickup)',
-  evening: 'Evening (drop-off)',
-};
-
 /* ─── Status Colors ─── */
 const STATUS_CONFIG: Record<StopStatus, { bg: string; colorKey: 'info' | 'warning' | 'success' | 'danger' | 'textMuted'; icon: string; label: string; }> = {
   pending: { bg: '#F1F5F9', colorKey: 'textMuted', icon: 'ellipse-outline', label: 'Pending' },
@@ -126,11 +117,11 @@ const STATUS_CONFIG: Record<StopStatus, { bg: string; colorKey: 'info' | 'warnin
    ════════════════════════════════════════════════════════════ */
 export default function DriverDashboard() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const dateLocale = driverDateLocale(i18n.language);
 
   const PRIMARY = theme.colors.primary;
-  const PRIMARY_DARK = theme.colors.primaryDark;
   const PRIMARY_GRADIENT: [string, string] = [theme.colors.primary, theme.colors.primaryDark];
   const GREEN = theme.colors.success;
   const RED = theme.colors.danger;
@@ -187,7 +178,7 @@ export default function DriverDashboard() {
   const lastFixRef = useRef<GpsFix | null>(null);
   const [calibration, setCalibration] = useState<CalibrationInfo | null>(null);
 
-  const displayName = user?.display_name || user?.first_name || 'Driver';
+  const displayName = user?.display_name || user?.first_name || t('driver_ui.driver');
   const greeting = new Date().getHours() < 12 ? t('dashboard.good_morning', 'Good Morning') :
     new Date().getHours() < 17 ? t('dashboard.good_afternoon', 'Good Afternoon') : t('dashboard.good_evening', 'Good Evening');
 
@@ -200,7 +191,7 @@ export default function DriverDashboard() {
         -1, true
       );
     } else { pulse.value = withTiming(1, { duration: 200 }); }
-  }, [isTracking]);
+  }, [isTracking, pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   const inferTripLeg = (direction?: string | null): TripLeg => {
@@ -290,7 +281,7 @@ export default function DriverDashboard() {
         status: 'pending' as StopStatus, latitude: s.latitude, longitude: s.longitude,
         student_count: s.student_count || 0
       })));
-    } catch (err) { }
+    } catch { }
   };
 
   /* ─── Fetch trip status (during trip) ─── */
@@ -308,7 +299,7 @@ export default function DriverDashboard() {
         student_count: Number(s.student_count) || 0,
         arrival_time: s.arrival_time, departure_time: s.departure_time
       })));
-    } catch (err) { }
+    } catch { }
   };
 
   /* ─── Calibration status (Phase A badge) ─── */
@@ -349,9 +340,9 @@ export default function DriverDashboard() {
 
   /* ─── START TRIP ─── */
   const handleStartTrip = async () => {
-    if (!selectedBus || !selectedRoute) return alertCompat('Error', 'Select a bus and route first.');
+    if (!selectedBus || !selectedRoute) return alertCompat(t('driver_ui.error'), t('driver_ui.select_bus_route_first'));
     if (selectedRoute.direction === 'both' && !tripLeg) {
-      return alertCompat('Error', 'Choose Morning or Evening for this route.');
+      return alertCompat(t('driver_ui.error'), t('driver_ui.choose_morning_evening'));
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setActionLoading(true);
@@ -368,17 +359,17 @@ export default function DriverDashboard() {
       setElapsedMin(0);
       await fetchTripStatus(data.trip.id);
       startLocationTracking(selectedBus.id);
-    } catch (err: any) {
-      alertCompat('Error', err?.message || 'Failed to start trip');
+    } catch {
+      alertCompat(t('driver_ui.error'), t('driver_ui.failed_to_start_trip'));
     } finally { setActionLoading(false); }
   };
 
   /* ─── END TRIP ─── */
   const handleEndTrip = async () => {
-    alertCompat('End Trip', 'Are you sure you want to end this trip?', [
-      { text: 'Cancel', style: 'cancel' },
+    alertCompat(t('driver_ui.end_trip'), t('driver_ui.end_trip_question'), [
+      { text: t('driver_ui.cancel'), style: 'cancel' },
       {
-        text: 'End Trip', style: 'destructive', onPress: async () => {
+        text: t('driver_ui.end_trip'), style: 'destructive', onPress: async () => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           setActionLoading(true);
           try {
@@ -390,8 +381,8 @@ export default function DriverDashboard() {
             setActiveTripId(null);
             stopLocationTracking();
             await refreshDriverData();
-          } catch (err: any) {
-            alertCompat('Error', err?.message || 'Failed to end trip');
+          } catch {
+            alertCompat(t('driver_ui.error'), t('driver_ui.failed_to_end_trip'));
           } finally { setActionLoading(false); }
         }
       }]
@@ -409,8 +400,8 @@ export default function DriverDashboard() {
         source: 'manual',
       });
       await fetchTripStatus(activeTripId!);
-    } catch (err: any) {
-      alertCompat('Cannot Arrive', err?.message || 'Failed');
+    } catch {
+      alertCompat(t('driver_ui.cannot_arrive'), t('driver_ui.action_failed'));
     } finally { setActionLoading(false); }
   };
 
@@ -421,23 +412,23 @@ export default function DriverDashboard() {
     try {
       await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/complete`);
       await fetchTripStatus(activeTripId!);
-    } catch (err: any) {
-      alertCompat('Cannot Complete', err?.message || 'Failed');
+    } catch {
+      alertCompat(t('driver_ui.cannot_complete'), t('driver_ui.action_failed'));
     } finally { setActionLoading(false); }
   };
 
   /* ─── SKIP STOP ─── */
   const handleSkipStop = async (stopId: string) => {
-    alertCompat('Skip Stop', 'Are you sure you want to skip this stop?', [
-      { text: 'Cancel', style: 'cancel' },
+    alertCompat(t('driver_ui.skip_stop'), t('driver_ui.skip_stop_question'), [
+      { text: t('driver_ui.cancel'), style: 'cancel' },
       {
-        text: 'Skip', style: 'destructive', onPress: async () => {
+        text: t('driver_ui.skip'), style: 'destructive', onPress: async () => {
           Haptics.selectionAsync();
           setActionLoading(true);
           try {
             await api.post<any>(`/transport/trips/${activeTripId}/stops/${stopId}/skip`);
             await fetchTripStatus(activeTripId!);
-          } catch (err: any) { alertCompat('Cannot Skip', err?.message || 'Failed'); } finally { setActionLoading(false); }
+          } catch { alertCompat(t('driver_ui.cannot_skip'), t('driver_ui.action_failed')); } finally { setActionLoading(false); }
         }
       }]
     );
@@ -526,8 +517,8 @@ export default function DriverDashboard() {
     if (!permGranted) {
       setLocationSharingPaused(true);
       return alertCompat(
-        'Location sharing paused',
-        'Allow Precise Location and “Allow all the time”. On Xiaomi, Oppo, Vivo, and Samsung also set this app to Unrestricted battery use so parents keep seeing the bus when the screen is off.',
+        t('driver_ui.location_sharing_paused'),
+        t('driver_ui.location_permission_instructions'),
       );
     }
 
@@ -636,7 +627,7 @@ export default function DriverDashboard() {
   if (loading) {
     return (
       <ScreenLayout>
-        <StudentHeader title="Dashboard" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.route')} menuUserType="driver" showBackButton={false} />
         <View style={s.center}><LogoLoader size={60} color={PRIMARY} /></View>
       </ScreenLayout>);
 
@@ -660,7 +651,7 @@ export default function DriverDashboard() {
         {/* ═══════ Compact identity ═══════ */}
         <Animated.View entering={FadeInDown.duration(320)} style={s.identityBlock}>
           <Text style={s.dateEyebrow}>
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
+            {new Date().toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}
           </Text>
           <Text style={s.greetingLine}>
             {greeting}, <Text style={s.greetingName}>{displayName}</Text>
@@ -673,9 +664,9 @@ export default function DriverDashboard() {
               dense
               displayName={displayName}
               photoUrl={user?.photoUrl}
-              roleLabel={user?.role?.name || t('driver_ui.driver', 'Driver')}
+              roleLabel={t('driver_ui.driver', 'Driver')}
               staffCode={user?.staff_code ?? undefined}
-              portalBadge="DRIVER"
+              portalBadge={t('driver_ui.driver_portal_badge')}
             />
           </View>
         </Animated.View>
@@ -701,7 +692,7 @@ export default function DriverDashboard() {
                 <Text style={s.heroName}>{t('driver_ui.todays_trip', "Today's Trip")}</Text>
                 <Text style={s.heroRoute} numberOfLines={1}>
                   {selectedRoute
-                    ? `${selectedRoute.name}${selectedRoute.direction ? ` · ${selectedRoute.direction}` : ''}`
+                    ? `${selectedRoute.name}${selectedRoute.direction ? ` · ${translateDriverDirection(selectedRoute.direction, t)}` : ''}`
                     : t('driver_ui.pick_route_hint', 'Select a route to begin')}
                 </Text>
               </View>
@@ -714,14 +705,14 @@ export default function DriverDashboard() {
             <View style={s.heroStats}>
               <View style={s.heroStat}>
                 <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.85)" />
-                <Text style={s.heroStatValue}>{isTracking ? `${elapsedMin}m` : t('driver_ui.ready', 'Ready')}</Text>
+                <Text style={s.heroStatValue}>{isTracking ? t('driver_ui.minute_short', { count: elapsedMin }) : t('driver_ui.ready', 'Ready')}</Text>
                 <Text style={s.heroStatLabel}>{t('driver_ui.elapsed', 'Time')}</Text>
               </View>
               <View style={s.heroStatDivider} />
               <View style={s.heroStat}>
                 <Ionicons name="speedometer-outline" size={16} color="rgba(255,255,255,0.85)" />
                 <Text style={s.heroStatValue}>{isTracking ? `${speed.toFixed(0)}` : '—'}</Text>
-                <Text style={s.heroStatLabel}>km/h</Text>
+                <Text style={s.heroStatLabel}>{t('driver_ui.speed_unit_kmh')}</Text>
               </View>
               <View style={s.heroStatDivider} />
               <View style={s.heroStat}>
@@ -747,8 +738,8 @@ export default function DriverDashboard() {
 
         {isTracking && locationSharingPaused &&
           <View style={s.pauseAlert}>
-            <Text style={s.pauseAlertTitle}>Location sharing is paused</Text>
-            <Text style={s.pauseAlertBody}>Allow Precise + background location, then set battery use to Unrestricted. The trip remains open; GPS restarts when you return.</Text>
+            <Text style={s.pauseAlertTitle}>{t('driver_ui.location_sharing_is_paused')}</Text>
+            <Text style={s.pauseAlertBody}>{t('driver_ui.location_paused_help')}</Text>
           </View>
         }
 
@@ -820,7 +811,7 @@ export default function DriverDashboard() {
                         {r.name}
                       </Text>
                       <Text style={[s.routeCardMeta, selectedRoute?.id === r.id && { color: 'rgba(255,255,255,0.78)' }]}>
-                        {r.direction}{r.total_stops ? ` · ${r.total_stops} stops` : ''}
+                        {translateDriverDirection(r.direction, t)}{r.total_stops ? ` · ${t('driver_ui.stop_count', { count: r.total_stops })}` : ''}
                       </Text>
                     </View>
                   </View>
@@ -861,7 +852,7 @@ export default function DriverDashboard() {
               <View style={[s.progressBarFill, { width: `${progressPercent}%` }]} />
             </View>
             <Text style={s.progressRoute}>
-              {selectedRoute?.name} • {isTracking ? resolveTripDirectionParam(selectedRoute, tripLeg) : selectedRoute?.direction}
+              {selectedRoute?.name} • {translateDriverDirection(isTracking ? resolveTripDirectionParam(selectedRoute, tripLeg) : selectedRoute?.direction, t)}
             </Text>
           </Animated.View>
         }
@@ -882,11 +873,13 @@ export default function DriverDashboard() {
               <Text style={[s.calibTitle, calibration.is_calibrated && { color: '#065F46' }]}>
                 {calibration.is_calibrated
                   ? t('driver_ui.route_calibrated', 'Route calibrated')
-                  : t('driver_ui.calibrating_route', 'Calibrating route') +
-                    ` · trip ${Math.min(
+                  : `${t('driver_ui.calibrating_route', 'Calibrating route')} · ${t('driver_ui.trip_of', {
+                    current: Math.min(
                       calibration.clean_trip_count + 1,
                       calibration.required_clean_trip_count || 4,
-                    )} of ${calibration.required_clean_trip_count || 4}`}
+                    ),
+                    total: calibration.required_clean_trip_count || 4,
+                  })}`}
               </Text>
               <Text style={[s.calibSub, calibration.is_calibrated && { color: '#047857' }]}>
                 {calibration.is_calibrated
@@ -937,7 +930,7 @@ export default function DriverDashboard() {
                     {stop.student_count > 0 &&
                       <View style={s.studentRow}>
                         <Ionicons name="people" size={13} color="#64748B" />
-                        <Text style={s.studentText}>{stop.student_count} student{stop.student_count > 1 ? 's' : ''}</Text>
+                        <Text style={s.studentText}>{t('driver_ui.student_count', { count: stop.student_count })}</Text>
                       </View>
                     }
                     {isTracking && isCurrent &&

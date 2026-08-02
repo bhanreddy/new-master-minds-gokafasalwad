@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ADMIN_THEME } from '@/src/constants/adminTheme';
+import { useTranslation } from 'react-i18next';
 
 // Fixed coral palette — reads as an action control, distinct from field lavender.
 const TOGGLE = {
@@ -49,6 +50,7 @@ export default function ClayPasswordToggle({
   onToggle,
   isDark,
 }: ClayPasswordToggleProps) {
+  const { t } = useTranslation();
   const iconColor = visible
     ? (isDark ? '#FFF5F2' : '#FFFFFF')
     : (isDark ? TOGGLE.coralMid : TOGGLE.coralDeep);
@@ -63,7 +65,7 @@ export default function ClayPasswordToggle({
     <Pressable
       onPress={onToggle}
       accessibilityRole="button"
-      accessibilityLabel={visible ? 'Hide password' : 'Show password'}
+      accessibilityLabel={visible ? t('driver_ui.hide_password') : t('driver_ui.show_password')}
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       style={({ pressed }) => [
         styles.btn,

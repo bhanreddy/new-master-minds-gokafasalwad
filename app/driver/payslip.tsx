@@ -10,6 +10,8 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { useStaffPortalConfig } from '../../src/hooks/useStaffPortalConfig';
 import { useTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
+import { useTranslation } from 'react-i18next';
+import { driverDateLocale, translatePayslipMonth, translatePayslipStatus } from '../../src/utils/driverI18n';
 
 interface Payslip {
   id: string;
@@ -23,6 +25,8 @@ interface Payslip {
 export default function DriverPayslip() {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const { t, i18n } = useTranslation();
+  const numberLocale = driverDateLocale(i18n.language);
   const PRIMARY_GRADIENT: [string, string] = [theme.colors.primary, theme.colors.primaryDark];
   const { payslipsEnabled, loading: configLoading } = useStaffPortalConfig();
   const [payslips, setPayslips] = useState<Payslip[]>([]);
@@ -48,8 +52,8 @@ export default function DriverPayslip() {
       const amount = parseFloat(item.earnings.replace(/[₹,]/g, '')) || 0;
       return sum + amount;
     }, 0);
-    return `₹${total.toLocaleString('en-IN')}`;
-  }, [payslips]);
+    return `₹${total.toLocaleString(numberLocale)}`;
+  }, [numberLocale, payslips]);
 
   const totalDeductions = React.useMemo(() => {
     if (!payslips.length) return '₹0';
@@ -57,23 +61,23 @@ export default function DriverPayslip() {
       const amount = parseFloat(item.deductions.replace(/[₹,]/g, '')) || 0;
       return sum + amount;
     }, 0);
-    return `₹${total.toLocaleString('en-IN')}`;
-  }, [payslips]);
+    return `₹${total.toLocaleString(numberLocale)}`;
+  }, [numberLocale, payslips]);
 
   const handleDownload = () => {
-    alertCompat('Coming Soon', 'PDF download will be available soon.');
+    alertCompat(t('driver_ui.coming_soon'), t('driver_ui.pdf_download_soon'));
   };
 
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
-      <StudentHeader title="My Payslips" menuUserType="driver" showBackButton={false} />
+      <StudentHeader title={t('driver_ui.my_payslips')} menuUserType="driver" showBackButton={false} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {!configLoading && !payslipsEnabled ? (
           <View style={styles.emptyBox}>
             <Ionicons name="eye-off-outline" size={36} color="#CBD5E1" />
-            <Text style={styles.emptyTitle}>Payslips are unavailable</Text>
-            <Text style={styles.emptySubtitle}>Your school admin has disabled payslip access.</Text>
+            <Text style={styles.emptyTitle}>{t('driver_ui.payslips_unavailable')}</Text>
+            <Text style={styles.emptySubtitle}>{t('driver_ui.payslips_disabled_by_admin')}</Text>
           </View>
         ) : (
         <>
@@ -90,7 +94,7 @@ export default function DriverPayslip() {
             <View style={[styles.decor, { bottom: -10, left: -10, width: 50, height: 50 }]} />
             <View style={styles.summaryTop}>
               <View>
-                <Text style={styles.summaryLabel}>Total Earnings (YTD)</Text>
+                <Text style={styles.summaryLabel}>{t('driver_ui.total_earnings_ytd')}</Text>
                 <Text style={styles.summaryValue}>{totalEarnings}</Text>
               </View>
               <View style={styles.summaryIconBox}>
@@ -100,11 +104,11 @@ export default function DriverPayslip() {
             <View style={styles.summaryDivider} />
             <View style={styles.summaryBottom}>
               <View style={styles.miniStat}>
-                <Text style={styles.miniStatLabel}>Months</Text>
+                <Text style={styles.miniStatLabel}>{t('driver_ui.months')}</Text>
                 <Text style={styles.miniStatValue}>{payslips.length}</Text>
               </View>
               <View style={styles.miniStat}>
-                <Text style={styles.miniStatLabel}>Deductions</Text>
+                <Text style={styles.miniStatLabel}>{t('driver_ui.deductions')}</Text>
                 <Text style={styles.miniStatValue}>{totalDeductions}</Text>
               </View>
             </View>
@@ -116,22 +120,22 @@ export default function DriverPayslip() {
             <View style={styles.listIconBox}>
               <Ionicons name="receipt" size={16} color={theme.colors.primary} />
             </View>
-            <Text style={styles.listTitle}>Recent Payslips</Text>
+            <Text style={styles.listTitle}>{t('driver_ui.recent_payslips')}</Text>
           </View>
-          <Text style={styles.listCount}>{payslips.length} total</Text>
+          <Text style={styles.listCount}>{t('driver_ui.total_count', { count: payslips.length })}</Text>
         </View>
         {loading ?
           <View style={styles.centerBox}>
             <LogoLoader size={30} color={theme.colors.primary} />
-            <Text style={styles.centerText}>Loading payslips…</Text>
+            <Text style={styles.centerText}>{t('driver_ui.loading_payslips')}</Text>
           </View> :
           payslips.length === 0 ?
             <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.emptyCard}>
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="receipt-outline" size={36} color="#CBD5E1" />
               </View>
-              <Text style={styles.emptyTitle}>No Payslips Yet</Text>
-              <Text style={styles.emptySubtitle}>Your salary slips will appear here once processed by the accounts department.</Text>
+              <Text style={styles.emptyTitle}>{t('driver_ui.no_payslips_yet')}</Text>
+              <Text style={styles.emptySubtitle}>{t('driver_ui.payslips_appear_after_processing')}</Text>
             </Animated.View> :
 
             <View style={styles.listContainer}>
@@ -147,20 +151,20 @@ export default function DriverPayslip() {
                       <View style={styles.calIcon}>
                         <Ionicons name="calendar" size={16} color={theme.colors.primary} />
                       </View>
-                      <Text style={styles.monthText}>{item.month}</Text>
+                      <Text style={styles.monthText}>{translatePayslipMonth(item.month, t)}</Text>
                     </View>
                     <View style={[
                       styles.statusBadge,
-                      item.status === 'Paid' ? styles.paidBadge : styles.pendingBadge]
+                      item.status.toLowerCase() === 'paid' ? styles.paidBadge : styles.pendingBadge]
                     }>
                       <View style={[
                         styles.statusDot,
-                        { backgroundColor: item.status === 'Paid' ? theme.colors.success : theme.colors.warning }]
+                        { backgroundColor: item.status.toLowerCase() === 'paid' ? theme.colors.success : theme.colors.warning }]
                       } />
                       <Text style={[
                         styles.statusText,
-                        item.status === 'Paid' ? styles.paidText : styles.pendingText]
-                      }>{item.status}</Text>
+                        item.status.toLowerCase() === 'paid' ? styles.paidText : styles.pendingText]
+                      }>{translatePayslipStatus(item.status, t)}</Text>
                     </View>
                   </View>
                   <View style={styles.cardDivider} />
@@ -169,20 +173,20 @@ export default function DriverPayslip() {
                     <View style={styles.breakdownItem}>
                       <View style={[styles.breakdownDot, { backgroundColor: theme.colors.success }]} />
                       <View>
-                        <Text style={styles.breakdownLabel}>Earnings</Text>
+                        <Text style={styles.breakdownLabel}>{t('driver_ui.earnings')}</Text>
                         <Text style={[styles.breakdownValue, { color: theme.colors.success }]}>{item.earnings}</Text>
                       </View>
                     </View>
                     <View style={styles.breakdownItem}>
                       <View style={[styles.breakdownDot, { backgroundColor: theme.colors.danger }]} />
                       <View>
-                        <Text style={styles.breakdownLabel}>Deductions</Text>
+                        <Text style={styles.breakdownLabel}>{t('driver_ui.deductions')}</Text>
                         <Text style={[styles.breakdownValue, { color: theme.colors.danger }]}>{item.deductions}</Text>
                       </View>
                     </View>
                     <View style={[styles.breakdownItem, { alignItems: 'flex-end' }]}>
                       <View>
-                        <Text style={[styles.breakdownLabel, { textAlign: 'right' }]}>Net Pay</Text>
+                        <Text style={[styles.breakdownLabel, { textAlign: 'right' }]}>{t('driver_ui.net_pay')}</Text>
                         <Text style={[styles.breakdownValue, { color: '#0F172A', fontWeight: '800', fontSize: 16 }]}>{item.net}</Text>
                       </View>
                     </View>
@@ -194,7 +198,7 @@ export default function DriverPayslip() {
                     activeOpacity={0.7}>
 
                     <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
-                    <Text style={[styles.downloadText, { color: theme.colors.primary }]}>Download PDF</Text>
+                    <Text style={[styles.downloadText, { color: theme.colors.primary }]}>{t('driver_ui.download_pdf')}</Text>
                   </TouchableOpacity>
                 </Animated.View>
               )}

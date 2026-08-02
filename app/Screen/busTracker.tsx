@@ -208,6 +208,7 @@ export default function StudentBusTrackerScreen() {
   const dateLocale = isTelugu(i18n.language) ? 'te-IN' : 'en-IN';
   const [data, setData] = useState<BusPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [live, setLive] = useState<LivePayload | null>(null);
@@ -231,13 +232,22 @@ export default function StudentBusTrackerScreen() {
       if (!silent) setLoading(true);
       const res = await api.get<BusPayload>('/transport/my-bus');
       setData(res);
+      setLoadError(false);
 
       if (res?.assigned) {
-        const history = await BusAttendanceService.getMyAttendance();
-        setAttendanceHistory(history || []);
+        try {
+          const history = await BusAttendanceService.getMyAttendance();
+          setAttendanceHistory(history || []);
+        } catch {
+          // Attendance history is secondary; the confirmed transport
+          // assignment should still render when this request fails.
+          setAttendanceHistory([]);
+        }
+      } else {
+        setAttendanceHistory([]);
       }
     } catch {
-      setData({ assigned: false });
+      setLoadError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -387,6 +397,31 @@ export default function StudentBusTrackerScreen() {
         <View style={s.center}>
           <LogoLoader size={52} color={C.blue} />
           <Text style={s.loadingText}>{t('busTracker.loading')}</Text>
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  // ── Load error ──
+  // Do not claim that transport was not opted when the API never confirmed it.
+  if (loadError && !data) {
+    return (
+      <ScreenLayout>
+        <StatusBar barStyle="dark-content" backgroundColor={C.white} />
+        <StudentHeader title={t('busTracker.title')} />
+        <View style={s.center}>
+          <View style={s.emptyIconWrap}>
+            <Ionicons name="cloud-offline-outline" size={36} color={C.slate400} />
+          </View>
+          <Text style={s.emptyTitle}>{t('busTracker.load_error_title')}</Text>
+          <Text style={s.emptySub}>{t('busTracker.load_error_sub')}</Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => load()}
+            style={s.retryButton}
+          >
+            <Text style={s.retryButtonText}>{t('common.retry', 'Retry')}</Text>
+          </TouchableOpacity>
         </View>
       </ScreenLayout>
     );
@@ -1130,6 +1165,14 @@ const s = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: C.slate700 },
   emptySub: { fontSize: 14, color: C.slate400, textAlign: 'center', lineHeight: 20 },
+  retryButton: {
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: C.blue,
+  },
+  retryButtonText: { fontSize: 14, fontWeight: '700', color: C.white },
 
   // ── Trip sheet ──
   tripSheet: {

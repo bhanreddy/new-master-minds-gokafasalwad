@@ -12,6 +12,8 @@ import { api } from '../../src/services/apiClient';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import LogoLoader from '../../src/components/LogoLoader';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useTranslation } from 'react-i18next';
+import { translateDriverDirection, translateRelationship } from '../../src/utils/driverI18n';
 
 interface StudentInfo {
   student_id: string;
@@ -51,6 +53,7 @@ export default function DriverStudents() {
   const [callContacts, setCallContacts] = useState<PhoneContact[]>([]);
   const [callStudentName, setCallStudentName] = useState('');
   const { theme } = useTheme();
+  const { t } = useTranslation();
   const PRIMARY_GRADIENT: [string, string] = [theme.colors.primary, theme.colors.primaryDark];
   const s = React.useMemo(() => getStyles(theme), [theme]);
 
@@ -58,13 +61,13 @@ export default function DriverStudents() {
     try {
       const data = await api.get<any>('/transport/driver/my-students');
       setRoutes(data.routes || []);
-    } catch (e: any) {
-      alertCompat('Error', e?.message || 'Failed to load students');
+    } catch {
+      alertCompat(t('driver_ui.error'), t('driver_ui.failed_to_load_students'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
 
@@ -83,21 +86,21 @@ export default function DriverStudents() {
     try {
       await Linking.openURL(`tel:${encodeURIComponent(phone.trim())}`);
     } catch {
-      alertCompat('Call unavailable', `Could not open the phone app for ${phone}.`);
+      alertCompat(t('driver_ui.call_unavailable'), t('driver_ui.could_not_open_phone', { phone }));
     }
   };
 
   const openCallOptions = (student: StudentInfo) => {
     const contacts = (student.phone_contacts || []).filter((contact) => contact.phone?.trim());
     if (contacts.length === 0) {
-      alertCompat('No Phone', 'No phone number is linked to this student or their family contacts.');
+      alertCompat(t('driver_ui.no_phone'), t('driver_ui.no_phone_linked'));
       return;
     }
     if (contacts.length === 1) {
       void dialPhone(contacts[0].phone);
       return;
     }
-    setCallStudentName(student.student_name || 'student');
+    setCallStudentName(student.student_name || t('driver_ui.student'));
     setCallContacts(contacts);
   };
 
@@ -105,7 +108,7 @@ export default function DriverStudents() {
   if (loading) {
     return (
       <ScreenLayout>
-        <StudentHeader title="Passenger Roster" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.passenger_roster')} menuUserType="driver" showBackButton={false} />
         <View style={s.center}><LogoLoader size={60} color={theme.colors.primary} /></View>
       </ScreenLayout>
     );
@@ -116,14 +119,14 @@ export default function DriverStudents() {
     return (
       <ScreenLayout>
         <StatusBar barStyle="dark-content" />
-        <StudentHeader title="Passenger Roster" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.passenger_roster')} menuUserType="driver" showBackButton={false} />
         <View style={s.center}>
           <View style={s.emptyIcon}>
             <Ionicons name="people-outline" size={48} color="#CBD5E1" />
           </View>
-          <Text style={s.emptyTitle}>No Students Assigned</Text>
+          <Text style={s.emptyTitle}>{t('driver_ui.no_students_assigned')}</Text>
           <Text style={s.emptySub}>
-            Students will appear here once they are assigned to your route.
+            {t('driver_ui.students_appear_when_assigned')}
           </Text>
         </View>
       </ScreenLayout>
@@ -133,7 +136,7 @@ export default function DriverStudents() {
   return (
     <ScreenLayout>
       <StatusBar barStyle="light-content" />
-      <StudentHeader title="Passenger Roster" menuUserType="driver" showBackButton={false} />
+      <StudentHeader title={t('driver_ui.passenger_roster')} menuUserType="driver" showBackButton={false} />
 
       <FlatList
         data={currentRoute?.stops || []}
@@ -161,17 +164,17 @@ export default function DriverStudents() {
                 <View style={s.heroRow}>
                   <View style={s.heroStatBox}>
                     <Text style={s.heroStatNum}>{totalStudents}</Text>
-                    <Text style={s.heroStatLabel}>Students</Text>
+                    <Text style={s.heroStatLabel}>{t('driver_ui.students')}</Text>
                   </View>
                   <View style={s.heroStatDivider} />
                   <View style={s.heroStatBox}>
                     <Text style={s.heroStatNum}>{totalStops}</Text>
-                    <Text style={s.heroStatLabel}>Stops</Text>
+                    <Text style={s.heroStatLabel}>{t('driver_ui.stops')}</Text>
                   </View>
                   <View style={s.heroStatDivider} />
                   <View style={s.heroStatBox}>
                     <Text style={s.heroStatNum}>{stopsWithStudents}</Text>
-                    <Text style={s.heroStatLabel}>Active Stops</Text>
+                    <Text style={s.heroStatLabel}>{t('driver_ui.active_stops')}</Text>
                   </View>
                 </View>
 
@@ -181,7 +184,7 @@ export default function DriverStudents() {
                   <View style={s.heroRoutePill}>
                     <Ionicons name="navigate" size={12} color="#FFF" />
                     <Text style={s.heroRouteText}>
-                      {currentRoute?.name} · {currentRoute?.direction}
+                      {currentRoute?.name} · {translateDriverDirection(currentRoute?.direction, t)}
                     </Text>
                   </View>
                 </View>
@@ -195,7 +198,7 @@ export default function DriverStudents() {
                   <View style={s.secIconBox}>
                     <Ionicons name="map" size={14} color={theme.colors.primary} />
                   </View>
-                  <Text style={s.secTitle}>Select Route</Text>
+                  <Text style={s.secTitle}>{t('driver_ui.select_route')}</Text>
                 </View>
                 <FlatList
                   horizontal
@@ -215,7 +218,7 @@ export default function DriverStudents() {
                         {item.name}
                       </Text>
                       <Text style={[s.routeChipDir, selectedRouteIdx === index && { color: 'rgba(255,255,255,0.7)' }]}>
-                        {item.direction}
+                        {translateDriverDirection(item.direction, t)}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -229,7 +232,7 @@ export default function DriverStudents() {
                 <View style={[s.secIconBox, { backgroundColor: '#ECFDF5' }]}>
                   <Ionicons name="people" size={14} color="#10B981" />
                 </View>
-                <Text style={s.secTitle}>Students by Stop</Text>
+                <Text style={s.secTitle}>{t('driver_ui.students_by_stop')}</Text>
               </View>
             </Animated.View>
           </>
@@ -251,7 +254,7 @@ export default function DriverStudents() {
                 <View style={{ flex: 1 }}>
                   <Text style={s.stopName}>{stop.stop_name}</Text>
                   <Text style={s.stopMeta}>
-                    {students.length} student{students.length > 1 ? 's' : ''}
+                    {t('driver_ui.student_count', { count: students.length })}
                   </Text>
                 </View>
                 <View style={s.stopCountPill}>
@@ -276,7 +279,7 @@ export default function DriverStudents() {
                   {/* Info */}
                   <View style={s.studentInfo}>
                     <Text style={s.studentName} numberOfLines={1}>
-                      {stu.student_name || 'Unknown'}
+                      {stu.student_name || t('driver_ui.unknown')}
                     </Text>
                     <View style={s.studentMetaRow}>
                       {stu.admission_no && (
@@ -301,6 +304,8 @@ export default function DriverStudents() {
                     style={[s.callBtn, !(stu.phone_contacts?.length) && { opacity: 0.3 }]}
                     onPress={() => openCallOptions(stu)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('driver_ui.call_student', { name: stu.student_name || t('driver_ui.student') })}
                   >
                     <Ionicons name="call" size={16} color={theme.colors.success} />
                   </TouchableOpacity>
@@ -312,7 +317,7 @@ export default function DriverStudents() {
         ListEmptyComponent={
           <View style={s.center}>
             <Ionicons name="people-outline" size={40} color="#CBD5E1" />
-            <Text style={s.emptyTitle}>No students on this route</Text>
+            <Text style={s.emptyTitle}>{t('driver_ui.no_students_on_route')}</Text>
           </View>
         }
         ListFooterComponent={<View style={{ height: 100 }} />}
@@ -331,8 +336,8 @@ export default function DriverStudents() {
                 <Ionicons name="call" size={20} color={theme.colors.success} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.callSheetTitle}>Call contact</Text>
-                <Text style={s.callSheetSub}>Choose a number linked to {callStudentName}</Text>
+                <Text style={s.callSheetTitle}>{t('driver_ui.call_contact')}</Text>
+                <Text style={s.callSheetSub}>{t('driver_ui.choose_number_for', { name: callStudentName })}</Text>
               </View>
               <TouchableOpacity onPress={() => setCallContacts([])} style={s.closeBtn}>
                 <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
@@ -348,9 +353,9 @@ export default function DriverStudents() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={s.contactName}>
-                    {contact.contact_name || contact.relationship}
+                    {contact.contact_name || translateRelationship(contact.relationship, t)}
                   </Text>
-                  <Text style={s.contactMeta}>{contact.relationship} · {contact.phone}</Text>
+                  <Text style={s.contactMeta}>{translateRelationship(contact.relationship, t)} · {contact.phone}</Text>
                 </View>
                 <Ionicons name="call-outline" size={20} color={theme.colors.success} />
               </TouchableOpacity>

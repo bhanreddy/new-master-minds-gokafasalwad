@@ -6,6 +6,8 @@ import * as Haptics from '../utils/haptics';
 import { Avatar } from './Avatar';
 import { uploadProfilePhoto, removeProfilePhoto } from '../services/profilePhotoService';
 import { useAuth } from '../hooks/useAuth';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 /**
  * Self-service profile picture control shared by all five portals. Shows the
@@ -40,10 +42,10 @@ export interface AvatarUploaderProps {
   style?: StyleProp<ViewStyle>;
 }
 
-async function pickFromCamera(): Promise<ImagePicker.ImagePickerResult> {
+async function pickFromCamera(t: TFunction): Promise<ImagePicker.ImagePickerResult> {
   const perm = await ImagePicker.requestCameraPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Camera permission needed', 'Please allow camera access to take a profile photo.');
+    Alert.alert(t('driver_ui.camera_permission_needed'), t('driver_ui.allow_camera_profile_photo'));
     return { canceled: true, assets: null };
   }
   return ImagePicker.launchCameraAsync({
@@ -54,10 +56,10 @@ async function pickFromCamera(): Promise<ImagePicker.ImagePickerResult> {
   });
 }
 
-async function pickFromLibrary(): Promise<ImagePicker.ImagePickerResult> {
+async function pickFromLibrary(t: TFunction): Promise<ImagePicker.ImagePickerResult> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
-    Alert.alert('Photos permission needed', 'Please allow photo library access to choose a profile photo.');
+    Alert.alert(t('driver_ui.photos_permission_needed'), t('driver_ui.allow_library_profile_photo'));
     return { canceled: true, assets: null };
   }
   return ImagePicker.launchImageLibraryAsync({
@@ -83,6 +85,7 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
   style,
 }, ref) {
   const { updateUserPhoto } = useAuth();
+  const { t } = useTranslation();
   const [busy, setBusy] = React.useState(false);
 
   const handleResult = async (result: ImagePicker.ImagePickerResult) => {
@@ -94,8 +97,8 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
       if (syncAuthContext) await updateUserPhoto(newUrl);
       onUploaded?.(newUrl);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e: any) {
-      Alert.alert('Upload failed', e?.message || 'Could not update your profile picture. Please try again.');
+    } catch {
+      Alert.alert(t('driver_ui.upload_failed'), t('driver_ui.could_not_update_profile_picture'));
     } finally {
       setBusy(false);
     }
@@ -108,8 +111,8 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
       if (syncAuthContext) await updateUserPhoto(null);
       onRemoved?.();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e: any) {
-      Alert.alert('Could not remove', e?.message || 'Please try again.');
+    } catch {
+      Alert.alert(t('driver_ui.could_not_remove'), t('driver_ui.please_try_again'));
     } finally {
       setBusy(false);
     }
@@ -121,20 +124,20 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
 
     // Web has no native camera flow — go straight to the library picker.
     if (Platform.OS === 'web') {
-      void pickFromLibrary().then(handleResult);
+      void pickFromLibrary(t).then(handleResult);
       return;
     }
 
-    const options: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }> = [
-      { text: 'Take Photo', onPress: () => void pickFromCamera().then(handleResult) },
-      { text: 'Choose from Library', onPress: () => void pickFromLibrary().then(handleResult) },
+    const options: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+      { text: t('driver_ui.take_photo'), onPress: () => void pickFromCamera(t).then(handleResult) },
+      { text: t('driver_ui.choose_from_library'), onPress: () => void pickFromLibrary(t).then(handleResult) },
     ];
     if (allowRemove && photoUrl) {
-      options.push({ text: 'Remove Photo', style: 'destructive', onPress: handleRemove });
+      options.push({ text: t('driver_ui.remove_photo'), style: 'destructive', onPress: handleRemove });
     }
-    options.push({ text: 'Cancel', style: 'cancel' });
+    options.push({ text: t('driver_ui.cancel'), style: 'cancel' });
 
-    Alert.alert('Profile Picture', 'Update your profile picture', options);
+    Alert.alert(t('driver_ui.profile_picture'), t('driver_ui.update_profile_picture'), options);
   };
 
   useImperativeHandle(ref, () => ({ open: openMenu }), [busy, photoUrl, allowRemove]);
@@ -148,7 +151,7 @@ export const AvatarUploader = forwardRef<AvatarUploaderHandle, AvatarUploaderPro
       disabled={busy}
       style={[styles.wrap, style]}
       accessibilityRole="button"
-      accessibilityLabel="Change profile picture"
+      accessibilityLabel={t('driver_ui.change_profile_picture')}
     >
       <Avatar photoUrl={photoUrl} name={name} size={size} borderRadius={borderRadius} ringColor={ringColor} ringWidth={ringWidth} />
 

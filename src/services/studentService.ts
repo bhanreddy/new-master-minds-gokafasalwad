@@ -1,6 +1,5 @@
 import { api } from './apiClient';
 import { Platform } from 'react-native';
-import * as ImageManipulator from 'expo-image-manipulator';
 import type {
     Student,
     StudentEnrollment,
@@ -10,6 +9,7 @@ import type {
     AttendanceSummary,
 } from '../types/models';
 import { sortStudentFeesByConfiguredOrder } from '../utils/feeOrdering';
+import { prepareStudentPhoto, STUDENT_PHOTO_MAX_BYTES } from '../utils/studentPhoto';
 
 /** Aggregated payload from GET /student/dashboard (one HTTP call for the student home tab). */
 export interface StudentDashboardResponse {
@@ -93,6 +93,7 @@ export interface SaveStudentResponse {
 export interface StudentPhotoResponse {
     message?: string;
     photo_url: string | null;
+    photo_size_bytes?: number;
 }
 
 export interface StudentHardDeletePreview {
@@ -108,23 +109,34 @@ export interface StudentHardDeletePreview {
     balance: number;
 }
 
+export interface AdmissionNumberSuggestion {
+    type: 'dummy' | 'permanent';
+    current_max: string;
+    next_number: string;
+    next_admission_no: string;
+}
+
 async function buildStudentPhotoFormData(uri: string): Promise<FormData> {
     let processedUri = uri;
     try {
-        const processed = await ImageManipulator.manipulateAsync(
-            uri,
-            [{ resize: { width: 1024 } }],
-            { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
-        );
+        const processed = await prepareStudentPhoto(uri);
+        if (processed.sizeBytes > STUDENT_PHOTO_MAX_BYTES) {
+            throw new Error('Student photo is still larger than 100 KB after compression.');
+        }
         processedUri = processed.uri;
     } catch {
-        // The backend still validates, crops, and compresses the original.
+        // Some platform-specific formats cannot be decoded by the Expo client.
+        // Send the original in that case: the backend is the final authority and
+        // will reject invalid images or store a normalised JPEG <= 100 KiB.
     }
 
     const formData = new FormData();
     if (Platform.OS === 'web') {
         const response = await fetch(processedUri);
         const blob = await response.blob();
+        if (processedUri !== uri && blob.size > STUDENT_PHOTO_MAX_BYTES) {
+            throw new Error('Student photo exceeds the 100 KB upload limit after compression.');
+        }
         formData.append('photo', blob, 'student-avatar.jpg');
     } else {
         formData.append('photo', {
@@ -143,6 +155,8 @@ export interface StudentListParams {
     class_id?: string;
     section_id?: string;
     status_id?: number | string;
+    /** Exact generated admission-number format to include. */
+    admission_type?: 'dummy' | 'permanent';
     /** Active roster, retained passed-out/withdrawn archive, or all records. */
     lifecycle?: 'active' | 'archived' | 'all';
     sort_by?: 'name' | 'roll_number' | 'admission_no';
@@ -195,6 +209,13 @@ export const StudentService = {
      */
     getStatuses: async (): Promise<{ id: number; name: string; code: string }[]> => {
         return api.get<{ id: number; name: string; code: string }[]>('/students/statuses');
+    },
+
+    /** Get the next school-scoped generated admission number for a selected type. */
+    getNextAdmissionNumber: async (
+        type: 'dummy' | 'permanent',
+    ): Promise<AdmissionNumberSuggestion> => {
+        return api.get<AdmissionNumberSuggestion>('/students/admission-number/next', { type });
     },
 
     /**

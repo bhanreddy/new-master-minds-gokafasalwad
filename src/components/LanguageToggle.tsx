@@ -37,8 +37,8 @@ type Props = {
 };
 
 const OPTIONS = [
-  { code: 'en' as const, label: 'EN', accessibilityLabel: 'English' },
-  { code: 'te' as const, label: 'తెలుగు', accessibilityLabel: 'Telugu' },
+  { code: 'en' as const, label: 'EN' },
+  { code: 'te' as const, label: 'తెలుగు' },
 ] as const;
 
 /**
@@ -59,7 +59,7 @@ const LanguageToggle: React.FC<Props> = ({
   language,
   onLanguageChange,
 }) => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isTeluguLang = language != null ? language === 'te' : isTelugu(i18n.language);
   const thumbX = useSharedValue(isTeluguLang ? OPTION_WIDTH : 0);
   const resolvedTrackColor =
@@ -138,14 +138,14 @@ const LanguageToggle: React.FC<Props> = ({
         <View style={styles.thumbHighlight} />
       </Animated.View>
 
-      {OPTIONS.map(({ code, label, accessibilityLabel }) => {
+      {OPTIONS.map(({ code, label }) => {
         const isActive = code === (isTeluguLang ? 'te' : 'en');
 
         return (
           <Pressable
             key={code}
             accessibilityRole="radio"
-            accessibilityLabel={accessibilityLabel}
+            accessibilityLabel={code === 'te' ? t('driver_ui.language_telugu') : t('driver_ui.language_english')}
             accessibilityState={{ checked: isActive }}
             hitSlop={6}
             onPress={() => void setLanguage(code)}

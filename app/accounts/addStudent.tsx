@@ -19,6 +19,7 @@ import AdmissionSuccessModal from '../../src/components/AdmissionSuccessModal';
 import { buildAdmissionFormData, AdmissionFormData } from '../../src/utils/admissionFormPdf';
 import KeyboardAwareScreen from '@/components/keyboard/KeyboardAwareScreen';
 import StudentPhotoField from '../../src/components/StudentPhotoField';
+import AdmissionNumberControl from '../../src/components/AdmissionNumberControl';
 import {
   AadhaarNumberField,
   DateOfBirthPartsField,
@@ -484,10 +485,13 @@ export default function AddStudentScreen() {
           complete={academicComplete}
           meta={academicComplete ? 'Class placement set' : 'Admission, class & year'}
         >
-          <InputField label="Admission Number" placeholder="ADM2024001" value={formData.admission_no}
-            onChangeText={(t: string) => update('admission_no', t)} icon="card-outline"
-            required accentColor={SECTION_COLORS.academic.accent} fieldKey="ims-stu-adm-code"
-            error={fieldErrors.admission_no} />
+          <AdmissionNumberControl
+            value={formData.admission_no}
+            onChange={(t: string) => update('admission_no', t)}
+            isEditMode={isEditMode}
+            accentColor={SECTION_COLORS.academic.accent}
+            error={fieldErrors.admission_no}
+          />
           <InputField label="APAR Number" placeholder="Enter APAR number (optional)" value={formData.apar_number || ''}
             onChangeText={(t: string) => update('apar_number', t)} icon="document-text-outline"
             accentColor={SECTION_COLORS.academic.accent} fieldKey="ims-stu-apar-code" />

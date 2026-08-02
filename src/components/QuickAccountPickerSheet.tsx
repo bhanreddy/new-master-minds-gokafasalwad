@@ -18,10 +18,11 @@ import Animated, { FadeIn, FadeInDown, FadeInUp, ZoomIn } from 'react-native-rea
 import { useRouter } from 'expo-router';
 import type { VaultAccount } from '../services/accountVault';
 import { SCHOOL_CONFIG, schoolColorWithAlpha } from '../constants/schoolConfig';
-import { getVaultAccountSubtitle } from '../utils/portalRoutes';
 import { useTheme } from '../hooks/useTheme';
 import { clay, clayCard } from '../theme/clayStyles';
 import * as Haptics from '../utils/haptics';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 const FALLBACK_AVATAR = 'https://cdn-icons-png.flaticon.com/512/2922/2922506.png';
 
@@ -105,10 +106,27 @@ interface Props {
   onSelect: (userId: string) => void;
 }
 
-function accountMeta(acct: VaultAccount) {
-  const line = getVaultAccountSubtitle(acct);
+function accountRole(acct: VaultAccount, t: TFunction): string {
+  const roleCode = acct.validatedUser?.role?.code;
+  if (roleCode === 'student' || roleCode === 'parent') return t('driver_ui.parent');
+  if (roleCode === 'staff' || roleCode === 'teacher') return t('driver_ui.staff');
+  if (roleCode === 'admin' || roleCode === 'principal') return t('driver_ui.admin');
+  if (roleCode === 'accountant' || roleCode === 'accounts') return t('driver_ui.accounts');
+  if (roleCode === 'driver') return t('driver_ui.driver');
+  return t('driver_ui.account');
+}
+
+function accountMeta(acct: VaultAccount, t: TFunction) {
+  const role = accountRole(acct, t);
+  const roleCode = acct.validatedUser?.role?.code;
+  const detail = roleCode === 'student' || roleCode === 'parent'
+    ? acct.classLabel || acct.admissionNo
+    : roleCode === 'staff' || roleCode === 'teacher'
+      ? acct.validatedUser?.staff_code
+      : null;
+  const subtitle = detail ? `${role} · ${detail}` : role;
   const schoolName = acct.schoolName || SCHOOL_CONFIG.name;
-  return { classLabel: line, schoolName, line: `${line} · ${schoolName}` };
+  return { classLabel: subtitle, schoolName, line: `${subtitle} · ${schoolName}` };
 }
 
 function ActiveAccountCard({
@@ -122,7 +140,8 @@ function ActiveAccountCard({
   primary: string;
   styles: ReturnType<typeof getStyles>;
 }) {
-  const { line } = accountMeta(account);
+  const { t } = useTranslation();
+  const { line } = accountMeta(account, t);
   return (
     <View style={[s.activeCard, clayRow(isDark, primary)]}>
       <View style={s.activeCardInner}>
@@ -135,10 +154,10 @@ function ActiveAccountCard({
         <View style={s.activeCardMeta}>
           <View style={s.activeNameRow}>
             <Text style={s.activeName} numberOfLines={1}>
-              {account.displayName || 'Account'}
+              {account.displayName || t('driver_ui.account')}
             </Text>
             <View style={[s.signedInPill, clayPuck(isDark, '#10B981')]}>
-              <Text style={s.signedInPillText}>Signed in</Text>
+              <Text style={s.signedInPillText}>{t('driver_ui.signed_in')}</Text>
             </View>
           </View>
           <Text style={s.activeMetaLine} numberOfLines={2}>{line}</Text>
@@ -167,7 +186,8 @@ function SwitchAccountRow({
   primary: string;
   styles: ReturnType<typeof getStyles>;
 }) {
-  const { line } = accountMeta(account);
+  const { t } = useTranslation();
+  const { line } = accountMeta(account, t);
 
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)} style={s.switchRowOuter}>
@@ -188,7 +208,7 @@ function SwitchAccountRow({
         </View>
         <View style={s.switchMeta}>
           <Text style={s.switchName} numberOfLines={1}>
-            {account.displayName || 'Account'}
+            {account.displayName || t('driver_ui.account')}
           </Text>
           <Text style={s.switchMetaLine} numberOfLines={2}>{line}</Text>
         </View>
@@ -209,7 +229,7 @@ function SwitchAccountRow({
                 style={StyleSheet.absoluteFillObject}
                 pointerEvents="none"
               />
-              <Text style={s.switchBtnText}>Switch</Text>
+              <Text style={s.switchBtnText}>{t('driver_ui.switch')}</Text>
             </LinearGradient>
           </View>
         )}
@@ -231,6 +251,7 @@ export default function QuickAccountPickerSheet({
   const { width, height } = useWindowDimensions();
   const router = useRouter();
   const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
   const primary = theme.colors.primary as string;
   const s = useMemo(() => getStyles(isDark, primary), [isDark, primary]);
   const isWeb = Platform.OS === 'web';
@@ -261,10 +282,10 @@ export default function QuickAccountPickerSheet({
 
   const subtitle =
     accounts.length === 0
-      ? 'Add an account to switch quickly'
+      ? t('driver_ui.add_account_to_switch')
       : accounts.length === 1
-        ? 'Add another account to switch between profiles'
-        : 'Select an account below to switch instantly';
+        ? t('driver_ui.add_account_between_profiles')
+        : t('driver_ui.select_account_to_switch');
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -315,7 +336,7 @@ export default function QuickAccountPickerSheet({
               </LinearGradient>
             </View>
             <View style={s.headerText}>
-              <Text style={s.title}>Switch Account</Text>
+              <Text style={s.title}>{t('driver_ui.switch_account')}</Text>
               <Text style={s.subtitle}>{subtitle}</Text>
             </View>
             <Pressable
@@ -327,7 +348,7 @@ export default function QuickAccountPickerSheet({
               onPress={onClose}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={t('driver_ui.close')}
             >
               <Ionicons name="close" size={17} color={isDark ? '#9CA3AF' : '#64748B'} />
             </Pressable>
@@ -344,9 +365,9 @@ export default function QuickAccountPickerSheet({
                 <View style={[s.emptyIcon, clayPuck(isDark, primary)]}>
                   <Ionicons name="person-add-outline" size={24} color={primary} />
                 </View>
-                <Text style={s.emptyTitle}>No saved accounts</Text>
+                <Text style={s.emptyTitle}>{t('driver_ui.no_saved_accounts')}</Text>
                 <Text style={s.emptyText}>
-                  Add another account from Settings to switch between profiles instantly.
+                  {t('driver_ui.add_account_from_settings')}
                 </Text>
                 <Pressable
                   style={({ pressed }) => [
@@ -363,7 +384,7 @@ export default function QuickAccountPickerSheet({
                     style={s.emptyCta}
                   >
                     <Ionicons name="add-circle-outline" size={16} color="#fff" />
-                    <Text style={s.emptyCtaText}>Add account</Text>
+                    <Text style={s.emptyCtaText}>{t('driver_ui.add_account')}</Text>
                   </LinearGradient>
                 </Pressable>
               </Animated.View>
@@ -371,7 +392,7 @@ export default function QuickAccountPickerSheet({
               <>
                 {activeAccount && (
                   <Animated.View entering={FadeInDown.duration(280)}>
-                    <Text style={s.sectionLabel}>Signed in</Text>
+                    <Text style={s.sectionLabel}>{t('driver_ui.signed_in')}</Text>
                     <ActiveAccountCard
                       account={activeAccount}
                       isDark={isDark}
@@ -384,7 +405,7 @@ export default function QuickAccountPickerSheet({
                 {otherAccounts.length > 0 && (
                   <>
                     <Animated.View entering={FadeInDown.delay(60).duration(280)}>
-                      <Text style={[s.sectionLabel, s.sectionLabelSpaced]}>Switch to</Text>
+                      <Text style={[s.sectionLabel, s.sectionLabelSpaced]}>{t('driver_ui.switch_to')}</Text>
                     </Animated.View>
                     {otherAccounts.map((acct, idx) => (
                       <SwitchAccountRow
@@ -411,7 +432,7 @@ export default function QuickAccountPickerSheet({
                       <Ionicons name="add-circle-outline" size={16} color={primary} />
                     </View>
                     <Text style={s.singleHintText}>
-                      Add another account in Settings to enable quick switching.
+                      {t('driver_ui.add_account_enable_switching')}
                     </Text>
                   </Animated.View>
                 )}
@@ -429,7 +450,7 @@ export default function QuickAccountPickerSheet({
               onPress={goToSettings}
             >
               <Ionicons name="settings-outline" size={15} color={isDark ? '#94A3B8' : '#64748B'} />
-              <Text style={s.settingsBtnText}>Manage accounts</Text>
+              <Text style={s.settingsBtnText}>{t('driver_ui.manage_accounts')}</Text>
             </Pressable>
           </View>
         </Animated.View>

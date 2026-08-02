@@ -578,11 +578,35 @@ export async function downloadFile(endpoint: string, filename: string): Promise<
   }
 
   const blob = await response.blob();
-  const reader = new FileReader();
-  reader.onload = () => {
-    console.log('Download ready', reader.result);
-  };
-  reader.readAsDataURL(blob);
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read the downloaded file.'));
+    reader.onloadend = () => {
+      const dataUrl = String(reader.result || '');
+      const comma = dataUrl.indexOf(',');
+      if (comma < 0) reject(new Error('Downloaded file data is invalid.'));
+      else resolve(dataUrl.slice(comma + 1));
+    };
+    reader.readAsDataURL(blob);
+  });
+
+  const FileSystem: any = await import('expo-file-system/legacy');
+  const Sharing = await import('expo-sharing');
+  const safeFilename = filename.replace(/[^A-Za-z0-9._-]/g, '_');
+  const targetDirectory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (!targetDirectory) throw new Error('No writable directory is available on this device.');
+  const uri = `${targetDirectory}${Date.now()}-${safeFilename}`;
+  await FileSystem.writeAsStringAsync(uri, base64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error('File sharing is not available on this device.');
+  }
+  await Sharing.shareAsync(uri, {
+    mimeType: response.headers.get('content-type') || 'application/octet-stream',
+    dialogTitle: `Save ${filename}`,
+    UTI: 'org.openxmlformats.spreadsheetml.sheet',
+  });
 }
 
 // Helper methods for common HTTP verbs

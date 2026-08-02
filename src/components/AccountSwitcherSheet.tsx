@@ -28,7 +28,6 @@ import * as accountVault from '../services/accountVault';
 import type { VaultAccount } from '../services/accountVault';
 import {
   getHomeRouteForRole,
-  getVaultAccountSubtitle,
 } from '../utils/portalRoutes';
 import {
   ensureFreshAccessTokens,
@@ -38,6 +37,8 @@ import {
 import ClayPasswordToggle from './ClayPasswordToggle';
 import { clay, clayCard, clayInset } from '../theme/clayStyles';
 import { schoolColorWithAlpha } from '../constants/schoolConfig';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 const FALLBACK_AVATAR = 'https://cdn-icons-png.flaticon.com/512/2922/2922506.png';
 
@@ -119,6 +120,27 @@ interface Props {
   onClose: () => void;
 }
 
+function localizedAccountSubtitle(acct: VaultAccount, t: TFunction): string {
+  const roleCode = acct.validatedUser?.role?.code;
+  const role = roleCode === 'student' || roleCode === 'parent'
+    ? t('driver_ui.parent')
+    : roleCode === 'staff' || roleCode === 'teacher'
+      ? t('driver_ui.staff')
+      : roleCode === 'admin' || roleCode === 'principal'
+        ? t('driver_ui.admin')
+        : roleCode === 'accountant' || roleCode === 'accounts'
+          ? t('driver_ui.accounts')
+          : roleCode === 'driver'
+            ? t('driver_ui.driver')
+            : t('driver_ui.account');
+  const detail = roleCode === 'student' || roleCode === 'parent'
+    ? acct.classLabel || acct.admissionNo
+    : roleCode === 'staff' || roleCode === 'teacher'
+      ? acct.validatedUser?.staff_code
+      : null;
+  return detail ? `${role} · ${detail}` : role;
+}
+
 /**
  * AccountSwitcherSheet — direct multi-login switcher (no admin setup).
  *
@@ -131,6 +153,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  const { t } = useTranslation();
 
   const [accounts, setAccounts] = useState<VaultAccount[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -201,7 +224,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
     try {
       const res = await switchAccount(userId);
       if (res?.error) {
-        alertCompat('Could not switch', res.error);
+        alertCompat(t('driver_ui.could_not_switch'), t('driver_ui.please_try_again'));
         return;
       }
       if (res?.session?.validatedUser?.role?.code) {
@@ -216,7 +239,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
   const onAdd = async () => {
     if (addBusy) return;
     if (!addEmail.trim() || !addPassword) {
-      setAddError('Enter both email and password.');
+      setAddError(t('driver_ui.enter_email_password'));
       return;
     }
     setAddBusy(true);
@@ -224,7 +247,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
     try {
       const res = await addAccount(addEmail.trim(), addPassword);
       if (res?.error) {
-        setAddError(res.error);
+        setAddError(t('driver_ui.could_not_add_account'));
         return;
       }
       if (res?.session) {
@@ -232,8 +255,8 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
         router.replace(getHomeRouteForRole(res.session.validatedUser.role?.code) as any);
         onClose();
       }
-    } catch (e: any) {
-      setAddError(e?.message || 'Could not add this account.');
+    } catch {
+      setAddError(t('driver_ui.could_not_add_account'));
     } finally {
       setAddBusy(false);
     }
@@ -242,16 +265,16 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
   const onRemove = (acct: VaultAccount) => {
     if (busyId) return;
     const isActive = acct.userId === activeId;
-    const name = acct.displayName || 'this account';
+    const name = acct.displayName || t('driver_ui.this_account');
     alertCompat(
-      isActive ? 'Log out' : 'Remove account',
+      isActive ? t('driver_ui.log_out') : t('driver_ui.remove_account'),
       isActive
-        ? `Log out of ${name}? You can add it back later.`
-        : `Remove ${name} from this device? You can add it again later.`,
+        ? t('driver_ui.log_out_account_question', { name })
+        : t('driver_ui.remove_account_question', { name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('driver_ui.cancel'), style: 'cancel' },
         {
-          text: isActive ? 'Log out' : 'Remove',
+          text: isActive ? t('driver_ui.log_out') : t('driver_ui.remove'),
           style: 'destructive',
           onPress: async () => {
             setBusyId(acct.userId);
@@ -338,11 +361,11 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                 </LinearGradient>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.title}>Switch account</Text>
+                <Text style={s.title}>{t('driver_ui.switch_account')}</Text>
                 <Text style={s.subtitle}>
                   {accounts.length > 0
-                    ? 'Each login stays on this device — switch anytime with one tap'
-                    : 'Add a parent or staff login you already use'}
+                    ? t('driver_ui.switch_account_description')
+                    : t('driver_ui.add_existing_login')}
                 </Text>
               </View>
               <Pressable
@@ -354,7 +377,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                 onPress={onClose}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
-                accessibilityLabel="Close"
+                accessibilityLabel={t('driver_ui.close')}
               >
                 <Ionicons name="close" size={17} color={isDark ? '#9CA3AF' : '#64748B'} />
               </Pressable>
@@ -402,20 +425,22 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
 
                         <View style={s.rowMeta}>
                           <Text style={s.rowName} numberOfLines={1}>
-                            {acct.displayName || 'Account'}
+                            {acct.displayName || t('driver_ui.account')}
                           </Text>
                           <View style={s.rowSubLine}>
                             {isActive && (
                               <View style={[s.activeTag, clayPuck(isDark, primary)]}>
-                                <Text style={s.activeTagText}>Active</Text>
+                                <Text style={s.activeTagText}>{t('driver_ui.active')}</Text>
                               </View>
                             )}
                             <Text style={s.rowSubMuted} numberOfLines={1}>
-                              {getVaultAccountSubtitle(acct)}
+                              {localizedAccountSubtitle(acct, t)}
                             </Text>
                             {unread > 0 && (
                               <Text style={s.rowSubMuted} numberOfLines={1}>
-                                {' · '}{unread > 99 ? '99+' : unread} unread
+                                {' · '}{unread > 99
+                                  ? t('driver_ui.unread_99_plus')
+                                  : t('driver_ui.unread_count', { count: unread })}
                               </Text>
                             )}
                           </View>
@@ -444,6 +469,8 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               onPress={() => onRemove(acct)}
                               disabled={!!busyId}
+                              accessibilityRole="button"
+                              accessibilityLabel={isActive ? t('driver_ui.log_out') : t('driver_ui.remove_account')}
                             >
                               <Ionicons
                                 name={isActive ? 'log-out-outline' : 'close'}
@@ -472,8 +499,8 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                       <Ionicons name="add" size={22} color={primary} />
                     </View>
                     <View style={s.rowMeta}>
-                      <Text style={[s.rowName, { color: primary }]}>Add account</Text>
-                      <Text style={s.rowSubMuted}>Use that login&apos;s email & password (parent or staff)</Text>
+                      <Text style={[s.rowName, { color: primary }]}>{t('driver_ui.add_account')}</Text>
+                      <Text style={s.rowSubMuted}>{t('driver_ui.use_login_email_password')}</Text>
                     </View>
                     <View style={[s.chevronPuck, clayPuck(isDark, primary)]}>
                       <Ionicons name="chevron-forward" size={14} color={primary} />
@@ -486,9 +513,9 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                         <Ionicons name="person-add-outline" size={14} color={primary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.addFormTitle}>Add another login</Text>
+                        <Text style={s.addFormTitle}>{t('driver_ui.add_another_login')}</Text>
                         <Text style={s.addFormHint}>
-                          Enter the email and password for your other account. No admin setup needed.
+                          {t('driver_ui.add_login_instructions')}
                         </Text>
                       </View>
                     </View>
@@ -502,7 +529,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                         />
                         <TextInput
                           style={s.input}
-                          placeholder="Email"
+                          placeholder={t('driver_ui.email')}
                           placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                           autoCapitalize="none"
                           keyboardType="email-address"
@@ -528,7 +555,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                         />
                         <TextInput
                           style={s.input}
-                          placeholder="Password"
+                          placeholder={t('driver_ui.password')}
                           placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                           secureTextEntry={!showAddPassword}
                           value={addPassword}
@@ -566,7 +593,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                         }}
                         disabled={addBusy}
                       >
-                        <Text style={s.btnGhostText}>Cancel</Text>
+                        <Text style={s.btnGhostText}>{t('driver_ui.cancel')}</Text>
                       </Pressable>
                       <Pressable
                         style={({ pressed }) => [
@@ -589,7 +616,7 @@ export default function AccountSwitcherSheet({ visible, onClose }: Props) {
                           {addBusy ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
-                            <Text style={s.btnPrimaryText}>Log in &amp; add</Text>
+                            <Text style={s.btnPrimaryText}>{t('driver_ui.login_and_add')}</Text>
                           )}
                         </View>
                       </Pressable>

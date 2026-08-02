@@ -20,6 +20,8 @@ import { api } from '../../src/services/apiClient';
 import LogoLoader from '../../src/components/LogoLoader';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useTranslation } from 'react-i18next';
+import { driverDateLocale } from '../../src/utils/driverI18n';
 
 /** Legacy trips may still use `active`; canonical live status is `in_progress`. */
 const tripStatusIsActive = (s?: string | null) =>
@@ -56,14 +58,14 @@ type TripPayload = {
     direction?: string;
     date?: string;
   };
-  stops: Array<{
+  stops: {
     stop_id: string;
     stop_name: string;
     stop_order: number;
     status?: string;
     reached_at?: string | null;
     assigned_students?: number;
-  }>;
+  }[];
 };
 
 export default function DriverTripScreen() {
@@ -75,6 +77,8 @@ export default function DriverTripScreen() {
   const [confirmComplete, setConfirmComplete] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { theme } = useTheme();
+  const { t, i18n } = useTranslation();
+  const dateLocale = driverDateLocale(i18n.language);
   const styles = React.useMemo(() => getStyles(theme), [theme]);
 
   const loadTrip = useCallback(async (silent?: boolean) => {
@@ -90,13 +94,13 @@ export default function DriverTripScreen() {
         setNoRoute(true);
         setPayload(null);
       } else {
-        alertCompat('Error', msg || 'Could not load trip');
+        alertCompat(t('driver_ui.error'), t('driver_ui.could_not_load_trip'));
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -149,10 +153,10 @@ export default function DriverTripScreen() {
         ...fix,
         source: 'manual',
       });
-      alertCompat('Updated', 'Stop marked — notifications sent');
-    } catch (e: any) {
+      alertCompat(t('driver_ui.updated'), t('driver_ui.stop_marked_notifications_sent'));
+    } catch {
       if (prev) setPayload(prev);
-      alertCompat('Error', e?.message || 'Could not mark stop');
+      alertCompat(t('driver_ui.error'), t('driver_ui.could_not_mark_stop'));
     } finally {
       setSubmitting(false);
     }
@@ -169,8 +173,8 @@ export default function DriverTripScreen() {
       }
       await api.post(`/transport/driver/trip/${trip.id}/start`, {});
       await loadTrip(true);
-    } catch (e: any) {
-      alertCompat('Error', e?.message || 'Could not start trip');
+    } catch {
+      alertCompat(t('driver_ui.error'), t('driver_ui.failed_to_start_trip'));
     } finally {
       setSubmitting(false);
     }
@@ -183,8 +187,8 @@ export default function DriverTripScreen() {
     try {
       await api.post(`/transport/driver/trip/${trip.id}/complete`, {});
       await loadTrip(true);
-    } catch (e: any) {
-      alertCompat('Error', e?.message || 'Could not complete trip');
+    } catch {
+      alertCompat(t('driver_ui.error'), t('driver_ui.could_not_complete_trip'));
     } finally {
       setSubmitting(false);
     }
@@ -194,10 +198,10 @@ export default function DriverTripScreen() {
     const s = trip?.status || 'scheduled';
     const label =
       s === 'completed'
-        ? 'Completed'
+        ? t('driver_ui.completed')
         : tripStatusIsActive(s)
-          ? 'In Progress'
-          : 'Not Started';
+          ? t('driver_ui.in_progress')
+          : t('driver_ui.not_started');
     const bg =
       s === 'completed'
         ? theme.colors.borderLight
@@ -223,7 +227,7 @@ export default function DriverTripScreen() {
   if (loading && !payload) {
     return (
       <ScreenLayout>
-        <StudentHeader title="My Trip" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.trip')} menuUserType="driver" showBackButton={false} />
         <View style={styles.center}>
           <LogoLoader size={56} color={theme.colors.primary} />
         </View>
@@ -235,15 +239,15 @@ export default function DriverTripScreen() {
     return (
       <ScreenLayout>
         <StatusBar barStyle="dark-content" />
-        <StudentHeader title="My Trip" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.trip')} menuUserType="driver" showBackButton={false} />
         <View style={styles.center}>
           <View style={styles.emptyIcon}>
             <Ionicons name="bus-outline" size={40} color="#94A3B8" />
           </View>
-          <Text style={styles.emptyTitle}>No route assigned</Text>
-          <Text style={styles.emptySub}>Contact your school admin to get a route.</Text>
+          <Text style={styles.emptyTitle}>{t('driver_ui.no_route_assigned')}</Text>
+          <Text style={styles.emptySub}>{t('driver_ui.contact_admin_route')}</Text>
           <TouchableOpacity style={styles.retry} onPress={() => loadTrip()} activeOpacity={0.85}>
-            <Text style={styles.retryText}>Retry</Text>
+            <Text style={styles.retryText}>{t('driver_ui.retry')}</Text>
           </TouchableOpacity>
         </View>
       </ScreenLayout>
@@ -258,8 +262,8 @@ export default function DriverTripScreen() {
         showBackButton={false}
         title={
           trip?.date && trip?.route_name
-            ? `${trip.route_name} · ${trip.date}`
-            : trip?.route_name || 'My Trip'
+            ? `${trip.route_name} · ${new Date(`${trip.date}T12:00:00`).toLocaleDateString(dateLocale)}`
+            : trip?.route_name || t('driver_ui.trip')
         }
       />
       {statusBanner()}
@@ -272,7 +276,7 @@ export default function DriverTripScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name="play" size={18} color="#fff" />
-            <Text style={styles.primaryBtnText}>Start Trip</Text>
+            <Text style={styles.primaryBtnText}>{t('driver_ui.start_trip')}</Text>
           </TouchableOpacity>
         )}
         {tripStatusIsActive(trip?.status) && (
@@ -283,7 +287,7 @@ export default function DriverTripScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name="flag" size={18} color={theme.colors.primary} />
-            <Text style={styles.secondaryBtnText}>Complete Trip</Text>
+            <Text style={styles.secondaryBtnText}>{t('driver_ui.complete_trip')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -308,9 +312,9 @@ export default function DriverTripScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.stopName}>{item.stop_name}</Text>
                   <Text style={styles.meta}>
-                    {item.assigned_students ?? 0} student(s)
+                    {t('driver_ui.student_count', { count: item.assigned_students ?? 0 })}
                     {item.reached_at
-                      ? ` · ${new Date(item.reached_at).toLocaleTimeString()}`
+                      ? ` · ${new Date(item.reached_at).toLocaleTimeString(dateLocale)}`
                       : ''}
                   </Text>
                 </View>
@@ -322,30 +326,30 @@ export default function DriverTripScreen() {
                   disabled={submitting}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.markBtnText}>Mark reached</Text>
+                  <Text style={styles.markBtnText}>{t('driver_ui.mark_reached')}</Text>
                 </TouchableOpacity>
               )}
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={styles.emptySub}>No stops on this route.</Text>}
+        ListEmptyComponent={<Text style={styles.emptySub}>{t('driver_ui.no_stops_on_route')}</Text>}
         ListFooterComponent={<View style={{ height: 110 }} />}
       />
 
       <Modal transparent visible={confirmComplete} animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setConfirmComplete(false)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Complete this trip?</Text>
-            <Text style={styles.modalSub}>This will end tracking and notify parents if configured.</Text>
+            <Text style={styles.modalTitle}>{t('driver_ui.complete_trip_question')}</Text>
+            <Text style={styles.modalSub}>{t('driver_ui.complete_trip_warning')}</Text>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancel}
                 onPress={() => setConfirmComplete(false)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>{t('driver_ui.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalOk} onPress={completeTrip}>
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Confirm</Text>
+                <Text style={{ color: '#fff', fontWeight: '800' }}>{t('driver_ui.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

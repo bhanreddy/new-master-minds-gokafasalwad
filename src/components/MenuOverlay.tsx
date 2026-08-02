@@ -206,9 +206,9 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
     ];
 
     const driverMenuItems: MenuItem[] = [
-        { key: 'route', label: 'My Route', icon: 'navigate-outline', link: '/driver/dashboard', accent: '#EC4899' },
-        { key: 'students', label: 'Students', icon: 'people-outline', link: '/driver/students', accent: '#6366F1' },
-        { key: 'profile', label: 'Driver Profile', icon: 'person-outline', link: '/driver/profile', accent: '#10B981' },
+        { key: 'route', label: t('driver_ui.route'), icon: 'navigate-outline', link: '/driver/dashboard', accent: '#EC4899' },
+        { key: 'students', label: t('driver_ui.students'), icon: 'people-outline', link: '/driver/students', accent: '#6366F1' },
+        { key: 'profile', label: t('driver_ui.driver_profile'), icon: 'person-outline', link: '/driver/profile', accent: '#10B981' },
     ];
 
     const { isEnabled } = useFeatures();
@@ -304,7 +304,9 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
 
     if (!visible) return null;
 
-    const displayName = user?.displayName || (userType === 'staff' ? 'Staff Member' : 'Student');
+    const displayName = user?.displayName || (userType === 'driver'
+        ? t('driver_ui.driver')
+        : userType === 'staff' ? 'Staff Member' : 'Student');
     const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
     const { background: logoutBg, border: logoutBorder } = getPastelStyles('#EF4444', isDark);
 
@@ -392,7 +394,7 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
                                             borderColor: isDark ? 'rgba(255,255,255,0.1)' : roleTheme.roleBorder,
                                         }]}>
                                             <Text style={[styles.roleText, { color: isDark ? '#94A3B8' : roleTheme.roleText }]}>
-                                                {userType === 'driver' ? 'Driver' : userType === 'staff' ? 'Staff' : 'Student'}
+                                                {userType === 'driver' ? t('driver_ui.driver') : userType === 'staff' ? 'Staff' : 'Student'}
                                             </Text>
                                         </View>
                                     </View>
@@ -409,6 +411,8 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                             closeDrawer();
                                         }}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={t('driver_ui.close_menu')}
                                     >
                                         <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
                                     </Pressable>
@@ -466,7 +470,7 @@ const MenuOverlay: React.FC<Props> = ({ visible, onClose, userType = 'student', 
                                         ]}>
                                             <Ionicons name="log-out-outline" size={18} color="#EF4444" />
                                         </View>
-                                        <Text style={styles.logoutText}>Logout</Text>
+                                        <Text style={styles.logoutText}>{userType === 'driver' ? t('driver_ui.logout') : t('logout')}</Text>
                                         <View style={[
                                             styles.chevronBox, 
                                             { 

@@ -774,7 +774,7 @@ const AdminHeaderCard: React.FC<AdminHeaderCardProps> = ({
                             onPressOut={isLogin ? undefined : handleCardPressOut}
                             android_disableSound
                             disabled={isLogin}
-                            accessibilityHint={!isLogin && accountCount > 1 ? 'Hold to switch accounts, double-tap photo for next account' : undefined}
+                            accessibilityHint={!isLogin && accountCount > 1 ? t('driver_ui.account_switch_hint_accessibility') : undefined}
                         >
                             {!isLogin && !dense && (
                                 <View style={styles.topRow}>
@@ -887,13 +887,13 @@ const AdminHeaderCard: React.FC<AdminHeaderCardProps> = ({
                                         )}
                                         <View style={styles.chip}>
                                             <Ionicons name="shield-checkmark" size={12} color={gold} />
-                                            <Text style={styles.chipText}>Verified</Text>
+                                            <Text style={styles.chipText}>{t('driver_ui.verified')}</Text>
                                         </View>
                                     </View>
 
                                     {!isLogin && accountCount > 1 && !dense && (
                                         <Text style={styles.switchHint}>
-                                            Hold to switch · double-tap photo
+                                            {t('driver_ui.account_switch_hint')}
                                         </Text>
                                     )}
                                 </View>

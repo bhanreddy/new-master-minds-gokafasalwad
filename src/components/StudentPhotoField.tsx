@@ -104,8 +104,8 @@ export default function StudentPhotoField({
         <Text style={[styles.title, { color: isDark ? '#EDE8F5' : '#2D2640' }]}>
           Profile Picture
         </Text>
-        <Text style={[styles.help, { color: isDark ? '#A89EC4' : '#6B6280' }]}>
-          Optional. Use a clear, square photo for student lists and attendance.
+        <Text style={[styles.help, { color: isDark ? '#A89EC4' : '#6B6280' }]}> 
+          Optional. Any selected photo is converted to JPEG and reduced to 100 KB or less before storage.
         </Text>
         <View style={styles.actions}>
           <TouchableOpacity

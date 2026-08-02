@@ -18,6 +18,8 @@ import {
   useSettingsAccountSwitcher,
 } from '../../src/components/SettingsAccountSwitcher';
 import { StaffService, StaffMyProfile } from '../../src/services/staffService';
+import { useTranslation } from 'react-i18next';
+import { driverDateLocale, translatePayslipMonth, translatePayslipStatus } from '../../src/utils/driverI18n';
 
 const EMPTY = '—';
 
@@ -27,11 +29,11 @@ function displayOrEmpty(value?: string | null): string {
   return trimmed.length > 0 ? trimmed : EMPTY;
 }
 
-function formatDob(dob?: string | null): string {
+function formatDob(dob: string | null | undefined, locale: string): string {
   if (!dob) return EMPTY;
   const parsed = new Date(dob);
   if (Number.isNaN(parsed.getTime())) return dob;
-  return parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return parsed.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function routeSummary(routes?: StaffMyProfile['routes']): string {
@@ -45,7 +47,7 @@ function getHumanId(user: any): string {
   for (const c of candidates) {
     if (c && typeof c === 'string' && c.trim().length > 0) return c;
   }
-  return 'N/A';
+  return EMPTY;
 }
 
 interface Payslip {
@@ -78,43 +80,46 @@ const InfoRow = ({ icon, label, value, iconBg, iconColor, isLink, onPress, theme
   </TouchableOpacity>;
 
 /* ─── Payslip Card ─── */
-const PayslipCard = ({ item, index, onDownload, theme, styles }: { item: Payslip; index: number; onDownload: (id: string) => void; theme: any; styles: any }) =>
-  <Animated.View entering={FadeInDown.delay(500 + index * 80).duration(500)} style={styles.payslipCard}>
+const PayslipCard = ({ item, index, onDownload, theme, styles }: { item: Payslip; index: number; onDownload: (id: string) => void; theme: any; styles: any }) => {
+  const { t } = useTranslation();
+  const isPaid = item.status.toLowerCase() === 'paid';
+  return <Animated.View entering={FadeInDown.delay(500 + index * 80).duration(500)} style={styles.payslipCard}>
     <View style={styles.payslipHeader}>
       <View style={styles.payslipMonthRow}>
         <View style={styles.payslipIcon}>
           <Ionicons name="calendar" size={16} color={theme.colors.primary} />
         </View>
-        <Text style={styles.payslipMonth}>{item.month}</Text>
+        <Text style={styles.payslipMonth}>{translatePayslipMonth(item.month, t)}</Text>
       </View>
       <View style={[styles.payslipBadge,
-      item.status === 'Paid' ? styles.paidBadge : styles.pendingBadge]
+      isPaid ? styles.paidBadge : styles.pendingBadge]
       }>
         <Text style={[styles.payslipBadgeText,
-        item.status === 'Paid' ? styles.paidText : styles.pendingText]
-        }>{item.status}</Text>
+        isPaid ? styles.paidText : styles.pendingText]
+        }>{translatePayslipStatus(item.status, t)}</Text>
       </View>
     </View>
     <View style={styles.payslipDivider} />
     <View style={styles.payslipGrid}>
       <View style={styles.payslipStat}>
-        <Text style={styles.payslipStatLabel}>Earnings</Text>
+        <Text style={styles.payslipStatLabel}>{t('driver_ui.earnings')}</Text>
         <Text style={[styles.payslipStatValue, { color: '#10B981' }]}>{item.earnings}</Text>
       </View>
       <View style={styles.payslipStat}>
-        <Text style={styles.payslipStatLabel}>Deductions</Text>
+        <Text style={styles.payslipStatLabel}>{t('driver_ui.deductions')}</Text>
         <Text style={[styles.payslipStatValue, { color: '#EF4444' }]}>{item.deductions}</Text>
       </View>
       <View style={[styles.payslipStat, { alignItems: 'flex-end' }]}>
-        <Text style={styles.payslipStatLabel}>Net Pay</Text>
+        <Text style={styles.payslipStatLabel}>{t('driver_ui.net_pay')}</Text>
         <Text style={[styles.payslipStatValue, { color: '#0F172A', fontWeight: '800' }]}>{item.net}</Text>
       </View>
     </View>
     <TouchableOpacity style={styles.downloadBtn} onPress={() => onDownload(item.id)} activeOpacity={0.7}>
       <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
-      <Text style={[styles.downloadBtnText, { color: theme.colors.primary }]}>Download PDF</Text>
+      <Text style={[styles.downloadBtnText, { color: theme.colors.primary }]}>{t('driver_ui.download_pdf')}</Text>
     </TouchableOpacity>
   </Animated.View>;
+};
 
 /* ════════════════════════════════════════════════════════════
    ████  DRIVER PROFILE SCREEN  ████
@@ -129,13 +134,15 @@ export default function DriverProfile() {
   const { payslipsEnabled } = useStaffPortalConfig();
   const { switcherOpen, openSwitcher, closeSwitcher } = useSettingsAccountSwitcher();
   const { theme } = useTheme();
+  const { t, i18n } = useTranslation();
+  const numberLocale = driverDateLocale(i18n.language);
   const PRIMARY_GRADIENT: [string, string] = [theme.colors.primary, theme.colors.primaryDark];
   const styles = React.useMemo(() => getStyles(theme), [theme]);
 
-  const displayName = profile?.display_name || user?.displayName || (user as any)?.first_name || 'Driver';
+  const displayName = profile?.display_name || user?.displayName || (user as any)?.first_name || t('driver_ui.driver');
   const email = displayOrEmpty(profile?.email || (user as any)?.email);
   const phone = displayOrEmpty(profile?.phone || (user as any)?.phone);
-  const dob = formatDob(profile?.dob);
+  const dob = formatDob(profile?.dob, numberLocale);
   const address = displayOrEmpty(profile?.address);
   const busNo = displayOrEmpty(profile?.bus?.bus_no);
   const routeName = routeSummary(profile?.routes);
@@ -173,15 +180,15 @@ export default function DriverProfile() {
       const amount = parseFloat(item.earnings.replace(/[₹,]/g, '')) || 0;
       return sum + amount;
     }, 0);
-    return `₹${total.toLocaleString('en-IN')}`;
-  }, [payslips]);
+    return `₹${total.toLocaleString(numberLocale)}`;
+  }, [numberLocale, payslips]);
 
   const handleEmail = (addr: string) => {
-    if (addr === EMPTY || addr === 'N/A') return;
+    if (addr === EMPTY) return;
     Haptics.selectionAsync();
     Linking.openURL(`mailto:${addr}`);
   };
-  const handleDownload = () => { alertCompat('Coming Soon', 'PDF download will be available soon.'); };
+  const handleDownload = () => { alertCompat(t('driver_ui.coming_soon'), t('driver_ui.pdf_download_soon')); };
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
@@ -193,7 +200,7 @@ export default function DriverProfile() {
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" backgroundColor="#0F0F1A" />
-      <StudentHeader title="My Profile" menuUserType="driver" showBackButton={false} />
+      <StudentHeader title={t('driver_ui.my_profile')} menuUserType="driver" showBackButton={false} />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
@@ -201,7 +208,7 @@ export default function DriverProfile() {
         {loadingProfile ?
           <View style={styles.loadingBox}>
             <LogoLoader size={36} color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Loading profile…</Text>
+            <Text style={styles.loadingText}>{t('driver_ui.loading_profile')}</Text>
           </View> :
           <>
         {/* ═══════ Profile Hero Card ═══════ */}
@@ -229,30 +236,30 @@ export default function DriverProfile() {
               />
               <View style={styles.onlineBadge}>
                 <View style={styles.onlineDot} />
-                <Text style={styles.onlineText}>Active</Text>
+                <Text style={styles.onlineText}>{t('driver_ui.active')}</Text>
               </View>
             </View>
             <Text style={styles.heroName}>{displayName}</Text>
             <View style={[styles.rolePill, { backgroundColor: theme.colors.primary }]}>
               <Ionicons name="bus" size={12} color="#FFF" />
-              <Text style={styles.rolePillText}>Driver</Text>
+              <Text style={styles.rolePillText}>{t('driver_ui.driver')}</Text>
             </View>
-            <Text style={styles.heroId}>ID: {staffCode}</Text>
+            <Text style={styles.heroId}>{t('driver_ui.id_label')}: {staffCode}</Text>
             {/* Quick Stats */}
             <View style={styles.quickStats}>
               <View style={styles.qStat}>
                 <Text style={styles.qStatValue}>{busNo}</Text>
-                <Text style={styles.qStatLabel}>Bus No.</Text>
+                <Text style={styles.qStatLabel}>{t('driver_ui.bus_number')}</Text>
               </View>
               <View style={styles.qStatDivider} />
               <View style={styles.qStat}>
                 <Text style={styles.qStatValue}>{routeName}</Text>
-                <Text style={styles.qStatLabel}>Route</Text>
+                <Text style={styles.qStatLabel}>{t('driver_ui.route')}</Text>
               </View>
               <View style={styles.qStatDivider} />
               <View style={styles.qStat}>
                 <Text style={styles.qStatValue}>{vehicleRegNo}</Text>
-                <Text style={styles.qStatLabel}>Reg. No.</Text>
+                <Text style={styles.qStatLabel}>{t('driver_ui.registration_number')}</Text>
               </View>
             </View>
           </View>
@@ -263,28 +270,28 @@ export default function DriverProfile() {
             <View style={styles.sectionIconBox}>
               <Ionicons name="person" size={14} color={theme.colors.primary} />
             </View>
-            <Text style={styles.sectionTitle}>Personal Information</Text>
+            <Text style={styles.sectionTitle}>{t('driver_ui.personal_information')}</Text>
           </View>
           <View style={styles.card}>
-            <InfoRow icon="mail-outline" label="Email Address" value={email}
+            <InfoRow icon="mail-outline" label={t('driver_ui.email_address')} value={email}
               theme={theme} styles={styles}
               iconColor={theme.colors.primary}
-              iconBg="#FDF2F8" isLink={email !== EMPTY && email !== 'N/A'}
+              iconBg="#FDF2F8" isLink={email !== EMPTY}
               onPress={() => handleEmail(email)} />
             <View style={styles.rowDivider} />
-            <InfoRow icon="call-outline" label="Phone Number" value={phone}
+            <InfoRow icon="call-outline" label={t('driver_ui.phone_number')} value={phone}
               theme={theme} styles={styles}
               iconBg="#ECFDF5" iconColor="#10B981" />
             <View style={styles.rowDivider} />
-            <InfoRow icon="calendar-outline" label="Date of Birth" value={dob}
+            <InfoRow icon="calendar-outline" label={t('driver_ui.date_of_birth')} value={dob}
               theme={theme} styles={styles}
               iconBg="#EEF2FF" iconColor="#6366F1" />
             <View style={styles.rowDivider} />
-            <InfoRow icon="water-outline" label="Blood Group" value={EMPTY}
+            <InfoRow icon="water-outline" label={t('driver_ui.blood_group')} value={EMPTY}
               theme={theme} styles={styles}
               iconBg="#FEF3C7" iconColor="#F59E0B" />
             <View style={styles.rowDivider} />
-            <InfoRow icon="location-outline" label="Address" value={address}
+            <InfoRow icon="location-outline" label={t('driver_ui.address')} value={address}
               theme={theme} styles={styles}
               iconBg="#F0FDF4" iconColor={theme.colors.success} />
           </View>
@@ -295,22 +302,22 @@ export default function DriverProfile() {
             <View style={[styles.sectionIconBox, { backgroundColor: '#EEF2FF' }]}>
               <Ionicons name="bus" size={14} color="#6366F1" />
             </View>
-            <Text style={styles.sectionTitle}>Vehicle & Route</Text>
+            <Text style={styles.sectionTitle}>{t('driver_ui.vehicle_and_route')}</Text>
           </View>
           <View style={styles.card}>
-            <InfoRow icon="car-outline" label="Assigned Bus" value={busNo}
+            <InfoRow icon="car-outline" label={t('driver_ui.assigned_bus')} value={busNo}
               theme={theme} styles={styles}
               iconBg="#EEF2FF" iconColor="#6366F1" />
             <View style={styles.rowDivider} />
-            <InfoRow icon="navigate-outline" label="Route Name" value={routeName}
+            <InfoRow icon="navigate-outline" label={t('driver_ui.route_name')} value={routeName}
               theme={theme} styles={styles}
               iconBg="#FDF2F8" iconColor={theme.colors.primary} />
             <View style={styles.rowDivider} />
-            <InfoRow icon="card-outline" label="License Number" value={EMPTY}
+            <InfoRow icon="card-outline" label={t('driver_ui.license_number')} value={EMPTY}
               theme={theme} styles={styles}
               iconBg="#FEF3C7" iconColor="#F59E0B" />
             <View style={styles.rowDivider} />
-            <InfoRow icon="shield-checkmark-outline" label="License Expiry" value={EMPTY}
+            <InfoRow icon="shield-checkmark-outline" label={t('driver_ui.license_expiry')} value={EMPTY}
               theme={theme} styles={styles}
               iconBg="#ECFDF5" iconColor="#10B981" />
           </View>
@@ -322,7 +329,7 @@ export default function DriverProfile() {
             <View style={[styles.sectionIconBox, { backgroundColor: '#ECFDF5' }]}>
               <FontAwesome5 name="coins" size={12} color="#10B981" />
             </View>
-            <Text style={styles.sectionTitle}>My Payslips</Text>
+            <Text style={styles.sectionTitle}>{t('driver_ui.my_payslips')}</Text>
           </View>
           {/* Earnings Summary */}
           <Animated.View entering={FadeInDown.delay(450).duration(500)} style={styles.earningsCard}>
@@ -333,7 +340,7 @@ export default function DriverProfile() {
               style={styles.earningsGradient}>
 
               <View>
-                <Text style={styles.earningsLabel}>Total Earnings (YTD)</Text>
+                <Text style={styles.earningsLabel}>{t('driver_ui.total_earnings_ytd')}</Text>
                 <Text style={styles.earningsValue}>{totalEarnings}</Text>
               </View>
               <View style={styles.earningsIconBox}>
@@ -345,15 +352,15 @@ export default function DriverProfile() {
           {loadingPayslips ?
             <View style={styles.loadingBox}>
               <LogoLoader size={30} color={theme.colors.primary} />
-              <Text style={styles.loadingText}>Loading payslips…</Text>
+              <Text style={styles.loadingText}>{t('driver_ui.loading_payslips')}</Text>
             </View> :
             payslips.length === 0 ?
               <View style={styles.emptyBox}>
                 <View style={styles.emptyIcon}>
                   <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
                 </View>
-                <Text style={styles.emptyTitle}>No Payslips Yet</Text>
-                <Text style={styles.emptySubtitle}>Your payslips will appear here once processed.</Text>
+                <Text style={styles.emptyTitle}>{t('driver_ui.no_payslips_yet')}</Text>
+                <Text style={styles.emptySubtitle}>{t('driver_ui.profile_payslips_appear')}</Text>
               </View> :
 
               <View style={styles.payslipList}>
@@ -370,7 +377,7 @@ export default function DriverProfile() {
             <View style={[styles.logoutIconBox, styles.switchAccountIconBox]}>
               <Ionicons name={SWITCH_ACCOUNT_SETTINGS.icon} size={20} color={SWITCH_ACCOUNT_SETTINGS.iconColor} />
             </View>
-            <Text style={styles.switchAccountText}>{SWITCH_ACCOUNT_SETTINGS.label}</Text>
+            <Text style={styles.switchAccountText}>{t('driver_ui.switch_account')}</Text>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
         </Animated.View>
@@ -380,7 +387,7 @@ export default function DriverProfile() {
             <View style={styles.logoutIconBox}>
               <Ionicons name="log-out-outline" size={20} color="#DC2626" />
             </View>
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutText}>{t('driver_ui.logout')}</Text>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
         </Animated.View>

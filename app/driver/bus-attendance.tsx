@@ -4,12 +4,10 @@ import {
   Text,
   StyleSheet,
   RefreshControl,
-  Dimensions,
   StatusBar,
   Pressable,
   Platform,
   ViewStyle,
-  FlatList,
   ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -27,20 +25,17 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import StudentHeader from '../../src/components/StudentHeader';
 import { api } from '../../src/services/apiClient';
 import { BusAttendanceService, BusStopStudent } from '../../src/services/busAttendanceService';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 
-const { width: SW } = Dimensions.get('window');
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // ─── Status meta (clay-tinted) ─────────────────────────────────
 const STATUS_META = {
   present: {
-    label: 'Present',
     accent: '#00C48C',
     icon: 'checkmark-circle' as const,
     bgDark: 'rgba(0,196,140,0.16)',
@@ -49,7 +44,6 @@ const STATUS_META = {
     textLight: '#00875F',
   },
   absent: {
-    label: 'Absent',
     accent: '#FF4D6A',
     icon: 'close-circle' as const,
     bgDark: 'rgba(255,77,106,0.16)',
@@ -109,8 +103,6 @@ function StatChip({ label, value, color, icon, isDark }: { label: string; value:
 export default function DriverBusStopAttendanceScreen() {
   const { isDark, theme } = useTheme();
   const { t } = useTranslation();
-  const router = useRouter();
-
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -236,9 +228,9 @@ export default function DriverBusStopAttendanceScreen() {
         attendance: records
       });
 
-      alertCompat('✓ Saved', 'Stop attendance marked successfully.', [
+      alertCompat(t('driver_ui.saved_title'), t('driver_ui.stop_attendance_marked'), [
         {
-          text: 'OK',
+          text: t('driver_ui.ok'),
           onPress: () => {
             // Suggest navigating to the next stop if available
             if (selectedStopIdx < stops.length - 1) {
@@ -247,8 +239,8 @@ export default function DriverBusStopAttendanceScreen() {
           }
         }
       ]);
-    } catch (error: any) {
-      alertCompat('Error', error?.message || 'Failed to save attendance');
+    } catch {
+      alertCompat(t('driver_ui.error'), t('driver_ui.failed_to_save_attendance'));
     } finally {
       setSaving(false);
     }
@@ -291,12 +283,12 @@ export default function DriverBusStopAttendanceScreen() {
   if (isEnabled === false) {
     return (
       <View style={[styles.container, { backgroundColor: pageBg }]}>
-        <StudentHeader title="Bus Attendance" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.bus_attendance')} menuUserType="driver" showBackButton={false} />
         <View style={styles.centerBox}>
           <Ionicons name="lock-closed-outline" size={60} color={subColor} />
-          <Text style={[styles.emptyTitle, { color: titleColor }]}>Feature Disabled</Text>
+          <Text style={[styles.emptyTitle, { color: titleColor }]}>{t('driver_ui.feature_disabled')}</Text>
           <Text style={[styles.emptySub, { color: subColor }]}>
-            Bus stop attendance is currently disabled by the school administrator.
+            {t('driver_ui.attendance_disabled_by_admin')}
           </Text>
         </View>
       </View>
@@ -306,12 +298,12 @@ export default function DriverBusStopAttendanceScreen() {
   if (!trip) {
     return (
       <View style={[styles.container, { backgroundColor: pageBg }]}>
-        <StudentHeader title="Bus Attendance" menuUserType="driver" showBackButton={false} />
+        <StudentHeader title={t('driver_ui.bus_attendance')} menuUserType="driver" showBackButton={false} />
         <View style={styles.centerBox}>
           <Ionicons name="bus-outline" size={64} color={subColor} />
-          <Text style={[styles.emptyTitle, { color: titleColor }]}>No Active Trip</Text>
+          <Text style={[styles.emptyTitle, { color: titleColor }]}>{t('driver_ui.no_active_trip_title')}</Text>
           <Text style={[styles.emptySub, { color: subColor }]}>
-            Please start a trip first in the "My Trip" tab before taking attendance.
+            {t('driver_ui.start_trip_before_attendance')}
           </Text>
         </View>
       </View>
@@ -327,7 +319,7 @@ export default function DriverBusStopAttendanceScreen() {
       <View style={[styles.orb1, { backgroundColor: orb1Color }]} />
       <View style={[styles.orb2, { backgroundColor: orb2Color }]} />
 
-      <StudentHeader title="Bus Attendance" menuUserType="driver" showBackButton={false} />
+      <StudentHeader title={t('driver_ui.bus_attendance')} menuUserType="driver" showBackButton={false} />
 
       <Animated.ScrollView
         onScroll={onScroll}
@@ -352,10 +344,10 @@ export default function DriverBusStopAttendanceScreen() {
             <View style={styles.cardHeaderRow}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.stopRouteName, { color: subColor }]}>
-                  {trip.route_name || 'Route'} · STOP {selectedStopIdx + 1} OF {stops.length}
+                  {trip.route_name || t('driver_ui.route')} · {t('driver_ui.stop_of', { current: selectedStopIdx + 1, total: stops.length })}
                 </Text>
                 <Text style={[styles.stopNameText, { color: titleColor }]} numberOfLines={1}>
-                  {currentStop?.stop_name || 'Select Stop'}
+                  {currentStop?.stop_name || t('driver_ui.select_stop')}
                 </Text>
               </View>
 
@@ -365,6 +357,8 @@ export default function DriverBusStopAttendanceScreen() {
                   onPress={() => setSelectedStopIdx(prev => prev - 1)}
                   onPressIn={prevBtn.onPressIn}
                   onPressOut={prevBtn.onPressOut}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('driver_ui.previous_stop')}
                   style={[
                     styles.navBtn,
                     { backgroundColor: navBtnBg, borderColor: cardBorder },
@@ -380,6 +374,8 @@ export default function DriverBusStopAttendanceScreen() {
                   onPress={() => setSelectedStopIdx(prev => prev + 1)}
                   onPressIn={nextBtn.onPressIn}
                   onPressOut={nextBtn.onPressOut}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('driver_ui.next_stop_full')}
                   style={[
                     styles.navBtn,
                     { backgroundColor: navBtnBg, borderColor: cardBorder },
@@ -394,9 +390,9 @@ export default function DriverBusStopAttendanceScreen() {
 
             {/* Stats chips */}
             <View style={styles.statChipsRow}>
-              <StatChip label="Present" value={stats.present} color={STATUS_META.present.accent} icon="checkmark-circle" isDark={isDark} />
-              <StatChip label="Absent" value={stats.absent} color={STATUS_META.absent.accent} icon="close-circle" isDark={isDark} />
-              <StatChip label="Students" value={stats.total} color="#7C6FFF" icon="people" isDark={isDark} />
+              <StatChip label={t('driver_ui.mark_present')} value={stats.present} color={STATUS_META.present.accent} icon="checkmark-circle" isDark={isDark} />
+              <StatChip label={t('driver_ui.mark_absent')} value={stats.absent} color={STATUS_META.absent.accent} icon="close-circle" isDark={isDark} />
+              <StatChip label={t('driver_ui.students')} value={stats.total} color="#7C6FFF" icon="people" isDark={isDark} />
             </View>
           </View>
         </Animated.View>
@@ -409,7 +405,7 @@ export default function DriverBusStopAttendanceScreen() {
               style={[styles.quickActionBtn, { backgroundColor: isDark ? 'rgba(0,196,140,0.1)' : 'rgba(0,196,140,0.06)' }]}
             >
               <Ionicons name="checkmark-done" size={16} color={STATUS_META.present.accent} />
-              <Text style={[styles.quickActionText, { color: STATUS_META.present.textLight }]}>Mark All Present</Text>
+              <Text style={[styles.quickActionText, { color: STATUS_META.present.textLight }]}>{t('driver_ui.mark_all_present')}</Text>
             </AnimatedPressable>
           </View>
         )}
@@ -420,9 +416,9 @@ export default function DriverBusStopAttendanceScreen() {
             <View style={styles.emptyIconRing}>
               <Ionicons name="people-outline" size={32} color="#7C6FFF" />
             </View>
-            <Text style={[styles.emptyTitle, { color: titleColor }]}>No Passengers</Text>
+            <Text style={[styles.emptyTitle, { color: titleColor }]}>{t('driver_ui.no_passengers')}</Text>
             <Text style={[styles.emptySub, { color: subColor }]}>
-              No students are assigned to boarding/deboarding at this stop.
+              {t('driver_ui.no_students_boarding_stop')}
             </Text>
           </Animated.View>
         ) : (
@@ -449,14 +445,18 @@ export default function DriverBusStopAttendanceScreen() {
                         {student.student_name}
                       </Text>
                       <Text style={[styles.studentSub, { color: subColor }]}>
-                        {student.class_name ? `${student.class_name}-${student.section_name}` : 'No Class'} · Adm: {student.admission_no || '—'}
+                        {student.class_name
+                          ? `${student.class_name}${student.section_name ? `-${student.section_name}` : ''}`
+                          : t('driver_ui.no_class')} · {t('driver_ui.admission_short')}: {student.admission_no || '—'}
                       </Text>
                     </View>
 
                     {/* Status Pill Badge */}
                     <View style={[styles.statusBadge, { backgroundColor: pillBg }]}>
                       <Ionicons name={meta.icon} size={14} color={textClr} style={{ marginRight: 4 }} />
-                      <Text style={[styles.statusBadgeText, { color: textClr }]}>{meta.label}</Text>
+                      <Text style={[styles.statusBadgeText, { color: textClr }]}>
+                        {status === 'present' ? t('driver_ui.mark_present') : t('driver_ui.mark_absent')}
+                      </Text>
                     </View>
                   </Pressable>
                 </Animated.View>
@@ -478,7 +478,7 @@ export default function DriverBusStopAttendanceScreen() {
             ) : (
               <>
                 <Ionicons name="save-outline" size={18} color="#FFF" />
-                <Text style={styles.saveBtnText}>Save Stop Attendance</Text>
+                <Text style={styles.saveBtnText}>{t('driver_ui.save_stop_attendance')}</Text>
               </>
             )}
           </AnimatedPressable>
