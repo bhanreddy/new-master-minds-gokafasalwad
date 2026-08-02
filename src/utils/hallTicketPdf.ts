@@ -684,28 +684,28 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
       border-bottom: 0.2mm solid #cbd5e1;
       background: #fff;
       color: #0f172a;
-      font-size: 7.2pt;
+      font-size: 9.2pt;
       font-weight: 900;
     }
     .paper-card > strong {
       display: block;
-      min-height: 4.5mm;
+      min-height: 5.2mm;
       color: #172554;
-      font-size: 8.8pt;
-      line-height: 1.08;
+      font-size: 11pt;
+      line-height: 1.1;
       font-weight: 800;
     }
     .paper-card .subject-time {
       display: block;
       margin-top: 0.55mm;
       color: #1e293b;
-      font-size: 6.8pt;
-      line-height: 1.05;
+      font-size: 8.6pt;
+      line-height: 1.08;
       font-weight: 800;
     }
     .paper-sign {
       flex: 1 1 auto;
-      min-height: 3mm;
+      min-height: 3.4mm;
       margin-top: 0.5mm;
       display: flex;
       align-items: flex-end;
@@ -714,7 +714,7 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
     .paper-sign small {
       display: block;
       color: #64748b;
-      font-size: 3.5pt;
+      font-size: 4.6pt;
       line-height: 1;
     }
     .ticket--layout-3 .ticket-footer {
@@ -724,12 +724,12 @@ export function buildHallTicketHtml(options: HallTicketPdfOptions): string {
     }
     .ticket--layout-3 .sign-block { font-size: 5.4pt; }
     .ticket--layout-3 .principal-signature { max-height: 5mm; }
-    .ticket--layout-3.ticket--single .paper-card > strong { font-size: 10pt; }
-    .ticket--layout-3.ticket--single .paper-card .subject-time { font-size: 7.5pt; }
-    .ticket--layout-3.ticket--dense .paper-card > strong { font-size: 7.8pt; }
-    .ticket--layout-3.ticket--dense .paper-card .subject-time { font-size: 6pt; }
-    .ticket--layout-3.ticket--very-dense .paper-card > strong { font-size: 7pt; }
-    .ticket--layout-3.ticket--very-dense .paper-card .subject-time { font-size: 5.4pt; }
+    .ticket--layout-3.ticket--single .paper-card > strong { font-size: 12.5pt; }
+    .ticket--layout-3.ticket--single .paper-card .subject-time { font-size: 9.3pt; }
+    .ticket--layout-3.ticket--dense .paper-card > strong { font-size: 9.8pt; }
+    .ticket--layout-3.ticket--dense .paper-card .subject-time { font-size: 7.5pt; }
+    .ticket--layout-3.ticket--very-dense .paper-card > strong { font-size: 8.8pt; }
+    .ticket--layout-3.ticket--very-dense .paper-card .subject-time { font-size: 6.8pt; }
 
     /* Two-up model: large readable row-based schedule. */
     .ticket--layout-2 {

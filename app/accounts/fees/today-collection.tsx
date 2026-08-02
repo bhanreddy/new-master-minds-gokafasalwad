@@ -80,7 +80,16 @@ function applyCollectionFilters(rows: FeeTransaction[], filters: CollectionFilte
       const adm = (tx.admission_no ?? '').toLowerCase();
       const ref = (tx.transaction_ref ?? '').toLowerCase();
       const father = (tx.father_name ?? '').toLowerCase();
-      return name.includes(q) || adm.includes(q) || ref.includes(q) || father.includes(q);
+      const receipt = String(tx.receipt_no ?? '').toLowerCase();
+      const feeType = (tx.fee_type ?? '').toLowerCase();
+      return (
+        name.includes(q) ||
+        adm.includes(q) ||
+        ref.includes(q) ||
+        father.includes(q) ||
+        receipt.includes(q) ||
+        feeType.includes(q)
+      );
     });
   }
   return list;
@@ -715,12 +724,17 @@ export default function TodayCollectionScreen() {
     if (result.date) {
       setReportDate(result.date);
     }
-    const scoped = result.transactions.filter(
-      (tx) =>
-        tx.deletion_status !== 'DELETED' &&
-        (tx.received_by_id === accountantId ||
-          tx.received_by_id === result.collector_id),
-    );
+    const collectorKey = String(accountantId ?? '');
+    const resultCollectorKey = String(result.collector_id ?? '');
+    const scoped = result.transactions.filter((tx) => {
+      if (tx.deletion_status === 'DELETED') return false;
+      const receivedBy = String(tx.received_by_id ?? '');
+      return (
+        !collectorKey ||
+        receivedBy === collectorKey ||
+        (resultCollectorKey && receivedBy === resultCollectorKey)
+      );
+    });
     setAllRows(scoped);
     return scoped;
   }, [accountantId]);
