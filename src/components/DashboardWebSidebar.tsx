@@ -31,6 +31,7 @@ export interface WebSidebarActionItem {
 const CATEGORY_ORDER = [
   'Overview',
   'Academic',
+  'Students',
   'Finance',
   'Analytics',
   'AI',
@@ -71,6 +72,15 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
     softDark: 'rgba(59,130,246,0.18)',
     label: 'Academic',
     gradient: ['#60A5FA', '#2563EB'],
+  },
+  Students: {
+    icon: 'people-outline',
+    accent: '#14B8A6',
+    accentDeep: '#0F766E',
+    soft: 'rgba(20,184,166,0.12)',
+    softDark: 'rgba(20,184,166,0.18)',
+    label: 'Students',
+    gradient: ['#2DD4BF', '#0F766E'],
   },
   Finance: {
     icon: 'wallet-outline',
@@ -465,7 +475,7 @@ export default function DashboardWebSidebar({ collapsed, items }: DashboardWebSi
       buckets.set(key, list);
     });
 
-    const ordered = CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+    const ordered: Array<{ key: string; items: WebSidebarActionItem[] }> = CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({
       key,
       items: buckets.get(key)!,
     }));

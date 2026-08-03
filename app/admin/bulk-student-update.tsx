@@ -39,6 +39,7 @@ const FIELD_ICONS: Record<string, React.ComponentProps<typeof Ionicons>['name']>
   first_name: 'person-outline',
   middle_name: 'person-outline',
   last_name: 'person-outline',
+  father_name: 'man-outline',
   admission_number: 'id-card-outline',
   pen_number: 'key-outline',
   apar_number: 'finger-print-outline',
@@ -394,7 +395,7 @@ export default function BulkStudentUpdateScreen() {
               <View style={styles.scopeNote}>
                 <Ionicons name="information-circle-outline" size={18} color="#0369A1" />
                 <Text style={styles.scopeText}>
-                  Class, section, passed-out/withdrawn status, passwords, photos and parent records remain in their dedicated screens because they require additional decisions.
+                  Class, section, passed-out/withdrawn status, passwords, photos and other parent details (phone, occupation) remain in their dedicated screens because they require additional decisions.
                 </Text>
               </View>
             </View>

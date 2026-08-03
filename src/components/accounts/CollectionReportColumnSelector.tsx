@@ -124,7 +124,7 @@ export default function CollectionReportColumnSelector({
           <View style={styles.denominationCopy}>
             <Text style={[styles.denominationTitle, { color: textColor }]}>Cash denomination summary</Text>
             <Text style={[styles.denominationDescription, { color: secondaryColor }]}>
-              Adds a minimum-piece cash breakup and reconciliation tables at the end of the PDF.
+              Shows a calculator before print and prints the cash drawer breakup with match totals in the PDF.
             </Text>
           </View>
           {!denominationsHydrated ? <ActivityIndicator size="small" color={accentColor} /> : (

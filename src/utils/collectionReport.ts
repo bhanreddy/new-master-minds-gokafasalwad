@@ -22,8 +22,16 @@ export interface CollectionTotals {
   byMode: Record<string, { count: number; total: number }>;
 }
 
+/** Commonly circulating notes/coins, deliberately excluding the withdrawn-from-circulation ₹2000 note. */
+export const CASH_DENOMINATIONS = [500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
+
+export type CashDenominationValue = (typeof CASH_DENOMINATIONS)[number];
+export type CashDenominationPieces = Partial<Record<CashDenominationValue, number>>;
+
 export interface CollectionReportOptions {
   includeDenominations?: boolean;
+  /** Piece counts entered in the pre-print calculator. Falls back to a minimum-piece suggestion. */
+  denominationPieces?: CashDenominationPieces;
 }
 
 export interface CashDenominationRow {
@@ -38,10 +46,48 @@ export interface CashDenominationBreakdown {
   remainder: number;
 }
 
-/** Commonly circulating notes/coins, deliberately excluding the withdrawn-from-circulation ₹2000 note. */
-export const CASH_DENOMINATIONS = [500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
+function sanitizePieceCount(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 99999);
+}
 
-/** Greedy minimum-piece suggestion. This is not a physical cash-count record. */
+/** Normalize saved/entered piece counts to known denominations only. */
+export function normalizeCashDenominationPieces(value: unknown): CashDenominationPieces {
+  const source = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const pieces: CashDenominationPieces = {};
+  for (const denomination of CASH_DENOMINATIONS) {
+    pieces[denomination] = sanitizePieceCount(source[String(denomination)] ?? source[denomination as unknown as string]);
+  }
+  return pieces;
+}
+
+export function piecesFromCashDenominationBreakdown(
+  breakdown: CashDenominationBreakdown,
+): CashDenominationPieces {
+  const pieces: CashDenominationPieces = {};
+  for (const row of breakdown.rows) {
+    if ((CASH_DENOMINATIONS as readonly number[]).includes(row.denomination)) {
+      pieces[row.denomination as CashDenominationValue] = sanitizePieceCount(row.pieces);
+    }
+  }
+  return pieces;
+}
+
+/** Build a cash drawer total from entered piece counts. */
+export function buildCashDenominationBreakdownFromPieces(
+  piecesInput: unknown,
+): CashDenominationBreakdown {
+  const pieces = normalizeCashDenominationPieces(piecesInput);
+  const rows = CASH_DENOMINATIONS.map((denomination) => {
+    const count = pieces[denomination] ?? 0;
+    return { denomination, pieces: count, amount: count * denomination };
+  });
+  const allocatedTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+  return { rows, allocatedTotal, remainder: 0 };
+}
+
+/** Greedy minimum-piece suggestion. Useful as a starting point before physical count edits. */
 export function calculateCashDenominations(cashTotal: number): CashDenominationBreakdown {
   const safeTotal = Math.max(0, Number.isFinite(Number(cashTotal)) ? Number(cashTotal) : 0);
   let remainingPaise = Math.round(safeTotal * 100);
@@ -53,6 +99,22 @@ export function calculateCashDenominations(cashTotal: number): CashDenominationB
   });
   const allocatedTotal = rows.reduce((sum, row) => sum + row.amount, 0);
   return { rows, allocatedTotal, remainder: remainingPaise / 100 };
+}
+
+export function resolveCashDenominationBreakdown(
+  cashTotal: number,
+  piecesInput?: CashDenominationPieces | null,
+): { breakdown: CashDenominationBreakdown; source: 'entered' | 'suggested' } {
+  if (piecesInput != null) {
+    return {
+      breakdown: buildCashDenominationBreakdownFromPieces(piecesInput),
+      source: 'entered',
+    };
+  }
+  return {
+    breakdown: calculateCashDenominations(cashTotal),
+    source: 'suggested',
+  };
 }
 
 export const COLLECTION_REPORT_COLUMNS = [
@@ -342,7 +404,17 @@ export function buildCollectionHtml(
     .join('');
   const cashTotal = totals.byMode.cash?.total || 0;
   const digitalTotal = totals.grandTotal - cashTotal;
-  const denominationBreakdown = calculateCashDenominations(cashTotal);
+  const { breakdown: denominationBreakdown, source: denominationSource } = resolveCashDenominationBreakdown(
+    cashTotal,
+    options.denominationPieces,
+  );
+  const denominationDifference = Number((denominationBreakdown.allocatedTotal - cashTotal).toFixed(2));
+  const denominationMatchLabel =
+    denominationDifference === 0
+      ? 'Matches cash total'
+      : denominationDifference > 0
+        ? `Excess ${formatAmount(denominationDifference)}`
+        : `Short ${formatAmount(Math.abs(denominationDifference))}`;
   const feeTypeTotals = new Map<string, { count: number; total: number }>();
   for (const row of rows) {
     const feeType = row.fee_type?.trim() || 'Other';
@@ -356,8 +428,15 @@ export function buildCollectionHtml(
     .map(([feeType, bucket]) => `<tr><td>${escapeHtml(feeType)}</td><td class="num">${bucket.count}</td><td class="num">${escapeHtml(formatAmount(bucket.total))}</td></tr>`)
     .join('');
   const denominationRows = denominationBreakdown.rows
-    .map((row) => `<tr><td class="num">${escapeHtml(formatAmount(row.denomination))}</td><td class="num">${row.pieces}</td><td class="num">${escapeHtml(formatAmount(row.amount))}</td></tr>`)
+    .map((row) => {
+      const rowClass = row.pieces > 0 ? ' class="active-denom"' : '';
+      return `<tr${rowClass}><td class="num">${escapeHtml(formatAmount(row.denomination))}</td><td class="num">${row.pieces}</td><td class="num">${escapeHtml(formatAmount(row.amount))}</td></tr>`;
+    })
     .join('');
+  const denominationNote =
+    denominationSource === 'entered'
+      ? 'Calculated from the cash denomination box before printing. Verify against physical cash in the drawer.'
+      : 'Auto-suggested minimum-piece breakup (no pre-print count entered). Verify against physical cash.';
 
   const reportHeadings = selectedDefinitions
     .map((column) => `<th${'numeric' in column && column.numeric ? ' class="num"' : ''}>${escapeHtml(column.heading)}</th>`)
@@ -418,7 +497,13 @@ export function buildCollectionHtml(
     .reconciliation table { font-size: 9px; }
     .reconciliation th, .reconciliation td { padding: 5px 6px; }
     .reconciliation .total-row td { font-weight: 800; background: #F8FAFC; border-top: 2px solid #94A3B8; }
+    .reconciliation tr.active-denom td { background: #FFFBEB; font-weight: 700; }
     .denomination-note { color: #64748B; font-size: 8px; line-height: 1.35; margin: 0 0 7px; }
+    .denomination-calc { width: 100%; border-collapse: collapse; font-size: 9px; margin: 0 0 8px; }
+    .denomination-calc th, .denomination-calc td { border: 1px solid #CBD5E1; padding: 5px 6px; }
+    .denomination-calc th { background: #FEF3C7; text-align: left; text-transform: none; letter-spacing: 0; font-size: 9px; }
+    .denomination-calc .match { color: #047857; font-weight: 800; }
+    .denomination-calc .mismatch { color: #B45309; font-weight: 800; }
     .signatures { margin-top: 36px; display: flex; justify-content: space-between; gap: 24px; }
     .sign-box { flex: 1; border-top: 1px solid #94A3B8; padding-top: 8px; font-size: 12px; color: #475569; }
     @media print {
@@ -488,13 +573,20 @@ export function buildCollectionHtml(
           </table>
         </div>
         ${options.includeDenominations ? `<div>
-          <h3>Cash denominations</h3>
-          <p class="denomination-note">Auto-calculated minimum-piece suggestion for the cash total. Verify against physical cash.</p>
+          <h3>Cash denomination calculation</h3>
+          <p class="denomination-note">${escapeHtml(denominationNote)}</p>
+          <table class="denomination-calc">
+            <tbody>
+              <tr><th>Cash collections (system)</th><td class="num">${escapeHtml(formatAmount(cashTotal))}</td></tr>
+              <tr><th>Counted denomination total</th><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
+              <tr><th>Difference</th><td class="num ${denominationDifference === 0 ? 'match' : 'mismatch'}">${escapeHtml(denominationMatchLabel)}</td></tr>
+            </tbody>
+          </table>
           <table>
             <thead><tr><th class="num">Denomination</th><th class="num">Pieces</th><th class="num">Amount</th></tr></thead>
             <tbody>
               ${denominationRows}
-              <tr class="total-row"><td>Total</td><td class="num">${denominationBreakdown.rows.reduce((sum, row) => sum + row.pieces, 0)}</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
+              <tr class="total-row"><td>Total pieces / amount</td><td class="num">${denominationBreakdown.rows.reduce((sum, row) => sum + row.pieces, 0)}</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
               ${denominationBreakdown.remainder > 0 ? `<tr><td colspan="2">Non-denomination remainder</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.remainder))}</td></tr>` : ''}
             </tbody>
           </table>

@@ -1,10 +1,12 @@
 import { FeeTransaction } from '../types/models';
 import {
+  buildCashDenominationBreakdownFromPieces,
   buildCollectionCsv,
   buildCollectionHtml,
   calculateCashDenominations,
   DEFAULT_COLLECTION_REPORT_COLUMNS,
   normalizeCollectionReportColumns,
+  piecesFromCashDenominationBreakdown,
 } from './collectionReport';
 
 jest.mock('./pdfGenerator', () => ({ printHtmlOnWeb: jest.fn() }));
@@ -113,12 +115,31 @@ describe('collection report columns', () => {
 
     expect(withoutDenominations).toContain('Collection Reconciliation');
     expect(withoutDenominations).toContain('Non-cash total');
-    expect(withoutDenominations).not.toContain('<h3>Cash denominations</h3>');
-    expect(withDenominations).toContain('<h3>Cash denominations</h3>');
-    expect(withDenominations).toContain('Auto-calculated minimum-piece suggestion');
+    expect(withoutDenominations).not.toContain('<h3>Cash denomination calculation</h3>');
+    expect(withDenominations).toContain('<h3>Cash denomination calculation</h3>');
+    expect(withDenominations).toContain('Auto-suggested minimum-piece breakup');
+    expect(withDenominations).toContain('Cash collections (system)');
+    expect(withDenominations).toContain('Counted denomination total');
+    expect(withDenominations).toContain('Matches cash total');
     expect(withDenominations).toContain('@page { size: A4 landscape;');
     expect(withDenominations.indexOf('Collection Reconciliation')).toBeGreaterThan(
       withDenominations.indexOf('<tbody class="report-total">'),
     );
+  });
+
+  it('prints entered denomination piece counts and difference clearly', () => {
+    const pieces = piecesFromCashDenominationBreakdown(calculateCashDenominations(1000));
+    pieces[500] = 3; // counted 1500 against cash 1250
+    const counted = buildCashDenominationBreakdownFromPieces(pieces);
+    const html = buildCollectionHtml([row], meta, ['student_name', 'amount'], {
+      includeDenominations: true,
+      denominationPieces: pieces,
+    });
+
+    expect(counted.allocatedTotal).toBe(1500);
+    expect(html).toContain('Calculated from the cash denomination box before printing');
+    expect(html).toContain('Excess');
+    expect(html).toContain('class="active-denom"');
+    expect(html).toContain('<td class="num">3</td>');
   });
 });

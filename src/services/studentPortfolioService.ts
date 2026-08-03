@@ -4,7 +4,8 @@ export interface PortfolioClassSection {
   id: string;
   class_name: string;
   section_name: string;
-  source: 'substitution' | 'period_1' | 'class_teacher';
+  source: 'substitution' | 'period_1' | 'class_teacher' | 'admin';
+  student_count?: number;
 }
 
 export interface PortfolioStudentSummary {
@@ -15,6 +16,9 @@ export interface PortfolioStudentSummary {
   photo_url?: string | null;
   dob?: string | null;
   gender?: string | null;
+  class_name?: string | null;
+  section_name?: string | null;
+  class_section_id?: string | null;
   attendance_total: number;
   attendance_present: number;
   attendance_percentage: number;
@@ -28,6 +32,7 @@ export interface StudentPortfolioList {
   date: string;
   academic_year: string;
   class_section: PortfolioClassSection | null;
+  class_sections?: PortfolioClassSection[];
   students: PortfolioStudentSummary[];
 }
 
@@ -123,5 +128,19 @@ export const StudentPortfolioService = {
       staffParams(staffId),
       { silent: true }
     );
+  },
+
+  /** Admin: school-wide roster (optional class_section_id filter). */
+  getAdminRoster(classSectionId?: string | null): Promise<StudentPortfolioList> {
+    return api.get(
+      '/admin/student-portfolio',
+      classSectionId ? { class_section_id: classSectionId } : undefined,
+      { silent: true }
+    );
+  },
+
+  /** Admin: any active student in the school. */
+  getAdminStudent(studentId: string): Promise<StudentPortfolioDetail> {
+    return api.get(`/admin/student-portfolio/${studentId}`, undefined, { silent: true });
   },
 };

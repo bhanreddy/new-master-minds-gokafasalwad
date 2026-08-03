@@ -27,6 +27,7 @@ import AdminHeader from '../../../src/components/AdminHeader';
 import LogoLoader from '../../../src/components/LogoLoader';
 import PaymentDeletionActions from '../../../src/components/accounts/PaymentDeletionActions';
 import CollectionReportColumnSelector from '../../../src/components/accounts/CollectionReportColumnSelector';
+import CashDenominationCalculator from '../../../src/components/accounts/CashDenominationCalculator';
 import { useAuth } from '../../../src/hooks/useAuth';
 import {
   useCollectionReportColumns,
@@ -40,13 +41,17 @@ import { SCHOOL_NAME } from '../../../src/constants/school';
 import { alertCompat } from '../../../src/utils/crossPlatformAlert';
 import {
   PAYMENT_MODES,
+  buildCashDenominationBreakdownFromPieces,
+  calculateCashDenominations,
   computeCollectionTotals,
   exportCollectionCsv,
   formatAmount,
   formatClassSection,
   formatPaymentMethod,
   formatTime,
+  piecesFromCashDenominationBreakdown,
   printCollectionReport,
+  type CashDenominationPieces,
   type PaymentMode,
 } from '../../../src/utils/collectionReport';
 
@@ -693,6 +698,10 @@ export default function TodayCollectionScreen() {
     saveError: denominationsSaveError,
     toggleDenominations,
   } = useCollectionReportDenominations(String(accountantId || 'accounts'));
+  const [denominationPieces, setDenominationPieces] = useState<CashDenominationPieces>(() =>
+    piecesFromCashDenominationBreakdown(calculateCashDenominations(0)),
+  );
+  const [denominationSeedKey, setDenominationSeedKey] = useState<string | null>(null);
 
   const reportMeta = useMemo(
     () => ({
@@ -730,7 +739,16 @@ export default function TodayCollectionScreen() {
   );
 
   const totals = useMemo(() => computeCollectionTotals(filteredRows), [filteredRows]);
+  const cashTotal = totals.byMode.cash?.total || 0;
   const filtersActive = hasActiveCollectionFilters(filters);
+
+  // Re-seed the calculator when the cash total changes so print always starts from a sensible suggestion.
+  React.useEffect(() => {
+    const seedKey = `${reportDate}:${cashTotal}`;
+    if (denominationSeedKey === seedKey) return;
+    setDenominationPieces(piecesFromCashDenominationBreakdown(calculateCashDenominations(cashTotal)));
+    setDenominationSeedKey(seedKey);
+  }, [cashTotal, denominationSeedKey, reportDate]);
 
   const loadData = useCallback(async (): Promise<FeeTransaction[]> => {
     if (!accountantId) {
@@ -798,17 +816,48 @@ export default function TodayCollectionScreen() {
   }, [filters, loadData, reportColumns, reportMeta]);
 
   const handlePrint = useCallback(async () => {
-    setPrinting(true);
-    try {
-      const fresh = await loadData();
-      const exportRows = applyCollectionFilters(fresh, filters);
-      await printCollectionReport(exportRows, reportMeta, reportColumns, { includeDenominations });
-    } catch {
-      alertCompat('Error', 'Failed to print collection report.');
-    } finally {
-      setPrinting(false);
+    const runPrint = async () => {
+      setPrinting(true);
+      try {
+        const fresh = await loadData();
+        const exportRows = applyCollectionFilters(fresh, filters);
+        await printCollectionReport(exportRows, reportMeta, reportColumns, {
+          includeDenominations,
+          denominationPieces: includeDenominations ? denominationPieces : undefined,
+        });
+      } catch {
+        alertCompat('Error', 'Failed to print collection report.');
+      } finally {
+        setPrinting(false);
+      }
+    };
+
+    if (includeDenominations) {
+      const counted = buildCashDenominationBreakdownFromPieces(denominationPieces).allocatedTotal;
+      const difference = Number((counted - cashTotal).toFixed(2));
+      if (difference !== 0) {
+        alertCompat(
+          'Cash count does not match',
+          `Counted denominations are ${formatAmount(counted)} but cash collections are ${formatAmount(cashTotal)} (${difference > 0 ? 'excess' : 'short'} ${formatAmount(Math.abs(difference))}). Print anyway?`,
+          [
+            { text: 'Edit counts', style: 'cancel' },
+            { text: 'Print anyway', onPress: () => { void runPrint(); } },
+          ],
+        );
+        return;
+      }
     }
-  }, [filters, includeDenominations, loadData, reportColumns, reportMeta]);
+
+    await runPrint();
+  }, [
+    cashTotal,
+    denominationPieces,
+    filters,
+    includeDenominations,
+    loadData,
+    reportColumns,
+    reportMeta,
+  ]);
 
   const clearFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
@@ -884,6 +933,16 @@ export default function TodayCollectionScreen() {
         denominationsHydrated={denominationsHydrated}
         onToggleDenominations={toggleDenominations}
       />
+
+      {includeDenominations ? (
+        <CashDenominationCalculator
+          cashTotal={cashTotal}
+          pieces={denominationPieces}
+          onChange={setDenominationPieces}
+          isDark={isDark}
+          accentColor={ACCENT}
+        />
+      ) : null}
 
       <Animated.View
         entering={FadeInDown.delay(140).duration(360)}
