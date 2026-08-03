@@ -406,8 +406,8 @@ export default function AdminExams() {
         alertCompat(
           publishing ? 'Published' : 'Unpublished',
           publishing
-            ? 'The exam timetable is now visible to students and teachers.'
-            : 'The exam timetable is now hidden from students and teachers.'
+            ? 'The exam timetable is now visible to students, parents, and teachers.'
+            : 'The exam timetable is now hidden from students, parents, and teachers.'
         );
       } catch (err: any) {
         alertCompat('Error', err?.message || 'Failed to update publish state');
@@ -3543,7 +3543,7 @@ function EditPaperModal({
               <Text style={styles.allocateCtaText}>Add topic</Text>
             </TouchableOpacity>
             <Text style={styles.helperText}>
-              Topics and their weightage are shown to students and teachers with the timetable.
+              Topics and their weightage are shown to students, parents, and teachers with the timetable.
               Weightage is optional per topic.
             </Text>
           </ScrollView>

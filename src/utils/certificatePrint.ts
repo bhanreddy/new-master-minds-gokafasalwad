@@ -22,6 +22,7 @@ export const CERTIFICATE_PRINT_CSS = `
     padding: 0;
     border: none !important;
     box-shadow: none !important;
+    background: transparent !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

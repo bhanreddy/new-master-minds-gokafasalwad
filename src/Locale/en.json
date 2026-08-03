@@ -366,6 +366,14 @@
     "parent_singular": "Parent"
   },
   "diary": "Diary",
+  "readAloud": {
+    "play": "Read aloud",
+    "stop": "Stop reading",
+    "hint": "Reads this card using the matching Telugu or English voice",
+    "errorTitle": "Audio unavailable",
+    "teluguVoiceMissing": "Install the Telugu voice in your device Text-to-speech settings once, then it will work offline.",
+    "speechFailed": "This text could not be read aloud on this device."
+  },
   "studentDiary": {
     "todayTab": "Today's Diary",
     "historyTab": "Diary History",

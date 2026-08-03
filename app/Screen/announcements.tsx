@@ -1,6 +1,6 @@
 // OPT: Student notices — useStudentQuery for GET /notices + memoized row renderer (replaces useEffect + NoticeService direct fetch pattern).
 import React, { useMemo, useCallback, memo } from 'react'; // OPT: Data from hook; memo/useCallback for list perf.
-import { View, Text, StyleSheet, FlatList, Platform, Pressable } from 'react-native'; // OPT: Layout + list.
+import { View, Text, StyleSheet, FlatList } from 'react-native'; // OPT: Layout + list.
 import { Ionicons } from '@expo/vector-icons'; // OPT: Icons.
 import { useTranslation } from 'react-i18next'; // OPT: i18n.
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +15,9 @@ import LogoLoader from '../../src/components/LogoLoader'; // OPT: Loader.
 import { useStudentQuery } from '../../src/hooks/useStudentQuery'; // OPT: Cached GET layer.
 import { useAuth } from '../../src/hooks/useAuth'; // OPT: userId for cache partition keying in useStudentQuery.
 import { ErrorBoundary } from '../../src/components/ErrorBoundary'; // OPT: Same boundary as Screen/_layout export target.
+import ReadAloudButton from '../../src/components/ReadAloudButton';
+import { readAloudService } from '../../src/services/readAloudService';
+import { useFocusEffect } from 'expo-router';
 
 interface UINotice { // OPT: FlatList row model (UI-only shape).
   id: string; // OPT:
@@ -97,6 +100,12 @@ const NoticeTimelineRow = memo(function NoticeTimelineRow({ // OPT: Pure timelin
 }) {
   const { t } = useTranslation(); // OPT: Subscribe so t_field + labels update on language change.
   const { isDark, theme } = useTheme();
+  const localizedTitle = t_field(item.title, item.title_te);
+  const localizedMessage = t_field(item.message, item.message_te);
+  const speechParts = useMemo(
+    () => [localizedTitle, localizedMessage],
+    [localizedMessage, localizedTitle]
+  );
 
   const accentColor = item.important ? '#EF4444' : theme.colors.primary;
   // Use Slate 50 (light) and deeper red for card backgrounds to let pure white gradient highlights shine
@@ -148,17 +157,24 @@ const NoticeTimelineRow = memo(function NoticeTimelineRow({ // OPT: Pure timelin
 
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]} numberOfLines={1}>
-            {t_field(item.title, item.title_te)}
+            {localizedTitle}
           </Text>
-          {item.important && (
-            <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF1F2', borderColor: 'rgba(239, 68, 68, 0.2)' }]}>
-              <Text style={styles.badgeText}>{t('announcements.important', 'Important')}</Text>
-            </View>
-          )}
+          <ReadAloudButton
+            id={`announcement-${item.id}`}
+            text={speechParts}
+            color={accentColor}
+            size={32}
+          />
         </View>
 
+        {item.important && (
+          <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FFF1F2', borderColor: 'rgba(239, 68, 68, 0.2)' }]}>
+            <Text style={styles.badgeText}>{t('announcements.important', 'Important')}</Text>
+          </View>
+        )}
+
         <Text style={[styles.message, { color: isDark ? '#CBD5E1' : '#475569' }]} onPress={onMessagePress}>
-          {t_field(item.message, item.message_te)}
+          {localizedMessage}
         </Text>
 
         {/* Ambient background decoration icon */}
@@ -178,6 +194,10 @@ function AnnouncementsScreenInner() { // OPT: Wrapped by ErrorBoundary in defaul
   const styles = React.useMemo(() => getStyles(theme, isDark), [theme, isDark]); // OPT: Stylesheet memo.
   const { t } = useTranslation(); // OPT: i18n.
   const { user } = useAuth(); // OPT: userId for hook partition in useStudentQuery.
+
+  useFocusEffect(useCallback(() => () => {
+    void readAloudService.stop();
+  }, []));
 
   const { data: noticePayload, loading } = useStudentQuery<Notice[]>( // OPT: Network-first notices list with TTL.
     '/notices', // OPT: Backend notices collection route.
@@ -386,7 +406,7 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => {
     },
     cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
     cardTitle: { fontSize: 16.5, fontWeight: '800', flex: 1, marginRight: 8, letterSpacing: 0.1 },
-    badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' },
+    badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, borderWidth: 1, marginBottom: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)' },
     badgeText: { fontSize: 9.5, fontWeight: '800', color: '#EF4444', textTransform: 'uppercase', letterSpacing: 0.5 },
     message: { fontSize: 14.5, lineHeight: 22 },
     bgIcon: { position: 'absolute', right: -6, bottom: -6, transform: [{ scale: 2.5 }], opacity: 0.1 },

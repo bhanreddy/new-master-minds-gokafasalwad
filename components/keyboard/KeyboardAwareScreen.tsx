@@ -50,6 +50,12 @@ interface BaseProps {
 interface ScrollVariantProps extends BaseProps {
   variant: 'scroll';
   /**
+   * Use the native keyboard-aware scroll implementation.
+   * Disable this when Android must preserve focus while async content changes.
+   * @default true
+   */
+  keyboardAware?: boolean;
+  /**
    * Extra space (px) between the focused input and the keyboard top.
    * @default Spacing.lg (24)
    */
@@ -124,6 +130,7 @@ function ScrollVariant({
   children,
   backgroundColor,
   style,
+  keyboardAware = true,
   bottomOffset = Spacing.lg,
   extraScrollPadding = Spacing.xxl,
   contentContainerStyle,
@@ -137,9 +144,9 @@ function ScrollVariant({
     ...(backgroundColor ? { backgroundColor } : undefined),
   };
 
-  // On web, fall back to a plain ScrollView because the native library
-  // is a no-op there. This keeps web rendering unaffected.
-  if (isWeb) {
+  // On web, or when explicitly disabled for a native focus-sensitive screen,
+  // use a plain ScrollView instead of installing keyboard animation handlers.
+  if (isWeb || !keyboardAware) {
     return (
       <View style={[containerStyle, style]}>
         <ScrollView

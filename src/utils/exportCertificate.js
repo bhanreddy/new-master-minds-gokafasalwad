@@ -49,7 +49,7 @@ export const getExportPageConfig = (type) => {
   return config;
 };
 
-export const captureElementToImage = async (target) => {
+export const captureElementToImage = async (target, options = {}) => {
   const element = resolveElement(target);
   if (!element) {
     throw new Error('Certificate preview not found.');
@@ -59,7 +59,8 @@ export const captureElementToImage = async (target) => {
     scale: 2,
     useCORS: true,
     allowTaint: false,
-    backgroundColor: '#ffffff',
+    // null keeps transparent certificate areas so coloured paper shows through when printed
+    backgroundColor: options.backgroundColor === undefined ? null : options.backgroundColor,
     logging: false,
   });
 
@@ -67,7 +68,9 @@ export const captureElementToImage = async (target) => {
 };
 
 export const exportToPDF = async (target, type, filename, options = {}) => {
-  const imgData = await captureElementToImage(target);
+  const imgData = await captureElementToImage(target, {
+    backgroundColor: options.backgroundColor === undefined ? null : options.backgroundColor,
+  });
   const config = getExportPageConfig(type);
 
   const pdf = new jsPDF({
@@ -81,7 +84,7 @@ export const exportToPDF = async (target, type, filename, options = {}) => {
   pdf.addImage(imgData, 'PNG', 0, 0, pageW, contentH);
 
   if (options.duplicate) {
-    pdf.addImage(imgData, 'PNG', 0, config.contentHeight, pageW, config.contentHeight);
+    pdf.addImage(imgData, 'PNG', 0, config.contentHeight, pageW, contentH);
   }
 
   pdf.save(filename);
@@ -90,7 +93,9 @@ export const exportToPDF = async (target, type, filename, options = {}) => {
 export const printElementToWindow = async (target, type, options = {}) => {
   if (typeof window === 'undefined') return;
 
-  const imgData = await captureElementToImage(target);
+  const imgData = await captureElementToImage(target, {
+    backgroundColor: options.backgroundColor === undefined ? null : options.backgroundColor,
+  });
   const config = getExportPageConfig(type);
   const duplicate = Boolean(options.duplicate);
 
@@ -114,11 +119,12 @@ export const printElementToWindow = async (target, type, options = {}) => {
       html, body {
         width: ${config.pageWidth}mm;
         min-height: ${config.pageHeight}mm;
-        background: #ffffff;
+        background: transparent;
       }
       img {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+        background: transparent;
       }
       @page {
         size: ${config.pageCss};
@@ -126,6 +132,7 @@ export const printElementToWindow = async (target, type, options = {}) => {
       }
       @media print {
         html, body {
+          background: transparent !important;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
         }
@@ -133,7 +140,7 @@ export const printElementToWindow = async (target, type, options = {}) => {
     </style>
   </head>
   <body>
-    <img src="${imgData}" style="width:${config.pageWidth}mm;height:${config.contentHeight}mm;display:block;" />
+    <img src="${imgData}" style="width:${config.pageWidth}mm;height:${config.contentHeight}mm;display:block;background:transparent;" />
     ${secondCopy}
   </body>
 </html>`);

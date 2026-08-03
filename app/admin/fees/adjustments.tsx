@@ -36,6 +36,8 @@ interface AdjustmentLog {
   adjusted_by_name: string;
   student_name: string;
   admission_no: string;
+  class_name?: string | null;
+  section_name?: string | null;
   adjustment_type?: FeeAdjustmentType;
 }
 
@@ -43,6 +45,20 @@ type HistoryFilter = 'all' | 'waive' | 'add';
 type TransportHint = 'none' | 'no_assignment' | 'fee_not_set';
 
 const fmtINR = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+
+function studentClassSectionLabel(student: Student): string | null {
+  const enrollment = student.current_enrollment;
+  const className = (enrollment?.class_name || enrollment?.class_code || '').trim();
+  const sectionName = (enrollment?.section_name || '').trim();
+  const classLabel = className
+    ? (/^class\b/i.test(className) ? className : `Class ${className}`)
+    : null;
+  const sectionLabel = sectionName
+    ? (/^(sec|section)\b/i.test(sectionName) ? sectionName : `Sec ${sectionName}`)
+    : null;
+
+  return [classLabel, sectionLabel].filter(Boolean).join(' · ') || null;
+}
 
 function resolveTransportDue(feeData: FeeResponse | null | undefined): TransportDue | null {
   return feeData?.transport_due ?? feeData?.summary?.transport_due ?? null;
@@ -106,6 +122,10 @@ const HistoryRow = React.memo(function HistoryRow({
   const isAdd = (item.adjustment_type ?? 'waive') === 'add';
   const amount = Number(item.amount) || 0;
   const amountText = `${isAdd ? '+' : '−'}${fmtINR(amount)}`;
+  const classSection = [
+    item.class_name ? (/^class\b/i.test(item.class_name) ? item.class_name : `Class ${item.class_name}`) : null,
+    item.section_name ? (/^(sec|section)\b/i.test(item.section_name) ? item.section_name : `Sec ${item.section_name}`) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <Animated.View
@@ -123,7 +143,7 @@ const HistoryRow = React.memo(function HistoryRow({
             <View
               style={[
                 styles.historyIconWrap,
-                { backgroundColor: isAdd ? '#FFFBEB' : '#ECFDF5' },
+                isAdd ? styles.historyIconWrapAdd : styles.historyIconWrapWaive,
               ]}
             >
               <Ionicons
@@ -136,11 +156,35 @@ const HistoryRow = React.memo(function HistoryRow({
               <Text style={styles.historyStudent} numberOfLines={1}>
                 {item.student_name}
               </Text>
-              <Text style={styles.historyMeta} numberOfLines={1}>
-                #{item.admission_no} · {item.fee_component}
-              </Text>
+              <View style={styles.historyMetaRow}>
+                <View style={styles.historyMetaPill}>
+                  <Ionicons name="id-card-outline" size={12} color="#64748B" />
+                  <Text style={styles.historyMetaText} numberOfLines={1}>
+                    {item.admission_no}
+                  </Text>
+                </View>
+                {classSection ? (
+                  <View style={[styles.historyMetaPill, styles.historyClassPill]}>
+                    <Ionicons name="school-outline" size={12} color="#4F46E5" />
+                    <Text style={[styles.historyMetaText, styles.historyClassText]} numberOfLines={1}>
+                      {classSection}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.historyMetaPill}>
+                  <Ionicons name="pricetag-outline" size={12} color="#64748B" />
+                  <Text style={styles.historyMetaText} numberOfLines={1}>
+                    {item.fee_component}
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.historyAmountCol}>
+            <View
+              style={[
+                styles.historyAmountCol,
+                isAdd ? styles.historyAmountColAdd : styles.historyAmountColWaive,
+              ]}
+            >
               <Text
                 style={[
                   styles.historyAmount,
@@ -168,10 +212,15 @@ const HistoryRow = React.memo(function HistoryRow({
           </View>
 
           <View style={styles.historyReasonRow}>
-            <Ionicons name="chatbubble-ellipses-outline" size={12} color="#94A3B8" />
-            <Text style={styles.historyReason} numberOfLines={2}>
-              {item.reason}
-            </Text>
+            <View style={styles.historyReasonIcon}>
+              <Ionicons name="chatbubble-ellipses-outline" size={14} color="#6366F1" />
+            </View>
+            <View style={styles.historyReasonBody}>
+              <Text style={styles.historyReasonLabel}>REASON</Text>
+              <Text style={styles.historyReason} numberOfLines={2}>
+                {item.reason}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.historyFooter}>
@@ -374,6 +423,9 @@ export default function FeeAdjustmentsScreen() {
   const remainingBalance = selectedFee
     ? selectedFee.amount_due - selectedFee.discount - selectedFee.amount_paid
     : 0;
+  const selectedStudentClassSection = selectedStudent
+    ? studentClassSectionLabel(selectedStudent)
+    : null;
 
   const canSubmit =
     !!selectedStudent &&
@@ -401,6 +453,7 @@ export default function FeeAdjustmentsScreen() {
         variant="scroll"
         contentContainerStyle={styles.scrollContent}
         bottomOffset={24}
+        keyboardAware={Platform.OS !== 'android' || !!selectedStudent}
       >
         {/* Intro */}
         <Animated.View entering={FadeInDown.duration(320)} style={styles.introCard}>
@@ -513,28 +566,33 @@ export default function FeeAdjustmentsScreen() {
 
               {searchResults.length > 0 && (
                 <View style={styles.dropdown}>
-                  {searchResults.map((student, idx) => (
-                    <Pressable
-                      key={student.id}
-                      style={({ pressed }) => [
-                        styles.dropdownItem,
-                        idx === searchResults.length - 1 && styles.dropdownItemLast,
-                        pressed && styles.dropdownItemPressed,
-                      ]}
-                      onPress={() => handleSelectStudent(student)}
-                    >
-                      <View style={styles.dropdownAvatar}>
-                        <Text style={styles.dropdownAvatarText}>
-                          {(student.display_name || 'S').charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.dropdownName}>{student.display_name}</Text>
-                        <Text style={styles.dropdownMeta}>#{student.admission_no}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
-                    </Pressable>
-                  ))}
+                  {searchResults.map((student, idx) => {
+                    const classSection = studentClassSectionLabel(student);
+                    return (
+                      <Pressable
+                        key={student.id}
+                        style={({ pressed }) => [
+                          styles.dropdownItem,
+                          idx === searchResults.length - 1 && styles.dropdownItemLast,
+                          pressed && styles.dropdownItemPressed,
+                        ]}
+                        onPress={() => handleSelectStudent(student)}
+                      >
+                        <View style={styles.dropdownAvatar}>
+                          <Text style={styles.dropdownAvatarText}>
+                            {(student.display_name || 'S').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dropdownName}>{student.display_name}</Text>
+                          <Text style={styles.dropdownMeta}>
+                            #{student.admission_no}{classSection ? ` · ${classSection}` : ''}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                      </Pressable>
+                    );
+                  })}
                 </View>
               )}
 
@@ -562,6 +620,7 @@ export default function FeeAdjustmentsScreen() {
                 <Text style={styles.studentName}>{selectedStudent.display_name}</Text>
                 <Text style={styles.studentDetails}>
                   Admission · {selectedStudent.admission_no}
+                  {selectedStudentClassSection ? ` · ${selectedStudentClassSection}` : ''}
                 </Text>
               </View>
               <Pressable
@@ -1157,7 +1216,9 @@ const getStyles = (theme: Theme, isDark: boolean) =>
           shadowOpacity: 0.18,
           shadowRadius: 8,
         },
-        android: { elevation: 2 },
+        // Changing a TextInput parent's elevation after focus can recreate its
+        // Android render layer and immediately drop the native input focus.
+        android: {},
         web: {
           boxShadow: '0 0 0 3px rgba(99,102,241,0.18)',
         } as any,
@@ -1589,54 +1650,114 @@ const getStyles = (theme: Theme, isDark: boolean) =>
     historyCard: {
       flexDirection: 'row',
       backgroundColor: isDark ? '#121824' : '#FFFFFF',
-      borderRadius: 16,
+      borderRadius: 20,
       overflow: 'hidden',
       borderWidth: 1,
-      borderColor: isDark ? '#334155' : '#E2E8F0',
+      borderColor: isDark ? '#2B3648' : '#DFE7F1',
+      ...Platform.select({
+        ios: {
+          shadowColor: '#64748B',
+          shadowOffset: { width: 0, height: 5 },
+          shadowOpacity: isDark ? 0.16 : 0.08,
+          shadowRadius: 14,
+        },
+        android: { elevation: 2 },
+        web: {
+          boxShadow: isDark
+            ? '0 10px 26px rgba(0,0,0,0.16)'
+            : '0 10px 26px rgba(51,65,85,0.08)',
+        } as any,
+        default: {},
+      }),
     },
     historyAccent: {
-      width: 4,
+      width: 5,
     },
     historyBody: {
       flex: 1,
-      padding: 14,
+      padding: 16,
     },
     historyTopRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 10,
+      alignItems: 'center',
+      gap: 12,
     },
     historyIconWrap: {
-      width: 36,
-      height: 36,
-      borderRadius: 12,
+      width: 42,
+      height: 42,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    historyIconWrapWaive: {
+      backgroundColor: isDark ? 'rgba(16,185,129,0.14)' : '#ECFDF5',
+    },
+    historyIconWrapAdd: {
+      backgroundColor: isDark ? 'rgba(245,158,11,0.14)' : '#FFFBEB',
     },
     historyTitleCol: {
       flex: 1,
       minWidth: 0,
     },
     historyStudent: {
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: '800',
       color: isDark ? '#F1F5F9' : '#0F172A',
-      letterSpacing: -0.2,
+      letterSpacing: -0.25,
     },
-    historyMeta: {
-      fontSize: 12,
-      color: '#64748B',
-      marginTop: 2,
-      fontWeight: '500',
+    historyMetaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 7,
+    },
+    historyMetaPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      maxWidth: '100%',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+      borderWidth: 1,
+      borderColor: isDark ? '#334155' : '#E2E8F0',
+    },
+    historyClassPill: {
+      backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : '#EEF2FF',
+      borderColor: isDark ? 'rgba(129,140,248,0.28)' : '#C7D2FE',
+    },
+    historyMetaText: {
+      flexShrink: 1,
+      fontSize: 11,
+      color: isDark ? '#CBD5E1' : '#475569',
+      fontWeight: '700',
+    },
+    historyClassText: {
+      color: isDark ? '#A5B4FC' : '#4338CA',
     },
     historyAmountCol: {
       alignItems: 'flex-end',
       gap: 4,
+      minWidth: 96,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 13,
+      borderWidth: 1,
+    },
+    historyAmountColWaive: {
+      backgroundColor: isDark ? 'rgba(16,185,129,0.10)' : '#F0FDF4',
+      borderColor: isDark ? 'rgba(16,185,129,0.22)' : '#BBF7D0',
+    },
+    historyAmountColAdd: {
+      backgroundColor: isDark ? 'rgba(245,158,11,0.10)' : '#FFFBEB',
+      borderColor: isDark ? 'rgba(245,158,11,0.22)' : '#FDE68A',
     },
     historyAmount: {
-      fontSize: 15,
-      fontWeight: '800',
-      letterSpacing: -0.3,
+      fontSize: 16,
+      fontWeight: '900',
+      letterSpacing: -0.4,
     },
     historyAmountWaive: {
       color: '#059669',
@@ -1650,42 +1771,66 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       borderRadius: 999,
     },
     historyBadgeWaive: {
-      backgroundColor: '#DCFCE7',
+      backgroundColor: isDark ? 'rgba(16,185,129,0.18)' : '#DCFCE7',
     },
     historyBadgeAdd: {
-      backgroundColor: '#FFEDD5',
+      backgroundColor: isDark ? 'rgba(245,158,11,0.18)' : '#FFEDD5',
     },
     historyBadgeText: {
       fontSize: 10,
       fontWeight: '800',
-      color: '#166534',
+      color: isDark ? '#6EE7B7' : '#166534',
       textTransform: 'uppercase',
       letterSpacing: 0.3,
     },
     historyBadgeTextAdd: {
-      color: '#C2410C',
+      color: isDark ? '#FCD34D' : '#C2410C',
     },
     historyReasonRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: 6,
-      marginTop: 10,
-      paddingTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? '#1E293B' : '#F1F5F9',
+      gap: 10,
+      marginTop: 14,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : '#F8FAFF',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(129,140,248,0.16)' : '#E8ECFF',
+    },
+    historyReasonIcon: {
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF',
+    },
+    historyReasonBody: {
+      flex: 1,
+      minWidth: 0,
+    },
+    historyReasonLabel: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: isDark ? '#818CF8' : '#6366F1',
+      letterSpacing: 0.7,
+      marginBottom: 3,
     },
     historyReason: {
       flex: 1,
-      fontSize: 12,
-      color: isDark ? '#94A3B8' : '#64748B',
-      fontWeight: '500',
-      lineHeight: 17,
+      fontSize: 12.5,
+      color: isDark ? '#CBD5E1' : '#475569',
+      fontWeight: '600',
+      lineHeight: 18,
     },
     historyFooter: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
-      marginTop: 10,
+      gap: 16,
+      marginTop: 12,
+      paddingTop: 11,
+      borderTopWidth: 1,
+      borderTopColor: isDark ? '#1E293B' : '#EEF2F7',
     },
     historyFooterItem: {
       flexDirection: 'row',

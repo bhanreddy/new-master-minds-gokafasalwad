@@ -1618,7 +1618,7 @@ function SyllabusEditorModal({
         <Text style={[editorStyles.addBtnText, { color: category.color, fontFamily: FONT_FAMILY }]}>Add topic</Text>
       </TouchableOpacity>
       <Text style={[editorStyles.helper, { color: textMuted, fontFamily: FONT_FAMILY }]}>
-        Students see these topics with the exam timetable. Weightage is optional per topic.
+        Students and parents see these topics with the exam timetable. Weightage is optional per topic.
       </Text>
     </>
   );

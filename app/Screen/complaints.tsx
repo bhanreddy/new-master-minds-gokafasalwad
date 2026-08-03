@@ -23,6 +23,9 @@ import { Theme } from '../../src/theme/themes';
 import { t_field } from '../../src/utils/lang';
 import LogoLoader from '../../src/components/LogoLoader'; // OPT: Loading affordance.
 import { ErrorBoundary } from '../../src/components/ErrorBoundary'; // OPT: Same boundary export target as Screen/_layout.
+import ReadAloudButton from '../../src/components/ReadAloudButton';
+import { readAloudService } from '../../src/services/readAloudService';
+import { useFocusEffect } from 'expo-router';
 
 // ─── Severity (semantic; paired with theme in UI) ─────────────────────────────
 const SEVERITY_ICON: Record<string, string> = {
@@ -110,6 +113,10 @@ function ComplaintsScreenInner() { // OPT: Wrapped by ErrorBoundary at default e
   const { user } = useAuth(); // OPT: Login gate + userKey for useStudentQuery.
   const { theme, isDark } = useTheme(); // OPT: Palette + dark flag.
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]); // OPT: Themed stylesheet.
+
+  useFocusEffect(useCallback(() => () => {
+    void readAloudService.stop();
+  }, []));
 
   const { data: profile, loading: profileLoading } = useStudentQuery<Student>( // OPT: Resolve canonical student id for complaint filter param.
     '/students/profile/me', // OPT: Profile endpoint.
@@ -272,7 +279,7 @@ function ComplaintsScreenInner() { // OPT: Wrapped by ErrorBoundary at default e
         <FadeSlide delay={150}>
           <View style={styles.filterSection}>
             <Text style={styles.filterLabel}>
-              <Text style={styles.filterLabelAccent}>//</Text> FILTER BY SEVERITY
+              <Text style={styles.filterLabelAccent}>{'//'}</Text> FILTER BY SEVERITY
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {filters.map((f) => (
@@ -464,10 +471,16 @@ const ComplaintCard = memo(function ComplaintCard({
   isDark: boolean;
   styles: ReturnType<typeof getStyles>;
 }) {
-  useTranslation(); // Subscribe so t_field / getDisplayDescription reflect language changes.
+  useTranslation(); // Subscribe so bilingual card fields update immediately.
   const pressed = useRef(new Animated.Value(1)).current;
   const sevColor = severityColor(item.severity, theme);
   const softColor = severitySoftBg(item.severity, isDark);
+  const localizedTitle = t_field(item.title, item.title_te);
+  const localizedDescription = getDisplayDescription(item.description, item.description_te);
+  const speechParts = useMemo(
+    () => [localizedTitle, localizedDescription],
+    [localizedDescription, localizedTitle]
+  );
 
   const onPressIn = useCallback(
     () => Animated.spring(pressed, { toValue: 0.975, useNativeDriver: true }).start(),
@@ -490,26 +503,34 @@ const ComplaintCard = memo(function ComplaintCard({
                 <Text style={[styles.typeChipText, { color: sevColor }]}>{item.type}</Text>
               </View>
               {item.ticketId && (
-                <Text style={styles.ticketId}>#{item.ticketId?.slice(0, 12)}</Text>
+                <Text style={styles.ticketId} numberOfLines={1}>#{item.ticketId?.slice(0, 12)}</Text>
               )}
             </View>
-            <View
-              style={[
-                styles.severityBadge,
-                { backgroundColor: softColor, borderColor: `${sevColor}55` },
-              ]}
-            >
-              <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={13} color={sevColor} />
-              <Text style={[styles.severityText, { color: sevColor }]}>{item.severity}</Text>
+            <View style={styles.cardTopActions}>
+              <View
+                style={[
+                  styles.severityBadge,
+                  { backgroundColor: softColor, borderColor: `${sevColor}55` },
+                ]}
+              >
+                <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={13} color={sevColor} />
+                <Text style={[styles.severityText, { color: sevColor }]}>{item.severity}</Text>
+              </View>
+              <ReadAloudButton
+                id={`complaint-${item.id}`}
+                text={speechParts}
+                color={sevColor}
+                size={32}
+              />
             </View>
           </View>
 
           <Text style={styles.cardTitle} numberOfLines={2}>
-            {t_field(item.title, item.title_te)}
+            {localizedTitle}
           </Text>
 
           <Text style={styles.cardDesc} numberOfLines={2} ellipsizeMode="tail">
-            {getDisplayDescription(item.description, item.description_te)}
+            {localizedDescription}
           </Text>
 
           <View style={styles.cardDivider} />
@@ -848,12 +869,21 @@ function getStyles(theme: Theme, isDark: boolean) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      gap: 8,
       marginBottom: 12,
+    },
+    cardTopActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexShrink: 0,
     },
     ticketRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      flex: 1,
+      minWidth: 0,
     },
     typeChip: {
       paddingHorizontal: 8,
@@ -870,6 +900,7 @@ function getStyles(theme: Theme, isDark: boolean) {
       color: theme.colors.textTertiary,
       fontWeight: '600',
       letterSpacing: 0.5,
+      flexShrink: 1,
     },
     severityBadge: {
       flexDirection: 'row',

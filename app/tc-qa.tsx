@@ -34,7 +34,7 @@ const studentData = {
 const tcFields = {
   cbseAffiliationNo: '3630128',
   schoolCode: '46117',
-  examResult: 'Passed / Pursuing',
+  examResult: 'Pursuing',
   qualifiedPromotion: 'Yes',
   promotionClass: 'XI',
   totalWorkingDays: '216',

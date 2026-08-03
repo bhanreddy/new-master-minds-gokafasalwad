@@ -43,6 +43,8 @@ import { IconBadgeColors, IconBadgeColorsDark } from '../../src/theme/themes';
 import { isTelugu, t_field } from '../../src/utils/lang';
 import AppDatePicker from '@/src/components/AppDatePicker';
 import LogoLoader from '../../src/components/LogoLoader';
+import ReadAloudButton from '../../src/components/ReadAloudButton';
+import { readAloudService } from '../../src/services/readAloudService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -644,6 +646,11 @@ function TaskCard({ item, index }: { item: DiaryEntry; index: number }) {
   const subj = getSubjectStyle(item.subjectName || item.title);
   const pressed = useSharedValue(0);
   const dateLocale = isTelugu(translationI18n.language) ? 'te-IN' : 'en-IN';
+  const localizedTitle = t_field(item.title, item.titleTe);
+  const localizedContent = t_field(item.content, item.contentTe);
+  const dueDateText = item.homeworkDueDate
+    ? `${t('studentDiary.due')} ${fromYmd(item.homeworkDueDate.slice(0, 10)).toLocaleDateString(dateLocale, { month: 'long', day: 'numeric' })}`
+    : undefined;
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.975], Extrapolation.CLAMP) }],
@@ -678,9 +685,16 @@ function TaskCard({ item, index }: { item: DiaryEntry; index: number }) {
                   </Text>
                 </View>
               ) : null}
+              <ReadAloudButton
+                id={`diary-${item.id}`}
+                text={[item.subjectName || subj.label, localizedTitle, localizedContent, dueDateText]}
+                color={subj.color}
+                size={32}
+                style={styles.readAloudButton}
+              />
             </View>
-            {item.title ? <Text style={styles.taskTitle}>{t_field(item.title, item.titleTe)}</Text> : null}
-            <Text style={styles.taskBody}>{t_field(item.content, item.contentTe)}</Text>
+            {item.title ? <Text style={styles.taskTitle}>{localizedTitle}</Text> : null}
+            <Text style={styles.taskBody}>{localizedContent}</Text>
           </View>
         </View>
       </Pressable>
@@ -795,6 +809,10 @@ export default function DiaryScreen() {
   const styles = useMemo(() => getStyles(theme, isDark), [theme, isDark]);
   const { t } = useTranslation();
   const { user } = useAuth();
+
+  useFocusEffect(useCallback(() => () => {
+    void readAloudService.stop();
+  }, []));
 
   const today = useMemo(() => new Date(), []);
   const todayYmd = useMemo(() => toYmd(today), [today]);
@@ -1207,6 +1225,7 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) =>
     subjIconBadge: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
     cardContent: { flex: 1, paddingTop: 14, paddingBottom: 16, paddingLeft: 12, paddingRight: 16, gap: 6 },
     cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    readAloudButton: { marginLeft: 'auto' },
     subjPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
     subjDot: { width: 5, height: 5, borderRadius: 3 },
     subjPillText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },

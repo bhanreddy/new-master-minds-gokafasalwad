@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, RefreshControl } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -29,8 +29,7 @@ import { useTheme, type SchoolTheme } from '../../src/hooks/useTheme';
 import LogoLoader from '../../src/components/LogoLoader';
 import { t_field } from '../../src/utils/lang';
 import { useFeatureGuard } from '../../src/hooks/useFeatures';
-
-const { width } = Dimensions.get('window');
+import { isStudentRole } from '../../src/utils/roleHelpers';
 
 // Subject icon mapping
 const SUBJECT_ICONS: Record<string, string> = {
@@ -92,7 +91,7 @@ const TimeTableScreen = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const roleCode = typeof user?.role === 'object' && user?.role !== null ? (user.role as { code: string }).code : user?.role;
-  const isStudent = roleCode === 'student';
+  const isStudent = isStudentRole(roleCode);
 
   const { data: profile, refetch: refetchProfile } = useStudentQuery<Student>(
     '/students/profile/me',
@@ -502,7 +501,7 @@ const TimeTableScreen = () => {
         <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.emptyState}>
             <Ionicons name="calendar-outline" size={56} color={isDark ? '#374151' : '#D1D5DB'} />
             <Text style={styles.emptyTitle}>No Classes Scheduled</Text>
-            <Text style={styles.emptySubtitle}>Your timetable will appear here once it's configured</Text>
+            <Text style={styles.emptySubtitle}>Your timetable will appear here once it is configured</Text>
           </Animated.View> :
 
         <View style={styles.timeline}>
