@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Slate School Kosgi",
-    "slug": "slateschool",
+    "name": "The Global School Ravulpally",
+    "slug": "theglobalschoolravulpally",
     "version": "1.5.1",
     "platforms": [
       "android",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "bundleIdentifier": "com.nexsyrussims.slateschool",
+      "bundleIdentifier": "com.nexsyrussims.theglobalschoolravulpally",
       "buildNumber": "1",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
@@ -31,7 +31,7 @@
       }
     },
     "android": {
-      "package": "com.nexsyrussims.slateschool",
+      "package": "com.nexsyrussims.theglobalschoolravulpally",
       "jsEngine": "hermes",
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",
@@ -56,7 +56,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "notification": {
-      "icon": "./assets/images/icon.png",
+      "icon": "./assets/images/icon-v2.png",
       "color": "#FFFFFF"
     },
     "plugins": [
@@ -119,7 +119,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "092e54fd-6629-4c8c-ab8d-a21a3ea7633c"
+        "projectId": "dea90aa8-3fd0-45b6-9ab0-9e9a46f5fc97"
       }
     },
     "owner": "nexsyrus"
