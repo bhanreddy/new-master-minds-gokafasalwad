@@ -122,6 +122,11 @@ export interface Student {
     readonly current_enrollment?: StudentEnrollment;
     readonly parents?: Parent[];
     readonly category?: { id: number; name: string };
+    readonly category_id?: number | null;
+    readonly religion?: { id: number; name: string } | string | null;
+    readonly religion_id?: number | null;
+    readonly religion_name?: string | null;
+    readonly category_name?: string | null;
 }
 
 // ================= ATTENDANCE =================

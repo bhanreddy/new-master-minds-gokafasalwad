@@ -115,11 +115,13 @@ export async function getImageDataUri(imageUrl?: string | null): Promise<string 
 
 /** Platform-aware base64 logo for embedded HTML / print output. */
 export async function getLogoDataUri(logoUrl?: string): Promise<string> {
-  const resolvedLogo = await getImageDataUri(logoUrl);
-  if (resolvedLogo) return resolvedLogo;
+  if (logoUrl?.trim()) {
+    const resolvedLogo = await getImageDataUri(logoUrl);
+    if (resolvedLogo) return resolvedLogo;
+  }
 
   const { bundledAssetToBase64Uri } = await import('./toBase64Uri');
-  return (await bundledAssetToBase64Uri(require('../../assets/images/icon.png'), 'image/png')) ?? '';
+  return (await bundledAssetToBase64Uri(require('../../assets/images/icon-v2.png'), 'image/png')) ?? '';
 }
 
 export type CertificatePdfFormat = 'TC' | 'TC_A4_HALF' | 'BONAFIDE';

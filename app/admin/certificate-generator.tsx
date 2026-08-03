@@ -18,12 +18,14 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { StudentService } from '@/src/services/studentService';
-import type { Student } from '@/src/types/models';
+import type { Student, AttendanceSummary } from '@/src/types/models';
 import { CertificateService } from '@/src/services/certificateService';
 import { FeeService } from '@/src/services/feeService';
 import { SchoolSettingsService, SchoolSettings } from '@/src/services/schoolSettingsService';
+import { AcademicYearService } from '@/src/services/academicYearService';
 import { SCHOOL_CONFIG, SCHOOL_RECOGNITION_LINE } from '@/src/constants/schoolConfig';
 import { SCHOOL_ID } from '@/src/constants/school';
+import { RELIGIONS, STUDENT_CATEGORIES } from '@/src/constants/references';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAccountsWebChrome } from '../../src/contexts/AccountsWebChromeContext';
 import { Theme } from '../../src/theme/themes';
@@ -54,6 +56,7 @@ export const PAPER = {
 export type TcLayout = 'A4' | 'A4_HALF';
 /** Legacy = original double-frame letterhead (default); Modern = redesigned header. */
 export type BonafideHeaderTheme = 'legacy' | 'modern';
+type TcCompletionAction = 'printed' | 'downloaded';
 
 export const TC_PAPER_MAP: Record<TcLayout, typeof PAPER.A4 | typeof PAPER.TC_A4_HALF> = {
   A4: PAPER.A4,
@@ -61,15 +64,25 @@ export const TC_PAPER_MAP: Record<TcLayout, typeof PAPER.A4 | typeof PAPER.TC_A4
 };
 
 const BONAFIDE_BLUE = '#1e3a8a';
-const TC_NAVY = '#1e3a8a';
-const TC_GOLD = '#A16207';
-const TC_PAPER_BG = '#FFFEF9';
+/** Premium School Record Sheet / TC palette — vivid but print-friendly. */
+const TC_NAVY = '#12355B';
+const TC_ROYAL = '#1E5AA8';
+const TC_CHARCOAL = '#2D3748';
+const TC_PLATINUM = '#F0F5FB';
+const TC_GOLD = '#C8A14D';
+const TC_GOLD_SOFT = '#E8D5A3';
+const TC_PAPER_BG = '#FFFEFA';
+const TC_SOFT_BORDER = 'rgba(18,53,91,0.18)';
+const TC_HEADER_BAND = '#E8F0FA';
+const TC_SECTION_BAND = '#EAF2FB';
+const TC_TITLE_BAND = '#12355B';
 
 interface SchoolProfile {
   name: string;
   address: string;
   phone: string;
   email: string;
+  website: string;
   affiliation: string;
   recognition: string;
   medium: string;
@@ -77,12 +90,19 @@ interface SchoolProfile {
   principal: string;
 }
 
+function isPlaceholderSchoolName(name?: string): boolean {
+  const n = (name || '').trim();
+  return !n || /^(default\s+school(\s+name)?|school|school\s+name|my\s+school|unnamed\s+school)$/i.test(n);
+}
+
 function mapSchoolSettings(settings: Partial<SchoolSettings>): SchoolProfile {
+  const configuredName = settings.school_name?.trim() || '';
   return {
-    name: settings.school_name || SCHOOL_CONFIG.name,
-    address: settings.school_address || SCHOOL_CONFIG.address || '',
-    phone: settings.school_phone || SCHOOL_CONFIG.contact || '',
-    email: settings.school_email || SCHOOL_CONFIG.email || '',
+    name: isPlaceholderSchoolName(configuredName) ? SCHOOL_CONFIG.name : configuredName,
+    address: settings.school_address?.trim() || SCHOOL_CONFIG.address || '',
+    phone: settings.school_phone?.trim() || SCHOOL_CONFIG.contact || '',
+    email: settings.school_email?.trim() || SCHOOL_CONFIG.email || '',
+    website: settings.school_website?.trim() || SCHOOL_CONFIG.website || '',
     affiliation: settings.school_affiliation?.trim() || '',
     recognition: settings.school_recognition?.trim() || '',
     medium: settings.school_medium?.trim() || '',
@@ -152,8 +172,9 @@ function formatRecognitionLine(recognition: string, medium: string): string {
   return line;
 }
 
-function resolveSchoolLogoSource(school: SchoolProfile) {
-  return school.logoUrl?.trim() ? { uri: school.logoUrl.trim() } : SCHOOL_CONFIG.logo;
+function resolveSchoolLogoSource(_school: SchoolProfile) {
+  // Bundled crest is circular and high-res; settings uploads are often square pads.
+  return SCHOOL_CONFIG.logo;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -188,52 +209,59 @@ interface StudentData {
   toClass: string;
   toYear: string;
   penNo: string;
+  aadhaarNo: string;
+  religion: string;
   address: string;
   nationality: string;
   category: string;
   admissionDate: string;
+  lifecycleStatus: string;
   isFormerStudent: boolean;
 }
 
 interface TCEditableFields {
   cbseAffiliationNo: string;
   schoolCode: string;
-  // Items 9–23 (the ones that were dots before)
   examResult: string;
-  failedDetails: string;
-  subjects: [string, string, string, string, string, string];
   qualifiedPromotion: string;
   promotionClass: string;
-  schoolDuesPaid: string;
-  feeConcession: string;
   totalWorkingDays: string;
   workingDaysPresent: string;
-  nccDetails: string;
-  extraCurricular: string;
   generalConduct: string;
   applicationDate: string;
   leavingReason: string;
-  otherRemarks: string;
+  /** @deprecated Kept for previously issued certificates; no longer rendered. */
+  failedDetails?: string;
+  subjects?: [string, string, string, string, string, string];
+  schoolDuesPaid?: string;
+  feeConcession?: string;
+  nccDetails?: string;
+  extraCurricular?: string;
+  otherRemarks?: string;
+}
+
+/** True when a certificate field has a real value (not blank / NA / placeholder). */
+function hasOfficialValue(v?: string | null): boolean {
+  const t = String(v ?? '').trim();
+  if (!t) return false;
+  return !/^(n\/?a|na|nil|null|none|undefined|-|—|\.{2,}|_{2,})$/i.test(t);
+}
+
+function displayOrDash(v?: string | null): string {
+  return hasOfficialValue(v) ? String(v).trim() : '—';
 }
 
 const DEFAULT_TC_FIELDS: TCEditableFields = {
-  cbseAffiliationNo: SCHOOL_CONFIG.cbseAffiliationNo || '',
-  schoolCode: SCHOOL_CONFIG.schoolCode || '',
-  examResult: '',
-  failedDetails: 'N/A',
-  subjects: ['', '', '', '', '', ''],
+  cbseAffiliationNo: hasOfficialValue(SCHOOL_CONFIG.cbseAffiliationNo) ? String(SCHOOL_CONFIG.cbseAffiliationNo).trim() : '',
+  schoolCode: hasOfficialValue(SCHOOL_CONFIG.schoolCode) ? String(SCHOOL_CONFIG.schoolCode).trim() : '',
+  examResult: 'Passed / Pursuing',
   qualifiedPromotion: '',
   promotionClass: '',
-  schoolDuesPaid: '',
-  feeConcession: 'None',
   totalWorkingDays: '',
   workingDaysPresent: '',
-  nccDetails: 'N/A',
-  extraCurricular: '',
   generalConduct: 'Good',
   applicationDate: new Date().toLocaleDateString('en-IN'),
   leavingReason: '',
-  otherRemarks: 'N/A',
 };
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
@@ -281,18 +309,18 @@ function line(val?: string) {
 }
 
 function dot(val: string) {
-  return val?.trim() ? val : '..............................';
+  return val?.trim() ? val : '—';
 }
 
 // ─── Certificate Config ───────────────────────────────────────────────────────
 const CERT_CONFIG = {
   TC: {
-    label: 'Transfer Certificate', short: 'TC',
+    label: 'School Record Sheet', short: 'TC',
     icon: 'file-move-outline' as const,
-    iconColor: '#4F46E5', iconBg: '#EEF2FF',
-    accentLight: '#4F46E5', accentDark: '#818CF8',
-    gradFrom: '#4F46E5', gradTo: '#818CF8',
-    desc: 'For students leaving or transferring to another institution.',
+    iconColor: TC_NAVY, iconBg: TC_PLATINUM,
+    accentLight: TC_NAVY, accentDark: TC_ROYAL,
+    gradFrom: TC_NAVY, gradTo: TC_ROYAL,
+    desc: 'Official School Record Sheet / Transfer Certificate for leaving students.',
   },
   BONAFIDE: {
     label: 'Bonafide Certificate', short: 'BON',
@@ -402,11 +430,6 @@ function EditModal({
   const setTC = useCallback((k: keyof TCEditableFields, v: string | string[]) => {
     setTc(prev => ({ ...prev, [k]: v }));
   }, []);
-  const setSubject = (i: number, v: string) => {
-    const arr = [...tc.subjects] as [string, string, string, string, string, string];
-    arr[i] = v;
-    setTc(prev => ({ ...prev, subjects: arr }));
-  };
 
   // Sync when externally changed
   React.useEffect(() => { setSd(studentData); }, [studentData]);
@@ -420,7 +443,7 @@ function EditModal({
 
   const sectionTitle = (t: string) => (
     <View style={emStyles.sectionRow}>
-      <View style={[emStyles.sectionDot, { backgroundColor: '#4F46E5' }]} />
+      <View style={[emStyles.sectionDot, { backgroundColor: TC_ROYAL }]} />
       <Text style={[emStyles.sectionTitle, { color: isDark ? '#F9FAFB' : '#111827' }]}>{t}</Text>
     </View>
   );
@@ -440,7 +463,7 @@ function EditModal({
                 onPress={() => onSave(sd, tc)}
                 style={emStyles.saveBtn}
               >
-                <LinearGradient colors={['#4F46E5', '#818CF8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={emStyles.saveBtnGrad}>
+                <LinearGradient colors={[TC_NAVY, TC_ROYAL]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={emStyles.saveBtnGrad}>
                   <Text style={emStyles.saveBtnText}>Save</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -456,7 +479,8 @@ function EditModal({
                 <EditField label="Mother's Name" value={sd.motherName} onChangeText={v => setSD('motherName', v)} isDark={isDark} />
                 <EditField label="Admission No." value={sd.admissionNo} onChangeText={v => setSD('admissionNo', v)} isDark={isDark} />
                 <EditField label="PEN Number" value={sd.penNo} onChangeText={v => setSD('penNo', v)} isDark={isDark} />
-                <EditField label="Class" value={sd.class} onChangeText={v => setSD('class', v)} isDark={isDark} />
+                <EditField label="Aadhaar No." value={sd.aadhaarNo} onChangeText={v => setSD('aadhaarNo', v)} isDark={isDark} />
+                <EditField label="Class (no section)" value={sd.class} onChangeText={v => setSD('class', v)} isDark={isDark} />
                 <EditField label="From Class (Bonafide)" value={sd.fromClass} onChangeText={v => setSD('fromClass', v)} isDark={isDark} />
                 <EditField label="From Year (Bonafide)" value={sd.fromYear} onChangeText={v => setSD('fromYear', v)} isDark={isDark} />
                 <EditField label="To Class (Bonafide)" value={sd.toClass} onChangeText={v => setSD('toClass', v)} isDark={isDark} />
@@ -468,57 +492,31 @@ function EditModal({
                   isDark={isDark}
                 />
                 <TouchableOpacity onPress={handleDobBlur} style={emStyles.autoBtn}>
-                  <Ionicons name="refresh-outline" size={13} color="#4F46E5" />
-                  <Text style={emStyles.autoBtnText}>Auto-fill DOB in words</Text>
+                  <Ionicons name="refresh-outline" size={13} color={TC_ROYAL} />
+                  <Text style={[emStyles.autoBtnText, { color: TC_ROYAL }]}>Auto-fill DOB in words</Text>
                 </TouchableOpacity>
                 <EditField label="DOB in Words" value={sd.dobWords} onChangeText={v => setSD('dobWords', v)} isDark={isDark} />
                 <EditField label="Date of Admission" value={sd.admissionDate} onChangeText={v => setSD('admissionDate', v)} isDark={isDark} />
                 <EditField label="Nationality" value={sd.nationality} onChangeText={v => setSD('nationality', v)} isDark={isDark} />
-                <EditField label="Category (SC/ST/OBC/General)" value={sd.category} onChangeText={v => setSD('category', v)} isDark={isDark} />
+                <EditField label="Religion" value={sd.religion} onChangeText={v => setSD('religion', v)} isDark={isDark} />
+                <EditField label="Category / Caste (OC / BC / BC A–E / SC / ST / OBC / General)" value={sd.category} onChangeText={v => setSD('category', v)} isDark={isDark} />
                 <EditField label="Academic Year" value={sd.academicYear} onChangeText={v => setSD('academicYear', v)} isDark={isDark} />
                 <EditField label="Address" value={sd.address} onChangeText={v => setSD('address', v)} isDark={isDark} multiline />
               </View>
 
               {/* ── TC-Specific Fields ── */}
-              {sectionTitle('Transfer Certificate Fields (Items 9–23)')}
+              {sectionTitle('School Record Sheet Fields')}
               <View style={[emStyles.card, { backgroundColor: cardBg }]}>
                 <EditField label="CBSE Affiliation No." value={tc.cbseAffiliationNo} onChangeText={v => setTC('cbseAffiliationNo', v)} isDark={isDark} />
                 <EditField label="School Code" value={tc.schoolCode} onChangeText={v => setTC('schoolCode', v)} isDark={isDark} />
-                <EditField label="9. Exam Last Taken with Result" value={tc.examResult} onChangeText={v => setTC('examResult', v)} isDark={isDark} />
-                <EditField label="10. Failed Details (if any)" value={tc.failedDetails} onChangeText={v => setTC('failedDetails', v)} isDark={isDark} />
-
-                <Text style={[efStyles.label, { color: isDark ? 'rgba(255,255,255,0.5)' : '#6B7280', marginBottom: 6 }]}>11. SUBJECTS STUDIED</Text>
-                <View style={emStyles.subjectsGrid}>
-                  {(['i', 'ii', 'iii', 'iv', 'v', 'vi'] as const).map((label, i) => (
-                    <View key={i} style={emStyles.subjectCell}>
-                      <Text style={[emStyles.subjectLabel, { color: isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF' }]}>({label})</Text>
-                      <AppTextInput
-                        style={[emStyles.subjectInput, {
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#CBD5E1',
-                          color: isDark ? '#F9FAFB' : '#111827',
-                        }]}
-                        value={tc.subjects[i]}
-                        onChangeText={v => setSubject(i, v)}
-                        placeholder="Subject"
-                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.18)' : '#94A3B8'}
-                      />
-                    </View>
-                  ))}
-                </View>
-
-                <EditField label="12. Qualified for Promotion?" value={tc.qualifiedPromotion} onChangeText={v => setTC('qualifiedPromotion', v)} isDark={isDark} />
-                <EditField label="    Promotion to Class (Figures + Words)" value={tc.promotionClass} onChangeText={v => setTC('promotionClass', v)} isDark={isDark} />
-                <EditField label="13. School Dues Paid up to Month" value={tc.schoolDuesPaid} onChangeText={v => setTC('schoolDuesPaid', v)} isDark={isDark} />
-                <EditField label="14. Fee Concession (if any)" value={tc.feeConcession} onChangeText={v => setTC('feeConcession', v)} isDark={isDark} />
-                <EditField label="15. Total Working Days" value={tc.totalWorkingDays} onChangeText={v => setTC('totalWorkingDays', v)} isDark={isDark} />
-                <EditField label="16. Working Days Present" value={tc.workingDaysPresent} onChangeText={v => setTC('workingDaysPresent', v)} isDark={isDark} />
-                <EditField label="17. NCC Cadet / Scout Guide Details" value={tc.nccDetails} onChangeText={v => setTC('nccDetails', v)} isDark={isDark} multiline />
-                <EditField label="18. Extra-Curricular Activities" value={tc.extraCurricular} onChangeText={v => setTC('extraCurricular', v)} isDark={isDark} multiline />
-                <EditField label="19. General Conduct" value={tc.generalConduct} onChangeText={v => setTC('generalConduct', v)} isDark={isDark} />
-                <EditField label="20. Date of Application" value={tc.applicationDate} onChangeText={v => setTC('applicationDate', v)} isDark={isDark} />
-                <EditField label="22. Reason for Leaving School" value={tc.leavingReason} onChangeText={v => setTC('leavingReason', v)} isDark={isDark} multiline />
-                <EditField label="23. Any Other Remarks" value={tc.otherRemarks} onChangeText={v => setTC('otherRemarks', v)} isDark={isDark} multiline />
+                <EditField label="Exam Last Taken with Result" value={tc.examResult} onChangeText={v => setTC('examResult', v)} isDark={isDark} />
+                <EditField label="Qualified for Promotion?" value={tc.qualifiedPromotion} onChangeText={v => setTC('qualifiedPromotion', v)} isDark={isDark} />
+                <EditField label="Promotion to Class (Figures + Words)" value={tc.promotionClass} onChangeText={v => setTC('promotionClass', v)} isDark={isDark} />
+                <EditField label="Total Working Days" value={tc.totalWorkingDays} onChangeText={v => setTC('totalWorkingDays', v)} isDark={isDark} />
+                <EditField label="Working Days Present" value={tc.workingDaysPresent} onChangeText={v => setTC('workingDaysPresent', v)} isDark={isDark} />
+                <EditField label="General Conduct" value={tc.generalConduct} onChangeText={v => setTC('generalConduct', v)} isDark={isDark} />
+                <EditField label="Date of Application" value={tc.applicationDate} onChangeText={v => setTC('applicationDate', v)} isDark={isDark} />
+                <EditField label="Reason for Leaving School" value={tc.leavingReason} onChangeText={v => setTC('leavingReason', v)} isDark={isDark} multiline />
               </View>
               <View style={{ height: 32 }} />
             </ScrollView>
@@ -606,6 +604,76 @@ function TcFeeWaiverDialog({
                 style={feeDlgStyles.continueGrad}
               >
                 <Text style={feeDlgStyles.continueText}>Generate TC</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/** Confirmation shown only after an active student's TC print/download succeeds. */
+function TcWithdrawalDialog({
+  visible,
+  isDark,
+  studentName,
+  completedAction,
+  withdrawing,
+  onKeepActive,
+  onWithdraw,
+}: {
+  visible: boolean;
+  isDark: boolean;
+  studentName: string;
+  completedAction: TcCompletionAction | null;
+  withdrawing: boolean;
+  onKeepActive: () => void;
+  onWithdraw: () => void;
+}) {
+  const cardBg = isDark ? '#1C1F2A' : '#FFFFFF';
+  const textPrimary = isDark ? '#F9FAFB' : '#111827';
+  const textMuted = isDark ? 'rgba(255,255,255,0.45)' : '#6B7280';
+  const completionMessage = completedAction === 'printed'
+    ? `The TC print dialog for ${studentName} has closed. If the TC printed successfully, move this student from Active to Withdrawn now?`
+    : `The TC for ${studentName} was downloaded successfully. Move this student from Active to Withdrawn now?`;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
+      <View style={feeDlgStyles.overlay}>
+        <View style={[feeDlgStyles.card, { backgroundColor: cardBg }]}>
+          <View style={feeDlgStyles.iconWrap}>
+            <Ionicons name="person-remove-outline" size={28} color="#DC2626" />
+          </View>
+          <Text style={[feeDlgStyles.title, { color: textPrimary }]}>Withdraw Student?</Text>
+          <Text style={[feeDlgStyles.message, { color: textMuted }]}>
+            {`${completionMessage} Attendance, fees, certificates, and all other history will be retained.`}
+          </Text>
+
+          <View style={feeDlgStyles.actions}>
+            <TouchableOpacity
+              style={feeDlgStyles.cancelBtn}
+              onPress={onKeepActive}
+              disabled={withdrawing}
+              activeOpacity={0.8}
+            >
+              <Text style={[feeDlgStyles.cancelText, { color: textMuted }]}>Keep Active</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[feeDlgStyles.continueBtn, withdrawing && feeDlgStyles.continueDisabled]}
+              onPress={onWithdraw}
+              disabled={withdrawing}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#B91C1C', '#EF4444']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={feeDlgStyles.continueGrad}
+              >
+                {withdrawing
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Text style={feeDlgStyles.continueText}>Withdraw Student</Text>}
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -999,8 +1067,9 @@ const cpStyles = StyleSheet.create({
   tcHalfSchoolName: { fontSize: 16, fontWeight: '900', color: '#0F172A', letterSpacing: 0.4 },
   tcHalfAffiliation: { fontSize: 9, color: '#64748B', fontStyle: 'italic', marginTop: 1 },
   tcHalfTitleBlock: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 16, zIndex: 1 },
-  tcHalfCertTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 1, textDecorationLine: 'underline', color: '#4F46E5', textAlign: 'center' },
-  tcHalfRefNo: { fontSize: 9, color: '#94A3B8', marginTop: 2 },
+  tcHalfEyebrow: { fontSize: 8, fontWeight: '700', letterSpacing: 1.8, color: TC_GOLD, textAlign: 'center', marginBottom: 2 },
+  tcHalfCertTitle: { fontSize: 14, fontWeight: '800', letterSpacing: 1, color: TC_NAVY, textAlign: 'center' },
+  tcHalfRefNo: { fontSize: 9, color: TC_CHARCOAL, marginTop: 2, opacity: 0.7 },
   logo: { width: 64, height: 64, resizeMode: 'contain', marginBottom: 8 },
   schoolName: { fontSize: 18, fontWeight: '900', color: '#0F172A', letterSpacing: 0.8, textAlign: 'center' },
   schoolAddr: { fontSize: 11, color: '#64748B', marginTop: 2, textAlign: 'center' },
@@ -1030,9 +1099,6 @@ const cpStyles = StyleSheet.create({
   sigBlock: { alignItems: 'center', gap: 6 },
   sigDate: { fontSize: 11, fontWeight: '600', color: '#475569' },
   tcHalfSigText: { fontSize: 8, fontWeight: '600', color: '#475569' },
-  sigStamp: { width: 70, height: 40, borderRadius: 4, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' },
-  sigStampCompact: { width: 52, height: 28 },
-  sigStampText: { fontSize: 8, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
   sigLine: { width: 90, height: 1, backgroundColor: '#334155' },
   sigLabel: { fontSize: 11, fontWeight: '600', color: '#475569' },
   actions: { flexDirection: 'row', gap: 12 },
@@ -1044,91 +1110,326 @@ const cpStyles = StyleSheet.create({
   downloadText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
 });
 
+function formatAttendanceDays(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(Number(value))) return '';
+  const n = Number(value);
+  if (n < 0) return '';
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(1).replace(/\.0$/, '');
+}
+
+/** Map backend attendance summary → TC working-day fields. */
+function attendanceFieldsFromSummary(
+  summary?: AttendanceSummary | null,
+): Pick<TCEditableFields, 'totalWorkingDays' | 'workingDaysPresent'> {
+  if (!summary) return { totalWorkingDays: '', workingDaysPresent: '' };
+  const total = Number(summary.total ?? 0);
+  const present = summary.effective_present != null
+    ? Number(summary.effective_present)
+    : Number(summary.present || 0)
+      + Number(summary.late || 0)
+      + 0.5 * Number(summary.half_day || 0);
+  // Keep blanks when the school has never marked attendance for this student.
+  if (total <= 0 && present <= 0) {
+    return { totalWorkingDays: '', workingDaysPresent: '' };
+  }
+  return {
+    totalWorkingDays: formatAttendanceDays(total),
+    workingDaysPresent: formatAttendanceDays(present),
+  };
+}
+
+function toIsoDateOnly(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const raw = String(value).trim();
+  if (!raw) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function todayIsoLocal(): string {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Prefer last/current enrollment session dates; fall back to active academic year. */
+async function resolveAttendanceDateRange(
+  student: any,
+  enrollments: any[],
+): Promise<{ from_date?: string; to_date?: string }> {
+  const sorted = sortEnrollmentsChronologically(enrollments);
+  const enrollment = student?.current_enrollment || sorted[sorted.length - 1] || null;
+  const from = toIsoDateOnly(
+    enrollment?.academic_year_start_date
+      || enrollment?.start_date
+      || student?.admission_date,
+  );
+  const to = toIsoDateOnly(
+    enrollment?.academic_year_end_date
+      || enrollment?.end_date,
+  ) || todayIsoLocal();
+
+  if (from && to) return { from_date: from, to_date: to };
+
+  try {
+    const ay = await AcademicYearService.getCurrentYear();
+    const ayFrom = toIsoDateOnly(ay?.start_date);
+    const ayTo = toIsoDateOnly(ay?.end_date) || todayIsoLocal();
+    if (ayFrom && ayTo) return { from_date: ayFrom, to_date: ayTo };
+  } catch {
+    /* optional — all-time summary is fine */
+  }
+  return {};
+}
+
+function formatAadhaarDisplay(value?: string): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length !== 12) return hasOfficialValue(value) ? String(value).trim() : '—';
+  return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8)}`;
+}
+
+function resolveReligionLabel(student: any): string {
+  if (student?.religion?.name) return String(student.religion.name);
+  if (typeof student?.religion === 'string' && student.religion.trim()) return student.religion.trim();
+  if (student?.religion_name) return String(student.religion_name);
+  const id = student?.religion_id ?? student?.person?.religion_id;
+  if (id != null) {
+    const match = RELIGIONS.find(r => r.id === Number(id));
+    if (match) return match.name;
+  }
+  return '';
+}
+
+function resolveCategoryLabel(student: any): string {
+  if (student?.category?.name) return String(student.category.name);
+  if (typeof student?.category === 'string' && student.category.trim()) return student.category.trim();
+  if (student?.category_name) return String(student.category_name);
+  const id = student?.category_id;
+  if (id != null) {
+    const match = STUDENT_CATEGORIES.find(c => c.id === Number(id));
+    if (match) return match.name;
+  }
+  return 'General';
+}
+
+function parentRelationKey(p: any): string {
+  return String(p?.relationship || p?.relation || '').trim().toLowerCase();
+}
+
+function resolveParentNames(parents: any[]): { fatherName: string; motherName: string } {
+  const list = Array.isArray(parents) ? parents.filter(Boolean) : [];
+  const fatherObj = list.find(p => /father/.test(parentRelationKey(p)));
+  const motherObj = list.find(p => /mother/.test(parentRelationKey(p)));
+  const guardianObj =
+    list.find(p => /guardian/.test(parentRelationKey(p)))
+    || list.find(p => p?.is_legal_guardian || p?.is_guardian)
+    || list.find(p => p?.is_primary_contact || p?.is_primary)
+    || list[0];
+
+  const father = fatherObj
+    ? parentDisplayName(fatherObj)
+    : (guardianObj ? parentDisplayName(guardianObj) : '');
+  const mother = motherObj ? parentDisplayName(motherObj) : '';
+
+  return {
+    fatherName: father || '—',
+    motherName: mother || '—',
+  };
+}
+
+function mergeParentLists(...lists: any[][]): any[] {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const p of list) {
+      if (!p) continue;
+      const key = [
+        parentRelationKey(p),
+        parentDisplayName(p).toLowerCase(),
+        String(p.parent_id || p.id || ''),
+      ].join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
 function buildTcItemTexts(studentData: StudentData, tcFields: TCEditableFields, today: string) {
   return [
     `1. Name of Pupil : ${studentData.name}`,
     `2. Father's/Guardian Name : ${studentData.fatherName}`,
     `3. Mother's Name : ${studentData.motherName}`,
     `4. Nationality : ${studentData.nationality}`,
-    `5. Whether Candidate belongs to SC/ST/OBC : ${studentData.category}`,
-    `6. Date of First Admission in the School with Class : ${studentData.admissionDate}`,
-    `7. Date of Birth (In Figures) : ${studentData.dob}\n   (In Words) : ${studentData.dobWords}`,
-    `8. Class In Which Pupil Last Studied : ${studentData.class}`,
-    `9. School/Board Examination Last Taken with Result : ${dot(tcFields.examResult)}`,
-    `10. Whether Failed, If So Once/Twice in Same Class : ${dot(tcFields.failedDetails)}`,
-    `11. Subject Studied : ${tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${dot(s)}`).join('  ')}`,
-    `12. Whether Qualified for Promotion to Higher Class : ${dot(tcFields.qualifiedPromotion)}\n    (If so, to which class) : ${dot(tcFields.promotionClass)}`,
-    `13. Month Upto which School Dues Paid : ${dot(tcFields.schoolDuesPaid)}`,
-    `14. Any Fee Concession availed of : ${dot(tcFields.feeConcession)}`,
-    `15. Total No. of Working Days : ${dot(tcFields.totalWorkingDays)}`,
-    `16. Total No. of Working Days Present : ${dot(tcFields.workingDaysPresent)}`,
-    `17. Whether NCC Cadet / Scout Guide : ${dot(tcFields.nccDetails)}`,
-    `18. Extra-Curricular Activities : ${dot(tcFields.extraCurricular)}`,
-    `19. General Conduct : ${dot(tcFields.generalConduct)}`,
-    `20. Date of Application for Certificate : ${dot(tcFields.applicationDate)}`,
-    `21. Date of Issue of Certificate : ${today}`,
-    `22. Reasons for Leaving the School : ${dot(tcFields.leavingReason)}`,
-    `23. Any Other Remarks : ${dot(tcFields.otherRemarks)}`,
+    `5. Religion : ${dot(studentData.religion)}`,
+    `6. Category / Caste : ${studentData.category}`,
+    `7. Date of First Admission in the School with Class : ${studentData.admissionDate}`,
+    `8. Date of Birth (In Figures) : ${studentData.dob}\n   (In Words) : ${studentData.dobWords}`,
+    `9. Class In Which Pupil Last Studied : ${studentData.class}`,
+    `10. School/Board Examination Last Taken with Result : ${dot(tcFields.examResult)}`,
+    `11. Whether Qualified for Promotion to Higher Class : ${dot(tcFields.qualifiedPromotion)}\n    (If so, to which class) : ${dot(tcFields.promotionClass)}`,
+    `12. Total No. of Working Days : ${dot(tcFields.totalWorkingDays)}`,
+    `13. Total No. of Working Days Present : ${dot(tcFields.workingDaysPresent)}`,
+    `14. General Conduct : ${dot(tcFields.generalConduct)}`,
+    `15. Date of Application for Certificate : ${dot(tcFields.applicationDate)}`,
+    `16. Date of Issue of Certificate : ${today}`,
+    `17. Reasons for Leaving the School : ${dot(tcFields.leavingReason)}`,
   ];
 }
 
-function renderTcA4Items(studentData: StudentData, tcFields: TCEditableFields, today: string) {
-  const row = (label: string, value: React.ReactNode, key: string) => (
-    <View key={key} style={tcA4Styles.itemRow}>
-      <Text style={tcA4Styles.itemText}>
-        <Text style={tcA4Styles.itemLabel}>{label} : </Text>
-        <Text style={tcA4Styles.itemValue}>{value}</Text>
-      </Text>
-    </View>
-  );
+type TcFieldRow = { n: string; label: string; value: React.ReactNode; strong?: boolean; compact?: boolean };
 
+function TcSection({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={tcA4Styles.itemList}>
-      {row('1. Name of Pupil', <Text style={tcA4Styles.itemStrong}>{studentData.name}</Text>, '1')}
-      {row("2. Father's / Guardian Name", <Text style={tcA4Styles.itemStrong}>{studentData.fatherName}</Text>, '2')}
-      {row("3. Mother's Name", <Text style={tcA4Styles.itemStrong}>{studentData.motherName}</Text>, '3')}
-      {row('4. Nationality', <Text style={tcA4Styles.itemStrong}>{studentData.nationality}</Text>, '4')}
-      {row('5. Whether Candidate belongs to SC / ST / OBC', <Text style={tcA4Styles.itemStrong}>{studentData.category}</Text>, '5')}
-      {row('6. Date of First Admission in the School with Class', <Text style={tcA4Styles.itemStrong}>{studentData.admissionDate}</Text>, '6')}
-      {row(
-        '7. Date of Birth (In Figures)',
-        <>
-          <Text style={tcA4Styles.itemStrong}>{studentData.dob}</Text>
-          <Text>{'   (In Words) : '}</Text>
-          <Text style={tcA4Styles.itemStrong}>{studentData.dobWords}</Text>
-        </>,
-        '7',
-      )}
-      {row('8. Class In Which Pupil Last Studied', <Text style={tcA4Styles.itemStrong}>{studentData.class}</Text>, '8')}
-      {row('9. School / Board Examination Last Taken with Result', dot(tcFields.examResult), '9')}
-      {row('10. Whether Failed, If So Once / Twice in Same Class', dot(tcFields.failedDetails), '10')}
-      {row(
-        '11. Subjects Studied',
-        tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${dot(s)}`).join('  '),
-        '11',
-      )}
-      {row(
-        '12. Whether Qualified for Promotion to Higher Class',
-        `${dot(tcFields.qualifiedPromotion)}    (If so, to which class) : ${dot(tcFields.promotionClass)}`,
-        '12',
-      )}
-      {row('13. Month Upto which School Dues Paid', dot(tcFields.schoolDuesPaid), '13')}
-      {row('14. Any Fee Concession availed of', dot(tcFields.feeConcession), '14')}
-      {row('15. Total No. of Working Days', dot(tcFields.totalWorkingDays), '15')}
-      {row('16. Total No. of Working Days Present', dot(tcFields.workingDaysPresent), '16')}
-      {row('17. Whether NCC Cadet / Scout Guide', dot(tcFields.nccDetails), '17')}
-      {row('18. Extra-Curricular Activities', dot(tcFields.extraCurricular), '18')}
-      {row('19. General Conduct', dot(tcFields.generalConduct), '19')}
-      {row('20. Date of Application for Certificate', dot(tcFields.applicationDate), '20')}
-      {row('21. Date of Issue of Certificate', <Text style={tcA4Styles.itemStrong}>{today}</Text>, '21')}
-      {row('22. Reasons for Leaving the School', dot(tcFields.leavingReason), '22')}
-      {row('23. Any Other Remarks', dot(tcFields.otherRemarks), '23')}
+    <View style={tcA4Styles.section}>
+      <View style={tcA4Styles.sectionHeader}>
+        <Ionicons name={icon} size={13} color={TC_ROYAL} />
+        <Text style={tcA4Styles.sectionTitle}>{title}</Text>
+        <View style={tcA4Styles.sectionGoldRule} />
+      </View>
+      <View style={tcA4Styles.sectionBody}>{children}</View>
     </View>
   );
 }
 
-/** Premium full-page A4 Transfer Certificate letterhead. */
-function TcA4Document({
+function TcField({ n, label, value, strong, compact }: TcFieldRow) {
+  return (
+    <View style={tcA4Styles.fieldRow}>
+      <View style={tcA4Styles.fieldNumBadge}>
+        <Text style={tcA4Styles.fieldNum}>{n}</Text>
+      </View>
+      <Text
+        style={[tcA4Styles.fieldLabel, compact && tcA4Styles.fieldLabelCompact]}
+        numberOfLines={2}
+      >
+        {label}
+      </Text>
+      <Text style={tcA4Styles.fieldColon}>:</Text>
+      <View style={tcA4Styles.fieldValueWrap}>
+        {typeof value === 'string' ? (
+          <Text style={[tcA4Styles.fieldValue, strong && tcA4Styles.fieldStrong]}>{value || '—'}</Text>
+        ) : (
+          value
+        )}
+      </View>
+    </View>
+  );
+}
+
+function renderTcA4Body(studentData: StudentData, tcFields: TCEditableFields, today: string) {
+  return (
+    <View style={tcA4Styles.bodyStack}>
+      <TcSection title="Student Information" icon="person-outline">
+        <TcField n="01" label="Name of Pupil" value={studentData.name} strong />
+        <TcField n="02" label="Father's / Guardian Name" value={studentData.fatherName} strong />
+        <TcField n="03" label="Mother's Name" value={studentData.motherName} strong />
+        <View style={tcA4Styles.fieldGrid2}>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="04" label="Nationality" value={studentData.nationality} strong compact />
+          </View>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="05" label="Religion" value={dot(studentData.religion)} strong compact />
+          </View>
+        </View>
+        <TcField n="06" label="Category / Caste" value={studentData.category} strong />
+      </TcSection>
+
+      <TcSection title="Admission & Academic Details" icon="school-outline">
+        <TcField n="07" label="Date of First Admission in the School with Class" value={studentData.admissionDate} strong />
+        <TcField
+          n="08"
+          label="Date of Birth"
+          value={
+            <Text style={tcA4Styles.fieldValue}>
+              <Text style={tcA4Styles.fieldStrong}>{studentData.dob}</Text>
+              <Text style={tcA4Styles.fieldMuted}>{'  ·  In Words: '}</Text>
+              <Text style={tcA4Styles.fieldStrong}>{studentData.dobWords}</Text>
+            </Text>
+          }
+        />
+        <View style={tcA4Styles.fieldGrid2}>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="09" label="Class Last Studied" value={studentData.class} strong compact />
+          </View>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="10" label="Exam Last Taken with Result" value={dot(tcFields.examResult)} compact />
+          </View>
+        </View>
+        <TcField
+          n="11"
+          label="Qualified for Promotion to Higher Class"
+          value={`${dot(tcFields.qualifiedPromotion)}${tcFields.promotionClass?.trim() ? `  ·  To Class: ${tcFields.promotionClass}` : ''}`}
+        />
+      </TcSection>
+
+      <TcSection title="Attendance & Conduct" icon="calendar-outline">
+        <View style={tcA4Styles.fieldGrid2}>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="12" label="Total Working Days" value={dot(tcFields.totalWorkingDays)} compact />
+          </View>
+          <View style={tcA4Styles.fieldGridCell}>
+            <TcField n="13" label="Days Present" value={dot(tcFields.workingDaysPresent)} compact />
+          </View>
+        </View>
+        <TcField n="14" label="General Conduct" value={dot(tcFields.generalConduct)} strong />
+      </TcSection>
+
+      <TcSection title="Certificate Information" icon="ribbon-outline">
+        <View style={tcA4Styles.certInfoDateRow}>
+          <View style={tcA4Styles.certInfoDateCard}>
+            <View style={tcA4Styles.fieldNumBadge}>
+              <Text style={tcA4Styles.fieldNum}>15</Text>
+            </View>
+            <View style={tcA4Styles.certInfoDateBody}>
+              <Text style={tcA4Styles.certInfoDateLabel}>Date of Application</Text>
+              <Text style={tcA4Styles.certInfoDateValue}>{dot(tcFields.applicationDate)}</Text>
+            </View>
+          </View>
+          <View style={tcA4Styles.certInfoDateDivider} />
+          <View style={tcA4Styles.certInfoDateCard}>
+            <View style={tcA4Styles.fieldNumBadge}>
+              <Text style={tcA4Styles.fieldNum}>16</Text>
+            </View>
+            <View style={tcA4Styles.certInfoDateBody}>
+              <Text style={tcA4Styles.certInfoDateLabel}>Date of Issue</Text>
+              <Text style={[tcA4Styles.certInfoDateValue, tcA4Styles.certInfoDateValueStrong]}>{today}</Text>
+            </View>
+          </View>
+        </View>
+        <View style={tcA4Styles.leavingReasonRow}>
+          <View style={tcA4Styles.fieldNumBadge}>
+            <Text style={tcA4Styles.fieldNum}>17</Text>
+          </View>
+          <View style={tcA4Styles.leavingReasonBody}>
+            <Text style={tcA4Styles.leavingReasonLabel}>Reasons for Leaving the School</Text>
+            <View style={tcA4Styles.leavingReasonValueWrap}>
+              <Text style={tcA4Styles.leavingReasonValue}>{dot(tcFields.leavingReason)}</Text>
+            </View>
+          </View>
+        </View>
+      </TcSection>
+    </View>
+  );
+}
+
+/** Premium full-page A4 School Record Sheet / Transfer Certificate. */
+export function TcA4Document({
   studentData,
   tcFields,
   school,
@@ -1142,73 +1443,122 @@ function TcA4Document({
   issueDate: string;
 }) {
   const logoSource = resolveSchoolLogoSource(school);
-  const affiliationLine = school.affiliation?.trim() || '';
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const affiliationLine = hasOfficialValue(school.affiliation) ? school.affiliation.trim() : '';
+  const recognitionLine = formatRecognitionLine(school.recognition, school.medium)
+    || '(Recognised by Govt. of T.S.)';
+  const showCbse = hasOfficialValue(tcFields.cbseAffiliationNo);
+  const showSchoolCode = hasOfficialValue(tcFields.schoolCode);
+  const showPen = hasOfficialValue(studentData.penNo);
+  const showAadhaar = hasOfficialValue(studentData.aadhaarNo) || String(studentData.aadhaarNo || '').replace(/\D/g, '').length === 12;
+  const registryItems = [
+    showCbse ? { label: 'CBSE Affiliation', value: tcFields.cbseAffiliationNo.trim() } : null,
+    showSchoolCode ? { label: 'School Code', value: tcFields.schoolCode.trim() } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
 
   return (
     <View style={tcA4Styles.outerFrame}>
+      <View style={tcA4Styles.cornerTL} />
+      <View style={tcA4Styles.cornerTR} />
+      <View style={tcA4Styles.cornerBL} />
+      <View style={tcA4Styles.cornerBR} />
       <View style={tcA4Styles.innerFrame}>
-        <View style={tcA4Styles.watermarkWrap} pointerEvents="none" {...webWatermarkProps}>
-          <Image source={logoSource} style={tcA4Styles.watermarkImg} />
-        </View>
-
-        <View style={tcA4Styles.headerRow}>
-          <Image source={logoSource} style={tcA4Styles.logo} />
-          <View style={tcA4Styles.headerCenter}>
-            <Text style={tcA4Styles.schoolName}>{school.name.toUpperCase()}</Text>
-            {recognitionLine ? (
-              <Text style={tcA4Styles.recognition}>{recognitionLine}</Text>
-            ) : null}
-            {affiliationLine ? (
-              <Text style={tcA4Styles.affiliation}>{affiliationLine}</Text>
-            ) : null}
-            <Text style={tcA4Styles.address}>{school.address}</Text>
-            <View style={tcA4Styles.nameUnderline} />
-          </View>
-        </View>
-
-        <View style={tcA4Styles.titleWrap}>
-          <View style={tcA4Styles.titleRule} />
-          <View style={tcA4Styles.titleBox}>
-            <Text style={tcA4Styles.titleText}>TRANSFER CERTIFICATE</Text>
-          </View>
-          <View style={tcA4Styles.titleRule} />
-        </View>
-
-        <View style={tcA4Styles.metaBand}>
-          <Text style={tcA4Styles.metaText}>
-            Ref No. <Text style={tcA4Styles.metaVal}>{serialNo}</Text>
-          </Text>
-          <Text style={tcA4Styles.metaText}>
-            Scholar No. <Text style={tcA4Styles.metaVal}>{studentData.admissionNo}</Text>
-          </Text>
-        </View>
-        <View style={tcA4Styles.metaBandSecondary}>
-          <Text style={tcA4Styles.metaSecondary}>
-            CBSE Affiliation No. : {dot(tcFields.cbseAffiliationNo)}
-          </Text>
-          <Text style={tcA4Styles.metaSecondary}>
-            School Code : {dot(tcFields.schoolCode)}
-          </Text>
-        </View>
-
-        {renderTcA4Items(studentData, tcFields, issueDate)}
-
-        <View style={tcA4Styles.footer}>
-          <View style={tcA4Styles.sigBlock}>
-            <Text style={tcA4Styles.sigDate}>Date: {issueDate}</Text>
-            <View style={tcA4Styles.stampBox}>
-              <Text style={tcA4Styles.stampText}>SCHOOL STAMP</Text>
+        {/* Institutional letterhead — centered crest composition */}
+        <View style={tcA4Styles.headerBlock}>
+          <View style={tcA4Styles.headerBand}>
+            <View style={tcA4Styles.headerAccentBar} />
+            <View style={tcA4Styles.headerInner}>
+              <View style={tcA4Styles.logoCrest}>
+                <View style={tcA4Styles.logoCrestOuter}>
+                  <View style={tcA4Styles.logoCrestClip}>
+                    <Image source={logoSource} style={tcA4Styles.logoCrestImg} />
+                  </View>
+                </View>
+              </View>
+              <View style={tcA4Styles.headerIdentity}>
+                <Text style={tcA4Styles.schoolName} numberOfLines={2}>
+                  {school.name.toUpperCase()}
+                </Text>
+                <View style={tcA4Styles.schoolNameUnderlineRow}>
+                  <View style={tcA4Styles.schoolNameUnderlineSide} />
+                  <View style={tcA4Styles.ornamentDiamond} />
+                  <View style={tcA4Styles.schoolNameUnderline} />
+                  <View style={tcA4Styles.ornamentDiamond} />
+                  <View style={tcA4Styles.schoolNameUnderlineSide} />
+                </View>
+                {recognitionLine ? (
+                  <Text style={tcA4Styles.recognition}>{recognitionLine}</Text>
+                ) : null}
+                {affiliationLine ? <Text style={tcA4Styles.affiliation}>{affiliationLine}</Text> : null}
+                <Text style={tcA4Styles.address}>{school.address}</Text>
+              </View>
             </View>
           </View>
-          <View style={tcA4Styles.sigBlock}>
-            <View style={tcA4Styles.sigLine} />
-            <Text style={tcA4Styles.sigLabel}>Class Teacher</Text>
+          <View style={tcA4Styles.letterheadRule}>
+            <View style={tcA4Styles.letterheadRuleGold} />
+            <View style={tcA4Styles.letterheadRuleNavy} />
+            <View style={tcA4Styles.letterheadRuleGoldThin} />
           </View>
-          <View style={tcA4Styles.sigBlock}>
-            <View style={tcA4Styles.sigLine} />
-            <Text style={tcA4Styles.sigLabel}>Principal</Text>
+        </View>
+
+        {/* Document title */}
+        <View style={tcA4Styles.titleBlock}>
+          <View style={tcA4Styles.titleBanner}>
+            <Text style={tcA4Styles.titleText}>SCHOOL RECORD SHEET</Text>
           </View>
+        </View>
+
+        {/* Identity meta — CBSE only when affiliation exists */}
+        <View style={tcA4Styles.metaCard}>
+          <View style={tcA4Styles.metaGrid}>
+            <View style={tcA4Styles.metaItem}>
+              <Text style={tcA4Styles.metaLabel}>Certificate No.</Text>
+              <Text style={tcA4Styles.metaVal}>{serialNo}</Text>
+            </View>
+            <View style={tcA4Styles.metaItem}>
+              <Text style={tcA4Styles.metaLabel}>Admission No.</Text>
+              <Text style={tcA4Styles.metaVal}>{displayOrDash(studentData.admissionNo)}</Text>
+            </View>
+            <View style={tcA4Styles.metaItem}>
+              <Text style={tcA4Styles.metaLabel}>PEN</Text>
+              <Text style={tcA4Styles.metaVal}>{showPen ? studentData.penNo : '—'}</Text>
+            </View>
+            <View style={tcA4Styles.metaItem}>
+              <Text style={tcA4Styles.metaLabel}>Aadhaar No.</Text>
+              <Text style={tcA4Styles.metaVal}>
+                {showAadhaar ? formatAadhaarDisplay(studentData.aadhaarNo) : '—'}
+              </Text>
+            </View>
+          </View>
+          {registryItems.length > 0 ? (
+            <View style={tcA4Styles.registryRow}>
+              <Text style={tcA4Styles.registryEyebrow}>INSTITUTION REGISTRY</Text>
+              {registryItems.map(item => (
+                <View key={item.label} style={tcA4Styles.registryItem}>
+                  <Text style={tcA4Styles.registryLabel}>{item.label}</Text>
+                  <Text style={tcA4Styles.registryValue}>{item.value}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+
+        {renderTcA4Body(studentData, tcFields, issueDate)}
+
+        <View style={tcA4Styles.footer}>
+          <View style={[tcA4Styles.sigBlock, tcA4Styles.dateBlock]}>
+            <Text style={tcA4Styles.footerEyebrow}>DATE OF ISSUE</Text>
+            <Text style={tcA4Styles.sigDate}>{issueDate}</Text>
+          </View>
+          <View style={[tcA4Styles.sigBlock, tcA4Styles.signatureBlock]}>
+            <View style={tcA4Styles.sigLine} />
+            <Text style={tcA4Styles.sigLabel}>Principal / Head Master</Text>
+            {school.principal ? <Text style={tcA4Styles.sigSub}>{school.principal}</Text> : null}
+          </View>
+        </View>
+
+        {/* School crest watermark — overlays all content at 35% */}
+        <View style={tcA4Styles.watermarkWrap} pointerEvents="none" {...webWatermarkProps}>
+          <Image source={logoSource} style={tcA4Styles.watermarkImg} />
         </View>
       </View>
     </View>
@@ -1218,179 +1568,465 @@ function TcA4Document({
 const tcA4Styles = StyleSheet.create({
   outerFrame: {
     flex: 1,
-    margin: 12,
-    borderWidth: 2.5,
+    margin: 8,
+    borderWidth: 1.75,
     borderColor: TC_NAVY,
     padding: 4,
     backgroundColor: TC_PAPER_BG,
+    position: 'relative',
+  },
+  cornerTL: {
+    position: 'absolute', top: 6, left: 6, width: 20, height: 20,
+    borderTopWidth: 2, borderLeftWidth: 2, borderColor: TC_GOLD, zIndex: 2,
+  },
+  cornerTR: {
+    position: 'absolute', top: 6, right: 6, width: 20, height: 20,
+    borderTopWidth: 2, borderRightWidth: 2, borderColor: TC_GOLD, zIndex: 2,
+  },
+  cornerBL: {
+    position: 'absolute', bottom: 6, left: 6, width: 20, height: 20,
+    borderBottomWidth: 2, borderLeftWidth: 2, borderColor: TC_GOLD, zIndex: 2,
+  },
+  cornerBR: {
+    position: 'absolute', bottom: 6, right: 6, width: 20, height: 20,
+    borderBottomWidth: 2, borderRightWidth: 2, borderColor: TC_GOLD, zIndex: 2,
   },
   innerFrame: {
     flex: 1,
-    borderWidth: 1.5,
-    borderColor: TC_NAVY,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 14,
+    borderWidth: 1,
+    borderColor: TC_ROYAL,
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 10,
     position: 'relative',
     backgroundColor: TC_PAPER_BG,
   },
   watermarkWrap: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 0,
+    zIndex: 30,
   },
-  watermarkImg: { width: 320, height: 320, opacity: 0.045, resizeMode: 'contain' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 16, zIndex: 1 },
-  logo: { width: 82, height: 82, resizeMode: 'contain' },
-  headerCenter: { flex: 1, alignItems: 'center', paddingRight: 8 },
+  watermarkImg: {
+    width: 560,
+    height: 560,
+    opacity: 0.2,
+    resizeMode: 'contain',
+  },
+  headerBlock: { zIndex: 1, flexShrink: 0 },
+  headerBand: {
+    backgroundColor: TC_HEADER_BAND,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(30,90,168,0.22)',
+    overflow: 'hidden',
+  },
+  headerAccentBar: {
+    height: 6,
+    backgroundColor: TC_NAVY,
+    borderBottomWidth: 2.5,
+    borderBottomColor: TC_GOLD,
+  },
+  headerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  logoCrest: {
+    width: 118,
+    height: 118,
+    borderRadius: 59,
+    backgroundColor: TC_GOLD_SOFT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderWidth: 2,
+    borderColor: 'rgba(200,161,77,0.45)',
+  },
+  logoCrestOuter: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+    borderColor: TC_GOLD,
+    backgroundColor: TC_NAVY,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logoCrestClip: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoCrestImg: {
+    width: 118,
+    height: 118,
+    resizeMode: 'cover',
+  },
+  headerIdentity: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    minWidth: 0,
+    paddingRight: 4,
+  },
   schoolName: {
-    fontSize: 22,
+    fontSize: 30,
     fontWeight: '900',
     color: TC_NAVY,
-    letterSpacing: 1.4,
-    textAlign: 'center',
-    lineHeight: 28,
+    letterSpacing: 1.2,
+    textAlign: 'left',
+    lineHeight: 34,
+    width: '100%',
   },
-  recognition: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: TC_NAVY,
-    opacity: 0.88,
-    marginTop: 4,
-    textAlign: 'center',
+  schoolNameUnderlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+    marginBottom: 8,
+    width: '100%',
   },
-  affiliation: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: TC_GOLD,
-    marginTop: 2,
-    textAlign: 'center',
+  schoolNameUnderlineSide: {
+    flex: 1,
+    height: 1.25,
+    backgroundColor: TC_GOLD_SOFT,
   },
-  address: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: TC_NAVY,
-    opacity: 0.82,
-    marginTop: 4,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  nameUnderline: {
-    width: 72,
-    height: 3,
+  schoolNameUnderline: {
+    width: 56,
+    height: 3.5,
     borderRadius: 2,
     backgroundColor: TC_GOLD,
-    marginTop: 8,
-    opacity: 0.75,
   },
-  titleWrap: {
+  ornamentDiamond: {
+    width: 7,
+    height: 7,
+    backgroundColor: TC_GOLD,
+    transform: [{ rotate: '45deg' }],
+  },
+  recognition: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: TC_ROYAL,
+    textAlign: 'left',
+    letterSpacing: 0.35,
+    marginBottom: 2,
+  },
+  affiliation: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TC_GOLD,
+    marginTop: 1,
+    textAlign: 'left',
+    letterSpacing: 0.2,
+  },
+  address: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: TC_CHARCOAL,
+    marginTop: 5,
+    textAlign: 'left',
+    lineHeight: 17,
+    width: '100%',
+  },
+  letterheadRule: { marginTop: 8, gap: 2 },
+  letterheadRuleGold: { height: 2.5, backgroundColor: TC_GOLD, borderRadius: 1 },
+  letterheadRuleNavy: { height: 2.5, backgroundColor: TC_NAVY, borderRadius: 1 },
+  letterheadRuleGoldThin: { height: 1.25, backgroundColor: TC_GOLD_SOFT },
+  titleBlock: {
+    zIndex: 1,
+    flexShrink: 0,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  titleBanner: {
+    backgroundColor: TC_TITLE_BAND,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: TC_GOLD,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    minWidth: '84%',
+    alignItems: 'center',
+  },
+  titleText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 2.8,
+    textAlign: 'center',
+  },
+  metaCard: {
+    zIndex: 1,
+    flexShrink: 0,
+    backgroundColor: TC_PLATINUM,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(30,90,168,0.22)',
+    borderLeftWidth: 3.5,
+    borderLeftColor: TC_ROYAL,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 7,
+  },
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  metaItem: {
+    width: '25%',
+    paddingVertical: 3,
+    paddingRight: 8,
+  },
+  metaLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: TC_ROYAL,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  metaVal: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: TC_NAVY,
+  },
+  registryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginTop: 14,
-    marginBottom: 12,
-    zIndex: 1,
+    marginTop: 7,
+    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(200,161,77,0.45)',
   },
-  titleRule: { flex: 1, height: 1.5, backgroundColor: TC_NAVY, opacity: 0.35 },
-  titleBox: {
-    borderWidth: 1.5,
-    borderColor: TC_NAVY,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 5,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  titleText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: TC_NAVY,
-    letterSpacing: 2,
-  },
-  metaBand: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    zIndex: 1,
-    marginBottom: 5,
-  },
-  metaBandSecondary: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    zIndex: 1,
-    marginBottom: 8,
-    paddingBottom: 10,
-    borderBottomWidth: 1.5,
-    borderBottomColor: 'rgba(30,58,138,0.18)',
-  },
-  metaText: { fontSize: 12.5, fontWeight: '600', color: TC_NAVY },
-  metaVal: { fontWeight: '800', color: TC_NAVY },
-  metaSecondary: { fontSize: 12, fontWeight: '700', color: '#334155' },
-  // Distribute all 23 rows evenly between meta and footer so the A4 sheet fills.
-  itemList: {
+  registryEyebrow: { fontSize: 8, fontWeight: '800', color: TC_GOLD, letterSpacing: 0.9 },
+  registryItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  registryLabel: { fontSize: 9, fontWeight: '600', color: TC_CHARCOAL, opacity: 0.75 },
+  registryValue: { fontSize: 11, fontWeight: '800', color: TC_NAVY },
+  bodyStack: {
     zIndex: 1,
     flex: 1,
+    gap: 6,
     justifyContent: 'space-between',
-    paddingVertical: 2,
   },
-  itemRow: {
+  section: {
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(30,90,168,0.18)',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    flexGrow: 1,
+    flexDirection: 'column',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: TC_SECTION_BAND,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: TC_GOLD,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(30,58,138,0.1)',
-    paddingVertical: 1,
+    borderBottomColor: 'rgba(30,90,168,0.16)',
   },
-  itemText: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: '#0F172A',
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TC_NAVY,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  itemLabel: {
+  sectionGoldRule: {
+    flex: 1,
+    height: 1.25,
+    backgroundColor: TC_GOLD,
+    opacity: 0.55,
+    marginLeft: 4,
+  },
+  sectionBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexGrow: 1,
+    justifyContent: 'space-evenly',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(18,53,91,0.1)',
+    gap: 7,
+  },
+  fieldNumBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(200,161,77,0.65)',
+    backgroundColor: 'rgba(200,161,77,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  fieldNum: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: TC_GOLD,
+  },
+  fieldLabel: {
+    width: 236,
+    flexShrink: 0,
     fontSize: 12.5,
-    lineHeight: 18,
     fontWeight: '700',
-    color: '#1E3A8A',
+    color: TC_ROYAL,
+    letterSpacing: 0.05,
+    lineHeight: 16,
   },
-  itemValue: {
-    fontSize: 12.5,
+  fieldLabelCompact: {
+    width: 112,
+  },
+  fieldColon: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: TC_NAVY,
+    marginRight: 5,
+    flexShrink: 0,
+  },
+  fieldValueWrap: {
+    flex: 1,
+    minWidth: 0,
+    borderBottomWidth: 1.25,
+    borderBottomColor: 'rgba(18,53,91,0.22)',
+    paddingBottom: 2,
+    minHeight: 20,
+    justifyContent: 'center',
+  },
+  fieldValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TC_CHARCOAL,
     lineHeight: 18,
-    fontWeight: '500',
-    color: '#0F172A',
   },
-  itemStrong: { fontWeight: '800', color: '#0F172A', fontSize: 13 },
+  fieldStrong: {
+    fontWeight: '800',
+    color: TC_NAVY,
+    fontSize: 14.5,
+  },
+  fieldMuted: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: TC_CHARCOAL,
+    opacity: 0.75,
+  },
+  fieldGrid2: { flexDirection: 'row', gap: 10 },
+  fieldGridCell: { flex: 1 },
+  certInfoDateRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 0,
+    marginBottom: 8,
+    backgroundColor: 'rgba(30,90,168,0.05)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(30,90,168,0.14)',
+    overflow: 'hidden',
+  },
+  certInfoDateCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  certInfoDateDivider: {
+    width: 1,
+    backgroundColor: 'rgba(200,161,77,0.55)',
+    marginVertical: 8,
+  },
+  certInfoDateBody: { flex: 1, minWidth: 0 },
+  certInfoDateLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: TC_ROYAL,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  certInfoDateValue: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: TC_CHARCOAL,
+  },
+  certInfoDateValueStrong: {
+    fontWeight: '800',
+    color: TC_NAVY,
+    fontSize: 15,
+  },
+  leavingReasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  leavingReasonBody: { flex: 1, minWidth: 0 },
+  leavingReasonLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: TC_ROYAL,
+    marginBottom: 6,
+  },
+  leavingReasonValueWrap: {
+    borderBottomWidth: 1.5,
+    borderBottomColor: 'rgba(18,53,91,0.28)',
+    minHeight: 36,
+    paddingBottom: 4,
+    justifyContent: 'flex-end',
+  },
+  leavingReasonValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TC_CHARCOAL,
+    lineHeight: 20,
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginTop: 12,
-    paddingTop: 14,
+    marginTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1.5,
-    borderTopColor: 'rgba(30,58,138,0.22)',
+    borderTopColor: 'rgba(16,42,67,0.24)',
     zIndex: 1,
+    flexShrink: 0,
   },
-  sigBlock: { alignItems: 'center', gap: 8, minWidth: 110 },
-  sigDate: { fontSize: 12, fontWeight: '700', color: TC_NAVY },
-  stampBox: {
-    width: 88,
-    height: 50,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: TC_NAVY,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.55,
-  },
-  stampText: { fontSize: 9, fontWeight: '800', color: TC_NAVY, letterSpacing: 0.5 },
-  sigLine: { width: 120, height: 1.5, backgroundColor: TC_NAVY, marginBottom: 4 },
+  sigBlock: { alignItems: 'center', gap: 5, flex: 1 },
+  dateBlock: { alignItems: 'flex-start' },
+  signatureBlock: { alignItems: 'flex-end', minHeight: 78, justifyContent: 'flex-end' },
+  footerEyebrow: { fontSize: 8.5, fontWeight: '800', color: TC_GOLD, letterSpacing: 1.1 },
+  sigDate: { fontSize: 14, fontWeight: '800', color: TC_NAVY },
+  sigLine: { width: 180, height: 1.25, backgroundColor: TC_NAVY, marginBottom: 6, marginTop: 28 },
   sigLabel: { fontSize: 12.5, fontWeight: '700', color: TC_NAVY },
+  sigSub: { fontSize: 10, fontWeight: '500', color: TC_CHARCOAL, opacity: 0.7 },
 });
 
 function renderTcHalfItems(studentData: StudentData, tcFields: TCEditableFields, today: string) {
   const items = buildTcItemTexts(studentData, tcFields, today);
-  const left = items.slice(0, 12);
-  const right = items.slice(12);
+  const left = items.slice(0, 9);
+  const right = items.slice(9);
   return (
     <View style={cpStyles.tcHalfGrid}>
       <View style={cpStyles.tcHalfCol}>
@@ -1412,17 +2048,10 @@ function renderTcSignatures(today: string, compact = false) {
     <View style={compact ? cpStyles.tcHalfFooter : cpStyles.footer}>
       <View style={cpStyles.sigBlock}>
         <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigDate}>Date: {today}</Text>
-        <View style={[cpStyles.sigStamp, compact && cpStyles.sigStampCompact]}>
-          <Text style={cpStyles.sigStampText}>SCHOOL STAMP</Text>
-        </View>
       </View>
       <View style={cpStyles.sigBlock}>
         <View style={cpStyles.sigLine} />
-        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigLabel}>Class Teacher</Text>
-      </View>
-      <View style={cpStyles.sigBlock}>
-        <View style={cpStyles.sigLine} />
-        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigLabel}>Principal</Text>
+        <Text style={compact ? cpStyles.tcHalfSigText : cpStyles.sigLabel}>Principal / Head Master</Text>
       </View>
     </View>
   );
@@ -1459,7 +2088,7 @@ const CertificatePreview = React.forwardRef<View, {
   const downloadLabel = isTC
     ? (tcLayout === 'A4_HALF' ? 'A4 Half' : 'A4')
     : 'Half A4';
-  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE & CONDUCT CERTIFICATE';
+  const title = isTC ? 'SCHOOL RECORD SHEET' : 'BONAFIDE & CONDUCT CERTIFICATE';
   const today = formatDDMMYYYY(new Date());
   const logoSource = resolveSchoolLogoSource(school);
   const affiliationLine = school.affiliation?.trim() || '';
@@ -1550,8 +2179,17 @@ const CertificatePreview = React.forwardRef<View, {
               </View>
               <View style={cpStyles.tcHalfContainer}>
                 <View style={cpStyles.tcHalfHeaderMeta}>
-                  <Text style={cpStyles.tcHalfHeaderText}>CBSE Affiliation No. : {dot(tcFields.cbseAffiliationNo)}</Text>
-                  <Text style={cpStyles.tcHalfHeaderText}>School Code : {dot(tcFields.schoolCode)} · Scholar No. : {studentData.admissionNo}</Text>
+                  <Text style={cpStyles.tcHalfHeaderText}>
+                    Adm. No. : {studentData.admissionNo || '—'}
+                    {hasOfficialValue(studentData.penNo) ? ` · PEN : ${studentData.penNo}` : ''}
+                    {' · Aadhaar : '}{formatAadhaarDisplay(studentData.aadhaarNo)}
+                  </Text>
+                  <Text style={cpStyles.tcHalfHeaderText}>
+                    {[
+                      hasOfficialValue(tcFields.cbseAffiliationNo) ? `CBSE Aff. : ${tcFields.cbseAffiliationNo.trim()}` : '',
+                      hasOfficialValue(tcFields.schoolCode) ? `School Code : ${tcFields.schoolCode.trim()}` : '',
+                    ].filter(Boolean).join(' · ') || '—'}
+                  </Text>
                 </View>
                 {renderTcHalfItems(studentData, tcFields, today)}
               </View>
@@ -1657,48 +2295,102 @@ function buildCertificateHTML(
     isTC ? studentData.class : studentData.toClass,
   );
   const today = formatDDMMYYYY(new Date());
-  const title = isTC ? 'TRANSFER CERTIFICATE' : 'BONAFIDE & CONDUCT CERTIFICATE';
+  const title = isTC ? 'SCHOOL RECORD SHEET' : 'BONAFIDE & CONDUCT CERTIFICATE';
   const logoImg = logoDataUri
     ? `<img src="${logoDataUri}" alt="School logo" class="header-logo-img" />`
     : '';
   const pronouns = genderPronouns(studentData.genderId);
-  const affiliationLine = school.affiliation?.trim() || '';
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const affiliationLine = hasOfficialValue(school.affiliation) ? school.affiliation.trim() : '';
+  const recognitionLine = formatRecognitionLine(school.recognition, school.medium)
+    || (isTC ? '(Recognised by Govt. of T.S.)' : SCHOOL_RECOGNITION_LINE);
   const escAddr = (school.address || '').replace(/\n/g, '<br/>');
   const escSchoolName = (school.name || '').replace(/</g, '&lt;');
+  const showCbse = hasOfficialValue(tcFields.cbseAffiliationNo);
+  const showSchoolCode = hasOfficialValue(tcFields.schoolCode);
+  const showPen = hasOfficialValue(studentData.penNo);
+  const aadhaarDisp = formatAadhaarDisplay(studentData.aadhaarNo);
+  const registryHtml = [
+    showCbse ? `<span><em>CBSE Affiliation</em><strong>${tcFields.cbseAffiliationNo.trim()}</strong></span>` : '',
+    showSchoolCode ? `<span><em>School Code</em><strong>${tcFields.schoolCode.trim()}</strong></span>` : '',
+  ].filter(Boolean).join('');
 
   const tcItemHtml = (items: string[]) => items.map(item => `<div class="tc-half-item">${item.replace(/\n/g, '<br/>')}</div>`).join('');
   const tcItems = buildTcItemTexts(studentData, tcFields, today);
-  const tcLeftCol = tcItemHtml(tcItems.slice(0, 12));
-  const tcRightCol = tcItemHtml(tcItems.slice(12));
+  const tcLeftCol = tcItemHtml(tcItems.slice(0, 9));
+  const tcRightCol = tcItemHtml(tcItems.slice(9));
 
-  const tcA4Row = (label: string, value: string, strong = false) =>
-    `<div class="tc-a4-row"><span class="tc-a4-label">${label} : </span><span class="tc-a4-value">${strong ? `<strong>${value}</strong>` : value}</span></div>`;
+  const tcA4Field = (n: string, label: string, value: string, strong = false, compact = false) =>
+    `<div class="tc-a4-field">
+      <span class="tc-a4-num">${n}</span>
+      <span class="tc-a4-field-label${compact ? ' compact' : ''}">${label}</span>
+      <span class="tc-a4-field-colon">:</span>
+      <span class="tc-a4-field-value${strong ? ' strong' : ''}">${value || '—'}</span>
+    </div>`;
+
+  const tcSection = (titleText: string, iconSvg: string, inner: string) =>
+    `<div class="tc-a4-section">
+      <div class="tc-a4-section-h">${iconSvg}<span>${titleText}</span><i></i></div>
+      <div class="tc-a4-section-b">${inner}</div>
+    </div>`;
+
+  const iconPerson = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${TC_ROYAL}" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+  const iconSchool = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${TC_ROYAL}" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 2 6 2 9 0v-5"/></svg>`;
+  const iconCal = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${TC_ROYAL}" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`;
+  const iconRibbon = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${TC_ROYAL}" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M8.21 13.89 7 23l5-3 5 3-1.21-9.12"/></svg>`;
 
   const tcRowsA4 = `
-    ${tcA4Row('1. Name of Pupil', studentData.name, true)}
-    ${tcA4Row("2. Father's / Guardian Name", studentData.fatherName, true)}
-    ${tcA4Row("3. Mother's Name", studentData.motherName, true)}
-    ${tcA4Row('4. Nationality', studentData.nationality, true)}
-    ${tcA4Row('5. Whether Candidate belongs to SC / ST / OBC', studentData.category, true)}
-    ${tcA4Row('6. Date of First Admission in the School with Class', studentData.admissionDate, true)}
-    ${tcA4Row('7. Date of Birth (In Figures)', `<strong>${studentData.dob}</strong> &nbsp;&nbsp;(In Words) : <strong>${studentData.dobWords}</strong>`)}
-    ${tcA4Row('8. Class In Which Pupil Last Studied', studentData.class, true)}
-    ${tcA4Row('9. School / Board Examination Last Taken with Result', tcFields.examResult || '……………')}
-    ${tcA4Row('10. Whether Failed, If So Once / Twice in Same Class', tcFields.failedDetails || '……………')}
-    ${tcA4Row('11. Subjects Studied', tcFields.subjects.map((s, i) => `(${['i', 'ii', 'iii', 'iv', 'v', 'vi'][i]}) ${s || '…'}`).join('  '))}
-    ${tcA4Row('12. Whether Qualified for Promotion to Higher Class', `${tcFields.qualifiedPromotion || '……………'} &nbsp;&nbsp;(If so, to which class) : ${tcFields.promotionClass || '……………'}`)}
-    ${tcA4Row('13. Month Upto which School Dues Paid', tcFields.schoolDuesPaid || '……………')}
-    ${tcA4Row('14. Any Fee Concession availed of', tcFields.feeConcession || '……………')}
-    ${tcA4Row('15. Total No. of Working Days', tcFields.totalWorkingDays || '……………')}
-    ${tcA4Row('16. Total No. of Working Days Present', tcFields.workingDaysPresent || '……………')}
-    ${tcA4Row('17. Whether NCC Cadet / Scout Guide', tcFields.nccDetails || '……………')}
-    ${tcA4Row('18. Extra-Curricular Activities', tcFields.extraCurricular || '……………')}
-    ${tcA4Row('19. General Conduct', tcFields.generalConduct || '……………')}
-    ${tcA4Row('20. Date of Application for Certificate', tcFields.applicationDate || '……………')}
-    ${tcA4Row('21. Date of Issue of Certificate', today, true)}
-    ${tcA4Row('22. Reasons for Leaving the School', tcFields.leavingReason || '……………')}
-    ${tcA4Row('23. Any Other Remarks', tcFields.otherRemarks || '……………')}`;
+    ${tcSection('Student Information', iconPerson, `
+      ${tcA4Field('01', 'Name of Pupil', studentData.name, true)}
+      ${tcA4Field("02", "Father's / Guardian Name", studentData.fatherName, true)}
+      ${tcA4Field('03', "Mother's Name", studentData.motherName, true)}
+      <div class="tc-a4-grid2">
+        ${tcA4Field('04', 'Nationality', studentData.nationality, true, true)}
+        ${tcA4Field('05', 'Religion', studentData.religion || '……………', true, true)}
+      </div>
+      ${tcA4Field('06', 'Category / Caste', studentData.category, true)}
+    `)}
+    ${tcSection('Admission & Academic Details', iconSchool, `
+      ${tcA4Field('07', 'Date of First Admission in the School with Class', studentData.admissionDate, true)}
+      ${tcA4Field('08', 'Date of Birth', `<strong>${studentData.dob}</strong> &nbsp;·&nbsp; In Words: <strong>${studentData.dobWords}</strong>`)}
+      <div class="tc-a4-grid2">
+        ${tcA4Field('09', 'Class Last Studied', studentData.class, true, true)}
+        ${tcA4Field('10', 'Exam Last Taken with Result', tcFields.examResult || '……………', false, true)}
+      </div>
+      ${tcA4Field('11', 'Qualified for Promotion to Higher Class', `${tcFields.qualifiedPromotion || '……………'}${tcFields.promotionClass?.trim() ? ` &nbsp;·&nbsp; To Class: ${tcFields.promotionClass}` : ''}`)}
+    `)}
+    ${tcSection('Attendance & Conduct', iconCal, `
+      <div class="tc-a4-grid2">
+        ${tcA4Field('12', 'Total Working Days', tcFields.totalWorkingDays || '……………', false, true)}
+        ${tcA4Field('13', 'Days Present', tcFields.workingDaysPresent || '……………', false, true)}
+      </div>
+      ${tcA4Field('14', 'General Conduct', tcFields.generalConduct || '……………', true)}
+    `)}
+    ${tcSection('Certificate Information', iconRibbon, `
+      <div class="tc-a4-cert-dates">
+        <div class="tc-a4-cert-date">
+          <span class="tc-a4-num">15</span>
+          <div>
+            <em>Date of Application</em>
+            <strong>${tcFields.applicationDate || '—'}</strong>
+          </div>
+        </div>
+        <i class="tc-a4-cert-date-div"></i>
+        <div class="tc-a4-cert-date">
+          <span class="tc-a4-num">16</span>
+          <div>
+            <em>Date of Issue</em>
+            <strong class="issue">${today}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="tc-a4-leaving">
+        <span class="tc-a4-num">17</span>
+        <div>
+          <em>Reasons for Leaving the School</em>
+          <strong>${tcFields.leavingReason || '—'}</strong>
+        </div>
+      </div>
+    `)}`;
 
   const tcRowsHalf = `
     <div class="tc-half-header">
@@ -1714,8 +2406,8 @@ function buildCertificateHTML(
       <div class="tc-half-ref-no">Ref No: ${serialNo}</div>
     </div>
     <div class="tc-half-meta">
-      <span>CBSE Affiliation No. : ${tcFields.cbseAffiliationNo || '—'}</span>
-      <span>School Code : ${tcFields.schoolCode || '—'} · Scholar No. : ${studentData.admissionNo}</span>
+      <span>Adm. No. : ${studentData.admissionNo || '—'}${showPen ? ` · PEN : ${studentData.penNo}` : ''} · Aadhaar : ${aadhaarDisp}</span>
+      <span>${showCbse ? `CBSE Aff. : ${tcFields.cbseAffiliationNo.trim()} · ` : ''}${showSchoolCode ? `Code : ${tcFields.schoolCode.trim()}` : ''}</span>
     </div>
     <div class="tc-grid">
       <div class="tc-col">${tcLeftCol}</div>
@@ -1785,50 +2477,62 @@ function buildCertificateHTML(
   const rootHeight = isTC ? (isHalfTc ? '148.5mm' : '297mm') : '148.5mm';
 
   const tcA4Block = `
-      <div class="tc-a4-outer"><div class="tc-a4-inner">
-        <div class="tc-a4-header">
-          ${logoImg}
-          <div class="tc-a4-header-center">
-            <div class="tc-a4-school-name">${escSchoolName.toUpperCase()}</div>
-            ${recognitionLine ? `<div class="tc-a4-recognition">${recognitionLine}</div>` : ''}
-            ${affiliationLine ? `<div class="tc-a4-affiliation">${affiliationLine}</div>` : ''}
-            <div class="tc-a4-addr">${escAddr}</div>
-            <div class="tc-a4-underline"></div>
+      <div class="tc-a4-outer">
+        <div class="tc-a4-corner tl"></div><div class="tc-a4-corner tr"></div>
+        <div class="tc-a4-corner bl"></div><div class="tc-a4-corner br"></div>
+        <div class="tc-a4-inner">
+        <div class="tc-a4-header-band">
+          <div class="tc-a4-header-accent"></div>
+          <div class="tc-a4-header">
+            <div class="tc-a4-logo-crest"><div class="tc-a4-logo-outer"><div class="tc-a4-logo-clip">${logoImg}</div></div></div>
+            <div class="tc-a4-header-identity">
+              <div class="tc-a4-school-name">${escSchoolName.toUpperCase()}</div>
+              <div class="tc-a4-school-underline-row"><i></i><span></span><b></b><span></span><i></i></div>
+              ${recognitionLine ? `<div class="tc-a4-recognition">${recognitionLine}</div>` : ''}
+              ${affiliationLine ? `<div class="tc-a4-affiliation">${affiliationLine}</div>` : ''}
+              <div class="tc-a4-addr">${escAddr}</div>
+            </div>
           </div>
         </div>
-        <div class="tc-a4-title-wrap">
-          <div class="tc-a4-title-rule"></div>
-          <div class="tc-a4-title-box">${title}</div>
-          <div class="tc-a4-title-rule"></div>
+        <div class="tc-a4-letterhead-rule"><i></i><b></b><em></em></div>
+        <div class="tc-a4-title-block">
+          <div class="tc-a4-title-box">SCHOOL RECORD SHEET</div>
         </div>
-        <div class="tc-a4-meta">
-          <span>Ref No. <strong>${serialNo}</strong></span>
-          <span>Scholar No. <strong>${studentData.admissionNo}</strong></span>
-        </div>
-        <div class="tc-a4-meta-secondary">
-          <span>CBSE Affiliation No. : ${tcFields.cbseAffiliationNo || '……………'}</span>
-          <span>School Code : ${tcFields.schoolCode || '……………'}</span>
+        <div class="tc-a4-meta-card">
+          <div class="tc-a4-meta-grid">
+            <div class="tc-a4-meta-item"><em>Certificate No.</em><strong>${serialNo}</strong></div>
+            <div class="tc-a4-meta-item"><em>Admission No.</em><strong>${studentData.admissionNo || '—'}</strong></div>
+            <div class="tc-a4-meta-item"><em>PEN</em><strong>${showPen ? studentData.penNo : '—'}</strong></div>
+            <div class="tc-a4-meta-item"><em>Aadhaar No.</em><strong>${aadhaarDisp}</strong></div>
+          </div>
+          ${registryHtml ? `<div class="tc-a4-registry"><label>INSTITUTION REGISTRY</label>${registryHtml}</div>` : ''}
         </div>
         <div class="tc-a4-list">${tcRowsA4}</div>
         <div class="tc-a4-footer">
-          <div class="tc-a4-sig">
-            <div>Date: ${today}</div>
-            <div class="tc-a4-stamp">SCHOOL STAMP</div>
+          <div class="tc-a4-sig tc-a4-date-block">
+            <em>DATE OF ISSUE</em>
+            <strong>${today}</strong>
           </div>
-          <div class="tc-a4-sig"><div class="tc-a4-sig-line"></div><div>Class Teacher</div></div>
-          <div class="tc-a4-sig"><div class="tc-a4-sig-line"></div><div>Principal</div></div>
+          <div class="tc-a4-sig tc-a4-signature-block">
+            <div class="tc-a4-sig-line"></div>
+            <div>Principal / Head Master</div>
+            ${school.principal ? `<div class="tc-a4-sig-sub">${school.principal}</div>` : ''}
+          </div>
         </div>
+        ${logoDataUri ? `<div class="tc-a4-watermark"><img src="${logoDataUri}" alt="" /></div>` : ''}
       </div></div>`;
 
   const tcHalfBlock = `
       ${tcRowsHalf}
       <div class="footer footer-compact">
-        <div><div>Date: ${today}</div><div class="stamp-box stamp-box-compact">SCHOOL STAMP</div></div>
-        <div><div class="sig-line"></div><div>Class Teacher</div></div>
-        <div><div class="sig-line"></div><div>Principal</div></div>
+        <div><div>Date: ${today}</div></div>
+        <div><div class="sig-line"></div><div>Principal / Head Master</div></div>
       </div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet"/>
   <style>
     ${pageSize}
     * {
@@ -1837,7 +2541,7 @@ function buildCertificateHTML(
       print-color-adjust: exact !important;
     }
     html, body { width: 100%; height: 100%; }
-    body { font-family: 'Times New Roman', Georgia, serif; margin: 0; padding: 0; position: relative; background: ${isTC && !isHalfTc ? TC_PAPER_BG : '#FFFFFF'}; }
+    body { font-family: 'Inter', 'Lato', 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; position: relative; background: ${isTC && !isHalfTc ? TC_PAPER_BG : '#FFFFFF'}; }
     .certificate-print-root {
       position: relative;
       background: ${isTC && !isHalfTc ? TC_PAPER_BG : '#FFFFFF'};
@@ -1854,102 +2558,249 @@ function buildCertificateHTML(
       transform: translate(-50%, -50%);
       z-index: 0;
       pointer-events: none;
-      opacity: 0.06;
+      opacity: 0.05;
     }
     .certificate-watermark img {
-      width: 240px; height: 240px;
+      width: 280px; height: 280px;
       object-fit: contain;
-      opacity: 0.06;
+      opacity: 0.05;
     }
     .page-content { position: relative; z-index: 1; height: 100%; }
     .header-logo-img { width: 64px; height: 64px; object-fit: contain; margin-bottom: 0; }
 
-    /* ── Premium full A4 Transfer Certificate ───────────────────────────── */
+    /* ── Premium full A4 School Record Sheet / TC ───────────────────────── */
     .tc-a4-outer {
-      margin: 7mm;
-      border: 2.5px solid ${TC_NAVY};
-      padding: 3.5px;
-      height: calc(297mm - 14mm);
+      margin: 5mm;
+      border: 1.75px solid ${TC_NAVY};
+      padding: 4px;
+      height: calc(297mm - 10mm);
       background: ${TC_PAPER_BG};
+      position: relative;
     }
+    .tc-a4-corner {
+      position: absolute; width: 15px; height: 15px; z-index: 2;
+      border-color: ${TC_GOLD}; border-style: solid;
+    }
+    .tc-a4-corner.tl { top: 6px; left: 6px; border-width: 2px 0 0 2px; }
+    .tc-a4-corner.tr { top: 6px; right: 6px; border-width: 2px 2px 0 0; }
+    .tc-a4-corner.bl { bottom: 6px; left: 6px; border-width: 0 0 2px 2px; }
+    .tc-a4-corner.br { bottom: 6px; right: 6px; border-width: 0 2px 2px 0; }
     .tc-a4-inner {
-      border: 1.5px solid ${TC_NAVY};
-      padding: 7mm 9mm 6mm;
+      border: 1px solid ${TC_ROYAL};
+      padding: 4.5mm 5.5mm 4mm;
       height: 100%;
       background: ${TC_PAPER_BG};
       display: flex;
       flex-direction: column;
       position: relative;
     }
-    .tc-a4-header { display: flex; align-items: center; gap: 14px; }
-    .tc-a4-header .header-logo-img { width: 78px; height: 78px; }
-    .tc-a4-header-center { flex: 1; text-align: center; }
-    .tc-a4-school-name { font-size: 21px; font-weight: 900; color: ${TC_NAVY}; letter-spacing: 1.4px; line-height: 1.25; }
-    .tc-a4-recognition { font-size: 11px; font-weight: 700; color: ${TC_NAVY}; opacity: 0.88; margin-top: 3px; }
-    .tc-a4-affiliation { font-size: 11px; font-weight: 600; color: ${TC_GOLD}; margin-top: 2px; }
-    .tc-a4-addr { font-size: 11px; font-weight: 600; color: ${TC_NAVY}; opacity: 0.82; margin-top: 3px; white-space: pre-line; line-height: 1.4; }
-    .tc-a4-underline { width: 68px; height: 2.5px; border-radius: 2px; background: ${TC_GOLD}; opacity: 0.75; margin: 7px auto 0; }
-    .tc-a4-title-wrap { display: flex; align-items: center; gap: 12px; margin: 11px 0 10px; }
-    .tc-a4-title-rule { flex: 1; height: 1.5px; background: ${TC_NAVY}; opacity: 0.35; }
+    .tc-a4-watermark {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      pointer-events: none; z-index: 30;
+    }
+    .tc-a4-watermark img { width: 560px; height: 560px; object-fit: contain; opacity: 0.2; }
+    .tc-a4-inner > *:not(.tc-a4-watermark) { position: relative; z-index: 1; }
+    .tc-a4-header-band {
+      background: ${TC_HEADER_BAND};
+      border: 1px solid rgba(30,90,168,0.22);
+      border-radius: 8px; overflow: hidden;
+    }
+    .tc-a4-header-accent {
+      height: 6px; background: ${TC_NAVY};
+      border-bottom: 2.5px solid ${TC_GOLD};
+    }
+    .tc-a4-header {
+      display: flex; align-items: center; gap: 18px;
+      padding: 14px 16px 14px;
+    }
+    .tc-a4-logo-crest {
+      width: 118px; height: 118px; border-radius: 50%;
+      background: ${TC_GOLD_SOFT}; border: 2px solid rgba(200,161,77,0.45);
+      display: flex; align-items: center; justify-content: center; flex: 0 0 118px;
+    }
+    .tc-a4-logo-outer {
+      width: 110px; height: 110px; border-radius: 50%;
+      border: 3px solid ${TC_GOLD}; background: ${TC_NAVY};
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .tc-a4-logo-clip {
+      width: 100px; height: 100px; border-radius: 50%; overflow: hidden;
+      background: #fff; display: flex; align-items: center; justify-content: center;
+    }
+    .tc-a4-logo-clip .header-logo-img {
+      width: 118px; height: 118px; object-fit: cover; display: block;
+    }
+    .tc-a4-header-identity { flex: 1; min-width: 0; text-align: left; }
+    .tc-a4-school-name {
+      font-family: 'Montserrat', 'Poppins', 'Segoe UI', sans-serif;
+      font-size: 30px; font-weight: 800; color: ${TC_NAVY};
+      letter-spacing: 1.2px; line-height: 1.12;
+    }
+    .tc-a4-school-underline-row {
+      display: flex; align-items: center; gap: 5px;
+      margin: 8px 0;
+    }
+    .tc-a4-school-underline-row i {
+      display: block; flex: 1; height: 1.25px; background: ${TC_GOLD_SOFT}; font-style: normal;
+    }
+    .tc-a4-school-underline-row b {
+      display: block; width: 56px; height: 3.5px; border-radius: 2px; background: ${TC_GOLD}; font-weight: normal;
+    }
+    .tc-a4-school-underline-row span {
+      display: block; width: 7px; height: 7px; background: ${TC_GOLD}; transform: rotate(45deg);
+    }
+    .tc-a4-recognition {
+      font-size: 12.5px; font-weight: 700; color: ${TC_ROYAL}; letter-spacing: 0.35px; margin-bottom: 2px;
+    }
+    .tc-a4-affiliation { font-size: 12px; font-weight: 700; color: ${TC_GOLD}; margin-top: 1px; letter-spacing: 0.2px; }
+    .tc-a4-addr { font-size: 12.5px; font-weight: 600; color: ${TC_CHARCOAL}; margin-top: 5px; white-space: pre-line; line-height: 1.35; }
+    .tc-a4-letterhead-rule { margin: 8px 0 0; }
+    .tc-a4-letterhead-rule i { display: block; height: 2.5px; background: ${TC_GOLD}; border-radius: 1px; font-style: normal; }
+    .tc-a4-letterhead-rule b { display: block; height: 2.5px; background: ${TC_NAVY}; border-radius: 1px; margin-top: 2px; font-weight: normal; }
+    .tc-a4-letterhead-rule em { display: block; height: 1.25px; background: ${TC_GOLD_SOFT}; margin-top: 2px; font-style: normal; }
+    .tc-a4-title-block { text-align: center; margin: 10px 0 8px; }
     .tc-a4-title-box {
-      border: 1.5px solid ${TC_NAVY};
-      background: #EEF2FF;
-      border-radius: 5px;
-      padding: 6px 18px;
-      font-size: 15px; font-weight: 900; color: ${TC_NAVY}; letter-spacing: 2px; white-space: nowrap;
+      display: inline-block;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 18px; font-weight: 800; color: #FFFFFF; letter-spacing: 2.8px; white-space: nowrap;
+      background: ${TC_TITLE_BAND}; border: 1.5px solid ${TC_GOLD}; border-radius: 5px;
+      padding: 8px 24px; min-width: 84%;
     }
-    .tc-a4-meta { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: ${TC_NAVY}; margin-bottom: 4px; }
-    .tc-a4-meta strong { font-weight: 800; }
-    .tc-a4-meta-secondary {
-      display: flex; justify-content: space-between;
-      font-size: 11.5px; font-weight: 700; color: #334155;
-      margin-bottom: 6px; padding-bottom: 8px;
-      border-bottom: 1.5px solid rgba(30,58,138,0.18);
+    .tc-a4-meta-card {
+      background: ${TC_PLATINUM}; border: 1px solid rgba(30,90,168,0.22);
+      border-left: 3.5px solid ${TC_ROYAL};
+      border-radius: 5px; padding: 8px 12px; margin-bottom: 7px;
     }
+    .tc-a4-meta-grid { display: flex; flex-wrap: wrap; }
+    .tc-a4-meta-item { width: 25%; padding: 3px 8px 3px 0; box-sizing: border-box; }
+    .tc-a4-meta-item em {
+      display: block; font-style: normal; font-size: 9px; font-weight: 800;
+      color: ${TC_ROYAL}; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 2px;
+    }
+    .tc-a4-meta-item strong { font-weight: 800; color: ${TC_NAVY}; font-size: 13.5px; }
+    .tc-a4-registry {
+      display: flex; align-items: center; gap: 12px; margin-top: 7px; padding-top: 6px;
+      border-top: 0.5px solid rgba(200,161,77,0.45);
+    }
+    .tc-a4-registry label { font-size: 8px; font-weight: 800; color: ${TC_GOLD}; letter-spacing: 0.9px; }
+    .tc-a4-registry span { display: flex; align-items: center; gap: 5px; }
+    .tc-a4-registry em { font-size: 9px; font-style: normal; color: ${TC_CHARCOAL}; opacity: 0.75; }
+    .tc-a4-registry strong { font-size: 11px; font-weight: 800; color: ${TC_NAVY}; }
     .tc-a4-list {
       flex: 1;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 2px 0;
+      gap: 6px;
     }
-    .tc-a4-row {
-      display: block;
-      font-size: 12px;
-      line-height: 1.45;
-      color: #0F172A;
-      border-bottom: 0.5px solid rgba(30,58,138,0.1);
-      padding: 1px 0;
+    .tc-a4-section {
+      border: 1px solid rgba(30,90,168,0.18); border-radius: 5px; overflow: hidden; background: #fff;
+      flex-grow: 1; display: flex; flex-direction: column;
     }
-    .tc-a4-label { font-weight: 700; color: #1E3A8A; }
-    .tc-a4-value { font-weight: 500; }
-    .tc-a4-value strong { font-weight: 800; font-size: 12.5px; }
+    .tc-a4-section-h {
+      display: flex; align-items: center; gap: 6px;
+      background: ${TC_SECTION_BAND}; padding: 6px 10px;
+      border-left: 3px solid ${TC_GOLD};
+      border-bottom: 0.5px solid rgba(30,90,168,0.16);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 11px; font-weight: 800; color: ${TC_NAVY};
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    .tc-a4-section-h i { flex: 1; height: 1.25px; background: ${TC_GOLD}; opacity: 0.55; font-style: normal; }
+    .tc-a4-section-b {
+      padding: 4px 10px; flex-grow: 1;
+      display: flex; flex-direction: column; justify-content: space-evenly;
+    }
+    .tc-a4-grid2 { display: flex; gap: 10px; }
+    .tc-a4-grid2 .tc-a4-field { flex: 1; }
+    .tc-a4-field {
+      display: flex; gap: 7px; align-items: center;
+      padding: 5.5px 0; border-bottom: 0.5px solid rgba(18,53,91,0.1);
+    }
+    .tc-a4-num {
+      width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%;
+      border: 1px solid rgba(200,161,77,0.65); background: rgba(200,161,77,0.1);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 800; color: ${TC_GOLD};
+    }
+    .tc-a4-field-label {
+      width: 236px; flex-shrink: 0;
+      font-size: 12.5px; font-weight: 700; color: ${TC_ROYAL}; letter-spacing: 0.05px; line-height: 1.3;
+    }
+    .tc-a4-field-label.compact { width: 112px; }
+    .tc-a4-field-colon {
+      flex-shrink: 0; font-size: 13.5px; font-weight: 800; color: ${TC_NAVY}; margin-right: 5px;
+    }
+    .tc-a4-field-value {
+      flex: 1; min-width: 0;
+      font-size: 14px; font-weight: 600; color: ${TC_CHARCOAL}; line-height: 1.3;
+      border-bottom: 1.25px solid rgba(18,53,91,0.22); padding-bottom: 2px; min-height: 20px;
+    }
+    .tc-a4-field-value.strong, .tc-a4-field-value strong {
+      font-weight: 800; color: ${TC_NAVY}; font-size: 14.5px;
+    }
+    .tc-a4-cert-dates {
+      display: flex; align-items: stretch;
+      background: rgba(30,90,168,0.05);
+      border: 1px solid rgba(30,90,168,0.14);
+      border-radius: 6px; margin-bottom: 8px; overflow: hidden;
+    }
+    .tc-a4-cert-date {
+      flex: 1; display: flex; align-items: center; gap: 8px;
+      padding: 10px;
+    }
+    .tc-a4-cert-date-div {
+      width: 1px; background: rgba(200,161,77,0.55); margin: 8px 0; font-style: normal;
+    }
+    .tc-a4-cert-date em {
+      display: block; font-style: normal; font-size: 10px; font-weight: 800;
+      color: ${TC_ROYAL}; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 3px;
+    }
+    .tc-a4-cert-date strong {
+      font-size: 14.5px; font-weight: 700; color: ${TC_CHARCOAL};
+    }
+    .tc-a4-cert-date strong.issue {
+      font-weight: 800; color: ${TC_NAVY}; font-size: 15px;
+    }
+    .tc-a4-leaving {
+      display: flex; align-items: flex-start; gap: 8px; padding: 4px 0 2px;
+    }
+    .tc-a4-leaving em {
+      display: block; font-style: normal; font-size: 12.5px; font-weight: 700;
+      color: ${TC_ROYAL}; margin-bottom: 6px;
+    }
+    .tc-a4-leaving > div { flex: 1; min-width: 0; }
+    .tc-a4-leaving strong {
+      display: block; font-size: 14px; font-weight: 600; color: ${TC_CHARCOAL}; line-height: 1.4;
+      border-bottom: 1.5px solid rgba(18,53,91,0.28); min-height: 36px; padding-bottom: 4px;
+    }
     .tc-a4-footer {
       display: flex; justify-content: space-between; align-items: flex-end;
-      margin-top: 10px; padding-top: 12px;
-      border-top: 1.5px solid rgba(30,58,138,0.22);
-      font-size: 12px; font-weight: 700; color: ${TC_NAVY};
+      margin-top: 8px; padding-top: 10px;
+      border-top: 1.5px solid rgba(16,42,67,0.24);
+      font-size: 12.5px; font-weight: 700; color: ${TC_NAVY};
     }
-    .tc-a4-sig { text-align: center; min-width: 110px; }
-    .tc-a4-sig-line { border-bottom: 1.5px solid ${TC_NAVY}; width: 120px; margin: 0 auto 5px; }
-    .tc-a4-stamp {
-      border: 1.5px dashed ${TC_NAVY}; width: 88px; height: 48px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 9px; font-weight: 800; letter-spacing: 0.5px; opacity: 0.55; margin: 6px auto 0;
-    }
+    .tc-a4-sig { text-align: center; flex: 1; }
+    .tc-a4-date-block { text-align: left; }
+    .tc-a4-date-block em { display: block; font-size: 8.5px; font-style: normal; font-weight: 800; color: ${TC_GOLD}; letter-spacing: 1.1px; margin-bottom: 4px; }
+    .tc-a4-date-block strong { font-size: 14px; color: ${TC_NAVY}; }
+    .tc-a4-sig-line { border-bottom: 1.25px solid ${TC_NAVY}; width: 180px; margin: 28px 0 6px auto; }
+    .tc-a4-sig-sub { font-size: 10px; font-weight: 500; color: ${TC_CHARCOAL}; opacity: 0.7; margin-top: 2px; }
+    .tc-a4-signature-block { text-align: right; min-height: 78px; }
 
     .tc-half-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px 2px; }
     .tc-half-header .header-logo-img { width: 48px; height: 48px; margin-bottom: 0; }
     .tc-half-header-center { flex: 1; }
-    .tc-half-school-name { font-size: 16px; font-weight: 900; color: #0F172A; letter-spacing: 0.4px; }
-    .tc-half-affiliation { font-size: 9px; color: #64748B; font-style: italic; margin-top: 1px; }
+    .tc-half-school-name { font-size: 16px; font-weight: 800; color: ${TC_NAVY}; letter-spacing: 0.4px; }
+    .tc-half-affiliation { font-size: 9px; color: ${TC_ROYAL}; font-style: italic; margin-top: 1px; }
     .tc-half-title-block { text-align: center; padding: 4px 14px 6px; }
-    .tc-half-cert-title { font-size: 14px; font-weight: 900; color: ${cfg.gradFrom}; letter-spacing: 1px; text-decoration: underline; }
-    .tc-half-ref-no { font-size: 9px; color: #94A3B8; margin-top: 2px; }
-    .tc-half-meta { display: flex; justify-content: space-between; font-size: 8px; font-weight: 700; color: #475569; padding: 0 14px 4px; }
+    .tc-half-eyebrow { font-size: 8px; font-weight: 700; color: ${TC_GOLD}; letter-spacing: 1.8px; }
+    .tc-half-cert-title { font-size: 14px; font-weight: 800; color: ${TC_NAVY}; letter-spacing: 1px; }
+    .tc-half-ref-no { font-size: 9px; color: ${TC_CHARCOAL}; margin-top: 2px; }
+    .tc-half-meta { display: flex; justify-content: space-between; font-size: 8px; font-weight: 700; color: ${TC_CHARCOAL}; padding: 0 14px 4px; }
     .tc-grid { display: flex; padding: 0 10px; }
     .tc-col { width: 50%; padding: 0 4px; }
-    .tc-half-item { font-size: 8px; line-height: 12px; color: #1E293B; margin-bottom: 2px; }
+    .tc-half-item { font-size: 8px; line-height: 12px; color: ${TC_CHARCOAL}; margin-bottom: 2px; }
     .footer { display: flex; justify-content: space-between; padding: 16px 22px; border-top: 1px solid #F1F5F9; font-size: 11px; color: #475569; }
     .footer-compact { padding: 6px 14px; font-size: 8px; }
     .sig-line { border-bottom: 1px solid #334155; width: 90px; margin-bottom: 4px; }
@@ -2035,9 +2886,9 @@ function parentDisplayName(p: any): string {
  */
 function computeParentName(fatherName?: string, motherName?: string): string {
   const father = fatherName?.trim();
-  if (father && father !== 'Guardian') return father;
+  if (hasOfficialValue(father) && father !== 'Guardian') return father!;
   const mother = motherName?.trim();
-  if (mother && mother !== 'N/A') return mother;
+  if (hasOfficialValue(mother)) return mother!;
   return 'Guardian';
 }
 
@@ -2109,7 +2960,8 @@ function normalizeCertificateValue(value: unknown, fallback = 'N/A'): string {
 }
 
 function normalizePenNumber(value: unknown): string {
-  return normalizeCertificateValue(value, 'NA');
+  const v = normalizeCertificateValue(value, '');
+  return hasOfficialValue(v) ? v : '';
 }
 
 function admissionYearFallback(admissionDate?: string): string {
@@ -2185,41 +3037,43 @@ function buildStudentDataFromRecord(
   const latestEnrollment = sortedEnrollments[sortedEnrollments.length - 1];
   const enrollment = student.current_enrollment || latestEnrollment;
   const cls = enrollment?.class_name || enrollment?.class_code || '';
-  const sec = enrollment?.section_name || '';
-  const fatherObj = parents?.find((p: any) => /father/i.test(p.relationship || p.relation || ''));
-  const father = fatherObj ? parentDisplayName(fatherObj) : 'Guardian';
-  const motherObj = parents?.find((p: any) => /mother/i.test(p.relationship || p.relation || ''));
-  const mother = motherObj ? parentDisplayName(motherObj) : 'N/A';
+  const mergedParents = mergeParentLists(parents, student?.parents);
+  const { fatherName, motherName } = resolveParentNames(mergedParents);
   const rawDob = student.dob || student.person?.dob || '';
-  const dobFormatted = rawDob ? formatDDMMYYYY(rawDob) : 'N/A';
+  const dobFormatted = rawDob ? formatDDMMYYYY(rawDob) : '—';
   const studyPeriod = resolveBonafideStudyPeriod(enrollments, enrollment, student.admission_date);
   const isFormerStudent = student.status === 'graduated' || student.status === 'withdrawn';
   const exitAcademicYear = isFormerStudent && student.exit_academic_year
     ? String(student.exit_academic_year)
     : studyPeriod.toYear;
+  const aadhaarRaw = student.aadhaar_number ?? student.aadhaar ?? student.person?.aadhaar_number ?? '';
 
   return {
     id: student.id,
     name: student.display_name || `${student.first_name || ''} ${student.last_name || ''}`.trim(),
-    fatherName: father,
-    motherName: mother,
-    parentName: computeParentName(father, mother),
+    fatherName,
+    motherName,
+    parentName: computeParentName(fatherName, motherName),
     genderId: student.gender_id ?? student.person?.gender_id ?? 0,
     genderLabel: genderHonorific(student.gender_id ?? student.person?.gender_id),
-    class: classToRoman(sec ? `${cls} – ${sec}` : cls),
+    // Section omitted per School Record Sheet redesign (class only).
+    class: classToRoman(cls),
     dob: dobFormatted,
-    dobWords: rawDob ? dobToWords(rawDob) : 'N/A',
+    dobWords: rawDob ? dobToWords(rawDob) : '—',
     admissionNo: student.admission_no,
-    academicYear: exitAcademicYear || enrollment?.academic_year || 'N/A',
+    academicYear: exitAcademicYear || enrollment?.academic_year || '—',
     fromClass: studyPeriod.fromClass,
     fromYear: studyPeriod.fromYear,
     toClass: studyPeriod.toClass,
     toYear: exitAcademicYear,
     penNo: normalizePenNumber(student.pen_number),
-    address: 'Hyderabad',
+    aadhaarNo: String(aadhaarRaw || '').replace(/\D/g, ''),
+    religion: resolveReligionLabel(student),
+    address: String(student.village || '').trim(),
     nationality: 'Indian',
-    category: student.category?.name || 'General',
-    admissionDate: student.admission_date ? formatDDMMYYYY(student.admission_date) : 'N/A',
+    category: resolveCategoryLabel(student),
+    admissionDate: student.admission_date ? formatDDMMYYYY(student.admission_date) : '—',
+    lifecycleStatus: String(student.status || '').toLowerCase(),
     isFormerStudent,
   };
 }
@@ -2250,6 +3104,8 @@ export default function CertificateGenerator() {
   const [showTcFeeDialog, setShowTcFeeDialog] = useState(false);
   const [tcFeeDialogOutstanding, setTcFeeDialogOutstanding] = useState<number | null>(null);
   const [tcFeeDialogToggle, setTcFeeDialogToggle] = useState(false);
+  const [tcWithdrawalAction, setTcWithdrawalAction] = useState<TcCompletionAction | null>(null);
+  const [withdrawingStudent, setWithdrawingStudent] = useState(false);
   const certificateRef = useRef<View>(null);
 
   const step = generated ? 3 : studentData ? 2 : 1;
@@ -2269,13 +3125,39 @@ export default function CertificateGenerator() {
       StudentService.getParents(studentRecord.id, silent).catch(() => [] as any[]),
       StudentService.getEnrollments(studentRecord.id, silent).catch(() => [] as any[]),
     ]);
-    setStudentData(buildStudentDataFromRecord(fullStudent, parents, enrollments));
+    const embeddedParents = Array.isArray((fullStudent as any)?.parents)
+      ? (fullStudent as any).parents
+      : [];
+
+    const dateRange = await resolveAttendanceDateRange(fullStudent, enrollments);
+    const attendance = await StudentService.getAttendance(
+      studentRecord.id,
+      {
+        ...(dateRange.from_date && dateRange.to_date
+          ? { from_date: dateRange.from_date, to_date: dateRange.to_date }
+          : {}),
+        limit: 1,
+      },
+      silent,
+    ).catch(() => null);
+
+    setStudentData(buildStudentDataFromRecord(
+      fullStudent,
+      mergeParentLists(parents, embeddedParents),
+      enrollments,
+    ));
+    setTcFields({
+      ...DEFAULT_TC_FIELDS,
+      applicationDate: new Date().toLocaleDateString('en-IN'),
+      ...attendanceFieldsFromSummary(attendance?.summary),
+    });
     setSearchMatches(null);
     // Fee waiver is per-student for this session — clear when loading another student.
     setTcSkipFeeCheckStudentId(null);
     setShowTcFeeDialog(false);
     setTcFeeDialogToggle(false);
     setTcFeeDialogOutstanding(null);
+    setTcWithdrawalAction(null);
   }, []);
 
   // ── Fetch student ──────────────────────────────────────────────────────────
@@ -2294,6 +3176,7 @@ export default function CertificateGenerator() {
     setShowTcFeeDialog(false);
     setTcFeeDialogToggle(false);
     setTcFeeDialogOutstanding(null);
+    setTcWithdrawalAction(null);
     try {
       const query = studentId.trim();
       const silent = { silent: true } as const;
@@ -2416,6 +3299,40 @@ export default function CertificateGenerator() {
     setShowEdit(false);
   }, []);
 
+  const offerTcWithdrawal = useCallback((action: TcCompletionAction) => {
+    if (selectedType === 'TC' && studentData?.lifecycleStatus === 'active') {
+      setTcWithdrawalAction(action);
+    }
+  }, [selectedType, studentData]);
+
+  const handleWithdrawStudent = async () => {
+    if (!studentData || withdrawingStudent) return;
+
+    setWithdrawingStudent(true);
+    try {
+      const statuses = await StudentService.getStatuses();
+      const withdrawnStatus = statuses.find(status => status.code.toLowerCase() === 'withdrawn');
+      if (!withdrawnStatus) {
+        throw new Error('The Withdrawn student status is not configured for this school.');
+      }
+
+      await StudentService.update(studentData.id, { status_id: withdrawnStatus.id });
+      const withdrawnStudentName = studentData.name;
+      setStudentData(current => current?.id === studentData.id
+        ? { ...current, lifecycleStatus: 'withdrawn', isFormerStudent: true }
+        : current);
+      setTcWithdrawalAction(null);
+      alertCompat(
+        'Student Withdrawn',
+        `${withdrawnStudentName} was moved from Active to Withdrawn. All historical records were retained.`,
+      );
+    } catch (err: any) {
+      alertCompat('Withdrawal Failed', err?.message || 'Could not withdraw the student. Please try again.');
+    } finally {
+      setWithdrawingStudent(false);
+    }
+  };
+
   // ── Print certificate ──────────────────────────────────────────────────────
   const handlePrint = async () => {
     if (!studentData || !selectedType) return;
@@ -2425,19 +3342,20 @@ export default function CertificateGenerator() {
       if (Platform.OS === 'web') {
         const element = resolveCertificateElement(certificateRef);
         await printCertificateElement(element, pdfFormat);
-        return;
+      } else {
+        const logoDataUri = await getLogoDataUri();
+        const html = buildCertificateHTML(
+          studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout, bonafideHeaderTheme,
+        );
+        const Print = await import('expo-print');
+        await Print.printAsync({
+          html,
+          width: paper.widthPt,
+          height: paper.heightPt,
+        });
       }
 
-      const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
-      const html = buildCertificateHTML(
-        studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout, bonafideHeaderTheme,
-      );
-      const Print = await import('expo-print');
-      await Print.printAsync({
-        html,
-        width: paper.widthPt,
-        height: paper.heightPt,
-      });
+      offerTcWithdrawal('printed');
     } catch (err: any) {
       alertCompat('Print Error', err?.message || 'Could not print certificate.');
     }
@@ -2456,7 +3374,7 @@ export default function CertificateGenerator() {
         const element = resolveCertificateElement(certificateRef);
         await downloadCertificatePdf(element, pdfFormat, fileName);
       } else {
-        const logoDataUri = await getLogoDataUri(schoolProfile.logoUrl);
+        const logoDataUri = await getLogoDataUri();
         const html = buildCertificateHTML(
           studentData, tcFields, selectedType, serialNo, logoDataUri, schoolProfile, tcLayout, bonafideHeaderTheme,
         );
@@ -2498,7 +3416,9 @@ export default function CertificateGenerator() {
         });
       } catch { /* non-blocking */ }
       setSaving(false);
+      offerTcWithdrawal('downloaded');
     } catch (err: any) {
+      setSaving(false);
       alertCompat('Export Failed', err?.message || 'Could not generate PDF.');
     }
   };
@@ -2516,6 +3436,7 @@ export default function CertificateGenerator() {
     setShowTcFeeDialog(false);
     setTcFeeDialogToggle(false);
     setTcFeeDialogOutstanding(null);
+    setTcWithdrawalAction(null);
   };
 
   return (
@@ -2725,6 +3646,19 @@ export default function CertificateGenerator() {
           onWaiveChange={setTcFeeDialogToggle}
           onCancel={handleTcFeeDialogCancel}
           onContinue={handleTcFeeDialogContinue}
+        />
+      )}
+
+      {/* ── Post-TC lifecycle confirmation ── */}
+      {studentData && (
+        <TcWithdrawalDialog
+          visible={tcWithdrawalAction !== null}
+          isDark={isDark}
+          studentName={studentData.name}
+          completedAction={tcWithdrawalAction}
+          withdrawing={withdrawingStudent}
+          onKeepActive={() => setTcWithdrawalAction(null)}
+          onWithdraw={handleWithdrawStudent}
         />
       )}
     </View>

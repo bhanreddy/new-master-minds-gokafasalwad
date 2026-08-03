@@ -7,7 +7,7 @@ import { getHomeRouteForRole } from '../utils/portalRoutes';
 
 // List of public routes that don't require authentication.
 // 'welcome' is the branded landing; 'login' is the single unified login screen.
-const PUBLIC_ROUTES = ['welcome', 'login', 'signup'];
+const PUBLIC_ROUTES = ['welcome', 'login', 'signup', 'tc-qa'];
 
 export function useAuthGuard() {
   const { user, loading } = useAuth();

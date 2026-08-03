@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import AppDatePicker from '@/src/components/AppDatePicker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -111,12 +111,7 @@ export default function AddStudentScreen() {
   const selectedClass = classes.find((c) => c.id?.toString() === formData.class_id?.toString());
   const selectedSection = sections.find((s) => s.id?.toString() === formData.section_id?.toString());
 
-  useEffect(() => {
-    loadReferenceData();
-    if (id) { setIsEditMode(true); loadStudentData(id as string); }
-  }, [id]);
-
-  const loadReferenceData = async () => {
+  const loadReferenceData = useCallback(async () => {
     try {
       const [classesData, sectionsData, yearsData] = await Promise.all([
         ClassService.getClasses(), ClassService.getSections(), ClassService.getAcademicYears(),
@@ -126,12 +121,19 @@ export default function AddStudentScreen() {
       const currentYear = yearsData.find((y: AcademicYear) =>
         new Date(y.start_date) <= now && new Date(y.end_date) >= now
       );
-      if (currentYear) setFormData(prev => ({ ...prev, academic_year_id: currentYear.id }));
+      // Existing students keep the year returned by their enrollment/exit
+      // record; this default is only valid for a new admission.
+      if (currentYear && !id) setFormData(prev => ({ ...prev, academic_year_id: currentYear.id }));
     } catch { alertCompat('Error', 'Failed to load reference data'); }
     finally { setInitialLoading(false); }
-  };
+  }, [id]);
 
-  const loadStudentData = async (studentId: string) => {
+  useEffect(() => {
+    loadReferenceData();
+    setIsEditMode(Boolean(id));
+  }, [id, loadReferenceData]);
+
+  const loadStudentData = useCallback(async (studentId: string) => {
     try {
       const data: any = await StudentService.getById(studentId);
       if (data) {
@@ -148,8 +150,8 @@ export default function AddStudentScreen() {
           tc_number: data.tc_number || '',
           previous_school: typeof data.previous_school === 'boolean' ? data.previous_school : null,
           admission_date: data.admission_date || '', status_id: data.status_id || 1,
-          category_id: data.category_id || 1, religion_id: data.religion_id || 1,
-          blood_group_id: data.blood_group_id || 1, email: data.email || '',
+          category_id: data.category_id ?? undefined, religion_id: data.religion_id ?? undefined,
+          blood_group_id: data.blood_group_id ?? undefined, email: data.email || '',
           phone: data.phone || '', password: '', role_code: 'student',
           academic_year_id: data.exit_academic_year_id || data.current_enrollment?.academic_year_id || data.academic_year_id || '',
           class_id: data.current_enrollment?.class_id || '',
@@ -180,7 +182,16 @@ export default function AddStudentScreen() {
         });
       }
     } catch { alertCompat('Error', 'Failed to load student details'); }
-  };
+  }, []);
+
+  // Always reload an existing form when it becomes active again. This matters
+  // after an admin bulk update because the navigation stack may reuse the
+  // previously mounted Edit Student screen.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) loadStudentData(String(id));
+    }, [id, loadStudentData]),
+  );
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
@@ -459,7 +470,7 @@ export default function AddStudentScreen() {
             accentColor={SECTION_COLORS.personal.accent}
             isDark={isDark}
           />
-          {formData.previous_school === true && (
+          {(formData.previous_school === true || Boolean(formData.tc_number?.trim())) && (
             <InputField
               label="TC Number"
               placeholder="Enter TC number from previous school"
@@ -468,7 +479,7 @@ export default function AddStudentScreen() {
               icon="document-outline"
               accentColor={SECTION_COLORS.personal.accent}
               fieldKey="ims-stu-tc-number"
-              required
+              required={formData.previous_school === true}
               error={fieldErrors.tc_number}
             />
           )}

@@ -283,7 +283,7 @@ export const SCHOOL_CONFIG = {
 
   // The school logo used in headers and reports
   // Ensure the image exists in assets/images/
-  logo: require('../../assets/images/icon.png'),
+  logo: require('../../assets/images/icon-v2.png'),
 
   // Optional: School Address for reports
   address: "Narayanapet Road, Maddur, Narayanapet District, Telangana - 509411",
@@ -297,8 +297,8 @@ export const SCHOOL_CONFIG = {
   // Website or Email
   website: "www.ghsmaddur.in",
 
-  // CBSE Affiliation No (if applicable)
-  cbseAffiliationNo: "NA",
+  // CBSE Affiliation No — leave blank when not affiliated (hidden on TC)
+  cbseAffiliationNo: "",
 
   // School Code (if applicable)
   schoolCode: "46117",

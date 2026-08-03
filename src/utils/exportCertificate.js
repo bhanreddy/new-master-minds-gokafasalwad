@@ -149,11 +149,33 @@ export const printElementToWindow = async (target, type, options = {}) => {
     });
   }));
 
-  setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-    printWindow.addEventListener('afterprint', () => {
+  // Resolve only after the print flow closes so callers can safely show
+  // follow-up UI after printing instead of underneath the browser dialog.
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    let fallbackTimer;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       try { printWindow.close(); } catch { /* noop */ }
-    });
-  }, 250);
+      resolve();
+    };
+
+    printWindow.addEventListener('afterprint', finish, { once: true });
+
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+        // `window.print()` blocks in the supported web/desktop clients. This
+        // fallback covers engines that close the dialog without `afterprint`.
+        if (!settled) fallbackTimer = setTimeout(finish, 1000);
+      } catch (error) {
+        try { printWindow.close(); } catch { /* noop */ }
+        reject(error);
+      }
+    }, 250);
+  });
 };

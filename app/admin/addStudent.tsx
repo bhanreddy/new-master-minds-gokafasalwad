@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import AppDatePicker, { toYMD } from '@/src/components/AppDatePicker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -62,7 +62,7 @@ function normalizeDateInput(value?: string | null): string {
 }
 
 function mapParentByRelation(
-  parents: Array<{ relation?: string; relationship?: string; first_name?: string; last_name?: string; phone?: string; occupation?: string }> | null | undefined,
+  parents: { relation?: string; relationship?: string; first_name?: string; last_name?: string; phone?: string; occupation?: string }[] | null | undefined,
   relation: string
 ): ParentFormState {
   const match = (parents || []).find((parent) => {
@@ -166,15 +166,7 @@ export default function AddStudentScreen() {
   const selectedClass = classes.find((c) => c.id?.toString() === formData.class_id?.toString());
   const selectedSection = sections.find((s) => s.id?.toString() === formData.section_id?.toString());
 
-  useEffect(() => {
-    loadReferenceData();
-    if (id) {
-      setIsEditMode(true);
-      loadStudentData(id as string);
-    }
-  }, [id]);
-
-  const loadReferenceData = async () => {
+  const loadReferenceData = useCallback(async () => {
     try {
       const [classesData, sectionsData, yearsData] = await Promise.all([
         ClassService.getClasses(),
@@ -189,7 +181,10 @@ export default function AddStudentScreen() {
         const now = new Date();
         return new Date(y.start_date) <= now && new Date(y.end_date) >= now;
       });
-      if (currentYear) {
+      // Default the year only for a new admission. In edit mode the student's
+      // fetched enrollment/exit year is authoritative and must not lose a race
+      // against this reference-data request.
+      if (currentYear && !id) {
         setFormData((prev) => ({
           ...prev,
           academic_year_id: currentYear.id,
@@ -200,15 +195,20 @@ export default function AddStudentScreen() {
     } finally {
       setInitialLoading(false);
     }
-  };
+  }, [id]);
 
-  const loadStudentData = async (studentId: string) => {
+  useEffect(() => {
+    loadReferenceData();
+    setIsEditMode(Boolean(id));
+  }, [id, loadReferenceData]);
+
+  const loadStudentData = useCallback(async (studentId: string) => {
     try {
       const data: any = await StudentService.getById(studentId);
       if (data) {
         setCurrentPhotoUrl(data.photo_url || null);
         setPhotoSelection(undefined);
-        setFormData({
+        setFormData((previous) => ({
           first_name: data.first_name || '',
           middle_name: data.middle_name || '',
           last_name: data.last_name || '',
@@ -223,18 +223,18 @@ export default function AddStudentScreen() {
           previous_school: typeof data.previous_school === 'boolean' ? data.previous_school : null,
           admission_date: normalizeDateInput(data.admission_date),
           status_id: data.status_id || 1,
-          category_id: data.category_id || 1,
-          religion_id: data.religion_id || 1,
-          blood_group_id: data.blood_group_id || 1,
+          category_id: data.category_id ?? undefined,
+          religion_id: data.religion_id ?? undefined,
+          blood_group_id: data.blood_group_id ?? undefined,
           email: data.email || '',
           phone: data.phone || '',
           password: '',
-          academic_year_id: data.exit_academic_year_id || data.current_enrollment?.academic_year_id || data.academic_year_id || formData.academic_year_id,
+          academic_year_id: data.exit_academic_year_id || data.current_enrollment?.academic_year_id || data.academic_year_id || previous.academic_year_id,
           role_code: 'student',
           class_id: data.current_enrollment?.class_id || '',
           section_id: data.current_enrollment?.section_id || '',
           roll_number: data.current_enrollment?.roll_number,
-        } as any);
+        } as any));
         setFather(mapParentByRelation(data.parents, 'Father'));
         setMother(mapParentByRelation(data.parents, 'Mother'));
         setGuardian({
@@ -245,7 +245,16 @@ export default function AddStudentScreen() {
     } catch {
       alertCompat('Error', 'Failed to load student details');
     }
-  };
+  }, []);
+
+  // Expo Router keeps screens mounted in the navigation stack. Refetch whenever
+  // Edit Student regains focus so a completed bulk update cannot leave stale
+  // values in an existing form instance.
+  useFocusEffect(
+    useCallback(() => {
+      if (id) loadStudentData(String(id));
+    }, [id, loadStudentData]),
+  );
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
@@ -587,7 +596,7 @@ export default function AddStudentScreen() {
             accentColor={SECTION_COLORS.personal.accent}
             isDark={isDark}
           />
-          {formData.previous_school === true && (
+          {(formData.previous_school === true || Boolean(formData.tc_number?.trim())) && (
             <InputField
               label="TC Number"
               placeholder="Enter TC number from previous school"
@@ -596,7 +605,7 @@ export default function AddStudentScreen() {
               icon="document-outline"
               accentColor={SECTION_COLORS.personal.accent}
               fieldKey="ims-stu-tc-number"
-              required
+              required={formData.previous_school === true}
               error={fieldErrors.tc_number}
             />
           )}
