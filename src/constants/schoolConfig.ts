@@ -29,7 +29,7 @@ export function schoolColorWithAlpha(hex: string, alpha: number): string {
     h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   }
   if (!/^[0-9a-fA-F]{6}$/.test(h)) {
-    return `rgba(208,176,48,${alpha})`;
+    return `rgba(212,175,55,${alpha})`;
   }
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
@@ -51,54 +51,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultLightTheme,
     colors: {
       ...defaultLightTheme.colors,
-      // Primary – dark navy from logo ring text ("THE GLOBAL SCHOOL")
-      primary: '#103070',
-      primaryLight: '#3090D0',
-      primaryDark: '#0A2548',
-      // Secondary – golden yellow from logo background
-      secondary: '#D0B030',
-      // Accent – forest green from laurel wreath & framing bars
-      accent: '#227030',
-      // Backgrounds – warm gold-tinted neutrals
-      background: '#FFFBF0',
+      // Primary brand color – Rich purple (logo outer ring)
+      primary: '#6B2FA0',
+      primaryLight: '#9B59B6',
+      primaryDark: '#4A1A75',
+      // Secondary color – Orange/Amber (logo sun motif)
+      secondary: '#F5921B',
+      // Accent color – Golden amber (logo sun rays)
+      accent: '#F9A825',
+      // Backgrounds – pure white canvas
+      background: '#FFFFFF',
       surface: '#FFFFFF',
       card: '#FFFFFF',
-      // Text – navy-slate palette matching logo lettering
-      textPrimary: '#103050',
-      textStrong: '#0A2548',
-      textSecondary: '#4A6080',
-      textMuted: '#7A8FA8',
-      text: '#103050',
-      textTertiary: '#7A8FA8',
-      // Borders – gold-tinted
-      border: '#E8DFC8',
-      borderLight: '#F5F0E4',
+      // Text colors – neutral on white
+      textPrimary: '#171717',
+      textStrong: '#000000',
+      textSecondary: '#525252',
+      textMuted: '#737373',
+      text: '#171717',
+      textTertiary: '#737373',
+      // Borders – neutral gray
+      border: '#E5E7EB',
+      borderLight: '#F3F4F6',
       // Semantic colors
-      danger: '#C41E3A',
-      success: '#227030',
-      warning: '#E87820',
-      info: '#3090D0',
-      notification: '#C41E3A',
-      // Navigation – gold-tinted pills, navy active icons
-      navPill: '#F5F0E0',
-      navIconActive: '#103070',
-      navIconInactive: '#7A8FA8',
+      danger: '#D32F2F',
+      success: '#10B981',
+      warning: '#F59E0B',
+      info: '#6B2FA0',
+      notification: '#F5921B',
+      // Navigation – neutral pills
+      navPill: '#F5F5F5',
+      navIconActive: '#6B2FA0',
+      navIconInactive: '#737373',
       // Header/Footer backgrounds (with transparency for glass effect)
-      headerBg: 'rgba(255,251,240, 0.88)',
+      headerBg: 'rgba(255,255,255, 0.88)',
       footerBg: 'rgba(255,255,255, 0.92)',
       // Alert colors
-      alertBg: '#FEF9E8',
-      alertBorder: '#F5E6A8',
-      alertIcon: '#D0B030',
-      alertText: '#7A5A10',
+      alertBg: '#F3E5F5',
+      alertBorder: '#CE93D8',
+      alertIcon: '#6B2FA0',
+      alertText: '#4A1A75',
       alertBgDanger: '#FEF2F2',
       alertBorderDanger: '#FECACA',
-      alertIconDanger: '#C41E3A',
+      alertIconDanger: '#D32F2F',
       alertTextDanger: '#991B1B',
-      alertBgInfo: '#EDF6FC',
-      alertBorderInfo: '#B3D9EF',
-      alertIconInfo: '#3090D0',
-      alertTextInfo: '#0A4F7A',
+      alertBgInfo: '#F3E5F5',
+      alertBorderInfo: '#CE93D8',
+      alertIconInfo: '#6B2FA0',
+      alertTextInfo: '#4A1A75',
     },
     typography: {
       fontFamily: 'System',
@@ -162,54 +162,54 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
     ...defaultDarkTheme,
     colors: {
       ...defaultDarkTheme.colors,
-      // Primary – sky blue from inner circle, legible on dark backgrounds
-      primary: '#50B0D0',
-      primaryLight: '#7BC8E8',
-      primaryDark: '#3090D0',
-      // Secondary – bright gold from motto text
-      secondary: '#E5C85A',
-      // Accent – lighter wreath green
-      accent: '#4CAF6A',
-      // Dark backgrounds – deep navy tones
-      background: '#0A1520',
-      surface: '#102840',
-      card: '#102840',
-      // Light text for dark backgrounds
-      textPrimary: '#E8EDF5',
-      textStrong: '#F5F8FC',
-      textSecondary: '#9BB0C8',
-      textMuted: '#6A8098',
-      text: '#E8EDF5',
-      textTertiary: '#6A8098',
-      // Darker borders – navy-ink
-      border: '#1E3A58',
-      borderLight: '#2A4A68',
+      // Primary – lighter purple for dark mode legibility
+      primary: '#B57EDC',
+      primaryLight: '#CE93D8',
+      primaryDark: '#9B59B6',
+      // Secondary – light orange for dark mode
+      secondary: '#FFB74D',
+      // Accent – golden amber for dark backgrounds
+      accent: '#FFD54F',
+      // Dark backgrounds – pure black canvas
+      background: '#000000',
+      surface: '#000000',
+      card: '#000000',
+      // Light neutral text on black
+      textPrimary: '#FFFFFF',
+      textStrong: '#FFFFFF',
+      textSecondary: '#A3A3A3',
+      textMuted: '#737373',
+      text: '#FFFFFF',
+      textTertiary: '#737373',
+      // Neutral dark borders
+      border: '#262626',
+      borderLight: '#1A1A1A',
       // Lighter semantic colors for dark mode
       danger: '#F87171',
-      success: '#4CAF6A',
+      success: '#34D399',
       warning: '#FBBF24',
-      info: '#50B0D0',
-      notification: '#F87171',
-      // Navigation – navy tint
-      navPill: 'rgba(80,176,208, 0.15)',
-      navIconActive: '#50B0D0',
-      navIconInactive: '#4A6080',
-      // Header/Footer with dark navy glass effect
-      headerBg: 'rgba(10,21,32, 0.88)',
-      footerBg: 'rgba(16,40,64, 0.92)',
+      info: '#B57EDC',
+      notification: '#FFB74D',
+      // Navigation – neutral dark pills
+      navPill: 'rgba(255,255,255, 0.08)',
+      navIconActive: '#CE93D8',
+      navIconInactive: '#737373',
+      // Header/Footer with dark glass effect
+      headerBg: 'rgba(0,0,0, 0.88)',
+      footerBg: 'rgba(0,0,0, 0.92)',
       // Alert colors (dark mode)
-      alertBg: 'rgba(208,176,48, 0.12)',
-      alertBorder: 'rgba(208,176,48, 0.25)',
-      alertIcon: '#E5C85A',
-      alertText: '#F5E6A8',
-      alertBgDanger: 'rgba(196,30,58, 0.12)',
-      alertBorderDanger: 'rgba(196,30,58, 0.25)',
+      alertBg: 'rgba(107,47,160, 0.12)',
+      alertBorder: 'rgba(107,47,160, 0.25)',
+      alertIcon: '#CE93D8',
+      alertText: '#E1BEE7',
+      alertBgDanger: 'rgba(248,113,113, 0.1)',
+      alertBorderDanger: 'rgba(248,113,113, 0.2)',
       alertIconDanger: '#F87171',
       alertTextDanger: '#FECACA',
-      alertBgInfo: 'rgba(48,144,208, 0.12)',
-      alertBorderInfo: 'rgba(48,144,208, 0.25)',
-      alertIconInfo: '#50B0D0',
-      alertTextInfo: '#B3D9EF',
+      alertBgInfo: 'rgba(107,47,160, 0.15)',
+      alertBorderInfo: 'rgba(107,47,160, 0.3)',
+      alertIconInfo: '#B57EDC',
+      alertTextInfo: '#E1BEE7',
     },
     typography: {
       fontFamily: 'System',
@@ -273,46 +273,49 @@ export const schoolTheme: { light: SchoolTheme; dark: SchoolTheme } = {
 
 export const SCHOOL_CONFIG = {
   // The official name of the school displayed in headers and reports
-  name: "The Global School Ravulpally",
+  name: "Geetanjali High School Maddur",
 
   // Short line under the school name on the header ribbon (gold text)
-  tagline: "A School for IIT , JEE , NEET & Olympiads Foundations",
+  tagline: "Build Your Own Identity",
 
   // Motto / core values shown in the first info column of the ribbon (letterhead)
-  motto: "Knowledge is Power",
+  motto: "Thought , Action , Progress",
 
-  // Letterhead crest for UI, PDFs, and certificates (launcher icon stays icon-v2 in app.json)
+  // The school logo used in headers and reports
+  // Ensure the image exists in assets/images/
   logo: require('../../assets/images/icon.png'),
 
   // Optional: School Address for reports
-  address: "The Global School , Ravulpally , Vikarabad , Telangana , 509336",
+  address: "Narayanapet Road, Maddur, Narayanapet District, Telangana - 509411",
 
   // Optional: Contact info for reports
-  contact: "7780526027",
+  contact: "9573276939",
 
   // Optional: School email for letterhead / reports
-  email: "theglobalschool1@gmail.com",
+  email: "geetanjalihighschool.vvm@gmail.com",
 
   // Website or Email
-  website: "www.nexsyrus.com",
+  website: "www.ghsmaddur.in",
 
   // CBSE Affiliation No (if applicable)
   cbseAffiliationNo: "NA",
 
   // School Code (if applicable)
-  schoolCode: "TGSRAVULPALLY",
+  schoolCode: "46117",
 
   /**
    * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
-   * Palette extracted from the school logo: navy ring, green wreath, gold field, tricolor ribbon.
+   * Extracted from the logo: rich purple ring with golden-orange accents.
    */
   theme: {
-    /** Stripes, tagline text – bright gold from "KNOWLEDGE IS POWER" motto */
-    accent: '#F0D030',
-    /** Four-stop diagonal ribbon – navy → green → gold → saffron (logo + Indian flag ribbon) */
-    ribbonGradient: ['#103070', '#227030', '#D0B030', '#E87820'] as const,
+    /** Golden-orange stripes, dividers, and trim (logo sun rays) */
+    accent: '#F9A825',
+    /** Tagline text – warm gold */
+    ribbonTagline: '#FFE082',
+    /** Four-stop diagonal ribbon – deep purple to medium purple (logo outer ring) */
+    ribbonGradient: ['#3D1266', '#6B2FA0', '#7B2FB5', '#9B59B6'] as const,
     /** Optional stops for expo-linear-gradient (length must match ribbonGradient) */
-    ribbonGradientLocations: [0, 0.33, 0.66, 1] as const,
+    ribbonGradientLocations: [0, 0.30, 0.65, 1] as const,
     /** Main title on the ribbon */
     ribbonTitle: '#FFFFFF',
     /** Scrolling marquee dot separator */
@@ -328,5 +331,4 @@ export const SCHOOL_CONFIG = {
   },
 };
 
-/** Optional fallback shown on certificates when no recognition line is saved in school settings. */
 export const SCHOOL_RECOGNITION_LINE = '';
