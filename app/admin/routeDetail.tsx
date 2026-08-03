@@ -16,8 +16,13 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import { Swipeable } from 'react-native-gesture-handler';
+import {
+  NestableDraggableFlatList,
+  NestableScrollContainer,
+  RenderItemParams,
+  ScaleDecorator,
+} from 'react-native-draggable-flatlist';
+import { Swipeable, TouchableOpacity as GHTouchableOpacity } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
@@ -298,6 +303,15 @@ export default function RouteDetailScreen() {
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bulkSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopsRef = useRef<StopRow[]>([]);
+  const webDragFromRef = useRef<number | null>(null);
+  const webDragOverRef = useRef<number | null>(null);
+  const [webDraggingId, setWebDraggingId] = useState<string | null>(null);
+  const [webOverIndex, setWebOverIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    stopsRef.current = stops;
+  }, [stops]);
 
   const loadAll = useCallback(async () => {
     if (!routeId) return;
@@ -366,10 +380,10 @@ export default function RouteDetailScreen() {
 
   const onDragEndStops = async ({ data }: { data: StopRow[] }) => {
     const orderedIds = data.map((s) => s.id);
-    const unchanged = orderedIds.every((id, i) => id === stops[i]?.id);
+    const unchanged = orderedIds.every((id, i) => id === stopsRef.current[i]?.id);
     if (unchanged) return;
 
-    const prev = stops;
+    const prev = stopsRef.current;
     setStops(data.map((s, i) => ({ ...s, stop_order: i + 1 })));
     try {
       await api.post(`/transport/routes/${routeId}/stops/reorder`, {
@@ -382,11 +396,89 @@ export default function RouteDetailScreen() {
   };
 
   const moveStop = async (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= stops.length || fromIndex === toIndex) return;
-    const reordered = [...stops];
+    const list = stopsRef.current;
+    if (toIndex < 0 || toIndex >= list.length || fromIndex === toIndex) return;
+    const reordered = [...list];
     const [moved] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
     await onDragEndStops({ data: reordered });
+  };
+
+  /** Expo web: RNGH pan drag is unreliable with mouse — use document pointer drag instead. */
+  const beginWebStopDrag = (fromIndex: number) => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const list = stopsRef.current;
+    if (fromIndex < 0 || fromIndex >= list.length) return;
+
+    const origin = list.map((s) => ({ ...s }));
+    webDragFromRef.current = fromIndex;
+    webDragOverRef.current = fromIndex;
+    setWebDraggingId(list[fromIndex].id);
+    setWebOverIndex(fromIndex);
+
+    const indexUnderPointer = (clientY: number) => {
+      const rows = Array.from(document.querySelectorAll('[data-stop-index]'));
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (clientY >= rect.top && clientY <= rect.bottom) {
+          const idx = Number(row.getAttribute('data-stop-index'));
+          if (Number.isFinite(idx)) return idx;
+        }
+      }
+      return null;
+    };
+
+    const onMove = (ev: MouseEvent) => {
+      ev.preventDefault();
+      const to = indexUnderPointer(ev.clientY);
+      const from = webDragFromRef.current;
+      if (to == null || from == null || to === from) return;
+
+      const current = [...stopsRef.current];
+      const [moved] = current.splice(from, 1);
+      current.splice(to, 0, moved);
+      const ordered = current.map((s, i) => ({ ...s, stop_order: i + 1 }));
+      stopsRef.current = ordered;
+      setStops(ordered);
+      webDragFromRef.current = to;
+      webDragOverRef.current = to;
+      setWebOverIndex(to);
+    };
+
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+      webDragFromRef.current = null;
+      webDragOverRef.current = null;
+      setWebDraggingId(null);
+      setWebOverIndex(null);
+
+      const next = stopsRef.current;
+      const unchanged = next.every((s, i) => s.id === origin[i]?.id);
+      if (unchanged) return;
+
+      void (async () => {
+        try {
+          await api.post(`/transport/routes/${routeId}/stops/reorder`, {
+            orderedStopIds: next.map((s) => s.id),
+          });
+        } catch (e: any) {
+          setStops(origin);
+          stopsRef.current = origin;
+          alertCompat('Error', e?.message || 'Reorder failed');
+        }
+      })();
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
   const confirmDeleteRoute = () => {
@@ -676,152 +768,220 @@ export default function RouteDetailScreen() {
 
   const tripChip = tripBadge();
 
-  const renderStop = ({ item, drag, isActive, getIndex }: RenderItemParams<StopRow>) => {
-    const index = getIndex?.() ?? stops.findIndex((s) => s.id === item.id);
+  const renderStopCard = (
+    item: StopRow,
+    index: number,
+    opts: { isActive?: boolean; isDropTarget?: boolean; nativeDrag?: () => void } = {},
+  ) => {
+    const { isActive = false, isDropTarget = false, nativeDrag } = opts;
     const canMoveUp = index > 0;
     const canMoveDown = index >= 0 && index < stops.length - 1;
     const isExpanded = expandedStopId === item.id;
-    const stopStudents = students.filter(s => s.stop_id === item.id);
+    const stopStudents = students.filter((s) => s.stop_id === item.id);
+
+    const dragHandleIcon = (
+      <Ionicons
+        name="reorder-three"
+        size={26}
+        color={isActive ? theme.colors.primary : theme.colors.textMuted}
+      />
+    );
 
     return (
-      <ScaleDecorator>
-        <Swipeable
-          renderRightActions={() => (
+      <View
+        {...(Platform.OS === 'web'
+          ? ({ dataSet: { stopIndex: String(index) }, 'data-stop-index': String(index) } as any)
+          : null)}
+        style={[
+          styles.stopCardOuter,
+          isActive && { opacity: 0.55, elevation: 6 },
+          isDropTarget && !isActive && { borderColor: theme.colors.primary, borderWidth: 2 },
+          { borderColor: isDropTarget && !isActive ? theme.colors.primary : theme.colors.border },
+          isActive ? { overflow: 'visible' } : null,
+        ]}
+      >
+        <View style={[styles.stopCardInner, { backgroundColor: theme.colors.surface }]}>
+          <Pressable
+            onPress={() => {
+              if (isActive || webDraggingId) return;
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setExpandedStopId(isExpanded ? null : item.id);
+            }}
+            style={styles.stopMainTap}
+          >
+            <View style={[styles.orderBadge, { backgroundColor: theme.colors.navPill }]}>
+              <Text style={styles.orderBadgeTxt}>{item.stop_order}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+              <Text style={[styles.stopName, { color: theme.colors.textStrong }]} numberOfLines={2}>
+                {item.name || 'Unnamed stop'}
+              </Text>
+              <Text style={styles.stopMeta}>{studentCountAtStop(item.id)} student(s)</Text>
+            </View>
+          </Pressable>
+
+          <View style={styles.stopActionRow}>
             <TouchableOpacity
-              style={styles.swipeDel}
-              onPress={() => confirmDeleteStop(item)}
+              onPress={() => openEditStopModal(item)}
+              hitSlop={8}
+              style={[styles.stopActionBtn, { backgroundColor: theme.colors.borderLight }]}
             >
-              <Ionicons name="trash-outline" size={22} color="#fff" />
+              <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
             </TouchableOpacity>
-          )}
-        >
-          <View style={[
-            styles.stopCardOuter,
-            isActive && { opacity: 0.9 },
-            { borderColor: theme.colors.border }
-          ]}>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                setExpandedStopId(isExpanded ? null : item.id);
-              }}
-              style={[styles.stopCardInner, { backgroundColor: theme.colors.surface }]}
+            <TouchableOpacity
+              onPress={() => confirmDeleteStop(item)}
+              hitSlop={8}
+              style={[styles.stopActionBtn, { backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2' }]}
             >
-              <View style={[styles.orderBadge, { backgroundColor: theme.colors.navPill }]}>
-                <Text style={styles.orderBadgeTxt}>{item.stop_order}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
-                <Text style={[styles.stopName, { color: theme.colors.textStrong }]} numberOfLines={2}>
-                  {item.name || 'Unnamed stop'}
-                </Text>
-                <Text style={styles.stopMeta}>{studentCountAtStop(item.id)} student(s)</Text>
-              </View>
-
-              <View style={styles.stopActionRow}>
-                <TouchableOpacity
-                  onPress={() => openEditStopModal(item)}
-                  hitSlop={8}
-                  style={[styles.stopActionBtn, { backgroundColor: theme.colors.borderLight }]}
-                >
-                  <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => confirmDeleteStop(item)}
-                  hitSlop={8}
-                  style={[styles.stopActionBtn, { backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2' }]}
-                >
-                  <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.stopReorderCol}>
-                <TouchableOpacity
-                  onPress={() => moveStop(index, index - 1)}
-                  disabled={!canMoveUp}
-                  style={styles.stopMoveBtn}
-                  hitSlop={6}
-                >
-                  <Ionicons name="chevron-up" size={16} color={canMoveUp ? theme.colors.primary : theme.colors.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => moveStop(index, index + 1)}
-                  disabled={!canMoveDown}
-                  style={styles.stopMoveBtn}
-                  hitSlop={6}
-                >
-                  <Ionicons name="chevron-down" size={16} color={canMoveDown ? theme.colors.primary : theme.colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <Pressable
-                onLongPress={drag}
-                delayLongPress={Platform.OS === 'web' ? 200 : 120}
-                style={({ pressed }) => [
-                  styles.dragHandle,
-                  pressed && styles.dragHandlePressed,
-                  Platform.OS === 'web' && ({ cursor: 'grab' } as any),
-                ]}
-              >
-                <Ionicons name="reorder-three" size={26} color={theme.colors.textMuted} />
-              </Pressable>
-            </Pressable>
-
-            {isExpanded && (
-              <Animated.View
-                entering={FadeInDown.duration(200)}
-                style={[
-                  styles.stopExpandedArea,
-                  { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }
-                ]}
-              >
-                <View style={styles.stopExpandedHeader}>
-                  <Text style={styles.stopExpandedTitle}>Assigned Students</Text>
-                  <TouchableOpacity
-                    style={[styles.stopAddBtn, { backgroundColor: theme.colors.primary }]}
-                    onPress={() => {
-                      setBulkAssignModal(item);
-                      setBulkSelected(new Set());
-                      setBulkSearchQ('');
-                    }}
-                  >
-                    <Ionicons name="add" size={16} color="#fff" />
-                    <Text style={styles.stopAddBtnTxt}>Add Students</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {stopStudents.length > 0 ? (
-                  stopStudents.map(st => (
-                    <ClayView key={st.assignment_id} color={theme.colors.surface} radius={14} style={styles.expandedStudentRow} flat>
-                      <View style={[styles.expandedAvatar, { backgroundColor: theme.colors.navPill }]}>
-                        <Text style={[styles.expandedAvatarTxt, { color: theme.colors.primary }]}>
-                          {st.student_name?.charAt(0) || 'S'}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.expandedStudentName, { color: theme.colors.textStrong }]}>{st.student_name}</Text>
-                        <Text style={styles.expandedStudentMeta}>
-                          {st.admission_no} • {st.class_name ?? '—'}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => removeStudent(st.student_id)}
-                        hitSlop={8}
-                        style={styles.expandedRemoveBtn}
-                      >
-                        <Text style={styles.expandedRemoveBtnTxt}>Remove</Text>
-                      </TouchableOpacity>
-                    </ClayView>
-                  ))
-                ) : (
-                  <Text style={styles.expandedEmpty}>No students assigned.</Text>
-                )}
-              </Animated.View>
-            )}
+              <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+            </TouchableOpacity>
           </View>
-        </Swipeable>
+
+          <View style={styles.stopReorderCol}>
+            <TouchableOpacity
+              onPress={() => moveStop(index, index - 1)}
+              disabled={!canMoveUp || !!webDraggingId}
+              style={styles.stopMoveBtn}
+              hitSlop={6}
+            >
+              <Ionicons name="chevron-up" size={16} color={canMoveUp ? theme.colors.primary : theme.colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => moveStop(index, index + 1)}
+              disabled={!canMoveDown || !!webDraggingId}
+              style={styles.stopMoveBtn}
+              hitSlop={6}
+            >
+              <Ionicons name="chevron-down" size={16} color={canMoveDown ? theme.colors.primary : theme.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {Platform.OS === 'web' ? (
+            // Native div so browser mouse drag works (RNGH/Pressable is flaky on Expo web).
+            React.createElement(
+              'div',
+              {
+                role: 'button',
+                'aria-label': 'Drag to reorder stop',
+                onMouseDown: (e: any) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  beginWebStopDrag(index);
+                },
+                style: {
+                  padding: '10px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: isActive ? 'grabbing' : 'grab',
+                  userSelect: 'none',
+                  touchAction: 'none',
+                  borderRadius: 8,
+                },
+              },
+              dragHandleIcon,
+            )
+          ) : (
+            <GHTouchableOpacity
+              onLongPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                nativeDrag?.();
+              }}
+              delayLongPress={100}
+              style={[styles.dragHandle, isActive && styles.dragHandlePressed]}
+              accessibilityLabel="Drag to reorder stop"
+            >
+              {dragHandleIcon}
+            </GHTouchableOpacity>
+          )}
+        </View>
+
+        {isExpanded && !isActive && (
+          <Animated.View
+            entering={FadeInDown.duration(200)}
+            style={[
+              styles.stopExpandedArea,
+              { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border },
+            ]}
+          >
+            <View style={styles.stopExpandedHeader}>
+              <Text style={styles.stopExpandedTitle}>Assigned Students</Text>
+              <TouchableOpacity
+                style={[styles.stopAddBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={() => {
+                  setBulkAssignModal(item);
+                  setBulkSelected(new Set());
+                  setBulkSearchQ('');
+                }}
+              >
+                <Ionicons name="add" size={16} color="#fff" />
+                <Text style={styles.stopAddBtnTxt}>Add Students</Text>
+              </TouchableOpacity>
+            </View>
+
+            {stopStudents.length > 0 ? (
+              stopStudents.map((st) => (
+                <ClayView key={st.assignment_id} color={theme.colors.surface} radius={14} style={styles.expandedStudentRow} flat>
+                  <View style={[styles.expandedAvatar, { backgroundColor: theme.colors.navPill }]}>
+                    <Text style={[styles.expandedAvatarTxt, { color: theme.colors.primary }]}>
+                      {st.student_name?.charAt(0) || 'S'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.expandedStudentName, { color: theme.colors.textStrong }]}>{st.student_name}</Text>
+                    <Text style={styles.expandedStudentMeta}>
+                      {st.admission_no} • {st.class_name ?? '—'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => removeStudent(st.student_id)}
+                    hitSlop={8}
+                    style={styles.expandedRemoveBtn}
+                  >
+                    <Text style={styles.expandedRemoveBtnTxt}>Remove</Text>
+                  </TouchableOpacity>
+                </ClayView>
+              ))
+            ) : (
+              <Text style={styles.expandedEmpty}>No students assigned.</Text>
+            )}
+          </Animated.View>
+        )}
+      </View>
+    );
+  };
+
+  const renderStop = ({ item, drag, isActive, getIndex }: RenderItemParams<StopRow>) => {
+    const index = getIndex?.() ?? stops.findIndex((s) => s.id === item.id);
+    const card = renderStopCard(item, index, { isActive, nativeDrag: drag });
+    return (
+      <ScaleDecorator activeScale={1.03}>
+        {isActive ? (
+          card
+        ) : (
+          <Swipeable
+            enabled={!isActive}
+            renderRightActions={() => (
+              <TouchableOpacity style={styles.swipeDel} onPress={() => confirmDeleteStop(item)}>
+                <Ionicons name="trash-outline" size={22} color="#fff" />
+              </TouchableOpacity>
+            )}
+          >
+            {card}
+          </Swipeable>
+        )}
       </ScaleDecorator>
     );
   };
+
+  const addStopFooter = (
+    <PressScale onPress={() => setAddStopOpen(true)}>
+      <View style={[styles.addStopButton, { borderColor: theme.colors.primary }]}>
+        <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
+        <Text style={[styles.addStopBtnTxt, { color: theme.colors.primary }]}>Add Stop</Text>
+      </View>
+    </PressScale>
+  );
 
   if (loading && stops.length === 0 && students.length === 0) {
     return (
@@ -849,10 +1009,11 @@ export default function RouteDetailScreen() {
         rightAction={{ icon: 'trash-outline', onPress: confirmDeleteRoute }}
       />
 
-      <FlatList
-        data={[]}
-        renderItem={null}
-        ListHeaderComponent={
+      <NestableScrollContainer
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
           <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
             {/* Top Summarized Clay Card */}
             <ClayView color={theme.colors.card} style={styles.topSummaryCard}>
@@ -938,31 +1099,44 @@ export default function RouteDetailScreen() {
               />
             </View>
           </View>
-        }
-        ListFooterComponent={
-          tab === 'stops' ? (
+
+          {tab === 'stops' ? (
             <View style={{ paddingHorizontal: 16, paddingBottom: 60 }}>
               {stops.length > 1 && (
                 <Text style={styles.reorderHint}>
-                  💡 Drag the handles or use arrow icons to set stop sequence order.
+                  Drag the ≡ handle up or down to reorder stops (arrows also work).
                 </Text>
               )}
 
-              <DraggableFlatList
-                data={stops}
-                keyExtractor={(item) => item.id}
-                onDragEnd={onDragEndStops}
-                renderItem={renderStop}
-                scrollEnabled={false}
-                ListFooterComponent={
-                  <PressScale onPress={() => setAddStopOpen(true)}>
-                    <View style={[styles.addStopButton, { borderColor: theme.colors.primary }]}>
-                      <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
-                      <Text style={[styles.addStopBtnTxt, { color: theme.colors.primary }]}>Add Stop</Text>
-                    </View>
-                  </PressScale>
-                }
-              />
+              {Platform.OS === 'web' ? (
+                <View style={webDraggingId ? ({ userSelect: 'none', cursor: 'grabbing' } as any) : undefined}>
+                  {stops.map((item, index) =>
+                    React.createElement(
+                      'div',
+                      {
+                        key: item.id,
+                        'data-stop-index': String(index),
+                        style: { width: '100%' },
+                      },
+                      renderStopCard(item, index, {
+                        isActive: webDraggingId === item.id,
+                        isDropTarget: false,
+                      }),
+                    ),
+                  )}
+                  {addStopFooter}
+                </View>
+              ) : (
+                <NestableDraggableFlatList
+                  data={stops}
+                  keyExtractor={(item) => item.id}
+                  onDragEnd={onDragEndStops}
+                  renderItem={renderStop}
+                  scrollEnabled={false}
+                  activationDistance={12}
+                  ListFooterComponent={addStopFooter}
+                />
+              )}
             </View>
           ) : (
             <View style={{ paddingHorizontal: 16, paddingBottom: 60 }}>
@@ -1012,9 +1186,8 @@ export default function RouteDetailScreen() {
                 }
               />
             </View>
-          )
-        }
-      />
+          )}
+      </NestableScrollContainer>
 
       {/* Select Driver Bottom Sheet */}
       <Modal visible={driverModal} transparent animationType="slide">
@@ -1495,6 +1668,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 14,
   },
+  stopMainTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+    marginRight: 8,
+  },
   orderBadge: {
     width: 32,
     height: 32,
@@ -1537,9 +1717,11 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   dragHandle: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
     justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
   },
   dragHandlePressed: {
     opacity: 0.6,

@@ -25,6 +25,8 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Improves contrast when the control is placed over navy, black, or imagery. */
   darkBackground?: boolean;
+  /** Narrow EN/TE control for dense headers. */
+  compact?: boolean;
   trackColor?: string;
   borderColor?: string;
   activeBackgroundColor?: string;
@@ -37,8 +39,8 @@ type Props = {
 };
 
 const OPTIONS = [
-  { code: 'en' as const, label: 'EN' },
-  { code: 'te' as const, label: 'తెలుగు' },
+  { code: 'en' as const, label: 'EN', compactLabel: 'EN' },
+  { code: 'te' as const, label: 'తెలుగు', compactLabel: 'TE' },
 ] as const;
 
 /**
@@ -50,6 +52,7 @@ const OPTIONS = [
 const LanguageToggle: React.FC<Props> = ({
   style,
   darkBackground = false,
+  compact = false,
   trackColor,
   borderColor,
   activeBackgroundColor,
@@ -61,7 +64,9 @@ const LanguageToggle: React.FC<Props> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const isTeluguLang = language != null ? language === 'te' : isTelugu(i18n.language);
-  const thumbX = useSharedValue(isTeluguLang ? OPTION_WIDTH : 0);
+  const optionWidth = compact ? COMPACT_OPTION_WIDTH : OPTION_WIDTH;
+  const optionHeight = compact ? COMPACT_OPTION_HEIGHT : OPTION_HEIGHT;
+  const thumbX = useSharedValue(isTeluguLang ? optionWidth : 0);
   const resolvedTrackColor =
     trackColor ??
     (darkBackground ? 'rgba(116,101,184,0.24)' : 'rgba(124,107,184,0.12)');
@@ -76,13 +81,13 @@ const LanguageToggle: React.FC<Props> = ({
     (darkBackground ? '#E9E5FF' : 'rgba(55,48,107,0.62)');
 
   useEffect(() => {
-    thumbX.value = withSpring(isTeluguLang ? OPTION_WIDTH : 0, {
+    thumbX.value = withSpring(isTeluguLang ? optionWidth : 0, {
       damping: 17,
       stiffness: 210,
       mass: 0.72,
       overshootClamping: false,
     });
-  }, [isTeluguLang, thumbX]);
+  }, [isTeluguLang, optionWidth, thumbX]);
 
   const thumbMotionStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: thumbX.value }],
@@ -114,9 +119,11 @@ const LanguageToggle: React.FC<Props> = ({
       style={[
         styles.track,
         darkBackground && styles.trackDark,
+        compact && styles.trackCompact,
         {
           backgroundColor: resolvedTrackColor,
           borderColor: resolvedBorderColor,
+          minHeight: optionHeight + TRACK_PAD * 2,
         },
         style,
       ]}
@@ -131,14 +138,19 @@ const LanguageToggle: React.FC<Props> = ({
         style={[
           styles.thumb,
           darkBackground && styles.thumbDark,
-          { backgroundColor: resolvedActiveBackgroundColor },
+          {
+            backgroundColor: resolvedActiveBackgroundColor,
+            width: optionWidth,
+            top: TRACK_PAD,
+            bottom: TRACK_PAD,
+          },
           thumbMotionStyle,
         ]}
       >
         <View style={styles.thumbHighlight} />
       </Animated.View>
 
-      {OPTIONS.map(({ code, label }) => {
+      {OPTIONS.map(({ code, label, compactLabel }) => {
         const isActive = code === (isTeluguLang ? 'te' : 'en');
 
         return (
@@ -154,6 +166,7 @@ const LanguageToggle: React.FC<Props> = ({
             android_ripple={null}
             style={({ pressed }) => [
               styles.option,
+              { width: optionWidth, height: optionHeight },
               pressed && styles.optionPressed,
               Platform.OS === 'web' && ({ cursor: 'pointer' } as unknown as ViewStyle),
             ]}
@@ -164,7 +177,8 @@ const LanguageToggle: React.FC<Props> = ({
               style={[
                 styles.label,
                 Platform.OS === 'android' && styles.labelAndroid,
-                code === 'te' && styles.teluguLabel,
+                code === 'te' && !compact && styles.teluguLabel,
+                compact && styles.labelCompact,
                 isActive ? styles.labelActive : styles.labelInactive,
                 !isActive && darkBackground && styles.labelInactiveDark,
                 {
@@ -175,7 +189,7 @@ const LanguageToggle: React.FC<Props> = ({
                 !isActive && inactiveLabelStyle,
               ]}
             >
-              {label}
+              {compact ? compactLabel : label}
             </Text>
           </Pressable>
         );
@@ -186,6 +200,8 @@ const LanguageToggle: React.FC<Props> = ({
 
 const OPTION_WIDTH = 48;
 const OPTION_HEIGHT = 30;
+const COMPACT_OPTION_WIDTH = 34;
+const COMPACT_OPTION_HEIGHT = 26;
 const TRACK_PAD = 3;
 
 const styles = StyleSheet.create({
@@ -198,6 +214,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: OPTION_HEIGHT + TRACK_PAD * 2,
     // No elevation / shadow — Android draws opaque white/purple under translucent elevated views.
+  },
+  trackCompact: {
+    minHeight: COMPACT_OPTION_HEIGHT + TRACK_PAD * 2,
   },
   trackDark: {
     // A soft outline keeps the track defined on both flat navy and gradients.
@@ -217,9 +236,6 @@ const styles = StyleSheet.create({
   },
   thumb: {
     position: 'absolute',
-    top: TRACK_PAD,
-    bottom: TRACK_PAD,
-    width: OPTION_WIDTH,
     left: TRACK_PAD,
     borderRadius: 999,
     overflow: 'hidden',
@@ -239,8 +255,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.42)',
   },
   option: {
-    width: OPTION_WIDTH,
-    height: OPTION_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
@@ -253,6 +267,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.35,
     textAlign: 'center',
+  },
+  labelCompact: {
+    fontSize: 11,
+    letterSpacing: 0.2,
   },
   teluguLabel: {
     fontSize: 10.5,

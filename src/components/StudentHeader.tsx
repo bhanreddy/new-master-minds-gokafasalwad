@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Platform, ViewStyle, TextStyle, Image } from 'react-native';
+import { View, StyleSheet, Platform, ViewStyle, TextStyle, Image, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -21,12 +21,24 @@ import { SCHOOL_CONFIG, schoolColorWithAlpha } from '../constants/schoolConfig';
 /** Brand violet used to tint every clay puck's shadow across the app. */
 const CLAY_ACCENT = '#7C6BB8';
 const GOLD = SCHOOL_CONFIG.theme.accent;
+const ICON_SIZE = 36;
 
-/** Short school label for the center brand pill (first meaningful word). */
-const SCHOOL_BRAND =
-    SCHOOL_CONFIG.name.split(/\s+/).find((w) => w.length > 2 && !/^school$/i.test(w))
-    ?? SCHOOL_CONFIG.name.split(/\s+/)[0]
-    ?? 'School';
+/** Short school label for the center brand pill (first 1–2 name tokens). */
+const SCHOOL_BRAND = (() => {
+    const words = SCHOOL_CONFIG.name.split(/\s+/).filter(Boolean);
+    return words.slice(0, Math.min(2, words.length)).join(' ') || 'School';
+})();
+
+/** Compact subtitle that fits a header — never the full ribbon tagline. */
+const SCHOOL_BRAND_SUB = (() => {
+    const words = SCHOOL_CONFIG.name.split(/\s+/).filter(Boolean);
+    const remainder = words.slice(2).join(' ');
+    if (remainder) return remainder;
+    if (SCHOOL_CONFIG.schoolCode && SCHOOL_CONFIG.schoolCode !== 'NA') {
+        return SCHOOL_CONFIG.schoolCode;
+    }
+    return 'Student';
+})();
 
 interface StudentHeaderProps {
     onMenuPress?: () => void;
@@ -48,6 +60,8 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     const [menuVisible, setMenuVisible] = useState(false);
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
+    const { width } = useWindowDimensions();
+    const isCompact = width < 420;
 
     React.useEffect(() => {
         setIsTeluguLang(isTeluguCheck(i18n.language));
@@ -119,7 +133,8 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     /** Driver tabs already have bottom nav — hide redundant web back unless explicitly requested. */
     const showNavBack = menuUserType === 'driver'
       ? showBackButton
-      : (showBackButton || isWeb);
+      // Home uses scrollY; skip auto web-back there so the brand pill can breathe.
+      : (showBackButton || (isWeb && !scrollY));
     // Student navigation now lives in the bottom dock. Keep the drawer trigger
     // only for driver screens that still use MenuOverlay.
     const showNavMenu = menuUserType !== 'student'
@@ -143,7 +158,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
             color: interpolateColor(
                 scrollY.value,
                 [0, 50],
-                [schoolColorWithAlpha(GOLD, 0.92), isDark ? '#F09822' : '#B45309']
+                [schoolColorWithAlpha(GOLD, 0.92), isDark ? '#38BDF8' : '#0369A1']
             ),
         };
     }, [isDark]);
@@ -151,20 +166,20 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     const brandPillStyle = useAnimatedStyle(() => {
         if (!scrollY) {
             return {
-                backgroundColor: 'rgba(255,255,255,0.08)',
-                borderColor: 'rgba(255,255,255,0.14)',
+                backgroundColor: 'rgba(255,255,255,0.10)',
+                borderColor: 'rgba(255,255,255,0.16)',
             };
         }
         return {
             backgroundColor: interpolateColor(
                 scrollY.value,
                 [0, 50],
-                ['rgba(255,255,255,0.08)', isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,107,184,0.10)']
+                ['rgba(255,255,255,0.10)', isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,107,184,0.08)']
             ),
             borderColor: interpolateColor(
                 scrollY.value,
                 [0, 50],
-                ['rgba(255,255,255,0.14)', schoolColorWithAlpha(CLAY_ACCENT, isDark ? 0.28 : 0.22)]
+                ['rgba(255,255,255,0.16)', schoolColorWithAlpha(CLAY_ACCENT, isDark ? 0.28 : 0.18)]
             ),
         };
     }, [isDark]);
@@ -178,16 +193,20 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     // white rectangle over the inactive segment.
     const langSwitch = (
         <LanguageToggle
+            compact={isCompact || !!scrollY}
             language={isTeluguLang ? 'te' : 'en'}
             onLanguageChange={setLanguage}
             darkBackground={languageOnDarkSurface}
-            trackColor={languageOnDarkSurface ? 'rgba(116,101,184,0.24)' : 'rgba(124,107,184,0.14)'}
-            borderColor={languageOnDarkSurface ? 'rgba(222,216,255,0.30)' : 'rgba(124,107,184,0.28)'}
+            trackColor={languageOnDarkSurface ? 'rgba(116,101,184,0.24)' : 'rgba(124,107,184,0.12)'}
+            borderColor={languageOnDarkSurface ? 'rgba(222,216,255,0.30)' : 'rgba(124,107,184,0.22)'}
             activeBackgroundColor={languageOnDarkSurface ? '#7568CF' : '#6B5CC4'}
             activeLabelColor="#FFFFFF"
             inactiveLabelColor={languageOnDarkSurface ? '#E9E5FF' : 'rgba(55,48,107,0.72)'}
         />
     );
+
+    const rightCount = (rightAction ? 1 : 0) + (showSettingsButton ? 1 : 0);
+    const leftCount = 1 + (showNavBack ? 1 : 0) + (showNavMenu ? 1 : 0);
 
     return (
         <Animated.View style={[
@@ -211,19 +230,21 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                 />
             )}
 
-            {/* Left: Te/En first, then nav controls — keeps language one-thumb reachable. */}
+            {/* Left: language first, then nav — one-thumb reachable. */}
             <View style={[styles.sideRegion, styles.leftRegion]}>
                 {langSwitch}
                 {showNavBack ? (
-                    <ClayIconButton onPress={handleBack} isDark accent={CLAY_ACCENT}>
-                        <Ionicons name="arrow-back" size={19} color="#F4F0FB" />
+                    <ClayIconButton onPress={handleBack} isDark accent={CLAY_ACCENT} round size={ICON_SIZE}>
+                        <Ionicons name="arrow-back" size={18} color="#F4F0FB" />
                     </ClayIconButton>
                 ) : null}
                 {showNavMenu ? (
-                    <ClayIconButton onPress={handleMenuPress} isDark accent={CLAY_ACCENT}>
-                        <Ionicons name="menu" size={19} color="#F4F0FB" />
+                    <ClayIconButton onPress={handleMenuPress} isDark accent={CLAY_ACCENT} round size={ICON_SIZE}>
+                        <Ionicons name="menu" size={18} color="#F4F0FB" />
                     </ClayIconButton>
                 ) : null}
+                {/* Spacer keeps left/right visual weight closer when sides differ. */}
+                {leftCount < rightCount ? <View style={styles.sideBalance} /> : null}
             </View>
 
             {/* Center: page title when present; otherwise a compact school brand. */}
@@ -242,7 +263,7 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                                 {SCHOOL_BRAND}
                             </Animated.Text>
                             <Animated.Text style={[styles.brandTag, brandSubStyle]} numberOfLines={1}>
-                                {SCHOOL_CONFIG.tagline}
+                                {SCHOOL_BRAND_SUB}
                             </Animated.Text>
                         </View>
                     </Animated.View>
@@ -250,6 +271,8 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
             </View>
 
             <View style={[styles.sideRegion, styles.rightRegion]}>
+                {rightCount < leftCount ? <View style={styles.sideBalance} /> : null}
+
                 {rightAction && (
                     <ClayIconButton
                         onPress={() => {
@@ -259,9 +282,9 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                         isDark
                         accent={CLAY_ACCENT}
                         round
-                        size={38}
+                        size={ICON_SIZE}
                     >
-                        <Ionicons name={rightAction.icon} size={18} color="#F4F0FB" />
+                        <Ionicons name={rightAction.icon} size={17} color="#F4F0FB" />
                     </ClayIconButton>
                 )}
 
@@ -274,9 +297,9 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
                         isDark
                         accent={CLAY_ACCENT}
                         round
-                        size={38}
+                        size={ICON_SIZE}
                     >
-                        <Ionicons name="settings-outline" size={17} color="#F4F0FB" />
+                        <Ionicons name="settings-outline" size={16} color="#F4F0FB" />
                     </ClayIconButton>
                 )}
             </View>
@@ -307,48 +330,56 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        minWidth: 88,
+        flexGrow: 1,
+        flexShrink: 0,
+        flexBasis: 0,
+        minWidth: 72,
     },
     leftRegion: {
         justifyContent: 'flex-start',
-        flexShrink: 0,
     },
     rightRegion: {
         justifyContent: 'flex-end',
-        flexShrink: 0,
+    },
+    sideBalance: {
+        width: ICON_SIZE,
+        height: ICON_SIZE,
+        opacity: 0,
     },
     centerRegion: {
-        flex: 1,
+        flexGrow: 0,
+        flexShrink: 1,
+        maxWidth: '46%',
         minWidth: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 8,
+        paddingHorizontal: 6,
     },
     brandPill: {
         flexDirection: 'row',
         alignItems: 'center',
         maxWidth: '100%',
         gap: 8,
-        paddingVertical: 4,
-        paddingLeft: 4,
+        paddingVertical: 5,
+        paddingLeft: 5,
         paddingRight: 12,
         borderRadius: 999,
         borderWidth: 1,
         overflow: 'hidden',
     },
     brandLogoWrap: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
         backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: schoolColorWithAlpha(GOLD, 0.45),
+        borderColor: schoolColorWithAlpha(GOLD, 0.4),
     },
     brandLogo: {
-        width: 18,
-        height: 18,
+        width: 20,
+        height: 20,
         resizeMode: 'contain',
     },
     brandCopy: {
@@ -359,18 +390,20 @@ const styles = StyleSheet.create({
     brandName: {
         fontSize: 13,
         fontWeight: '800',
-        letterSpacing: 0.4,
+        letterSpacing: 0.2,
     },
     brandTag: {
-        fontSize: 9,
-        fontWeight: '600',
-        letterSpacing: 0.2,
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
         opacity: 0.95,
     },
     headerTitle: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '800',
         letterSpacing: 0.2,
+        textAlign: 'center',
     },
     absoluteHeader: {
         position: 'absolute',

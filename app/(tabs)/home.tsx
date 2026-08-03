@@ -387,14 +387,30 @@ const StatusPill = ({ status, isDark }: { status: string; isDark: boolean }) => 
     ? t('studentHome.attendanceStatus.not_marked')
     : t(`studentHome.attendanceStatus.${sk}`);
   return (
-    <View style={[sp.pill, { backgroundColor: c.bg }]}>
+    <View style={[sp.pill, {
+      backgroundColor: c.bg,
+      borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.82)',
+      shadowColor: isDark ? '#000000' : '#8C82A2',
+      shadowOpacity: isDark ? 0.28 : 0.12,
+      ...Platform.select({
+        web: {
+          boxShadow: isDark
+            ? '3px 4px 8px rgba(0,0,0,0.24), inset 1px 1px 2px rgba(255,255,255,0.05)'
+            : '3px 4px 8px rgba(109,94,139,0.12), -2px -2px 5px rgba(255,255,255,0.72), inset 1px 1px 2px rgba(255,255,255,0.60)',
+        },
+      }),
+    }]}>
       <View style={[sp.dot, { backgroundColor: c.dot }]} />
       <Text style={[sp.lbl, { color: isDark ? c.dk : c.lt }]}>{label}</Text>
     </View>
   );
 };
 const sp = StyleSheet.create({
-  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 50, gap: 6, alignSelf: 'flex-start' },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 50, gap: 6, alignSelf: 'flex-start', borderWidth: 1,
+    shadowOffset: { width: 2, height: 3 }, shadowRadius: 5, elevation: 2,
+  },
   dot: { width: 6, height: 6, borderRadius: 3 },
   lbl: { fontSize: 12, fontWeight: '700', letterSpacing: 0.15 },
 });
@@ -775,113 +791,241 @@ const SnapshotCard = ({
   const { t } = useTranslation();
   const { theme, isDark } = useTheme();
   const P = palette(theme);
+  const svgMod = useContext(HomeSvgContext);
+  const cardColors = isDark
+    ? ['#25203D', '#171B32', '#111827'] as const
+    : ['#FFF7ED', '#F3F0FF', '#E8F2FF'] as const;
+  const raisedTile: any = {
+    shadowColor: isDark ? '#000000' : '#86789F',
+    shadowOffset: { width: 2, height: 4 },
+    shadowOpacity: isDark ? 0.28 : 0.13,
+    shadowRadius: 6,
+    elevation: 3,
+    ...Platform.select({
+      web: {
+        boxShadow: isDark
+          ? '3px 5px 10px rgba(0,0,0,0.26), -2px -2px 6px rgba(255,255,255,0.025), inset 1px 1px 2px rgba(255,255,255,0.05)'
+          : '3px 5px 10px rgba(109,94,139,0.14), -3px -3px 7px rgba(255,255,255,0.76), inset 1px 1px 2px rgba(255,255,255,0.72)',
+      },
+    }),
+  };
+
   return (
     <PressScale onPress={onPress}>
-      <ClayView color={isDark ? theme.colors.surface : '#F8FAFC'} radius={28} style={[sn.card, { borderColor: isDark ? theme.colors.border : '#E2E8F0', borderBottomColor: isDark ? theme.colors.borderLight : '#CBD5E1' }]}>
-        {/* Soft top-left highlight linear gradient */}
-        {!isDark && (
-          <LinearGradient
-            colors={['rgba(255,255,255,1)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.5, y: 0.8 }}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
-        )}
+      <View style={[sn.cardShell, {
+        shadowColor: isDark ? '#000000' : '#7C6AA6',
+        borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.94)',
+        ...Platform.select({
+          web: {
+            boxShadow: isDark
+              ? '8px 10px 22px rgba(0,0,0,0.38), -5px -5px 14px rgba(255,255,255,0.025), inset 2px 2px 3px rgba(255,255,255,0.08), inset -3px -3px 6px rgba(0,0,0,0.18)'
+              : '8px 10px 22px rgba(99,78,145,0.20), -7px -7px 16px rgba(255,255,255,0.98), inset 2px 2px 4px rgba(255,255,255,0.84), inset -3px -3px 6px rgba(121,100,160,0.12)',
+          },
+        }),
+      }]}>
+        <LinearGradient
+          colors={cardColors}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={sn.card}
+        >
+          {/* Pastel clay blobs + a hand-drawn flourish make this feel illustrated. */}
+          <View style={[sn.blobTop, { backgroundColor: isDark ? 'rgba(167,139,250,0.12)' : 'rgba(255,255,255,0.52)' }]} />
+          <View style={[sn.blobBottom, { backgroundColor: isDark ? 'rgba(244,114,182,0.10)' : 'rgba(251,113,133,0.10)' }]} />
+          {svgMod && (() => {
+            const Svg = svgMod.default;
+            const { Path } = svgMod;
+            return (
+              <Svg width="100%" height="100%" style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                <Path
+                  d="M268 18c17 2 28 11 33 25"
+                  fill="none"
+                  stroke={isDark ? 'rgba(196,181,253,0.25)' : 'rgba(124,58,237,0.22)'}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeDasharray="5 7"
+                />
+                <Path
+                  d="M18 180c12 10 25 13 40 10"
+                  fill="none"
+                  stroke={isDark ? 'rgba(251,146,60,0.22)' : 'rgba(249,115,22,0.25)'}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            );
+          })()}
 
-        {/* Header */}
-        <View style={sn.header}>
-          <View style={sn.headerLeft}>
-            <View style={[sn.livePulseOuter, { backgroundColor: attColor + '2A' }]}>
-              <View style={[sn.livePulse, { backgroundColor: attColor }]} />
-            </View>
-            <Text style={[sn.headerLbl, { color: P.textSecondary }]}>
-              {t('studentHome.todaysSnapshot')}
-            </Text>
-          </View>
-          <View style={sn.headerRight}>
-            <Text style={[sn.viewTxt, { color: P.textTertiary }]}>
-              {t('studentHome.attendanceLink')}
-            </Text>
-            <Ionicons name="chevron-forward" size={13} color={P.textTertiary} />
-          </View>
-        </View>
-
-        {/* Main content */}
-        <View style={sn.content}>
-          <View style={sn.ringWrap}>
-            <Ring pct={pct} size={108} sw={8} color={attColor} isDark={isDark} />
-            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={[sn.ringPct, { color: attColor }]}>{pct}</Text>
-              <Text style={[sn.ringUnit, { color: P.textTertiary }]}>PERCENT</Text>
-            </View>
-          </View>
-
-          <View style={sn.statsCol}>
-            <Text style={[sn.statLbl, { color: P.textTertiary }]}>
-              {t('studentHome.todaysStatus')}
-            </Text>
-            <StatusPill status={todayStatus} isDark={isDark} />
-
-            <View style={[sn.divider, { backgroundColor: P.border }]} />
-
-            <View style={sn.statsRow}>
-              <View style={sn.statItem}>
-                <Text style={[sn.statNum, { color: P.success }]}>{presentDays}</Text>
-                <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipPresent')}</Text>
+          {/* Header */}
+          <View style={sn.header}>
+            <View style={sn.headerLeft}>
+              <LinearGradient
+                colors={isDark ? ['#A78BFA', '#6D28D9'] : ['#A78BFA', '#7C3AED']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={[sn.calendarClay, {
+                  shadowColor: isDark ? '#000000' : '#6D28D9',
+                  borderColor: 'rgba(255,255,255,0.68)',
+                  ...Platform.select({
+                    web: {
+                      boxShadow: isDark
+                        ? '3px 5px 9px rgba(0,0,0,0.30), inset 1px 1px 2px rgba(255,255,255,0.22)'
+                        : '3px 5px 10px rgba(109,40,217,0.24), -2px -2px 6px rgba(255,255,255,0.74), inset 1px 1px 2px rgba(255,255,255,0.38)',
+                    },
+                  }),
+                }]}
+              >
+                <Ionicons name="calendar" size={16} color="#FFFFFF" />
+              </LinearGradient>
+              <View>
+                <Text style={[sn.headerEyebrow, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>
+                  {t('studentHome.attendanceLink').toUpperCase()}
+                </Text>
+                <Text style={[sn.headerLbl, { color: P.textPrimary }]}>
+                  {t('studentHome.todaysSnapshot')}
+                </Text>
               </View>
-              <View style={[sn.vDiv, { backgroundColor: P.border }]} />
-              <View style={sn.statItem}>
-                <Text style={[sn.statNum, { color: P.danger }]}>{absentDays}</Text>
-                <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipAbsent')}</Text>
+            </View>
+            <View style={[sn.headerRight, {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.58)',
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)',
+              shadowColor: isDark ? '#000000' : '#897DA1',
+              shadowOpacity: isDark ? 0.24 : 0.11,
+              ...Platform.select({
+                web: {
+                  boxShadow: isDark
+                    ? '3px 4px 9px rgba(0,0,0,0.24), inset 1px 1px 2px rgba(255,255,255,0.05)'
+                    : '3px 4px 9px rgba(109,94,139,0.12), -2px -2px 5px rgba(255,255,255,0.70), inset 1px 1px 2px rgba(255,255,255,0.72)',
+                },
+              }),
+            }]}>
+              <Text style={[sn.viewTxt, { color: isDark ? '#C4B5FD' : '#6D28D9' }]}>
+                {t('studentHome.attendanceLink')}
+              </Text>
+              <Ionicons name="arrow-forward" size={12} color={isDark ? '#C4B5FD' : '#6D28D9'} />
+            </View>
+          </View>
+
+          {/* Main content */}
+          <View style={sn.content}>
+            <View style={[sn.ringClay, {
+              backgroundColor: isDark ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)',
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.96)',
+              shadowColor: isDark ? '#000000' : '#8B7AAE',
+              ...Platform.select({
+                web: {
+                  boxShadow: isDark
+                    ? '7px 9px 18px rgba(0,0,0,0.32), -4px -4px 11px rgba(255,255,255,0.025), inset 2px 2px 4px rgba(255,255,255,0.05)'
+                    : '7px 9px 18px rgba(109,94,139,0.18), -6px -6px 13px rgba(255,255,255,0.88), inset 2px 2px 4px rgba(255,255,255,0.78), inset -2px -2px 4px rgba(124,105,158,0.08)',
+                },
+              }),
+            }]}>
+              <Ring pct={pct} size={100} sw={9} color={attColor} isDark={isDark} />
+              <View style={[StyleSheet.absoluteFill, sn.ringCopy]}>
+                <Text style={[sn.ringPct, { color: attColor }]}>{pct}</Text>
+                <Text style={[sn.ringUnit, { color: P.textTertiary }]}>PERCENT</Text>
               </View>
-              <View style={[sn.vDiv, { backgroundColor: P.border }]} />
-              <View style={sn.statItem}>
-                <Text style={[sn.statNum, { color: P.textPrimary }]}>{totalDays}</Text>
-                <Text style={[sn.statKey, { color: P.textTertiary }]}>{t('studentHome.chipTotal')}</Text>
+            </View>
+
+            <View style={sn.statsCol}>
+              <Text style={[sn.statLbl, { color: P.textTertiary }]}>
+                {t('studentHome.todaysStatus')}
+              </Text>
+              <StatusPill status={todayStatus} isDark={isDark} />
+
+              <View style={sn.statsRow}>
+                <View style={[sn.statItem, raisedTile, {
+                  backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : '#E7F9F2',
+                  borderColor: isDark ? 'rgba(52,211,153,0.13)' : 'rgba(255,255,255,0.88)',
+                }]}>
+                  <Text style={[sn.statNum, { color: P.success }]}>{presentDays}</Text>
+                  <Text style={[sn.statKey, { color: isDark ? '#6EE7B7' : '#378774' }]}>{t('studentHome.chipPresent')}</Text>
+                </View>
+                <View style={[sn.statItem, raisedTile, {
+                  backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FFF0F1',
+                  borderColor: isDark ? 'rgba(248,113,113,0.13)' : 'rgba(255,255,255,0.88)',
+                }]}>
+                  <Text style={[sn.statNum, { color: P.danger }]}>{absentDays}</Text>
+                  <Text style={[sn.statKey, { color: isDark ? '#FCA5A5' : '#B85A67' }]}>{t('studentHome.chipAbsent')}</Text>
+                </View>
+                <View style={[sn.statItem, raisedTile, {
+                  backgroundColor: isDark ? 'rgba(139,92,246,0.14)' : '#EEEAFE',
+                  borderColor: isDark ? 'rgba(167,139,250,0.14)' : 'rgba(255,255,255,0.88)',
+                }]}>
+                  <Text style={[sn.statNum, { color: isDark ? '#C4B5FD' : '#5B45A8' }]}>{totalDays}</Text>
+                  <Text style={[sn.statKey, { color: isDark ? '#C4B5FD' : '#7163A1' }]}>{t('studentHome.chipTotal')}</Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
-      </ClayView>
+        </LinearGradient>
+      </View>
     </PressScale>
   );
 };
 
 const sn = StyleSheet.create({
-  card: {
-    borderRadius: 28,
-    borderWidth: 1.2,
-    borderBottomWidth: 4,
-    padding: 24,
-    overflow: 'hidden',
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+  cardShell: {
+    borderRadius: 30,
+    borderWidth: 1.5,
+    shadowOffset: { width: 7, height: 9 },
+    shadowOpacity: 0.20,
     shadowRadius: 16,
+    elevation: 7,
+    backgroundColor: '#EEEAFE',
+  },
+  card: {
+    borderRadius: 29,
+    paddingHorizontal: 18,
+    paddingTop: 17,
+    paddingBottom: 18,
+    overflow: 'hidden',
+  },
+  blobTop: { position: 'absolute', width: 150, height: 150, borderRadius: 75, top: -105, right: 36 },
+  blobBottom: { position: 'absolute', width: 112, height: 112, borderRadius: 56, bottom: -78, left: -28 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  calendarClay: {
+    width: 34, height: 34, borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5,
+    shadowOffset: { width: 2, height: 4 },
+    shadowOpacity: 0.26,
+    shadowRadius: 5,
     elevation: 4,
   },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  livePulseOuter: { width: 14, height: 14, borderRadius: 7, justifyContent: 'center', alignItems: 'center' },
-  livePulse: { width: 7, height: 7, borderRadius: 4 },
-  headerLbl: { fontSize: 13, fontWeight: '700', letterSpacing: 0.15 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  viewTxt: { fontSize: 11, fontWeight: '600' },
+  headerEyebrow: { fontSize: 8, fontWeight: '900', letterSpacing: 1.4, lineHeight: 11 },
+  headerLbl: { fontSize: 13.5, fontWeight: '800', letterSpacing: -0.1, lineHeight: 18 },
+  headerRight: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14,
+    borderWidth: 1,
+    shadowOffset: { width: 2, height: 3 }, shadowRadius: 5, elevation: 2,
+  },
+  viewTxt: { fontSize: 10.5, fontWeight: '800' },
 
-  content: { flexDirection: 'row', alignItems: 'center', gap: 24 },
-  ringWrap: { width: 108, height: 108, justifyContent: 'center', alignItems: 'center' },
-  ringPct: { fontSize: 32, fontWeight: '900', letterSpacing: -1.2, lineHeight: 34 },
-  ringUnit: { fontSize: 9, fontWeight: '800', letterSpacing: 1.5, marginTop: 2 },
-
-  statsCol: { flex: 1, gap: 12 },
-  statLbl: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 2 },
-  divider: { height: 1.5, marginVertical: 4, opacity: 0.6 },
-  statsRow: { flexDirection: 'row', alignItems: 'center' },
-  statItem: { flex: 1, alignItems: 'center', gap: 4 },
-  statNum: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
-  statKey: { fontSize: 9.5, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  vDiv: { width: 1.5, height: 32, opacity: 0.6 },
+  content: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  ringClay: {
+    width: 116, height: 116, borderRadius: 58,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2,
+    shadowOffset: { width: 4, height: 7 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  ringCopy: { justifyContent: 'center', alignItems: 'center' },
+  ringPct: { fontSize: 31, fontWeight: '900', letterSpacing: -1.3, lineHeight: 33 },
+  ringUnit: { fontSize: 8, fontWeight: '900', letterSpacing: 1.35, marginTop: 1 },
+  statsCol: { flex: 1, gap: 8, minWidth: 0 },
+  statLbl: { fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.15 },
+  statsRow: { flexDirection: 'row', alignItems: 'stretch', gap: 5, marginTop: 2 },
+  statItem: {
+    flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2,
+    paddingVertical: 7, paddingHorizontal: 2, borderRadius: 13, borderWidth: 1,
+  },
+  statNum: { fontSize: 17.5, fontWeight: '900', letterSpacing: -0.55, lineHeight: 21 },
+  statKey: { fontSize: 7.2, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.42 },
 });
 
 /* ═══════════════════════════════════════════
