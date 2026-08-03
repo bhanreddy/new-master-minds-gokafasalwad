@@ -3,11 +3,11 @@ import { jsPDF } from 'jspdf';
 
 export const PAGE_CONFIGS = {
   TC: {
-    pdfFormat: [216, 330],
-    pageWidth: 216,
-    pageHeight: 330,
-    contentHeight: 330,
-    pageCss: '216mm 330mm portrait',
+    pdfFormat: 'a4',
+    pageWidth: 210,
+    pageHeight: 297,
+    contentHeight: 297,
+    pageCss: '210mm 297mm portrait',
   },
   TC_A4_HALF: {
     pdfFormat: [210, 148.5],
