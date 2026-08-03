@@ -202,10 +202,8 @@ function ComplaintsScreenInner() { // OPT: Wrapped by ErrorBoundary at default e
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <LinearGradient colors={[...headerGrad]} style={styles.headerGradient}>
         <StudentHeader
-          showBackButton
           title={t('home.regular_complaints') || 'Complaints'}
           style={styles.headerOverride}
-          titleStyle={styles.headerTitle}
         />
       </LinearGradient>
 
@@ -601,11 +599,6 @@ function getStyles(theme: Theme, isDark: boolean) {
     },
     headerOverride: {
       backgroundColor: 'transparent',
-    },
-    headerTitle: {
-      color: theme.colors.textStrong,
-      fontWeight: '700',
-      letterSpacing: 0.4,
     },
     container: {
       padding: 20,

@@ -130,11 +130,8 @@ const StudentHeader: React.FC<StudentHeaderProps & { showBackButton?: boolean, t
     }, [isDark]);
 
     const isAbsolute = !!scrollY;
-    /** Driver tabs already have bottom nav — hide redundant web back unless explicitly requested. */
-    const showNavBack = menuUserType === 'driver'
-      ? showBackButton
-      // Home uses scrollY; skip auto web-back there so the brand pill can breathe.
-      : (showBackButton || (isWeb && !scrollY));
+    /** Students use the bottom dock — never show a header back affordance. */
+    const showNavBack = menuUserType === 'driver' ? showBackButton : false;
     // Student navigation now lives in the bottom dock. Keep the drawer trigger
     // only for driver screens that still use MenuOverlay.
     const showNavMenu = menuUserType !== 'student'

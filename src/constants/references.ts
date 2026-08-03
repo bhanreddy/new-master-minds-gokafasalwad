@@ -1,7 +1,6 @@
 /**
  * Reference data constants derived from backend schema (schema.sql seed data).
  * Use these for dropdowns and mapping IDs to labels.
- * IDs must stay in sync with student_categories / religions / etc. in the DB.
  */
 
 export const GENDERS = [
@@ -33,20 +32,10 @@ export const RELATIONSHIP_TYPES = [
     { id: 3, name: 'Guardian' },
 ];
 
-/** Matches student_categories seed — keep IDs stable for FK integrity. */
 export const STUDENT_CATEGORIES = [
     { id: 1, name: 'General' },
-    { id: 12, name: 'OC' },
     { id: 2, name: 'OBC' },
-    { id: 6, name: 'BC' },
-    { id: 7, name: 'BC A' },
-    { id: 8, name: 'BC B' },
-    { id: 9, name: 'BC C' },
-    { id: 10, name: 'BC D' },
-    { id: 11, name: 'BC E' },
-    { id: 3, name: 'SC' },
-    { id: 4, name: 'ST' },
-    { id: 5, name: 'EWS' },
+    { id: 3, name: 'SC/ST' },
 ];
 
 export const RELIGIONS = [
