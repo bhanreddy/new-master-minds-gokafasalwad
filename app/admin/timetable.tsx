@@ -745,21 +745,23 @@ export default function TimetableManagement() {
     setEditedPeriods(updated);
   };
 
-  // Insert a teaching period after the given index
+  // Insert a teaching period after the given index (or as the first period when the list is empty)
   const insertPeriodAfter = (afterIndex: number) => {
     const updated = [...editedPeriods];
-    const prevEnd = getMins(updated[afterIndex].end_time);
     const periodDuration = 40;
+    const hasPrev = afterIndex >= 0 && afterIndex < updated.length;
+    const prevEnd = hasPrev ? getMins(updated[afterIndex].end_time) : getMins('09:00:00');
+    const insertAt = hasPrev ? afterIndex + 1 : 0;
     const newPeriod: Period = {
       id: `temp_period_${Date.now()}`,
       name: nextDefaultPeriodName(updated),
       start_time: minsToTime(prevEnd),
       end_time: minsToTime(prevEnd + periodDuration),
-      sort_order: afterIndex + 2,
+      sort_order: insertAt + 1,
       is_break: false,
     } as Period;
-    updated.splice(afterIndex + 1, 0, newPeriod);
-    for (let i = afterIndex + 2; i < updated.length; i++) {
+    updated.splice(insertAt, 0, newPeriod);
+    for (let i = insertAt + 1; i < updated.length; i++) {
       const pEnd = getMins(updated[i - 1].end_time);
       const d = getMins(updated[i].end_time) - getMins(updated[i].start_time);
       const sd = d > 0 ? d : 40;
@@ -783,6 +785,7 @@ export default function TimetableManagement() {
   // Insert a break/lunch after the given index
   const insertBreakAfter = (afterIndex: number) => {
     const updated = [...editedPeriods];
+    if (afterIndex < 0 || afterIndex >= updated.length) return;
     const prevEnd = getMins(updated[afterIndex].end_time);
     const breakDuration = 15;
     const newBreak: Period = {
