@@ -15,6 +15,7 @@ import {
   Animated,
   Platform,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
@@ -678,6 +679,7 @@ export default function TimetableManagement() {
   };
 
   const handleSavePeriods = async () => {
+    if (actionLoading) return;
     try {
       setActionLoading(true);
       const payload: Period[] = editedPeriods.map((p, index) => ({
@@ -690,7 +692,6 @@ export default function TimetableManagement() {
       for (const p of payload) {
         if (!p.name?.trim()) {
           alertCompat('Validation', 'Every period and break needs a name before saving.');
-          setActionLoading(false);
           return;
         }
       }
@@ -748,18 +749,21 @@ export default function TimetableManagement() {
   // Insert a teaching period after the given index
   const insertPeriodAfter = (afterIndex: number) => {
     const updated = [...editedPeriods];
-    const prevEnd = getMins(updated[afterIndex].end_time);
     const periodDuration = 40;
+    const prev = updated[afterIndex];
+    // Empty list (or invalid index): start a default first period at 09:00
+    const prevEnd = prev ? getMins(prev.end_time) : getMins('09:00:00');
+    const insertAt = prev ? afterIndex + 1 : 0;
     const newPeriod: Period = {
       id: `temp_period_${Date.now()}`,
       name: nextDefaultPeriodName(updated),
       start_time: minsToTime(prevEnd),
       end_time: minsToTime(prevEnd + periodDuration),
-      sort_order: afterIndex + 2,
+      sort_order: insertAt + 1,
       is_break: false,
     } as Period;
-    updated.splice(afterIndex + 1, 0, newPeriod);
-    for (let i = afterIndex + 2; i < updated.length; i++) {
+    updated.splice(insertAt, 0, newPeriod);
+    for (let i = insertAt + 1; i < updated.length; i++) {
       const pEnd = getMins(updated[i - 1].end_time);
       const d = getMins(updated[i].end_time) - getMins(updated[i].start_time);
       const sd = d > 0 ? d : 40;
@@ -1825,7 +1829,7 @@ export default function TimetableManagement() {
       </Modal>
 
       {/* ════════════════════ MODAL: Manage All Periods ════════════════════ */}
-      <Modal transparent visible={managePeriodsVisible} onRequestClose={() => setManagePeriodsVisible(false)} animationType="slide">
+      <Modal transparent visible={managePeriodsVisible} onRequestClose={() => !actionLoading && setManagePeriodsVisible(false)} animationType="slide">
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={[styles.modalSheet, { maxHeight: '90%' }]}>
             <View style={styles.sheetHandle} />
@@ -1957,12 +1961,27 @@ export default function TimetableManagement() {
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.actionBtnGhost} onPress={() => setManagePeriodsVisible(false)}>
+              <TouchableOpacity
+                style={styles.actionBtnGhost}
+                onPress={() => setManagePeriodsVisible(false)}
+                disabled={actionLoading}
+              >
                 <Text style={styles.actionBtnGhostText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtnPrimary, { flex: 2 }]} onPress={handleSavePeriods}>
-                <Ionicons name="save-outline" size={15} color={c.onAccent} />
-                <Text style={styles.actionBtnPrimaryText}>Save All</Text>
+              <TouchableOpacity
+                style={[styles.actionBtnPrimary, { flex: 2 }, actionLoading && styles.actionBtnPrimaryDisabled]}
+                onPress={handleSavePeriods}
+                disabled={actionLoading}
+                activeOpacity={0.7}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color={c.onAccent} />
+                ) : (
+                  <Ionicons name="save-outline" size={15} color={c.onAccent} />
+                )}
+                <Text style={styles.actionBtnPrimaryText}>
+                  {actionLoading ? 'Saving…' : 'Save All'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
