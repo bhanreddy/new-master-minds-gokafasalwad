@@ -746,14 +746,14 @@ export default function TimetableManagement() {
     setEditedPeriods(updated);
   };
 
-  // Insert a teaching period after the given index
+  // Insert a teaching period after the given index (or as the first period when the list is empty)
   const insertPeriodAfter = (afterIndex: number) => {
     const updated = [...editedPeriods];
     const periodDuration = 40;
-    const prev = updated[afterIndex];
+    const hasPrev = afterIndex >= 0 && afterIndex < updated.length;
     // Empty list (or invalid index): start a default first period at 09:00
-    const prevEnd = prev ? getMins(prev.end_time) : getMins('09:00:00');
-    const insertAt = prev ? afterIndex + 1 : 0;
+    const prevEnd = hasPrev ? getMins(updated[afterIndex].end_time) : getMins('09:00:00');
+    const insertAt = hasPrev ? afterIndex + 1 : 0;
     const newPeriod: Period = {
       id: `temp_period_${Date.now()}`,
       name: nextDefaultPeriodName(updated),
@@ -787,6 +787,7 @@ export default function TimetableManagement() {
   // Insert a break/lunch after the given index
   const insertBreakAfter = (afterIndex: number) => {
     const updated = [...editedPeriods];
+    if (afterIndex < 0 || afterIndex >= updated.length) return;
     const prevEnd = getMins(updated[afterIndex].end_time);
     const breakDuration = 15;
     const newBreak: Period = {
