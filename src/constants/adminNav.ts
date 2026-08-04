@@ -25,6 +25,7 @@ export interface AdminNavAction {
  */
 export function buildAdminNavActions(t: TFunction): AdminNavAction[] {
   return [
+    { title: 'Website Gallery', icon: 'images-outline', route: '/admin/website-gallery', tier: 'OPS', gradient: ['#0F766E', '#2563EB'], category: 'Website', permission: 'admin.manage' },
     { title: t('admin_dashboard_v2.academic_structure', 'Academics'), icon: 'school-outline', route: '/admin/academics', tier: 'PRIMARY', gradient: ['#172554', '#2563EB'], category: 'Academic' },
     { title: 'Class Diary', icon: 'book-outline', route: '/admin/diary/viewer', tier: 'PRIMARY', gradient: ['#0F3A5F', '#0284C7'], category: 'Academic' },
     { title: t('admin_dashboard_v2.timetable_manager', 'Timetable'), icon: 'calendar-outline', route: '/admin/timetable', tier: 'PRIMARY', gradient: ['#312E81', '#4F46E5'], category: 'Academic' },
