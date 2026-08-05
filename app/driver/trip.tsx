@@ -20,6 +20,7 @@ import { api } from '../../src/services/apiClient';
 import LogoLoader from '../../src/components/LogoLoader';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useDriverLocationPermission } from '../../src/hooks/useDriverLocationPermission';
 import { useTranslation } from 'react-i18next';
 import { driverDateLocale } from '../../src/utils/driverI18n';
 
@@ -77,6 +78,7 @@ export default function DriverTripScreen() {
   const [confirmComplete, setConfirmComplete] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { theme } = useTheme();
+  const { requestPermissions: requestDriverLocationPermissions, disclosureModal } = useDriverLocationPermission();
   const { t, i18n } = useTranslation();
   const dateLocale = driverDateLocale(i18n.language);
   const styles = React.useMemo(() => getStyles(theme), [theme]);
@@ -169,7 +171,7 @@ export default function DriverTripScreen() {
       // Natural moment to ask for GPS: fixes captured on "Mark reached" feed
       // route calibration (Phase A). Non-blocking; trip starts either way.
       if (Platform.OS !== 'web') {
-        Location.requestForegroundPermissionsAsync().catch(() => {});
+        await requestDriverLocationPermissions({ requestBackground: false }).catch(() => false);
       }
       await api.post(`/transport/driver/trip/${trip.id}/start`, {});
       await loadTrip(true);
@@ -355,6 +357,7 @@ export default function DriverTripScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      {disclosureModal}
     </ScreenLayout>
   );
 }

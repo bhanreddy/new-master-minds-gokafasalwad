@@ -155,7 +155,6 @@ export async function isDriverLocationTaskRunning(): Promise<boolean> {
 export async function startDriverLocationUpdates(busId: string): Promise<void> {
   if (Platform.OS === 'web') return;
   await AsyncStorage.setItem(TRACKED_BUS_KEY, busId);
-  try { await Location.requestBackgroundPermissionsAsync(); } catch { /* best effort */ }
   if (!await isDriverLocationTaskRunning()) {
     // Start conservatively at 5s; the first dashboard fix chooses 5s/20s.
     await applySamplingInterval(DRIVER_SAMPLING.NEAR_INTERVAL_MS);
@@ -174,4 +173,3 @@ export async function stopDriverLocationUpdates(): Promise<void> {
     await Location.stopLocationUpdatesAsync(DRIVER_LOCATION_TASK).catch(() => {});
   }
 }
-

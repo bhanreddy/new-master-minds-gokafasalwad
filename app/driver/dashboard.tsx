@@ -29,6 +29,7 @@ import { usePersistedSWR } from '../../src/hooks/usePersistedSWR';
 import LogoLoader from '../../src/components/LogoLoader';
 import AdminHeaderCard from '../../src/components/AdminHeaderCard';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useDriverLocationPermission } from '../../src/hooks/useDriverLocationPermission';
 import { driverDateLocale, translateDriverDirection } from '../../src/utils/driverI18n';
 
 const HEARTBEAT_INTERVAL = 30000;
@@ -119,6 +120,7 @@ export default function DriverDashboard() {
   const { user } = useAuth();
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { requestPermissions: requestDriverLocationPermissions, disclosureModal } = useDriverLocationPermission();
   const dateLocale = driverDateLocale(i18n.language);
 
   const PRIMARY = theme.colors.primary;
@@ -238,7 +240,19 @@ export default function DriverDashboard() {
       // Resume GPS streaming after an app restart mid-trip — without this the
       // trip shows as tracking but no location ever reaches parents.
       if (activeBus) void startLocationTracking(activeBus.id);
-    } else if (busList.length > 0) {
+    } else {
+      // A trip may have been closed by an administrator or by overnight
+      // maintenance while this device was backgrounded. Stop any persisted
+      // native location task as soon as the dashboard confirms there is no
+      // active trip.
+      stopLocationTracking();
+      setActiveTripId(null);
+      setIsTracking(false);
+      setTripStartedAt(null);
+      setLocationSharingPaused(false);
+    }
+
+    if (activeTrips.length === 0 && busList.length > 0) {
       const initialBus = busList[0];
       setSelectedBus(initialBus);
       const busRoutes = routeList.filter((r) => r.bus_id === initialBus.id);
@@ -509,8 +523,7 @@ export default function DriverDashboard() {
 
     let permGranted = false;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      permGranted = status === 'granted';
+      permGranted = await requestDriverLocationPermissions({ requestBackground: true });
     } catch {
       // Permission API unavailable — treat as denied, don't crash trip start.
     }
@@ -1004,6 +1017,7 @@ export default function DriverDashboard() {
         }
         <View style={{ height: 110 }} />
       </ScrollView>
+      {disclosureModal}
     </ScreenLayout>);
 
 }
