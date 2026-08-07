@@ -26,37 +26,89 @@ function fileSafe(value: string): string {
   );
 }
 
-function fullName(s: Student): string {
-  return (
-    s.display_name ||
-    [s.first_name, s.middle_name, s.last_name].filter(Boolean).join(' ') ||
-    '—'
-  );
+/** Match Add Student UI labels (Boy / Girl) rather than DB Male / Female. */
+function genderLabel(s: Student): string {
+  if (s.gender_id === 1) return 'Boy';
+  if (s.gender_id === 2) return 'Girl';
+  return s.gender_name || '';
 }
 
-/** Pick the primary parent, falling back to the first listed. */
-function primaryParent(parents?: Parent[]): Parent | undefined {
-  if (!parents || parents.length === 0) return undefined;
-  return parents.find((p) => p.is_primary) ?? parents[0];
+function yesNo(value: boolean | null | undefined): string {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return '';
 }
 
+function refName(
+  obj: { name?: string } | string | null | undefined,
+  fallbackName?: string | null,
+): string {
+  if (typeof obj === 'string') return obj;
+  return obj?.name || fallbackName || '';
+}
+
+function parentByRelation(parents: Parent[] | undefined, relation: string): Parent | undefined {
+  if (!parents?.length) return undefined;
+  const target = relation.toLowerCase();
+  return parents.find((p) => (p.relation || '').toLowerCase() === target);
+}
+
+function parentName(parent?: Parent): string {
+  if (!parent) return '';
+  return [parent.first_name, parent.last_name].filter(Boolean).join(' ');
+}
+
+function statusLabel(status?: string): string {
+  if (!status) return '';
+  if (status === 'graduated') return 'Passed Out';
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+/**
+ * Columns mirror every field collected on Add Student (except photo & password).
+ * Order follows the admission wizard: Personal → Academic → Parents → Details → Contact.
+ */
 const CSV_HEADERS = [
+  // Personal
+  'First Name',
+  'Middle Name',
+  'Last Name',
+  'Gender',
+  'Date of Birth',
+  'Aadhaar Number',
+  'Previous School',
+  'TC Number',
+  'Village',
+  // Academic
   'Admission No',
-  'Name',
+  'APAR Number',
+  'PEN Number',
+  'Roll Number',
+  'Admission Date',
   'Class',
   'Section',
-  'Roll Number',
-  'Status',
   'Academic Year',
-  'Date of Birth',
+  'Status',
+  'Exit Academic Year',
+  // Father
+  'Father Name',
+  'Father Phone',
+  'Father Occupation',
+  // Mother
+  'Mother Name',
+  'Mother Phone',
+  'Mother Occupation',
+  // Guardian (when present)
+  'Guardian Name',
+  'Guardian Phone',
+  'Guardian Occupation',
+  // Additional details
+  'Category',
+  'Religion',
+  'Blood Group',
+  // Contact & login identity (password never exported)
   'Phone',
   'Email',
-  'Parent Name',
-  'Relation',
-  'Parent Phone',
-  'PEN Number',
-  'Admission Date',
-  'Category',
 ];
 
 export function buildStudentCsv(students: Student[], meta: StudentExportMeta): string {
@@ -72,32 +124,45 @@ export function buildStudentCsv(students: Student[], meta: StudentExportMeta): s
 
   for (const s of students) {
     const e = s.current_enrollment;
-    const parent = primaryParent(s.parents);
-    const parentName = parent
-      ? [parent.first_name, parent.last_name].filter(Boolean).join(' ')
-      : '';
+    const father = parentByRelation(s.parents, 'Father');
+    const mother = parentByRelation(s.parents, 'Mother');
+    const guardian = parentByRelation(s.parents, 'Guardian');
+
     lines.push(
       [
+        s.first_name || '',
+        s.middle_name || '',
+        s.last_name || '',
+        genderLabel(s),
+        s.dob || '',
+        s.aadhaar_number || '',
+        yesNo(s.previous_school),
+        s.tc_number || '',
+        s.village || '',
         s.admission_no ?? '',
-        fullName(s),
+        s.apar_number || '',
+        s.pen_number || '',
+        e?.roll_number || '',
+        s.admission_date || '',
         e?.class_name || e?.class_code || '',
         e?.section_name || '',
-        e?.roll_number || '',
-        s.status === 'graduated'
-          ? 'Passed Out'
-          : s.status
-            ? s.status.charAt(0).toUpperCase() + s.status.slice(1)
-            : '',
-        s.exit_academic_year || e?.academic_year || '',
-        s.dob || '',
+        e?.academic_year || '',
+        statusLabel(s.status),
+        s.exit_academic_year || '',
+        parentName(father),
+        father?.phone || '',
+        father?.occupation || '',
+        parentName(mother),
+        mother?.phone || '',
+        mother?.occupation || '',
+        parentName(guardian),
+        guardian?.phone || '',
+        guardian?.occupation || '',
+        refName(s.category, s.category_name),
+        refName(s.religion, s.religion_name),
+        refName(s.blood_group, s.blood_group_name),
         s.phone || '',
         s.email || '',
-        parentName,
-        parent?.relation || '',
-        parent?.phone || '',
-        s.pen_number || '',
-        s.admission_date || '',
-        s.category?.name || '',
       ]
         .map(escapeCsv)
         .join(','),
@@ -114,7 +179,7 @@ export function getStudentCsvFileName(meta: StudentExportMeta): string {
 
 async function shareCsvWeb(csv: string, fileName: string): Promise<void> {
   // Prepend a UTF-8 BOM so Excel renders non-ASCII names correctly.
-  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -126,7 +191,7 @@ async function shareCsvWeb(csv: string, fileName: string): Promise<void> {
 async function shareCsvNative(csv: string, fileName: string): Promise<void> {
   const Sharing = await import('expo-sharing');
   const path = `${FileSystem.cacheDirectory}${fileName}`;
-  await FileSystem.writeAsStringAsync(path, `﻿${csv}`, {
+  await FileSystem.writeAsStringAsync(path, `\ufeff${csv}`, {
     encoding: FileSystem.EncodingType.UTF8,
   });
   if (await Sharing.isAvailableAsync()) {

@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { StudentService } from '@/src/services/studentService';
 import type { Student, AttendanceSummary } from '@/src/types/models';
-import { CertificateService } from '@/src/services/certificateService';
+import { CertificateService, type IssuedCertificateRecord } from '@/src/services/certificateService';
 import { FeeService } from '@/src/services/feeService';
 import { SchoolSettingsService, SchoolSettings } from '@/src/services/schoolSettingsService';
 import { AcademicYearService } from '@/src/services/academicYearService';
@@ -295,6 +295,52 @@ function formatDDMMYYYY(dateStr: string | Date | undefined | null): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
   return `${dd}-${mm}-${yyyy}`;
+}
+
+/** Rebuild TC preview from issued_certificates.data snapshot. */
+function parseStoredTcSnapshot(
+  data: IssuedCertificateRecord['data'],
+): { studentData: StudentData; tcFields: TCEditableFields } | null {
+  if (!data || typeof data !== 'object') return null;
+  const rawStudent = data.studentData;
+  const rawFields = data.tcFields;
+  if (!rawStudent || typeof rawStudent !== 'object') return null;
+
+  const s = rawStudent as Partial<StudentData>;
+  const studentData: StudentData = {
+    id: String(s.id || ''),
+    name: String(s.name || ''),
+    fatherName: String(s.fatherName || ''),
+    motherName: String(s.motherName || ''),
+    parentName: String(s.parentName || ''),
+    genderId: typeof s.genderId === 'number' ? s.genderId : 0,
+    genderLabel: String(s.genderLabel || ''),
+    class: String(s.class || ''),
+    dob: String(s.dob || ''),
+    dobWords: String(s.dobWords || ''),
+    admissionNo: String(s.admissionNo || ''),
+    academicYear: String(s.academicYear || ''),
+    fromClass: String(s.fromClass || ''),
+    fromYear: String(s.fromYear || ''),
+    toClass: String(s.toClass || ''),
+    toYear: String(s.toYear || ''),
+    penNo: String(s.penNo || ''),
+    aadhaarNo: String(s.aadhaarNo || ''),
+    religion: String(s.religion || ''),
+    address: String(s.address || ''),
+    nationality: String(s.nationality || 'Indian'),
+    category: String(s.category || ''),
+    admissionDate: String(s.admissionDate || ''),
+    lifecycleStatus: String(s.lifecycleStatus || 'active'),
+    isFormerStudent: !!s.isFormerStudent,
+  };
+
+  const tcFields: TCEditableFields = {
+    ...DEFAULT_TC_FIELDS,
+    ...(rawFields && typeof rawFields === 'object' ? (rawFields as Partial<TCEditableFields>) : {}),
+  };
+
+  return { studentData, tcFields };
 }
 
 function classToRoman(className: string): string {
@@ -3209,6 +3255,425 @@ function buildStudentDataFromRecord(
   };
 }
 
+const TC_A4_PREVIEW_W = 794;
+const TC_A4_PREVIEW_H = 1123;
+
+function SchoolCopyStamp() {
+  return (
+    <View style={historyStyles.stampWrap} pointerEvents="none">
+      <View style={historyStyles.stampBox}>
+        <Text style={historyStyles.stampText}>SCHOOL COPY</Text>
+      </View>
+    </View>
+  );
+}
+
+function IssuedTcSchoolCopyCard({
+  record,
+  school,
+  isDark,
+  expanded,
+  onToggle,
+}: {
+  record: IssuedCertificateRecord;
+  school: SchoolProfile;
+  isDark: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const snapshot = useMemo(() => parseStoredTcSnapshot(record.data), [record.data]);
+  const issueDate = formatDDMMYYYY(record.issued_at);
+  const displayName = snapshot?.studentData.name || record.student_name || 'Student';
+  const admissionNo = snapshot?.studentData.admissionNo || record.admission_no || '—';
+  const classLabel = snapshot?.studentData.class || '';
+  const printRef = useRef<View>(null);
+  const [busy, setBusy] = useState(false);
+
+  const schoolForDoc = useMemo(() => {
+    if (!snapshot) return school;
+    return withCertificateSchoolName(school, snapshot.studentData.class, 'TC');
+  }, [school, snapshot]);
+
+  const handlePrint = async () => {
+    if (!snapshot) return;
+    setBusy(true);
+    try {
+      if (Platform.OS === 'web') {
+        const element = resolveCertificateElement(printRef);
+        await printCertificateElement(element, 'TC');
+      } else {
+        const logoDataUri = await getLogoDataUri();
+        const html = buildCertificateHTML(
+          snapshot.studentData,
+          snapshot.tcFields,
+          'TC',
+          record.serial_no,
+          logoDataUri,
+          schoolForDoc,
+          'A4',
+          'legacy',
+        );
+        const Print = await import('expo-print');
+        await Print.printAsync({
+          html,
+          width: PAPER.A4.widthPt,
+          height: PAPER.A4.heightPt,
+        });
+      }
+    } catch (err: any) {
+      alertCompat('Print Error', err?.message || 'Could not print school copy.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!snapshot) return;
+    setBusy(true);
+    const safeName = displayName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_') || 'student';
+    const fileName = `TC_SchoolCopy_${safeName}_${record.serial_no.replace(/\//g, '-')}.pdf`;
+    try {
+      if (Platform.OS === 'web') {
+        const element = resolveCertificateElement(printRef);
+        await downloadCertificatePdf(element, 'TC', fileName);
+      } else {
+        const logoDataUri = await getLogoDataUri();
+        const html = buildCertificateHTML(
+          snapshot.studentData,
+          snapshot.tcFields,
+          'TC',
+          record.serial_no,
+          logoDataUri,
+          schoolForDoc,
+          'A4',
+          'legacy',
+        );
+        const Print = await import('expo-print');
+        const { uri } = await Print.printToFileAsync({
+          html,
+          width: PAPER.A4.widthPt,
+          height: PAPER.A4.heightPt,
+        });
+        const FileSystem: any = await import('expo-file-system/legacy');
+        const newUri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.moveAsync({ from: uri, to: newUri });
+        const Sharing = await import('expo-sharing');
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(newUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: fileName,
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          alertCompat('PDF Saved', `School copy saved to:\n${newUri}`);
+        }
+      }
+    } catch (err: any) {
+      alertCompat('Export Failed', err?.message || 'Could not download school copy.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={[historyStyles.card, isDark && historyStyles.cardDark]}>
+      <TouchableOpacity style={historyStyles.cardHeader} onPress={onToggle} activeOpacity={0.85}>
+        <View style={historyStyles.copyBadge}>
+          <Text style={historyStyles.copyBadgeText}>SCHOOL COPY</Text>
+        </View>
+        <View style={historyStyles.cardHeaderText}>
+          <Text style={[historyStyles.cardName, isDark && historyStyles.cardNameDark]} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={[historyStyles.cardMeta, isDark && historyStyles.cardMetaDark]} numberOfLines={1}>
+            {record.serial_no}
+            {' · '}
+            Adm. {admissionNo}
+            {classLabel ? ` · ${classLabel}` : ''}
+            {' · '}
+            {issueDate}
+          </Text>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF'}
+        />
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={historyStyles.expandedBody}>
+          {snapshot ? (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={historyStyles.previewScroll}>
+                <View
+                  ref={printRef}
+                  collapsable={false}
+                  nativeID={`tc-school-copy-${record.id}`}
+                  {...webPrintRootProps}
+                  style={[
+                    historyStyles.paper,
+                    { width: TC_A4_PREVIEW_W, height: TC_A4_PREVIEW_H },
+                  ]}
+                >
+                  <TcA4Document
+                    studentData={snapshot.studentData}
+                    tcFields={snapshot.tcFields}
+                    school={schoolForDoc}
+                    serialNo={record.serial_no}
+                    issueDate={issueDate}
+                  />
+                  <SchoolCopyStamp />
+                </View>
+              </ScrollView>
+
+              <View style={historyStyles.actions}>
+                <TouchableOpacity
+                  style={[historyStyles.actionBtn, historyStyles.actionBtnMuted]}
+                  onPress={handlePrint}
+                  disabled={busy}
+                  activeOpacity={0.8}
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color="#374151" />
+                  ) : (
+                    <>
+                      <Feather name="printer" size={14} color="#374151" />
+                      <Text style={historyStyles.actionBtnMutedText}>Print School Copy</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[historyStyles.actionBtn, historyStyles.actionBtnPrimary]}
+                  onPress={handleDownload}
+                  disabled={busy}
+                  activeOpacity={0.88}
+                >
+                  <Feather name="download" size={14} color="#FFF" />
+                  <Text style={historyStyles.actionBtnPrimaryText}>Download PDF</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={[historyStyles.emptyHint, isDark && historyStyles.cardMetaDark]}>
+              Snapshot data is missing for this record — the school copy cannot be re-rendered.
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function IssuedTcHistorySection({
+  records,
+  loading,
+  school,
+  isDark,
+  onRefresh,
+}: {
+  records: IssuedCertificateRecord[];
+  loading: boolean;
+  school: SchoolProfile;
+  isDark: boolean;
+  onRefresh: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  return (
+    <Animated.View entering={FadeInDown.delay(80).duration(400)} style={historyStyles.section}>
+      <View style={historyStyles.sectionHeader}>
+        <View style={historyStyles.sectionTitleRow}>
+          <View style={[historyStyles.stepPill, isDark && historyStyles.stepPillDark]}>
+            <Text style={historyStyles.stepPillText}>TC</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[historyStyles.sectionTitle, isDark && historyStyles.cardNameDark]}>
+              Issued Transfer Certificates
+            </Text>
+            <Text style={[historyStyles.sectionSub, isDark && historyStyles.cardMetaDark]}>
+              School copies of previously generated TCs
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onRefresh} style={historyStyles.refreshBtn} activeOpacity={0.8}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#4F46E5" />
+            ) : (
+              <Ionicons name="refresh-outline" size={16} color="#4F46E5" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {loading && records.length === 0 ? (
+        <View style={[historyStyles.emptyBox, isDark && historyStyles.cardDark]}>
+          <LogoLoader size={28} color="#4F46E5" />
+          <Text style={[historyStyles.emptyHint, isDark && historyStyles.cardMetaDark]}>
+            Loading school copies…
+          </Text>
+        </View>
+      ) : records.length === 0 ? (
+        <View style={[historyStyles.emptyBox, isDark && historyStyles.cardDark]}>
+          <Ionicons name="documents-outline" size={28} color={isDark ? 'rgba(255,255,255,0.25)' : '#CBD5E1'} />
+          <Text style={[historyStyles.emptyHint, isDark && historyStyles.cardMetaDark]}>
+            No transfer certificates have been issued yet. Print or download a TC to keep a school copy here.
+          </Text>
+        </View>
+      ) : (
+        <View style={historyStyles.list}>
+          {records.map((record) => (
+            <IssuedTcSchoolCopyCard
+              key={record.id}
+              record={record}
+              school={school}
+              isDark={isDark}
+              expanded={expandedId === record.id}
+              onToggle={() => setExpandedId((cur) => (cur === record.id ? null : record.id))}
+            />
+          ))}
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+const historyStyles = StyleSheet.create({
+  section: { marginTop: 8, marginBottom: 8, gap: 12 },
+  sectionHeader: { gap: 4 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#EEF2FF',
+  },
+  stepPillDark: { backgroundColor: 'rgba(79,70,229,0.2)' },
+  stepPillText: { fontSize: 10, fontWeight: '900', color: '#4F46E5', letterSpacing: 0.5 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  sectionSub: { fontSize: 12, fontWeight: '500', color: '#6B7280', marginTop: 1 },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF2FF',
+  },
+  list: { gap: 10 },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10 },
+      android: { elevation: 3 },
+    }),
+  },
+  cardDark: {
+    backgroundColor: '#1C1F2A',
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  copyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#B0182B',
+    backgroundColor: 'rgba(176,24,43,0.08)',
+  },
+  copyBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#B0182B',
+    letterSpacing: 0.6,
+  },
+  cardHeaderText: { flex: 1, gap: 2 },
+  cardName: { fontSize: 14, fontWeight: '800', color: '#111827' },
+  cardNameDark: { color: '#F9FAFB' },
+  cardMeta: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
+  cardMetaDark: { color: 'rgba(255,255,255,0.4)' },
+  expandedBody: { paddingHorizontal: 14, paddingBottom: 14, gap: 12 },
+  previewScroll: { paddingVertical: 4 },
+  paper: {
+    backgroundColor: 'transparent',
+    borderRadius: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.1, shadowRadius: 14 },
+      android: { elevation: 6 },
+    }),
+  },
+  actions: { flexDirection: 'row', gap: 10 },
+  actionBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  actionBtnMuted: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionBtnMutedText: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  actionBtnPrimary: { backgroundColor: '#4F46E5' },
+  actionBtnPrimaryText: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  emptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  emptyHint: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  stampWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  stampBox: {
+    borderWidth: 3,
+    borderColor: 'rgba(176,24,43,0.55)',
+    borderRadius: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    transform: [{ rotate: '-18deg' }],
+  },
+  stampText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: 'rgba(176,24,43,0.55)',
+    letterSpacing: 3,
+  },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function CertificateGenerator() {
   const { theme, isDark } = useTheme();
@@ -3237,17 +3702,48 @@ export default function CertificateGenerator() {
   const [tcFeeDialogToggle, setTcFeeDialogToggle] = useState(false);
   const [tcWithdrawalAction, setTcWithdrawalAction] = useState<TcCompletionAction | null>(null);
   const [withdrawingStudent, setWithdrawingStudent] = useState(false);
+  const [issuedTcs, setIssuedTcs] = useState<IssuedCertificateRecord[]>([]);
+  const [issuedTcsLoading, setIssuedTcsLoading] = useState(false);
   const certificateRef = useRef<View>(null);
 
   const step = generated ? 3 : studentData ? 2 : 1;
   const tcFeeWaivedForCurrentStudent = !!(studentData && tcSkipFeeCheckStudentId === studentData.id);
+
+  const loadIssuedTcs = useCallback(async () => {
+    setIssuedTcsLoading(true);
+    try {
+      const rows = await CertificateService.listIssuedCertificates({ type: 'TC', limit: 100 });
+      setIssuedTcs(rows);
+    } catch {
+      setIssuedTcs([]);
+    } finally {
+      setIssuedTcsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     injectCertificatePrintStyles();
     SchoolSettingsService.getSettings()
       .then(settings => setSchoolProfile(mapSchoolSettings(settings)))
       .catch(() => { /* keep SCHOOL_CONFIG fallback */ });
-  }, []);
+    loadIssuedTcs();
+  }, [loadIssuedTcs]);
+
+  const persistIssuedCertificate = useCallback(async () => {
+    if (!studentData || !selectedType || !serialNo) return;
+    try {
+      await CertificateService.saveIssuedCertificate({
+        studentId: studentData.id,
+        type: selectedType,
+        serialNo,
+        issuedAt: new Date().toISOString(),
+        data: { studentData, tcFields },
+      });
+      if (selectedType === 'TC') {
+        await loadIssuedTcs();
+      }
+    } catch { /* non-blocking */ }
+  }, [studentData, selectedType, serialNo, tcFields, loadIssuedTcs]);
 
   const loadStudentFromRecord = useCallback(async (studentRecord: Student) => {
     const silent = { silent: true } as const;
@@ -3489,6 +3985,12 @@ export default function CertificateGenerator() {
       }
 
       offerTcWithdrawal('printed');
+      setSaving(true);
+      try {
+        await persistIssuedCertificate();
+      } finally {
+        setSaving(false);
+      }
     } catch (err: any) {
       alertCompat('Print Error', err?.message || 'Could not print certificate.');
     }
@@ -3540,15 +4042,10 @@ export default function CertificateGenerator() {
       // Save issued record to DB
       setSaving(true);
       try {
-        await CertificateService.saveIssuedCertificate({
-          studentId: studentData.id,
-          type: selectedType,
-          serialNo,
-          issuedAt: new Date().toISOString(),
-          data: { studentData, tcFields },
-        });
-      } catch { /* non-blocking */ }
-      setSaving(false);
+        await persistIssuedCertificate();
+      } finally {
+        setSaving(false);
+      }
       offerTcWithdrawal('downloaded');
     } catch (err: any) {
       setSaving(false);
@@ -3753,6 +4250,15 @@ export default function CertificateGenerator() {
             </TouchableOpacity>
           </>
         )}
+
+        {/* ── Past TC school copies ── */}
+        <IssuedTcHistorySection
+          records={issuedTcs}
+          loading={issuedTcsLoading}
+          school={schoolProfile}
+          isDark={isDark}
+          onRefresh={loadIssuedTcs}
+        />
 
         <View style={{ height: 40 }} />
       </ScrollView>

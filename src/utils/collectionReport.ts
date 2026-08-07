@@ -393,7 +393,9 @@ export function buildCollectionHtml(
   const selectedDefinitions = selectedColumns.map(
     (key) => COLLECTION_REPORT_COLUMNS.find((column) => column.key === key)!,
   );
-  const useLandscape = selectedDefinitions.length > 8 || Boolean(options.includeDenominations);
+  // Landscape only when the transaction table is wide. Denominations stay portrait-friendly
+  // so the sheet files cleanly in punch-hole binders without crowding the left margin.
+  const useLandscape = selectedDefinitions.length > 8;
   const modeSummaryRows = PAYMENT_MODES
     .map((mode) => {
       const bucket = totals.byMode[mode];
@@ -466,16 +468,20 @@ export function buildCollectionHtml(
           ${selectedColumns.length - amountIndex - 1 > 0 ? `<td colspan="${selectedColumns.length - amountIndex - 1}"></td>` : ''}`
     : `<td colspan="${selectedColumns.length}" class="num"><strong>Grand total (${totals.count} transactions): ${escapeHtml(formatAmount(totals.grandTotal))}</strong></td>`;
 
+  // Extra left margin clears punch holes on lever-arch / spring files (~12mm hole centres).
+  // top | right | bottom | left
+  const pageMargin = useLandscape ? '12mm 12mm 12mm 28mm' : '12mm 12mm 14mm 26mm';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Today's Collection</title>
   <style>
-    @page { size: A4 ${useLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
+    @page { size: A4 ${useLandscape ? 'landscape' : 'portrait'}; margin: ${pageMargin}; }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111827; margin: 0; padding: 24px; background: #fff; }
-    .sheet { max-width: 980px; margin: 0 auto; }
+    .sheet { max-width: 980px; margin: 0 auto; width: 100%; }
     .header { text-align: center; margin-bottom: 18px; border-bottom: 2px solid #1E293B; padding-bottom: 12px; }
     .school { font-size: 22px; font-weight: 800; letter-spacing: -0.4px; }
     .title { font-size: 16px; font-weight: 700; margin-top: 6px; color: #334155; }
@@ -492,7 +498,9 @@ export function buildCollectionHtml(
     .totals { margin-top: 14px; width: 320px; margin-left: auto; }
     .reconciliation { margin-top: 20px; break-inside: avoid; page-break-inside: avoid; border: 1px solid #CBD5E1; border-radius: 10px; overflow: hidden; }
     .reconciliation-title { background: #DDBA86; color: #111827; text-align: center; padding: 8px 10px; font-size: 13px; font-weight: 800; }
-    .reconciliation-grid { display: grid; grid-template-columns: ${options.includeDenominations ? '1fr 1fr 1.15fr' : '1fr 1fr'}; gap: 14px; padding: 14px; align-items: start; }
+    .reconciliation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px; align-items: start; }
+    .reconciliation-grid .denomination-block { grid-column: 1 / -1; }
+    .denomination-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
     .reconciliation h3 { font-size: 11px; margin: 0 0 7px; color: #334155; text-transform: uppercase; letter-spacing: 0.35px; }
     .reconciliation table { font-size: 9px; }
     .reconciliation th, .reconciliation td { padding: 5px 6px; }
@@ -507,8 +515,9 @@ export function buildCollectionHtml(
     .signatures { margin-top: 36px; display: flex; justify-content: space-between; gap: 24px; }
     .sign-box { flex: 1; border-top: 1px solid #94A3B8; padding-top: 8px; font-size: 12px; color: #475569; }
     @media print {
-      body { padding: 12px; }
-      .sheet { max-width: none; }
+      body { padding: 0; }
+      .sheet { max-width: none; margin: 0; width: 100%; }
+      .summary-card, .reconciliation { border-radius: 0; }
     }
   </style>
 </head>
@@ -572,24 +581,26 @@ export function buildCollectionHtml(
             </tbody>
           </table>
         </div>
-        ${options.includeDenominations ? `<div>
+        ${options.includeDenominations ? `<div class="denomination-block">
           <h3>Cash denomination calculation</h3>
           <p class="denomination-note">${escapeHtml(denominationNote)}</p>
-          <table class="denomination-calc">
-            <tbody>
-              <tr><th>Cash collections (system)</th><td class="num">${escapeHtml(formatAmount(cashTotal))}</td></tr>
-              <tr><th>Counted denomination total</th><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
-              <tr><th>Difference</th><td class="num ${denominationDifference === 0 ? 'match' : 'mismatch'}">${escapeHtml(denominationMatchLabel)}</td></tr>
-            </tbody>
-          </table>
-          <table>
-            <thead><tr><th class="num">Denomination</th><th class="num">Pieces</th><th class="num">Amount</th></tr></thead>
-            <tbody>
-              ${denominationRows}
-              <tr class="total-row"><td>Total pieces / amount</td><td class="num">${denominationBreakdown.rows.reduce((sum, row) => sum + row.pieces, 0)}</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
-              ${denominationBreakdown.remainder > 0 ? `<tr><td colspan="2">Non-denomination remainder</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.remainder))}</td></tr>` : ''}
-            </tbody>
-          </table>
+          <div class="denomination-layout">
+            <table class="denomination-calc">
+              <tbody>
+                <tr><th>Cash collections (system)</th><td class="num">${escapeHtml(formatAmount(cashTotal))}</td></tr>
+                <tr><th>Counted denomination total</th><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
+                <tr><th>Difference</th><td class="num ${denominationDifference === 0 ? 'match' : 'mismatch'}">${escapeHtml(denominationMatchLabel)}</td></tr>
+              </tbody>
+            </table>
+            <table>
+              <thead><tr><th class="num">Denomination</th><th class="num">Pieces</th><th class="num">Amount</th></tr></thead>
+              <tbody>
+                ${denominationRows}
+                <tr class="total-row"><td>Total pieces / amount</td><td class="num">${denominationBreakdown.rows.reduce((sum, row) => sum + row.pieces, 0)}</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.allocatedTotal))}</td></tr>
+                ${denominationBreakdown.remainder > 0 ? `<tr><td colspan="2">Non-denomination remainder</td><td class="num">${escapeHtml(formatAmount(denominationBreakdown.remainder))}</td></tr>` : ''}
+              </tbody>
+            </table>
+          </div>
         </div>` : ''}
       </div>
     </section>

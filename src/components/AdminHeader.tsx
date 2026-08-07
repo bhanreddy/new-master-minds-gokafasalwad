@@ -8,6 +8,7 @@ import { ADMIN_THEME } from '../constants/adminTheme';
 import { schoolColorWithAlpha } from '../constants/schoolConfig';
 import { SCHOOL_NAME } from '../constants/school';
 import ClayIconButton from './ClayIconButton';
+import { AdminAppSearchTrigger, AdminAppSearchIconButton } from './AdminAppSearch';
 
 import Animated, { SharedValue, useAnimatedStyle, interpolateColor, interpolate, Extrapolation } from 'react-native-reanimated';
 import { useTheme } from '../hooks/useTheme';
@@ -203,13 +204,27 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                     ) : null}
                 </View>
 
-                <Text style={[
-                    styles.title,
-                    isWideWeb && styles.titleWide,
-                    { color: textPrimary },
-                ]} numberOfLines={1}>{title}</Text>
+                {isWideWeb ? (
+                    <View style={styles.centerCluster}>
+                        <Text style={[
+                            styles.title,
+                            styles.titleWide,
+                            styles.titleWithSearch,
+                            { color: textPrimary },
+                        ]} numberOfLines={1}>{title}</Text>
+                        <AdminAppSearchTrigger />
+                    </View>
+                ) : (
+                    <Text style={[
+                        styles.title,
+                        { color: textPrimary },
+                    ]} numberOfLines={1}>{title}</Text>
+                )}
 
                 <View style={styles.rightContainer}>
+                    {!isWideWeb && isWeb ? (
+                        <AdminAppSearchIconButton isDark={isDark} accent={accent} />
+                    ) : null}
                     {rightAction && (
                         <ClayIconButton
                             onPress={() => {
@@ -303,6 +318,22 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         letterSpacing: 0.35,
         fontSize: 17,
+    },
+    titleWithSearch: {
+        flex: 0,
+        flexShrink: 1,
+        marginHorizontal: 0,
+        marginRight: 8,
+        textAlign: 'left',
+        maxWidth: 220,
+    },
+    centerCluster: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 0,
+        marginHorizontal: 8,
     },
     rightContainer: {
         flexDirection: 'row',

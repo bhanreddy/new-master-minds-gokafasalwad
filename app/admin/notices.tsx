@@ -19,7 +19,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, interpolateColor,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { NoticeService, Notice, CreateNoticeRequest } from '../../src/services/commonServices';
+import { NoticeService, Notice, CreateNoticeRequest, NoticeAudience } from '../../src/services/commonServices';
 import { ClassService, ClassInfo } from '../../src/services/classService';
 import { Modal } from 'react-native';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -50,6 +50,27 @@ const AUDIENCE_META: Record<string, { icon: string; color: string; bg: string; s
   staff: { icon: 'briefcase-outline', color: '#D97706', bg: '#D97706', soft: '#FEF3C7', lib: 'ion', desc: 'Teachers & staff' },
   parents: { icon: 'people-outline', color: '#059669', bg: '#059669', soft: '#D1FAE5', lib: 'ion', desc: 'Parent portal' },
   class: { icon: 'layers-outline', color: ROSE, bg: ROSE, soft: ROSE_MID, lib: 'ion', desc: 'One class only' },
+};
+
+const AUDIENCE_OPTIONS: NoticeAudience[] = ['all', 'students', 'staff', 'parents', 'class'];
+
+const audienceLabel = (a: NoticeAudience) =>
+  a === 'all' ? 'All'
+    : a === 'students' ? 'Students'
+    : a === 'staff' ? 'Staff'
+    : a === 'parents' ? 'Parents'
+    : 'Class';
+
+/** Resolve display list — prefer audiences[], fall back to legacy audience. */
+const noticeAudiences = (n: Notice): NoticeAudience[] => {
+  if (Array.isArray(n.audiences) && n.audiences.length > 0) return n.audiences;
+  return [n.audience || 'all'];
+};
+
+const audiencesHint = (selected: NoticeAudience[]) => {
+  if (!selected.length || selected.includes('all')) return AUDIENCE_META.all.desc;
+  if (selected.length === 1) return AUDIENCE_META[selected[0]]?.desc ?? '';
+  return selected.map(audienceLabel).join(' · ');
 };
 
 const TITLE_MAX = 80;
@@ -154,7 +175,8 @@ export default function AdminNotices() {
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [audience, setAudience] = useState<'all' | 'students' | 'staff' | 'parents' | 'class'>('all');
+  const [selectedAudiences, setSelectedAudiences] = useState<NoticeAudience[]>(['all']);
+  const [audienceFilter, setAudienceFilter] = useState<NoticeAudience | 'all_filter'>('all_filter');
   const [priority, setPriority] = useState('medium');
   const [targetClassId, setTargetClassId] = useState('');
   const [isPinned, setIsPinned] = useState(false);
@@ -163,6 +185,25 @@ export default function AdminNotices() {
   const [titleFocused, setTitleFocused] = useState(false);
   const [bodyFocused, setBodyFocused] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+
+  const toggleAudience = useCallback((a: NoticeAudience) => {
+    setSelectedAudiences((prev) => {
+      if (a === 'all') return ['all'];
+      const withoutAll = prev.filter((x) => x !== 'all');
+      if (withoutAll.includes(a)) {
+        const next = withoutAll.filter((x) => x !== a);
+        return next.length ? next : ['all'];
+      }
+      return [...withoutAll, a];
+    });
+  }, []);
+
+  // Drop class target when Class is no longer in the selection
+  useEffect(() => {
+    if (!selectedAudiences.includes('class') && targetClassId) {
+      setTargetClassId('');
+    }
+  }, [selectedAudiences, targetClassId]);
 
   const fabScale = useRef(new RNAnimated.Value(1)).current;
   const onFabIn = () => RNAnimated.spring(fabScale, { toValue: 0.92, useNativeDriver: true, friction: 6 }).start();
@@ -196,10 +237,17 @@ export default function AdminNotices() {
     return `${Math.floor(seconds / 31536000)}y ago`;
   };
 
-  const filteredNotices = notices.filter(n =>
-    n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    n.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredNotices = notices.filter((n) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      n.title.toLowerCase().includes(q) ||
+      n.content.toLowerCase().includes(q);
+    if (!matchesSearch) return false;
+    if (audienceFilter === 'all_filter') return true;
+    const targets = noticeAudiences(n);
+    return targets.includes('all') || targets.includes(audienceFilter);
+  });
 
   const sortedNotices = [...filteredNotices].sort((a, b) =>
     (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0)
@@ -207,7 +255,8 @@ export default function AdminNotices() {
 
   const titleOk = title.trim().length > 0;
   const bodyOk = content.trim().length > 0;
-  const classOk = audience !== 'class' || !!targetClassId;
+  const needsClass = selectedAudiences.includes('class');
+  const classOk = !needsClass || !!targetClassId;
   const canPublish = titleOk && bodyOk && classOk;
 
   const closeModal = useCallback(() => {
@@ -228,13 +277,17 @@ export default function AdminNotices() {
     }
     try {
       setCreating(true);
+      const audiences = selectedAudiences.includes('all')
+        ? (['all'] as NoticeAudience[])
+        : selectedAudiences;
       const payload: CreateNoticeRequest = {
         title: title.trim(),
         content: content.trim(),
-        audience,
+        audience: audiences[0],
+        audiences,
         priority,
         is_pinned: isPinned,
-        target_class_id: audience === 'class' ? targetClassId : undefined,
+        target_class_id: audiences.includes('class') ? targetClassId : undefined,
       };
       await NoticeService.create(payload);
       alertCompat('Published', 'Your notice is live on the board.');
@@ -248,7 +301,7 @@ export default function AdminNotices() {
   };
 
   const resetForm = () => {
-    setTitle(''); setContent(''); setAudience('all');
+    setTitle(''); setContent(''); setSelectedAudiences(['all']);
     setPriority('medium'); setTargetClassId(''); setIsPinned(false);
     setTitleFocused(false); setBodyFocused(false);
   };
@@ -259,7 +312,7 @@ export default function AdminNotices() {
   const renderItem = useCallback(({ item, index }: { item: Notice; index: number }) => {
     const pKey = (item.priority || 'normal').toLowerCase() as keyof typeof PRIORITY_META;
     const pm = PRIORITY_META[pKey] ?? PRIORITY_META.normal;
-    const am = AUDIENCE_META[item.audience] ?? AUDIENCE_META.all;
+    const targets = noticeAudiences(item);
     const pinned = !!item.is_pinned;
 
     return (
@@ -298,11 +351,19 @@ export default function AdminNotices() {
               <Text style={styles.cardContent} numberOfLines={2}>{t_field(item.content, item.content_te)}</Text>
 
               <View style={styles.cardFooter}>
-                <View style={[styles.audiencePill, { backgroundColor: am.soft }]}>
-                  <AudienceIcon type={item.audience} size={11} color={am.color} />
-                  <Text style={[styles.audienceText, { color: am.color }]}>
-                    {item.audience.charAt(0).toUpperCase() + item.audience.slice(1)}
-                  </Text>
+                <View style={styles.audiencePillRow}>
+                  {targets.map((a) => {
+                    const am = AUDIENCE_META[a] ?? AUDIENCE_META.all;
+                    const label = a === 'class' && item.target_class_name
+                      ? item.target_class_name
+                      : audienceLabel(a);
+                    return (
+                      <View key={a} style={[styles.audiencePill, { backgroundColor: am.soft }]}>
+                        <AudienceIcon type={a} size={11} color={am.color} />
+                        <Text style={[styles.audienceText, { color: am.color }]}>{label}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
                 <View style={styles.timeRow}>
                   <Ionicons name="time-outline" size={11} color={theme.colors.textTertiary} style={{ marginRight: 3 }} />
@@ -317,7 +378,7 @@ export default function AdminNotices() {
   }, [styles, theme.colors.textTertiary]);
 
   const priorityHint = PRIORITY_META[priority as keyof typeof PRIORITY_META]?.hint ?? '';
-  const audienceHint = AUDIENCE_META[audience]?.desc ?? '';
+  const audienceHint = audiencesHint(selectedAudiences);
 
   // ── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -347,6 +408,35 @@ export default function AdminNotices() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Audience filter */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+        style={styles.filterScroll}
+      >
+        <PressScale onPress={() => setAudienceFilter('all_filter')}>
+          <View style={[styles.filterChip, audienceFilter === 'all_filter' && styles.filterChipActive]}>
+            <Text style={[styles.filterChipText, audienceFilter === 'all_filter' && styles.filterChipTextActive]}>
+              All
+            </Text>
+          </View>
+        </PressScale>
+        {(['students', 'staff', 'parents', 'class'] as NoticeAudience[]).map((a) => {
+          const active = audienceFilter === a;
+          return (
+            <PressScale key={a} onPress={() => setAudienceFilter(a)}>
+              <View style={[styles.filterChip, active && styles.filterChipActive]}>
+                <AudienceIcon type={a} size={11} color={active ? '#fff' : '#64748B'} />
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                  {audienceLabel(a)}
+                </Text>
+              </View>
+            </PressScale>
+          );
+        })}
+      </ScrollView>
 
       {/* Stats */}
       {!loading && notices.length > 0 && (
@@ -398,14 +488,16 @@ export default function AdminNotices() {
                 <Ionicons name="megaphone-outline" size={32} color={ROSE_EDGE} />
               </Animated.View>
               <Text style={styles.emptyTitle}>
-                {searchQuery ? 'No matches' : 'Your board is quiet'}
+                {searchQuery || audienceFilter !== 'all_filter' ? 'No matches' : 'Your board is quiet'}
               </Text>
               <Text style={styles.emptySubtitle}>
                 {searchQuery
                   ? `Nothing matched “${searchQuery}”`
-                  : 'Share an announcement — students, staff, and parents will see it instantly.'}
+                  : audienceFilter !== 'all_filter'
+                    ? `No notices for ${audienceLabel(audienceFilter as NoticeAudience)}`
+                    : 'Share an announcement — students, staff, and parents will see it instantly.'}
               </Text>
-              {!searchQuery && (
+              {!searchQuery && audienceFilter === 'all_filter' && (
                 <PressScale onPress={() => setModalVisible(true)} style={styles.emptyCta}>
                   <Text style={styles.emptyCtaText}>Post first notice</Text>
                   <Ionicons name="arrow-forward" size={14} color="#fff" />
@@ -548,19 +640,17 @@ export default function AdminNotices() {
 
               <View style={styles.divider} />
 
-              {/* Audience — equal-width segmented row */}
+              {/* Audience — multi-select chips */}
               <View style={styles.fieldBlock}>
-                <Text style={styles.label}>Audience</Text>
+                <View style={styles.labelRow}>
+                  <Text style={[styles.label, { marginBottom: 0 }]}>Audience</Text>
+                  <Text style={styles.multiHint}>Tap to select multiple</Text>
+                </View>
                 <View style={styles.audienceTrack}>
-                  {(['all', 'students', 'staff', 'parents', 'class'] as const).map((a) => {
-                    const active = audience === a;
-                    const label = a === 'all' ? 'All'
-                      : a === 'students' ? 'Students'
-                      : a === 'staff' ? 'Staff'
-                      : a === 'parents' ? 'Parents'
-                      : 'Class';
+                  {AUDIENCE_OPTIONS.map((a) => {
+                    const active = selectedAudiences.includes(a);
                     return (
-                      <PressScale key={a} onPress={() => setAudience(a)} style={styles.audienceSeg}>
+                      <PressScale key={a} onPress={() => toggleAudience(a)} style={styles.audienceSeg}>
                         <View style={[styles.audienceChip, active && styles.audienceChipActive]}>
                           <AudienceIcon type={a} size={14} color={active ? '#fff' : '#64748B'} />
                           <Text
@@ -569,7 +659,7 @@ export default function AdminNotices() {
                             adjustsFontSizeToFit
                             minimumFontScale={0.85}
                           >
-                            {label}
+                            {audienceLabel(a)}
                           </Text>
                         </View>
                       </PressScale>
@@ -577,7 +667,7 @@ export default function AdminNotices() {
                   })}
                 </View>
 
-                {audience === 'class' && (
+                {needsClass && (
                   <Animated.View entering={FadeInDown.duration(220)} style={{ marginTop: 10 }}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.classRow}>
                       {classes.map((c) => {
@@ -764,14 +854,30 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     fontSize: 13, color: theme.colors.textSecondary,
     lineHeight: 19, marginBottom: 12,
   },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  audiencePillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
   audiencePill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
   },
   audienceText: { fontSize: 11, fontWeight: '700' },
-  timeRow: { flexDirection: 'row', alignItems: 'center' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   dateText: { fontSize: 11, color: theme.colors.textTertiary, fontWeight: '500' },
+
+  filterScroll: { flexGrow: 0, marginTop: 10 },
+  filterRow: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
+  filterChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: isDark ? theme.colors.card : '#fff',
+    borderWidth: 1.5, borderColor: isDark ? theme.colors.border : '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: ROSE, borderColor: ROSE,
+  },
+  filterChipText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  filterChipTextActive: { color: '#fff', fontWeight: '700' },
+  multiHint: { fontSize: 11, fontWeight: '600', color: theme.colors.textTertiary, marginBottom: 0 },
 
   emptyContainer: { alignItems: 'center', paddingTop: 64, paddingHorizontal: 28 },
   emptyIconWrap: {

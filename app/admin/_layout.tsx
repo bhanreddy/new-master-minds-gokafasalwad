@@ -7,6 +7,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { AdminWebChromeProvider } from '../../src/contexts/AdminWebChromeContext';
 import { useAdminSidebarItems } from '../../src/hooks/useAdminSidebarItems';
 import DashboardWebSidebar from '../../src/components/DashboardWebSidebar';
+import { AdminAppSearchProvider } from '../../src/components/AdminAppSearch';
 
 export default function AdminLayout() {
     useRequireRole('admin', 'principal');
@@ -35,16 +36,18 @@ export default function AdminLayout() {
 
     return (
         <AdminWebChromeProvider value={chromeValue}>
-            {isWideWeb ? (
-                <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-                    <View style={styles.bodyRow}>
-                        <DashboardWebSidebar collapsed={sidebarCollapsed} items={sidebarItems} />
-                        <View style={styles.stackCell}>{stack}</View>
+            <AdminAppSearchProvider>
+                {isWideWeb ? (
+                    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+                        <View style={styles.bodyRow}>
+                            <DashboardWebSidebar collapsed={sidebarCollapsed} items={sidebarItems} />
+                            <View style={styles.stackCell}>{stack}</View>
+                        </View>
                     </View>
-                </View>
-            ) : (
-                stack
-            )}
+                ) : (
+                    stack
+                )}
+            </AdminAppSearchProvider>
         </AdminWebChromeProvider>
     );
 }

@@ -126,6 +126,10 @@ export interface Student {
     readonly religion?: { id: number; name: string } | string | null;
     readonly religion_id?: number | null;
     readonly religion_name?: string | null;
+    readonly blood_group?: { id: number; name: string } | string | null;
+    readonly blood_group_id?: number | null;
+    readonly blood_group_name?: string | null;
+    readonly gender_name?: string | null;
     readonly category_name?: string | null;
 }
 
@@ -422,7 +426,10 @@ export interface Notice {
     readonly content: string;
     readonly content_te?: string;
     readonly audience: NoticeAudience;
+    /** Multi-select targets; falls back to [audience] when absent (legacy rows). */
+    readonly audiences?: NoticeAudience[];
     readonly target_class_id?: string;
+    readonly target_class_name?: string;
     readonly priority?: 'low' | 'medium' | 'high' | 'urgent';
     readonly is_published: boolean;
     readonly is_pinned: boolean; // "Important" flag

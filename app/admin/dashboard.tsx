@@ -1312,6 +1312,27 @@ export default function AdminDashboard() {
         gradient: ['#3B82F6', '#1D4ED8'],
         category: 'Overview',
       },
+      {
+        title: t('admin_dashboard_v2.total_students', 'Students'),
+        icon: 'people-outline',
+        route: '/admin/students',
+        gradient: ['#3B82F6', '#1D4ED8'],
+        category: 'Overview',
+      },
+      {
+        title: t('admin_dashboard_v2.staff_present', 'Staff Present'),
+        icon: 'checkmark-circle-outline',
+        route: '/admin/attendance',
+        gradient: ['#10B981', '#047857'],
+        category: 'Overview',
+      },
+      {
+        title: t('admin_dashboard_v2.collection', 'Collection'),
+        icon: 'wallet-outline',
+        route: '/admin/finance',
+        gradient: ['#F59E0B', '#B45309'],
+        category: 'Overview',
+      },
       ...visibleQuickActions.map((item) => ({
         title: item.title,
         icon: item.icon,

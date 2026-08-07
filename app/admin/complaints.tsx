@@ -11,6 +11,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import { promptAppReviewAfterSuccess } from '../../src/utils/openPlayStore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
 import Animated, {
@@ -435,7 +436,12 @@ export default function AdminComplaints() {
           priority: newComplaint.priority.toLowerCase(),
           raised_for_student_ids: selectedStudentIds,
         });
-        alertCompat('Filed', `Complaint created for ${result.count} student(s).`);
+        closeModal();
+        fetchComplaints();
+        promptAppReviewAfterSuccess(
+          'Filed',
+          `Complaint created for ${result.count} student(s). Thanks for keeping parents informed.`,
+        );
       } else {
         await ComplaintService.create({
           title: newComplaint.title.trim(),
@@ -444,10 +450,10 @@ export default function AdminComplaints() {
           priority: newComplaint.priority.toLowerCase(),
           raised_for_student_id: newComplaint.raised_for_student_id,
         });
+        closeModal();
+        fetchComplaints();
         alertCompat('Filed', 'Complaint created successfully.');
       }
-      closeModal();
-      fetchComplaints();
     } catch {
       alertCompat('Error', 'Failed to create complaint');
     } finally {

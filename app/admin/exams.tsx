@@ -432,6 +432,57 @@ export default function AdminExams() {
     }
   }, [detail, refreshDetail, allocations.length]);
 
+  const handleResultPublishToggle = useCallback(() => {
+    if (!detail) return;
+    const publishing = !detail.exam.results_published;
+    const readiness = detail.result_readiness;
+    if (publishing && !readiness.ready) {
+      alertCompat(
+        'Marks are still incomplete',
+        `${readiness.missing_entries} mark ${readiness.missing_entries === 1 ? 'entry is' : 'entries are'} still missing. Results can be published after every teacher finishes entry.`
+      );
+      return;
+    }
+
+    const doIt = async () => {
+      try {
+        setSaving(true);
+        await ExamTimetableService.setResultsPublished(detail.exam.id, publishing);
+        await refreshDetail();
+        alertCompat(
+          publishing ? 'Results published' : 'Results unpublished',
+          publishing
+            ? 'Parents and students can now see the complete exam results.'
+            : 'Results are hidden again. Teachers can make corrections before you republish.'
+        );
+      } catch (err: any) {
+        alertCompat('Error', err?.message || 'Failed to update result publication');
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    if (publishing) {
+      alertCompat(
+        'Publish results?',
+        `All ${readiness.entered_entries} mark entries are complete. Parents and students will be notified and can see the results immediately.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Publish results', onPress: doIt },
+        ]
+      );
+    } else {
+      alertCompat(
+        'Unpublish results?',
+        'Parents and students will no longer see this exam. Teachers can then correct mark entries.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Unpublish', style: 'destructive', onPress: doIt },
+        ]
+      );
+    }
+  }, [detail, refreshDetail]);
+
   const handleDeleteExam = useCallback(() => {
     if (!detail || saving) return;
     const examId = detail.exam.id;
@@ -492,6 +543,7 @@ export default function AdminExams() {
             onGenerate={() => setGenVisible(true)}
             onEditPaper={setEditPaper}
             onPublishToggle={handlePublishToggle}
+            onResultPublishToggle={handleResultPublishToggle}
             onQuickAllocate={handleQuickAllocate}
             onCustomizeAllocate={() => setAllocVisible(true)}
             onManageRooms={() => setRoomsVisible(true)}
@@ -1441,6 +1493,7 @@ function ExamDetailView({
   onGenerate,
   onEditPaper,
   onPublishToggle,
+  onResultPublishToggle,
   onQuickAllocate,
   onCustomizeAllocate,
   onManageRooms,
@@ -1458,6 +1511,7 @@ function ExamDetailView({
   onGenerate: () => void;
   onEditPaper: (p: ExamPaper) => void;
   onPublishToggle: () => void;
+  onResultPublishToggle: () => void;
   onQuickAllocate: () => void;
   onCustomizeAllocate: () => void;
   onManageRooms: () => void;
@@ -1470,6 +1524,9 @@ function ExamDetailView({
   const category = examCategoryFor(exam.exam_type);
   const groups = useMemo(() => groupPapersByDate(papers), [papers]);
   const published = !!exam.timetable_published;
+  const resultsPublished = !!exam.results_published;
+  const resultReadiness = detail.result_readiness;
+  const incompleteResultPapers = resultReadiness.papers.filter((paper) => !paper.complete);
   const missingTeachers = papers.filter((p) => p.has_teacher === false).length;
   const hasSeating = allocations.length > 0;
   const [seatingOpen, setSeatingOpen] = useState(!published || !hasSeating);
@@ -2067,6 +2124,89 @@ function ExamDetailView({
             <Text style={styles.emptyText}>
               Generate a timetable from classes and dates — you can fine-tune every paper afterwards.
             </Text>
+          </View>
+        )}
+
+        {papers.length > 0 && (
+          <View style={styles.resultPublishCard}>
+            <View
+              style={[
+                styles.resultPublishIcon,
+                {
+                  backgroundColor: resultsPublished
+                    ? `${theme.colors.success}16`
+                    : resultReadiness.ready
+                      ? `${theme.colors.primary}14`
+                      : `${theme.colors.warning}16`,
+                },
+              ]}
+            >
+              <Ionicons
+                name={resultsPublished ? 'checkmark-circle-outline' : 'school-outline'}
+                size={22}
+                color={
+                  resultsPublished
+                    ? theme.colors.success
+                    : resultReadiness.ready
+                      ? theme.colors.primary
+                      : theme.colors.warning
+                }
+              />
+            </View>
+            <View style={styles.resultPublishBody}>
+              <Text style={styles.resultPublishTitle}>
+                {resultsPublished
+                  ? 'Results published'
+                  : resultReadiness.ready
+                    ? 'Results ready to publish'
+                    : 'Waiting for teachers'}
+              </Text>
+              <Text style={styles.resultPublishSub}>
+                {resultsPublished
+                  ? 'Parents and students can see this exam result.'
+                  : resultReadiness.expected_entries === 0
+                    ? 'No active student mark entries found for these papers.'
+                    : `${resultReadiness.entered_entries} of ${resultReadiness.expected_entries} mark entries complete`}
+              </Text>
+              {!resultsPublished && resultReadiness.missing_entries > 0 && (
+                <>
+                  <Text style={[styles.resultMissingText, { color: theme.colors.warning }]}>
+                    {`${resultReadiness.missing_entries} missing across ${incompleteResultPapers.length} paper${incompleteResultPapers.length === 1 ? '' : 's'}`}
+                  </Text>
+                  {incompleteResultPapers.slice(0, 2).map((paper) => (
+                    <Text key={paper.exam_subject_id} style={styles.resultPaperMissing} numberOfLines={1}>
+                      {`${paper.class_name} · ${paper.subject_name}: ${paper.missing_entries} missing`}
+                    </Text>
+                  ))}
+                </>
+              )}
+            </View>
+            {resultsPublished ? (
+              <TouchableOpacity
+                style={[styles.resultUnpublishBtn, saving && styles.disabledBtn]}
+                disabled={saving}
+                activeOpacity={0.8}
+                onPress={onResultPublishToggle}
+              >
+                <Text style={styles.resultUnpublishBtnText}>Unpublish</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.resultPublishBtn,
+                  { backgroundColor: resultReadiness.ready ? theme.colors.primary : theme.colors.border },
+                  saving && styles.disabledBtn,
+                ]}
+                disabled={saving || !resultReadiness.ready}
+                activeOpacity={0.8}
+                onPress={onResultPublishToggle}
+              >
+                <Ionicons name="megaphone-outline" size={15} color="#FFFFFF" />
+                <Text style={styles.resultPublishBtnText}>
+                  {resultReadiness.ready ? 'Publish results' : 'Not ready'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         <View style={styles.bottomSpacer} />
@@ -5138,6 +5278,47 @@ const getStyles = (theme: Theme, isDark: boolean) =>
       minWidth: 24,
       textAlign: 'center',
     },
+
+    resultPublishCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginTop: 14,
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.card,
+    },
+    resultPublishIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    resultPublishBody: { flex: 1 },
+    resultPublishTitle: { fontSize: 14, fontWeight: '800', color: theme.colors.textStrong },
+    resultPublishSub: { fontSize: 11.5, color: theme.colors.textSecondary, marginTop: 2 },
+    resultMissingText: { fontSize: 11.5, fontWeight: '700', marginTop: 3 },
+    resultPaperMissing: { fontSize: 10.5, color: theme.colors.textTertiary, marginTop: 2 },
+    resultPublishBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: 12,
+    },
+    resultPublishBtnText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' },
+    resultUnpublishBtn: {
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    resultUnpublishBtnText: { color: theme.colors.text, fontSize: 12.5, fontWeight: '700' },
 
     publishBar: {
       flexDirection: 'row',

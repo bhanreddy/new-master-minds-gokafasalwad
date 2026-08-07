@@ -76,7 +76,8 @@ export const ComplaintService = {
 export interface CreateNoticeRequest {
     title: string;
     content: string;
-    audience: NoticeAudience;
+    audience?: NoticeAudience;
+    audiences?: NoticeAudience[];
     target_class_id?: string;
     priority?: string;
     is_pinned?: boolean;
@@ -326,6 +327,9 @@ export interface Exam {
     start_date?: string;
     end_date?: string;
     status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+    timetable_published?: boolean;
+    results_published?: boolean;
+    results_published_at?: string | null;
 }
 
 export interface ResultEntry {

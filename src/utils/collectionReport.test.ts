@@ -51,7 +51,7 @@ describe('collection report columns', () => {
     expect(html).toContain('Term 1 &amp; books');
     expect(html).not.toContain('<th>Father</th>');
     expect(html).not.toContain('<th>Adm no</th>');
-    expect(html).toContain('@page { size: A4 portrait;');
+    expect(html).toContain('@page { size: A4 portrait; margin: 12mm 12mm 14mm 26mm; }');
   });
 
   it('preserves the order in which columns were selected', () => {
@@ -83,14 +83,14 @@ describe('collection report columns', () => {
     expect(normalizeCollectionReportColumns('bad data')).toEqual(DEFAULT_COLLECTION_REPORT_COLUMNS);
   });
 
-  it('switches wide reports to landscape', () => {
+  it('switches wide reports to landscape with punch-hole left margin', () => {
     const html = buildCollectionHtml(
       [row],
       meta,
       ['fee_type', 'receipt_no', 'student_name', 'father_name', 'admission_no', 'class_section', 'payment_method', 'time', 'remarks'],
     );
 
-    expect(html).toContain('@page { size: A4 landscape;');
+    expect(html).toContain('@page { size: A4 landscape; margin: 12mm 12mm 12mm 28mm; }');
   });
 
   it('calculates a minimum-piece cash denomination suggestion', () => {
@@ -121,7 +121,9 @@ describe('collection report columns', () => {
     expect(withDenominations).toContain('Cash collections (system)');
     expect(withDenominations).toContain('Counted denomination total');
     expect(withDenominations).toContain('Matches cash total');
-    expect(withDenominations).toContain('@page { size: A4 landscape;');
+    // Denominations alone must stay portrait so punch-file filing keeps a safe left gutter.
+    expect(withDenominations).toContain('@page { size: A4 portrait; margin: 12mm 12mm 14mm 26mm; }');
+    expect(withDenominations).toContain('class="denomination-block"');
     expect(withDenominations.indexOf('Collection Reconciliation')).toBeGreaterThan(
       withDenominations.indexOf('<tbody class="report-total">'),
     );

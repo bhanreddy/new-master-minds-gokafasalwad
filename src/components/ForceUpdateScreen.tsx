@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import {
   BackHandler,
-  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -9,8 +8,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as Application from 'expo-application';
 import { Ionicons } from '@expo/vector-icons';
+import { openPlayStore } from '../utils/openPlayStore';
 
 export default function ForceUpdateScreen() {
   useEffect(() => {
@@ -18,10 +17,8 @@ export default function ForceUpdateScreen() {
     return () => subscription.remove();
   }, []);
 
-  const openStore = async () => {
-    const packageId = Application.applicationId || '';
-    const storeUrl = `https://play.google.com/store/apps/details?id=${packageId}`;
-    await Linking.openURL(storeUrl);
+  const openStore = () => {
+    void openPlayStore();
   };
 
   return (

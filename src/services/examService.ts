@@ -22,6 +22,8 @@ export interface ExamListItem {
     end_date: string | null;
     status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
     timetable_published?: boolean;
+    results_published?: boolean;
+    results_published_at?: string | null;
     papers_count?: number;
     academic_year?: string;
 }
@@ -57,6 +59,27 @@ export interface ExamTimetableDetail {
         academic_year_id: string;
     };
     papers: ExamPaper[];
+    result_readiness: ExamResultReadiness;
+}
+
+export interface ExamResultReadinessPaper {
+    exam_subject_id: string;
+    class_name: string;
+    subject_name: string;
+    expected_entries: number;
+    entered_entries: number;
+    missing_entries: number;
+    complete: boolean;
+}
+
+export interface ExamResultReadiness {
+    ready: boolean;
+    papers_total: number;
+    papers_complete: number;
+    expected_entries: number;
+    entered_entries: number;
+    missing_entries: number;
+    papers: ExamResultReadinessPaper[];
 }
 
 export interface ExamHallTicketData {
@@ -216,6 +239,10 @@ export const ExamTimetableService = {
 
     setPublished: async (examId: string, published: boolean): Promise<void> => {
         return api.post(`/results/exams/${examId}/timetable/publish`, { published }, { silent: true });
+    },
+
+    setResultsPublished: async (examId: string, published: boolean): Promise<void> => {
+        return api.post(`/results/exams/${examId}/results/publish`, { published }, { silent: true });
     },
 
     // ── Student / parent ────────────────────────────────────────────────

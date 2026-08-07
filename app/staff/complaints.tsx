@@ -8,6 +8,7 @@ import {
   Modal, Pressable, Dimensions, useWindowDimensions,
 } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
+import { promptAppReviewAfterSuccess } from '../../src/utils/openPlayStore';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -865,6 +866,8 @@ export default function StaffComplaints() {
           priority: severity.toLowerCase(),
           raised_for_student_id: selectedStudent!.id,
         });
+        closeWizard();
+        await fetchComplaints();
         alertCompat('Submitted', 'Report submitted successfully.');
       } else {
         const result = await ComplaintService.createBulk({
@@ -872,10 +875,14 @@ export default function StaffComplaints() {
           priority: severity.toLowerCase(),
           raised_for_student_ids: selectedStudentIds,
         });
-        alertCompat('Submitted', `Report sent to ${result.count} student(s).`);
+        closeWizard();
+        await fetchComplaints();
+        // Multi-student success: ask for feedback + Play Store review (package from app.json)
+        promptAppReviewAfterSuccess(
+          'Submitted',
+          `Report sent to ${result.count} student(s). Thanks for keeping parents informed.`,
+        );
       }
-      closeWizard();
-      await fetchComplaints();
     } catch {
       alertCompat('Error', 'Failed to submit report.');
     } finally {

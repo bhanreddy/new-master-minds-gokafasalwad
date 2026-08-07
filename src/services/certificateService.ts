@@ -2,6 +2,22 @@ import { api } from './apiClient';
 
 export type CertificateTypeCode = 'TC' | 'BONAFIDE';
 
+export type IssuedCertificateRecord = {
+  id: string;
+  student_id: string;
+  type: CertificateTypeCode;
+  serial_no: string;
+  issued_at: string;
+  created_at: string;
+  admission_no?: string | null;
+  student_name?: string | null;
+  /** Snapshot used to re-render the certificate (school copy). */
+  data?: {
+    studentData?: Record<string, unknown>;
+    tcFields?: Record<string, unknown>;
+  } | null;
+};
+
 /**
  * Certificate serials + issue records are best-effort until the backend
  * `/api/v1/certificates` routes are deployed. Use silent requests so a missing
@@ -37,5 +53,25 @@ export const CertificateService = {
       },
       { silent: true },
     );
+  },
+
+  /** List previously issued certificates (newest first). Includes snapshot `data`. */
+  async listIssuedCertificates(params?: {
+    limit?: number;
+    offset?: number;
+    type?: CertificateTypeCode;
+    studentId?: string;
+  }): Promise<IssuedCertificateRecord[]> {
+    const rows = await api.get<IssuedCertificateRecord[]>(
+      '/certificates',
+      {
+        limit: params?.limit ?? 50,
+        offset: params?.offset ?? 0,
+        type: params?.type,
+        student_id: params?.studentId,
+      },
+      { silent: true },
+    );
+    return Array.isArray(rows) ? rows : [];
   },
 };
