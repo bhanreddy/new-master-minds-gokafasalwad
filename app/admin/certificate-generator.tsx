@@ -177,8 +177,8 @@ function isTcAllowedForClass(classLabel?: string): { allowed: boolean; classNum:
 }
 
 function formatRecognitionLine(recognition: string, medium: string): string {
-  if (!recognition) return '';
-  let line = `Recognised by Govt. ${recognition}`;
+  if (!hasOfficialValue(recognition)) return '';
+  let line = `Recognised by Govt. ${recognition.trim()}`;
   if (medium) {
     const m = medium.toLowerCase();
     if (m === 'e' || m.includes('english')) line += ' (E/M)';
@@ -186,6 +186,23 @@ function formatRecognitionLine(recognition: string, medium: string): string {
     else line += ` (${medium})`;
   }
   return line;
+}
+
+/**
+ * Letterhead recognition / RC line for certificates.
+ * Prefers school-settings recognition, else `SCHOOL_RECOGNITION_LINE` from schoolConfig
+ * (`recognitionLine` + optional `recognitionNo`). Empty → omit the line (never "NA").
+ */
+function resolveCertificateRecognitionLine(school: SchoolProfile): string {
+  const fromSettings = formatRecognitionLine(school.recognition, school.medium);
+  if (fromSettings) {
+    const rc = String(SCHOOL_CONFIG.recognitionNo ?? '').trim();
+    if (hasOfficialValue(rc) && !/rc\s*no\.?/i.test(fromSettings)) {
+      return `${fromSettings}, RC No. ${rc}`;
+    }
+    return fromSettings;
+  }
+  return hasOfficialValue(SCHOOL_RECOGNITION_LINE) ? SCHOOL_RECOGNITION_LINE.trim() : '';
 }
 
 function resolveSchoolLogoSource(_school: SchoolProfile) {
@@ -891,7 +908,7 @@ function BonafideDocument({
   const enrolmentVerb = studentData.isFormerStudent ? 'was' : 'is';
   const studyVerb = studentData.isFormerStudent ? 'studied' : 'is Studying';
   const logoSource = resolveSchoolLogoSource(school);
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const recognitionLine = resolveCertificateRecognitionLine(school);
   const isLegacy = headerTheme === 'legacy';
 
   return (
@@ -1564,8 +1581,7 @@ export function TcA4Document({
 }) {
   const logoSource = resolveSchoolLogoSource(school);
   const affiliationLine = hasOfficialValue(school.affiliation) ? school.affiliation.trim() : '';
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium)
-    || '(Recognised by Govt. of T.S.)';
+  const recognitionLine = resolveCertificateRecognitionLine(school);
   const showCbse = hasOfficialValue(tcFields.cbseAffiliationNo);
   const showSchoolCode = hasOfficialValue(tcFields.schoolCode);
   const showPen = hasOfficialValue(studentData.penNo);
@@ -2282,8 +2298,8 @@ const CertificatePreview = React.forwardRef<View, {
   const title = isTC ? 'SCHOOL RECORD SHEET' : 'BONAFIDE & CONDUCT CERTIFICATE';
   const today = formatDDMMYYYY(new Date());
   const logoSource = resolveSchoolLogoSource(school);
-  const affiliationLine = school.affiliation?.trim() || '';
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium) || SCHOOL_RECOGNITION_LINE;
+  const affiliationLine = hasOfficialValue(school.affiliation) ? school.affiliation.trim() : '';
+  const recognitionLine = resolveCertificateRecognitionLine(school);
   const modernOn = bonafideHeaderTheme === 'modern';
 
   return (
@@ -2511,8 +2527,7 @@ function buildCertificateHTML(
     : '';
   const pronouns = genderPronouns(studentData.genderId);
   const affiliationLine = hasOfficialValue(school.affiliation) ? school.affiliation.trim() : '';
-  const recognitionLine = formatRecognitionLine(school.recognition, school.medium)
-    || (isTC ? '(Recognised by Govt. of T.S.)' : SCHOOL_RECOGNITION_LINE);
+  const recognitionLine = resolveCertificateRecognitionLine(school);
   const escAddr = (school.address || '').replace(/\n/g, '<br/>');
   const escSchoolName = (school.name || '').replace(/</g, '&lt;');
   const showCbse = hasOfficialValue(tcFields.cbseAffiliationNo);
