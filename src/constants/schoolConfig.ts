@@ -321,7 +321,7 @@ export const SCHOOL_CONFIG = {
    * Optional RC / recognition number for bonafide & TC letterheads.
    * Example: "1234/DEO/VKB/2020". Leave empty to omit — never shown as "NA".
    */
-  recognitionNo: "RC. NO. 213/46/2021",
+  recognitionNo: "213/46/2021",
 
   /**
    * Colour theme for ribbon / letterhead chrome (SchoolRibbon, etc.).
