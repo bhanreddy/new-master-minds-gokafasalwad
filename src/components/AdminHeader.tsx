@@ -20,6 +20,8 @@ interface AdminHeaderProps {
     showProfileButton?: boolean;
     showBackButton?: boolean;
     showNotification?: boolean;
+    /** Hide the global ⌘K app search (use when the page has its own filter search). */
+    hideAppSearch?: boolean;
     rightAction?: {
         icon: keyof typeof Ionicons.glyphMap;
         onPress: () => void;
@@ -36,6 +38,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     showProfileButton = true,
     showBackButton = false,
     showNotification = false,
+    hideAppSearch = false,
     rightAction,
     scrollY,
     onMenuPress
@@ -145,7 +148,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     });
 
     const isAbsolute = !!scrollY;
-    const headerContentHeight = isWideWeb ? 56 : 50;
+    const headerContentHeight = isWideWeb ? 48 : 50;
     const horizontalPad = isWideWeb ? 20 : ADMIN_THEME.spacing.m;
 
     const showBack = showBackButton || isWeb;
@@ -205,14 +208,15 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                 </View>
 
                 {isWideWeb ? (
-                    <View style={styles.centerCluster}>
+                    <View style={[styles.centerCluster, hideAppSearch && styles.centerClusterStart]}>
                         <Text style={[
                             styles.title,
                             styles.titleWide,
-                            styles.titleWithSearch,
+                            !hideAppSearch && styles.titleWithSearch,
+                            hideAppSearch && styles.titleWideAlone,
                             { color: textPrimary },
                         ]} numberOfLines={1}>{title}</Text>
-                        <AdminAppSearchTrigger />
+                        {!hideAppSearch ? <AdminAppSearchTrigger /> : null}
                     </View>
                 ) : (
                     <Text style={[
@@ -222,7 +226,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                 )}
 
                 <View style={styles.rightContainer}>
-                    {!isWideWeb && isWeb ? (
+                    {!isWideWeb && isWeb && !hideAppSearch ? (
                         <AdminAppSearchIconButton isDark={isDark} accent={accent} />
                     ) : null}
                     {rightAction && (
@@ -268,7 +272,7 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                     />
                     <View style={{ height: 2, overflow: 'hidden' }}>
                         <LinearGradient
-                            colors={['#3B82F6', '#8B5CF6', 'transparent']}
+                            colors={['#5D101D', '#D4AF37', 'transparent']}
                             start={{ x: 0, y: 0.5 }}
                             end={{ x: 1, y: 0.5 }}
                             style={{ flex: 1 }}
@@ -327,6 +331,12 @@ const styles = StyleSheet.create({
         textAlign: 'left',
         maxWidth: 220,
     },
+    titleWideAlone: {
+        flex: 1,
+        marginHorizontal: 0,
+        textAlign: 'left',
+        maxWidth: undefined,
+    },
     centerCluster: {
         flex: 1,
         flexDirection: 'row',
@@ -334,6 +344,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         minWidth: 0,
         marginHorizontal: 8,
+    },
+    centerClusterStart: {
+        justifyContent: 'flex-start',
     },
     rightContainer: {
         flexDirection: 'row',

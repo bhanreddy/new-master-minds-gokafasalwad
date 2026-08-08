@@ -174,6 +174,15 @@ const fmt = (t: string) => {
   return `${h12}:${m} ${ampm}`;
 };
 
+/** Compact clock for dense period columns (no AM/PM). */
+const fmtCompact = (t: string) => {
+  if (!t) return '--:--';
+  const [h, m] = t.split(':');
+  const hour = parseInt(h, 10);
+  const h12 = hour % 12 || 12;
+  return `${h12}:${m}`;
+};
+
 const getMins = (t: string) => {
   if (!t || !t.includes(':')) return 0;
   const [h, m] = t.split(':').map(Number);
@@ -263,15 +272,108 @@ function AnimatedProgress({ pct, isDone, c }: { pct: number; isDone: boolean; c:
   );
 }
 
-// ─── Section Label ─────────────────────────────────────────────────────────────
-function SectionLabel({ title, icon, c }: { title: string; icon?: string; c: Tokens }) {
+type PremiumOption = { id: string; label: string; hint?: string; accent?: boolean };
+
+function PremiumSelect({
+  label,
+  icon,
+  value,
+  options,
+  onChange,
+  c,
+  styles,
+  disabled,
+  wide,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string;
+  options: PremiumOption[];
+  onChange: (id: string) => void;
+  c: Tokens;
+  styles: any;
+  disabled?: boolean;
+  wide?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.id === value);
+  const valueLabel = selected?.label || 'Select';
+
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 }}>
-      {icon && <Ionicons name={icon as any} size={12} color={c.accent} />}
-      <Text style={{ fontSize: 10, fontWeight: '800', color: c.textMuted, letterSpacing: 1.4, textTransform: 'uppercase' }}>
-        {title}
-      </Text>
-    </View>
+    <>
+      <TouchableOpacity
+        style={[styles.ddTrigger, wide && styles.ddTriggerWide, disabled && styles.ddTriggerDisabled]}
+        onPress={() => !disabled && setOpen(true)}
+        activeOpacity={0.75}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${valueLabel}`}
+      >
+        <View style={styles.ddIconWrap}>
+          <Ionicons name={icon} size={13} color={c.accent} />
+        </View>
+        <View style={styles.ddTextCol}>
+          <Text style={styles.ddEyebrow}>{label}</Text>
+          <Text style={styles.ddValue} numberOfLines={1}>{valueLabel}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={13} color={c.textMuted} />
+      </TouchableOpacity>
+
+      <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={styles.ddOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
+          <View style={styles.ddMenu}>
+            <View style={styles.ddMenuHeader}>
+              <View style={styles.ddMenuHeaderLeft}>
+                <View style={styles.ddMenuIcon}>
+                  <Ionicons name={icon} size={15} color={c.accent} />
+                </View>
+                <View>
+                  <Text style={styles.ddMenuTitle}>{label}</Text>
+                  <Text style={styles.ddMenuSub}>{options.length} options</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.ddMenuClose} onPress={() => setOpen(false)} hitSlop={8}>
+                <Ionicons name="close" size={16} color={c.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.ddMenuScroll} bounces={false} showsVerticalScrollIndicator={false}>
+              {options.map((opt) => {
+                const active = opt.id === value;
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    style={[styles.ddOption, active && styles.ddOptionActive]}
+                    onPress={() => {
+                      onChange(opt.id);
+                      setOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    {active ? <View style={styles.ddOptionRail} /> : <View style={styles.ddOptionRailSpacer} />}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.ddOptionLabel, active && styles.ddOptionLabelActive]} numberOfLines={1}>
+                        {opt.label}
+                      </Text>
+                      {opt.hint ? (
+                        <Text style={styles.ddOptionHint} numberOfLines={1}>{opt.hint}</Text>
+                      ) : null}
+                    </View>
+                    {opt.accent ? <View style={styles.ddOptionDot} /> : null}
+                    {active ? (
+                      <View style={styles.ddOptionCheck}>
+                        <Ionicons name="checkmark" size={12} color={c.onAccent} />
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -281,10 +383,7 @@ export default function TimetableManagement() {
   const c = React.useMemo(() => makeColors(isDark), [isDark]);
   const styles = React.useMemo(() => getStyles(c), [c]);
 
-  // Filters collapse into a compact sticky bar by default so the grid is the hero.
-  // Class / section / year are auto-selected on load, so the user rarely needs the
-  // full selectors open — one tap re-expands them when they do.
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  // Class / section / year are auto-selected on load; premium dropdowns stay on one toolbar.
 
   const [metaLoading, setMetaLoading] = useState(true);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -352,6 +451,7 @@ export default function TimetableManagement() {
   const [assignTab, setAssignTab] = useState<'subject' | 'teacher'>('subject');
   const { width: windowWidth } = useWindowDimensions();
   const assignSplit = windowWidth >= 640;
+  const compactPeriodCol = windowWidth < 480;
 
   const [managePeriodsVisible, setManagePeriodsVisible] = useState(false);
   const [editedPeriods, setEditedPeriods] = useState<Period[]>([]);
@@ -952,29 +1052,43 @@ export default function TimetableManagement() {
     const isFilled = !!slot;
     const isLive = livePeriodId === period.id;
     const isBreak = period.is_break || isBreakPeriod(period.name);
+    const isBlocked = !classSectionId;
     const teachingNum = isBreak ? null : getTeachingPeriodNumber(sortedPeriods, index);
     const subj = isFilled ? subjectPalette(slot!.subject_id || slot!.subject_name || '', isDark) : null;
     const duration = getDurationLabel(period.start_time, period.end_time);
 
     return (
-      <AnimatedRow key={period.id} delay={index * 40}>
-        <View style={[styles.rowCard, isLive && styles.rowCardLive]}>
+      <AnimatedRow key={period.id} delay={index * 28}>
+        <View style={[
+          styles.rowCard,
+          isLive && styles.rowCardLive,
+          isBlocked && styles.rowCardBlocked,
+        ]}>
           {/* Subject-colored accent rail (neutral when empty) */}
           <View style={[styles.rowAccent, isFilled && { backgroundColor: subj!.solid }]} />
 
-          {/* Period tap zone */}
+          {/* Period tap zone — compact horizontal time */}
           <TouchableOpacity
-            style={styles.periodCell}
+            style={[styles.periodCell, compactPeriodCol && styles.periodCellCompact]}
             onPress={() => handlePeriodPress(period)}
             activeOpacity={0.65}
+            accessibilityLabel={`Edit period ${teachingNum ?? period.sort_order} timing`}
           >
-            <View style={[styles.periodBadge, isFilled && styles.periodBadgeFilled]}>
+            <View style={[
+              styles.periodBadge,
+              isFilled && styles.periodBadgeFilled,
+              isBlocked && !isFilled && styles.periodBadgeBlocked,
+            ]}>
               <Text style={styles.periodBadgeText}>{teachingNum ?? period.sort_order}</Text>
             </View>
-            <Text style={styles.periodTime}>{fmt(period.start_time)}</Text>
-            <View style={styles.periodTimeDivider} />
-            <Text style={[styles.periodTime, styles.periodTimeEnd]}>{fmt(period.end_time)}</Text>
-            {duration ? <Text style={styles.periodDuration}>{duration}</Text> : null}
+            <View style={styles.periodTimeBlock}>
+              <Text style={styles.periodTimeRange} numberOfLines={1}>
+                {compactPeriodCol
+                  ? `${fmtCompact(period.start_time)}–${fmtCompact(period.end_time)}`
+                  : `${fmt(period.start_time)} – ${fmt(period.end_time)}`}
+              </Text>
+              {duration ? <Text style={styles.periodDuration}>{duration}</Text> : null}
+            </View>
           </TouchableOpacity>
 
           {/* Slot tap zone */}
@@ -982,6 +1096,13 @@ export default function TimetableManagement() {
             style={styles.slotCell}
             onPress={() => handlePeriodPressForSlot(period.sort_order)}
             activeOpacity={0.6}
+            accessibilityLabel={
+              isFilled
+                ? `Edit ${slot!.subject_name}`
+                : isBlocked
+                  ? 'Mapping required before assigning'
+                  : 'Assign subject'
+            }
           >
             {isFilled ? (
               <View style={styles.slotFilledContent}>
@@ -1000,14 +1121,19 @@ export default function TimetableManagement() {
                   </Text>
                 </View>
               </View>
+            ) : isBlocked ? (
+              <View style={styles.slotEmptyContent}>
+                <View style={styles.lockIconWrap}>
+                  <Ionicons name="lock-closed-outline" size={13} color={c.textMuted} />
+                </View>
+                <Text style={styles.slotBlockedText}>Awaiting mapping</Text>
+              </View>
             ) : (
               <View style={styles.slotEmptyContent}>
                 <View style={styles.addIconWrap}>
-                  <Ionicons name="add" size={16} color={c.accent} />
+                  <Ionicons name="add" size={15} color={c.accent} />
                 </View>
-                <Text style={styles.slotEmptyText}>
-                  {classSectionId ? 'Tap to assign' : 'Map class & section first'}
-                </Text>
+                <Text style={styles.slotEmptyText}>Tap to assign subject</Text>
               </View>
             )}
 
@@ -1018,11 +1144,13 @@ export default function TimetableManagement() {
                   <Text style={styles.nowPillText}>NOW</Text>
                 </View>
               )}
-              <Ionicons
-                name={isFilled ? 'create-outline' : 'chevron-forward'}
-                size={14}
-                color={isFilled ? c.accentMutedIcon : c.textFaint}
-              />
+              {!isBlocked && (
+                <Ionicons
+                  name={isFilled ? 'create-outline' : 'chevron-forward'}
+                  size={14}
+                  color={isFilled ? c.accentMutedIcon : c.textFaint}
+                />
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -1037,7 +1165,7 @@ export default function TimetableManagement() {
       <View key={key} style={styles.breakRow}>
         <View style={styles.breakLine} />
         <View style={styles.breakPill}>
-          <Ionicons name="cafe-outline" size={12} color={c.warning} />
+          <Ionicons name="cafe-outline" size={11} color={c.warning} />
           <Text style={styles.breakLabel}>
             {mins >= 30 ? 'LUNCH' : 'BREAK'} · {mins}m
           </Text>
@@ -1053,14 +1181,14 @@ export default function TimetableManagement() {
     return (
       <View style={styles.daySummary}>
         <View style={styles.daySummaryItem}>
-          <Ionicons name="time-outline" size={14} color={c.accent} />
+          <Ionicons name="time-outline" size={13} color={c.accent} />
           <Text style={styles.daySummaryStrong}>{fmt(daySpan.start)} – {fmt(daySpan.end)}</Text>
         </View>
         <View style={styles.daySummaryDivider} />
         <View style={styles.daySummaryItem}>
-          <Ionicons name="book-outline" size={13} color={c.textMuted} />
+          <Ionicons name="layers-outline" size={12} color={c.textMuted} />
           <Text style={styles.daySummaryMuted}>
-            {daySpan.teachingCount} {daySpan.teachingCount === 1 ? 'period' : 'periods'} · {minsLabel(daySpan.teachingMins)}
+            {daySpan.teachingCount} {daySpan.teachingCount === 1 ? 'period' : 'periods'} · {minsLabel(daySpan.teachingMins)} teaching
           </Text>
         </View>
       </View>
@@ -1097,6 +1225,30 @@ export default function TimetableManagement() {
     ? `Class ${selectedClassObj.name} · Sec ${selectedSectionObj.name}`
     : 'Select class & section';
   const contextSub = `${selectedYearObj?.code ?? '—'} · ${timetableMode === 'per_day' ? TIMETABLE_DAY_LABELS[selectedDay] : 'All 6 days'}`;
+
+  const yearOptions: PremiumOption[] = academicYears.map(y => ({
+    id: y.id,
+    label: y.code,
+    hint: y.is_current ? 'Current year' : undefined,
+    accent: !!y.is_current,
+  }));
+  const classOptions: PremiumOption[] = classes.map(cl => ({
+    id: cl.id,
+    label: cl.name,
+  }));
+  const sectionOptions: PremiumOption[] = sections.map(s => ({
+    id: s.id,
+    label: s.name,
+    hint: `Section ${s.name}`,
+  }));
+  const modeOptions: PremiumOption[] = [
+    { id: 'uniform', label: 'Uniform', hint: 'Same schedule Mon–Sat' },
+    { id: 'per_day', label: 'Per-day', hint: 'Different schedule each weekday' },
+  ];
+  const dayOptions: PremiumOption[] = TIMETABLE_DAYS.map(d => ({
+    id: d,
+    label: TIMETABLE_DAY_LABELS[d],
+  }));
 
   const activePeriodDef = activeSlotData
     ? periods.find(p => p.sort_order === activeSlotData.period)
@@ -1146,175 +1298,93 @@ export default function TimetableManagement() {
         rightAction={{ icon: 'time-outline', onPress: openManagePeriods }}
       />
 
-      {/* ── Sticky compact context bar (always visible) ── */}
+      {/* ── Premium single-line filter toolbar ── */}
       <View style={styles.contextBarOuter}>
-        <View style={styles.contextBarInner}>
-          <TouchableOpacity
-            style={styles.contextMain}
-            onPress={() => setFiltersExpanded(v => !v)}
-            activeOpacity={0.7}
+        <View style={styles.filterToolbar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterToolbarRow}
+            style={styles.filterToolbarScroll}
           >
-            <View style={styles.contextIconWrap}>
-              <Ionicons name="school" size={15} color={c.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.contextTitle} numberOfLines={1}>{contextLabel}</Text>
-              <Text style={styles.contextSub} numberOfLines={1}>{contextSub}</Text>
-            </View>
-            <View style={styles.contextChevWrap}>
-              <Ionicons
-                name={filtersExpanded ? 'chevron-up' : 'options-outline'}
-                size={15}
-                color={c.textMuted}
+            {academicYears.length > 0 && (
+              <PremiumSelect
+                label="Year"
+                icon="calendar-outline"
+                value={yearId}
+                options={yearOptions}
+                onChange={(id) => { if (id !== yearId) setYearId(id); }}
+                c={c}
+                styles={styles}
               />
-            </View>
-          </TouchableOpacity>
+            )}
+
+            <PremiumSelect
+              label="Class"
+              icon="school-outline"
+              value={selectedClassId}
+              options={classOptions}
+              onChange={setSelectedClassId}
+              c={c}
+              styles={styles}
+              wide
+            />
+
+            <PremiumSelect
+              label="Section"
+              icon="grid-outline"
+              value={selectedSectionId}
+              options={sectionOptions}
+              onChange={setSelectedSectionId}
+              c={c}
+              styles={styles}
+            />
+
+            <PremiumSelect
+              label="Schedule"
+              icon="repeat-outline"
+              value={timetableMode}
+              options={modeOptions}
+              onChange={(id) => handleToggleMode(id as TimetableMode)}
+              c={c}
+              styles={styles}
+              disabled={modeSwitching}
+            />
+
+            {timetableMode === 'per_day' && (
+              <PremiumSelect
+                label="Day"
+                icon="today-outline"
+                value={selectedDay}
+                options={dayOptions}
+                onChange={(id) => setSelectedDay(id as DayOfWeek)}
+                c={c}
+                styles={styles}
+                disabled={modeSwitching}
+              />
+            )}
+          </ScrollView>
 
           {classSectionId && totalCount > 0 ? (
             <View style={styles.contextProgress}>
-              <Text style={[styles.contextPct, isDone && { color: c.successText }]}>
-                {Math.round(fillPct)}%
+              <View style={styles.contextProgressRing}>
+                <Text style={[styles.contextPct, isDone && { color: c.successText }]}>
+                  {Math.round(fillPct)}%
+                </Text>
+              </View>
+              <Text style={styles.contextProgressHint}>
+                {isDone ? 'Done' : 'filled'}
               </Text>
             </View>
-          ) : null}
+          ) : (
+            <View style={styles.filterToolbarMeta}>
+              <Text style={styles.filterToolbarMetaText} numberOfLines={1}>
+                {contextSub}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
-
-      {/* ── Collapsible filters ── */}
-      {filtersExpanded && (
-        <View style={styles.filtersOuter}>
-          <View style={styles.filtersInner}>
-            {/* Academic Year Row */}
-            {academicYears.length > 1 && (
-              <View style={{ marginBottom: 12 }}>
-                <SectionLabel title="Academic Year" icon="calendar-outline" c={c} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                  style={styles.chipScroller}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {academicYears.map(y => (
-                    <TouchableOpacity
-                      key={y.id}
-                      style={[styles.chip, yearId === y.id && styles.activeChip, y.is_current && yearId !== y.id && styles.chipCurrentYear]}
-                      onPress={() => {
-                        if (y.id !== yearId) setYearId(y.id);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, yearId === y.id && styles.activeChipText]}>
-                        {y.code}{y.is_current ? ' ●' : ''}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            <View style={styles.selectorStack}>
-              <View style={styles.selectorBlock}>
-                <SectionLabel title="Class" icon="school-outline" c={c} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                  style={styles.chipScroller}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {classes.map(cl => (
-                    <TouchableOpacity
-                      key={cl.id}
-                      style={[styles.chip, selectedClassId === cl.id && styles.activeChip]}
-                      onPress={() => setSelectedClassId(cl.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, selectedClassId === cl.id && styles.activeChipText]}>
-                        {cl.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={styles.selectorBlock}>
-                <SectionLabel title="Section" icon="grid-outline" c={c} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                  style={styles.chipScroller}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {sections.map(s => (
-                    <TouchableOpacity
-                      key={s.id}
-                      style={[styles.chip, selectedSectionId === s.id && styles.activeChip]}
-                      onPress={() => setSelectedSectionId(s.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, selectedSectionId === s.id && styles.activeChipText]}>
-                        {s.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-
-            {/* Scheduling mode toggle + weekday tabs */}
-            <View style={styles.filtersDivider}>
-              <View style={styles.modeRow}>
-                <SectionLabel title="Scheduling" icon="repeat-outline" c={c} />
-                <View style={styles.modeToggle}>
-                  <TouchableOpacity
-                    style={[styles.modeBtn, timetableMode === 'uniform' && styles.modeBtnActive]}
-                    onPress={() => handleToggleMode('uniform')}
-                    disabled={modeSwitching}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.modeBtnText, timetableMode === 'uniform' && styles.modeBtnTextActive]}>Uniform</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modeBtn, timetableMode === 'per_day' && styles.modeBtnActive]}
-                    onPress={() => handleToggleMode('per_day')}
-                    disabled={modeSwitching}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.modeBtnText, timetableMode === 'per_day' && styles.modeBtnTextActive]}>Per-day</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <Text style={styles.modeHint}>
-                {timetableMode === 'uniform'
-                  ? 'One schedule applies to all 6 days (Mon–Sat).'
-                  : 'Each weekday has its own schedule. Pick a day to edit below.'}
-              </Text>
-
-              {timetableMode === 'per_day' && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={Platform.OS === 'web'}
-                  style={styles.chipScroller}
-                  contentContainerStyle={[styles.chipRow, { marginTop: 10 }]}
-                >
-                  {TIMETABLE_DAYS.map((d) => (
-                    <TouchableOpacity
-                      key={d}
-                      style={[styles.chip, selectedDay === d && styles.activeChip]}
-                      onPress={() => setSelectedDay(d)}
-                      disabled={modeSwitching}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.chipText, selectedDay === d && styles.activeChipText]}>
-                        {TIMETABLE_DAY_LABELS[d]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-          </View>
-        </View>
-      )}
 
       {/* ── Grid (single scroll region — teacher banner + progress now scroll too) ── */}
       <ScrollView style={styles.gridContainer} contentContainerStyle={styles.gridScrollContent} showsVerticalScrollIndicator={false}>
@@ -1345,21 +1415,36 @@ export default function TimetableManagement() {
               <Text style={styles.emptyTitle}>No periods yet</Text>
               <Text style={styles.emptySubtitle}>
                 {yearId && selectedClassId && selectedSectionId && !classSectionId
-                  ? 'Set up period timings with the clock icon above, then create a class-section mapping in Academic Structure to assign subjects.'
-                  : 'Add your first period below, or use the clock icon to configure school timings.'}
+                  ? 'Use the clock icon to set school timings, then create a class–section mapping in Academic Structure so you can assign subjects.'
+                  : 'Add your first period below, or open the clock icon to set the full school day at once.'}
               </Text>
             </View>
           ) : (
             <>
+              {/* ── Mapping callout (one place — rows stay quiet when blocked) ── */}
+              {!classSectionId && yearId && selectedClassId && selectedSectionId ? (
+                <View style={styles.mappingBanner}>
+                  <View style={styles.mappingBannerIcon}>
+                    <Ionicons name="git-branch-outline" size={16} color={c.warning} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.mappingBannerTitle}>Link this class to assign subjects</Text>
+                    <Text style={styles.mappingBannerSub}>
+                      Period timings below apply school-wide. Open Academic Structure and create a class–section mapping for {contextLabel} to unlock subject assignment.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
               {/* ── Class Teacher Banner ── */}
               {classTeacherName && classSectionId ? (
                 <View style={styles.teacherBanner}>
                   <View style={styles.teacherAvatar}>
-                    <Ionicons name="person" size={14} color={c.success} />
+                    <Ionicons name="person" size={13} color={c.success} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.teacherBannerName}>{classTeacherName}</Text>
-                    <Text style={styles.teacherBannerSub}>Class Teacher · auto-assigned to Period 1</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.teacherBannerName} numberOfLines={1}>{classTeacherName}</Text>
+                    <Text style={styles.teacherBannerSub}>Class teacher · Period 1</Text>
                   </View>
                   <View style={styles.ctBadge}>
                     <Text style={styles.ctBadgeText}>CT</Text>
@@ -1373,10 +1458,10 @@ export default function TimetableManagement() {
                   <View style={styles.progressMeta}>
                     <Text style={styles.progressLabel}>
                       {filledCount === 0
-                        ? 'No subjects assigned yet'
+                        ? 'Tap a period to assign the first subject'
                         : isDone
-                          ? 'Schedule complete'
-                          : `${filledCount} of ${totalCount} periods filled`}
+                          ? 'All periods assigned'
+                          : `${filledCount} of ${totalCount} assigned`}
                     </Text>
                     <Text style={[styles.progressPct, isDone && styles.progressPctDone]}>
                       {Math.round(fillPct)}%
@@ -1388,19 +1473,6 @@ export default function TimetableManagement() {
                 </View>
               ) : null}
 
-              {!classSectionId && yearId && selectedClassId && selectedSectionId ? (
-                <View style={styles.mappingBanner}>
-                  <View style={styles.mappingBannerIcon}>
-                    <Ionicons name="link-outline" size={14} color={c.warning} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.mappingBannerTitle}>No class-section mapping</Text>
-                    <Text style={styles.mappingBannerSub}>
-                      Timings are saved for the whole school. Create a mapping in Academic Structure to assign subjects for this class and section.
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
               {renderDaySummary()}
               {renderTableRows()}
             </>
@@ -1412,7 +1484,10 @@ export default function TimetableManagement() {
             onPress={() => { setNewPeriodName(''); setNewPeriodStart(''); setNewPeriodEnd(''); setNewPeriodIsBreak(false); setCreatePeriodVisible(true); }}
           >
             <Ionicons name="add-circle" size={18} color={c.accent} />
-            <Text style={styles.addPeriodText}>Add Period</Text>
+            <View>
+              <Text style={styles.addPeriodBtnTitle}>Add period or break</Text>
+              <Text style={styles.addPeriodBtnHint}>Insert another slot into the school day</Text>
+            </View>
           </TouchableOpacity>
 
           <View style={{ height: 100 }} />
@@ -2126,7 +2201,7 @@ const getStyles = (c: Tokens) =>
       backgroundColor: 'transparent',
     },
 
-    // ── Sticky compact context bar (collapsed filters) ──
+    // ── Sticky premium filter toolbar ──
     contextBarOuter: {
       backgroundColor: c.surface,
       borderBottomWidth: 1,
@@ -2142,6 +2217,212 @@ const getStyles = (c: Tokens) =>
       paddingHorizontal: 14,
       paddingVertical: 9,
     },
+    filterToolbar: {
+      width: '100%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    filterToolbarScroll: {
+      flex: 1,
+      minWidth: 0,
+    },
+    filterToolbarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingRight: 4,
+    },
+    filterToolbarMeta: {
+      maxWidth: 120,
+      paddingLeft: 8,
+      borderLeftWidth: 1,
+      borderLeftColor: c.borderSoft,
+    },
+    filterToolbarMetaText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textMuted,
+      textAlign: 'right',
+    },
+
+    // Premium dropdown trigger + menu
+    ddTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      minWidth: 118,
+      maxWidth: 168,
+      paddingVertical: 7,
+      paddingLeft: 8,
+      paddingRight: 10,
+      borderRadius: 12,
+      backgroundColor: c.surfaceSunken,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    ddTriggerWide: {
+      minWidth: 132,
+      maxWidth: 190,
+    },
+    ddTriggerDisabled: {
+      opacity: 0.55,
+    },
+    ddIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      backgroundColor: c.accentSoft,
+      borderWidth: 1,
+      borderColor: c.accentSoftBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ddTextCol: {
+      flex: 1,
+      minWidth: 0,
+    },
+    ddEyebrow: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: c.textMuted,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginBottom: 1,
+    },
+    ddValue: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.textPrimary,
+      letterSpacing: -0.2,
+    },
+    ddOverlay: {
+      flex: 1,
+      backgroundColor: c.overlay,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 40,
+    },
+    ddMenu: {
+      width: '100%',
+      maxWidth: 360,
+      maxHeight: '72%',
+      backgroundColor: c.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: c.border,
+      overflow: 'hidden',
+      ...softShadow(c),
+    },
+    ddMenuHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borderSoft,
+      backgroundColor: c.surfaceAlt,
+    },
+    ddMenuHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+      minWidth: 0,
+    },
+    ddMenuIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      backgroundColor: c.accentSoft,
+      borderWidth: 1,
+      borderColor: c.accentSoftBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ddMenuTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: c.textPrimary,
+      letterSpacing: -0.2,
+    },
+    ddMenuSub: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textMuted,
+      marginTop: 1,
+    },
+    ddMenuClose: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: c.chipBg,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ddMenuScroll: {
+      maxHeight: 360,
+      paddingVertical: 6,
+    },
+    ddOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 11,
+      paddingRight: 14,
+      marginHorizontal: 8,
+      marginVertical: 2,
+      borderRadius: 12,
+    },
+    ddOptionActive: {
+      backgroundColor: c.accentSoft,
+    },
+    ddOptionRail: {
+      width: 3,
+      alignSelf: 'stretch',
+      borderRadius: 99,
+      backgroundColor: c.accent,
+      marginVertical: 2,
+    },
+    ddOptionRailSpacer: {
+      width: 3,
+    },
+    ddOptionLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    ddOptionLabelActive: {
+      color: c.accentText,
+      fontWeight: '800',
+    },
+    ddOptionHint: {
+      fontSize: 11,
+      fontWeight: '500',
+      color: c.textMuted,
+      marginTop: 1,
+    },
+    ddOptionDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: c.success,
+    },
+    ddOptionCheck: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
     contextMain: {
       flex: 1,
       flexDirection: 'row',
@@ -2180,32 +2461,49 @@ const getStyles = (c: Tokens) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    contextChevWrapOpen: {
+      backgroundColor: c.accentSoft,
+      borderColor: c.accentSoftBorder,
+    },
     contextProgress: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-end',
       paddingLeft: 12,
       marginLeft: 2,
       borderLeftWidth: 1,
       borderLeftColor: c.borderSoft,
+      gap: 1,
+      flexShrink: 0,
+    },
+    contextProgressRing: {
+      minWidth: 36,
+      alignItems: 'flex-end',
     },
     contextPct: {
       fontSize: 15,
       fontWeight: '800',
       color: c.accentText,
-      minWidth: 38,
       textAlign: 'right',
     },
+    contextProgressHint: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: c.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
 
-    // ── Collapsible filters panel ──
+    // ── Legacy filter helpers (chips still used in dialogs) ──
     filtersOuter: {
-      backgroundColor: c.surface,
+      backgroundColor: c.surfaceSunken,
       borderBottomWidth: 1,
       borderBottomColor: c.borderSoft,
     },
     filtersInner: {
       width: '100%',
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      paddingBottom: 10,
+      gap: 8,
     },
     filtersDivider: {
       marginTop: 12,
@@ -2214,16 +2512,94 @@ const getStyles = (c: Tokens) =>
       borderTopColor: c.borderSoft,
     },
 
+    filterRibbon: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      minWidth: 0,
+    },
+    filterCard: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+    },
+    filterRibbonLabel: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      width: 52,
+      flexShrink: 0,
+    },
+    filterRibbonLabelText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: c.textMuted,
+      letterSpacing: 0.2,
+    },
+    filterPair: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 0,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+    },
+    filterPairStack: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 8,
+    },
+    filterPairCol: {
+      flex: 1,
+      minWidth: 0,
+    },
+    filterPairColSec: {
+      flex: 0,
+      flexGrow: 0,
+      paddingLeft: 4,
+    },
+    filterPairRule: {
+      width: 1,
+      alignSelf: 'stretch',
+      backgroundColor: c.borderSoft,
+      marginHorizontal: 10,
+    },
+    sectionChipWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      flexWrap: 'wrap',
+    },
+    sectionChip: {
+      minWidth: 32,
+      height: 30,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: c.chipBg,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionChipText: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: c.textSecondary,
+    },
+
     selectorStack: { gap: 12 },
     selectorBlock: { width: '100%', minWidth: 0 },
     chipScroller: Platform.select({
-      web: { width: '100%', overflowX: 'auto', flexGrow: 0 } as const,
-      default: { flexGrow: 0 },
+      web: { width: '100%', overflowX: 'auto', flexGrow: 0, flexShrink: 1 } as const,
+      default: { flexGrow: 0, flexShrink: 1 },
     }),
     chipRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingRight: 8,
+      paddingRight: 4,
+      gap: 5,
     },
     selectorRow: { flexDirection: 'row' },
     selectorGroup: { flex: 1, minWidth: 0 },
@@ -2243,6 +2619,32 @@ const getStyles = (c: Tokens) =>
       borderColor: c.chipBorder,
       flexShrink: 0,
     },
+    chipSm: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: c.chipBg,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      flexShrink: 0,
+    },
+    chipSmText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    chipDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: c.success,
+    },
+    chipDotOnActive: {
+      backgroundColor: c.onAccent,
+    },
     chipCurrentYear: {
       borderColor: c.success,
       borderWidth: 1,
@@ -2259,6 +2661,73 @@ const getStyles = (c: Tokens) =>
     activeChipText: { color: c.onAccent },
 
     // Scheduling mode controls
+    scheduleStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      paddingVertical: 7,
+      paddingHorizontal: 10,
+    },
+    scheduleStripLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flex: 1,
+      minWidth: 0,
+    },
+    scheduleStripTitle: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    scheduleStripHint: {
+      fontSize: 10.5,
+      fontWeight: '500',
+      color: c.textMuted,
+      marginTop: 1,
+    },
+    dayTabsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      flexWrap: 'wrap',
+    },
+    dayTab: {
+      flexGrow: 1,
+      flexBasis: 40,
+      minWidth: 40,
+      maxWidth: 64,
+      height: 30,
+      borderRadius: 8,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dayTabText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: c.textSecondary,
+    },
+    filtersDoneBtn: {
+      alignSelf: 'flex-end',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: c.accentSoft,
+      borderWidth: 1,
+      borderColor: c.accentSoftBorder,
+    },
+    filtersDoneBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.accentText,
+    },
     modeRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2267,18 +2736,19 @@ const getStyles = (c: Tokens) =>
     modeToggle: {
       flexDirection: 'row',
       backgroundColor: c.chipBg,
-      borderRadius: 9,
-      padding: 3,
+      borderRadius: 8,
+      padding: 2,
       borderWidth: 1,
       borderColor: c.chipBorder,
+      flexShrink: 0,
     },
     modeBtn: {
-      paddingHorizontal: 16,
-      paddingVertical: 6,
-      borderRadius: 7,
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      borderRadius: 6,
     },
     modeBtnActive: { backgroundColor: c.accent },
-    modeBtnText: { fontSize: 13, fontWeight: '700', color: c.textSecondary },
+    modeBtnText: { fontSize: 12, fontWeight: '700', color: c.textSecondary },
     modeBtnTextActive: { color: c.onAccent },
     modeHint: { fontSize: 12, color: c.textMuted, marginTop: 6 },
 
@@ -2341,34 +2811,39 @@ const getStyles = (c: Tokens) =>
     mappingBanner: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: 10,
-      marginTop: 10,
-      marginBottom: 4,
-      padding: 11,
-      borderRadius: 10,
+      gap: 12,
+      marginTop: 4,
+      marginBottom: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 12,
       backgroundColor: c.warningSoft,
       borderWidth: 1,
       borderColor: c.warningSoftBorder,
+      borderLeftWidth: 3,
+      borderLeftColor: c.warning,
     },
     mappingBannerIcon: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
+      width: 32,
+      height: 32,
+      borderRadius: 10,
       backgroundColor: c.warningAvatar,
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: 1,
+      marginTop: 0,
     },
     mappingBannerTitle: {
-      fontSize: 13,
-      fontWeight: '700',
+      fontSize: 13.5,
+      fontWeight: '800',
       color: c.warningText,
+      letterSpacing: -0.2,
     },
     mappingBannerSub: {
-      fontSize: 11,
-      color: c.warning,
-      marginTop: 3,
-      lineHeight: 16,
+      fontSize: 12,
+      color: c.warningText,
+      opacity: 0.85,
+      marginTop: 4,
+      lineHeight: 17,
     },
 
     // Teacher Banner
@@ -2376,17 +2851,19 @@ const getStyles = (c: Tokens) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
-      marginTop: 10,
-      padding: 11,
+      marginTop: 4,
+      marginBottom: 2,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
       borderRadius: 10,
       backgroundColor: c.successSoft,
       borderWidth: 1,
       borderColor: c.successSoftBorder,
     },
     teacherAvatar: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       backgroundColor: c.successAvatar,
       alignItems: 'center',
       justifyContent: 'center',
@@ -2416,9 +2893,9 @@ const getStyles = (c: Tokens) =>
 
     // Progress Strip
     progressStrip: {
-      marginTop: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      marginTop: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
       borderRadius: 10,
       backgroundColor: c.surface,
       borderWidth: 1,
@@ -2428,12 +2905,14 @@ const getStyles = (c: Tokens) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 8,
+      marginBottom: 7,
     },
     progressLabel: {
       fontSize: 12,
       color: c.textMuted,
       fontWeight: '500',
+      flex: 1,
+      marginRight: 8,
     },
     progressPct: {
       fontSize: 13,
@@ -2442,7 +2921,7 @@ const getStyles = (c: Tokens) =>
     },
     progressPctDone: { color: c.successText },
     progressTrack: {
-      height: 6,
+      height: 5,
       borderRadius: 99,
       backgroundColor: c.trackBg,
       overflow: 'hidden',
@@ -2453,7 +2932,7 @@ const getStyles = (c: Tokens) =>
       flex: 1,
     },
     gridScrollContent: {
-      paddingTop: 10,
+      paddingTop: 8,
     },
     gridInner: {
       width: '100%',
@@ -2464,35 +2943,36 @@ const getStyles = (c: Tokens) =>
     daySummary: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      marginTop: 10,
-      marginBottom: 10,
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginTop: 6,
+      marginBottom: 8,
       borderRadius: 10,
-      backgroundColor: c.surface,
+      backgroundColor: c.surfaceSunken,
       borderWidth: 1,
-      borderColor: c.border,
+      borderColor: c.borderSoft,
     },
     daySummaryItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 5,
     },
     daySummaryStrong: {
-      fontSize: 13,
+      fontSize: 12.5,
       fontWeight: '800',
       color: c.textPrimary,
       letterSpacing: -0.2,
     },
     daySummaryMuted: {
-      fontSize: 12,
+      fontSize: 11.5,
       fontWeight: '600',
       color: c.textMuted,
     },
     daySummaryDivider: {
       width: 1,
-      height: 16,
+      height: 12,
       backgroundColor: c.border,
     },
 
@@ -2501,51 +2981,76 @@ const getStyles = (c: Tokens) =>
     // Row Card
     rowCard: {
       flexDirection: 'row',
-      marginBottom: 6,
-      borderRadius: 12,
+      marginBottom: 5,
+      borderRadius: 11,
       overflow: 'hidden',
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.border,
+      minHeight: 52,
       ...cardShadow(c),
     },
     rowCardLive: {
       borderColor: c.accent,
       borderWidth: 1.5,
     },
+    rowCardBlocked: {
+      opacity: 0.72,
+      backgroundColor: c.surfaceSunken,
+    },
     rowAccent: {
-      width: 4,
+      width: 3,
       backgroundColor: c.border,
     },
 
-    // Period column
+    // Period column — horizontal compact time
     periodCell: {
-      width: 76,
+      width: 118,
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: 6,
-      gap: 2,
+      justifyContent: 'flex-start',
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      gap: 7,
       backgroundColor: c.surfaceAlt,
       borderRightWidth: 1,
       borderRightColor: c.borderAccent,
     },
+    periodCellCompact: {
+      width: 92,
+      paddingHorizontal: 6,
+      gap: 5,
+    },
     periodBadge: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
       backgroundColor: c.badgeIdleBg,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 2,
+      flexShrink: 0,
     },
     periodBadgeFilled: {
       backgroundColor: c.accent,
     },
+    periodBadgeBlocked: {
+      backgroundColor: c.textFaint,
+    },
     periodBadgeText: {
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: '800',
       color: '#ffffff',
+    },
+    periodTimeBlock: {
+      flex: 1,
+      minWidth: 0,
+      gap: 1,
+    },
+    periodTimeRange: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      color: c.accentText,
+      letterSpacing: -0.2,
     },
     periodTime: {
       fontSize: 10,
@@ -2564,8 +3069,7 @@ const getStyles = (c: Tokens) =>
       fontSize: 9,
       fontWeight: '700',
       color: c.textMuted,
-      marginTop: 2,
-      letterSpacing: 0.3,
+      letterSpacing: 0.2,
     },
 
     // Slot column
@@ -2573,23 +3077,24 @@ const getStyles = (c: Tokens) =>
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      minWidth: 0,
     },
-    slotFilledContent: { flex: 1, gap: 3 },
+    slotFilledContent: { flex: 1, gap: 2, minWidth: 0 },
     subjectRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 7,
     },
     subjectDot: {
-      width: 8,
-      height: 8,
+      width: 7,
+      height: 7,
       borderRadius: 3,
     },
     slotSubjectText: {
       flex: 1,
-      fontSize: 14,
+      fontSize: 13.5,
       fontWeight: '700',
       color: c.textPrimary,
       letterSpacing: -0.2,
@@ -2598,12 +3103,13 @@ const getStyles = (c: Tokens) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      marginLeft: 15,
+      marginLeft: 14,
     },
     slotTeacherText: {
-      fontSize: 12,
+      fontSize: 11.5,
       color: c.textSecondary,
       fontWeight: '500',
+      flexShrink: 1,
     },
     slotTeacherEmpty: {
       color: c.textFaint,
@@ -2613,21 +3119,39 @@ const getStyles = (c: Tokens) =>
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
+      minWidth: 0,
     },
     addIconWrap: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
       backgroundColor: c.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1.5,
       borderColor: c.accentSoftBorder,
       borderStyle: 'dashed',
+      flexShrink: 0,
+    },
+    lockIconWrap: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: c.chipBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      flexShrink: 0,
     },
     slotEmptyText: {
-      fontSize: 13,
+      fontSize: 12.5,
+      color: c.accentText,
+      fontWeight: '600',
+    },
+    slotBlockedText: {
+      fontSize: 12,
       color: c.textMuted,
       fontWeight: '500',
     },
@@ -2636,7 +3160,8 @@ const getStyles = (c: Tokens) =>
       alignItems: 'center',
       gap: 8,
       marginLeft: 'auto',
-      paddingLeft: 8,
+      paddingLeft: 6,
+      flexShrink: 0,
     },
     nowPill: {
       flexDirection: 'row',
@@ -2644,8 +3169,8 @@ const getStyles = (c: Tokens) =>
       gap: 4,
       backgroundColor: c.accent,
       borderRadius: 99,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
     },
     nowDot: {
       width: 5,
@@ -2664,32 +3189,32 @@ const getStyles = (c: Tokens) =>
     breakRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginVertical: 2,
-      marginBottom: 9,
+      marginVertical: 1,
+      marginBottom: 6,
       paddingHorizontal: 4,
     },
     breakLine: {
       flex: 1,
-      height: 1,
+      height: StyleSheet.hairlineWidth,
       backgroundColor: c.warningSoftBorder,
     },
     breakPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
-      paddingHorizontal: 12,
-      paddingVertical: 5,
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
       borderRadius: 99,
       backgroundColor: c.warningSoft,
       borderWidth: 1,
       borderColor: c.warningSoftBorder,
-      marginHorizontal: 10,
+      marginHorizontal: 8,
     },
     breakLabel: {
-      fontSize: 10,
+      fontSize: 9.5,
       fontWeight: '800',
       color: c.warning,
-      letterSpacing: 0.8,
+      letterSpacing: 0.6,
     },
 
     // Empty State
@@ -2723,15 +3248,27 @@ const getStyles = (c: Tokens) =>
     addPeriodBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 14,
-      marginTop: 6,
+      justifyContent: 'flex-start',
+      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      marginTop: 8,
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: c.accentSoftBorder,
       borderStyle: 'dashed',
       backgroundColor: c.accentSoft,
+    },
+    addPeriodBtnTitle: {
+      fontSize: 13.5,
+      fontWeight: '700',
+      color: c.accentText,
+    },
+    addPeriodBtnHint: {
+      fontSize: 11,
+      fontWeight: '500',
+      color: c.textMuted,
+      marginTop: 1,
     },
     // NOTE: addPeriodText is defined later in this sheet (the later duplicate
     // won at runtime, so only that definition is kept).

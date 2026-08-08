@@ -3,17 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
   Modal,
   Pressable,
   Platform,
   Image,
+  TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { alertCompat } from '../../src/utils/crossPlatformAlert';
-import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,21 +21,13 @@ import AdminHeader from '../../src/components/AdminHeader';
 import LogoLoader from '../../src/components/LogoLoader';
 import Animated, {
   FadeIn,
-  FadeInDown,
   useSharedValue,
   useAnimatedScrollHandler,
-  useAnimatedStyle,
-  withSpring,
 } from 'react-native-reanimated';
 import { api } from '../../src/services/apiClient';
 import AppDatePicker, { toYMD } from '../../src/components/AppDatePicker';
 
-const { width: SW } = Dimensions.get('window');
-
 // ─── Claymorphism shadow helpers ──────────────────────────────────────────────
-// Soft, puffy "clay" depth: a diffuse drop shadow paired with a light top-left
-// highlight. Web gets true layered box-shadows (incl. inner highlight); native
-// falls back to a single soft elevation shadow.
 function clay(isDark: boolean, raised: 'sm' | 'md' | 'lg' = 'md') {
   const spread = raised === 'lg' ? 22 : raised === 'sm' ? 10 : 16;
   const dy = raised === 'lg' ? 12 : raised === 'sm' ? 5 : 8;
@@ -62,7 +53,6 @@ function clay(isDark: boolean, raised: 'sm' | 'md' | 'lg' = 'md') {
   } as any;
 }
 
-// Colored clay glow for tinted elements (avatars, CTA, stat icons).
 function clayGlow(color: string, raised: 'sm' | 'md' = 'md') {
   const dy = raised === 'sm' ? 4 : 7;
   const spread = raised === 'sm' ? 10 : 16;
@@ -83,15 +73,9 @@ function clayGlow(color: string, raised: 'sm' | 'md' = 'md') {
   } as any;
 }
 
-// ─── Status cycling order & config ───────────────────────────────────────────
-const STATUS_CYCLE: Record<string, string> = {
-  absent: 'present',
-  present: 'half_day',
-  half_day: 'absent',
-};
-
 const STATUS_META: Record<string, {
   label: string;
+  short: string;
   darkColors: [string, string];
   lightColors: [string, string];
   dot: string;
@@ -103,6 +87,7 @@ const STATUS_META: Record<string, {
 }> = {
   present: {
     label: 'Present',
+    short: 'P',
     darkColors: ['#00C48C', '#009E72'],
     lightColors: ['#00C48C', '#009E72'],
     dot: '#00C48C',
@@ -114,6 +99,7 @@ const STATUS_META: Record<string, {
   },
   absent: {
     label: 'Absent',
+    short: 'A',
     darkColors: ['#FF4D6A', '#C0203B'],
     lightColors: ['#FF4D6A', '#C0203B'],
     dot: '#FF4D6A',
@@ -125,6 +111,7 @@ const STATUS_META: Record<string, {
   },
   half_day: {
     label: 'Half-Day',
+    short: 'H',
     darkColors: ['#FFB800', '#E67E00'],
     lightColors: ['#FFB800', '#E67E00'],
     dot: '#FFB800',
@@ -136,112 +123,119 @@ const STATUS_META: Record<string, {
   },
 };
 
-// ─── Status Badge (display-only — the whole card is the tap target) ─────────────
-function StatusBadge({ status, isDark }: { status: string; isDark: boolean }) {
-  const meta = STATUS_META[status] ?? STATUS_META.absent;
-  const pillBg = isDark ? meta.darkBg : meta.lightBg;
-  const textClr = isDark ? meta.darkText : meta.lightText;
+const STATUS_KEYS = ['present', 'absent', 'half_day'] as const;
 
-  // The pill has a translucent tinted background; pairing that with the
-  // clayGlow elevation makes Android draw a boxy shadow artifact behind the
-  // capsule. The badge doesn't need a drop shadow, so skip the glow on Android.
-  const glow = Platform.OS === 'android' ? null : clayGlow(meta.dot, 'sm');
+const STATUS_CYCLE: Record<string, string> = {
+  absent: 'present',
+  present: 'half_day',
+  half_day: 'absent',
+};
+
+// ─── Compact status segment (explicit tap targets) ────────────────────────────
+function StatusSegment({
+  status, isDark, onSelect, stretch,
+}: {
+  status: string; isDark: boolean; onSelect: (s: string) => void; stretch?: boolean;
+}) {
+  const trackBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+  const trackBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
   return (
-    <View style={[styles.statusBadge, { backgroundColor: pillBg }, glow]}>
-      <Ionicons name={meta.icon as any} size={13} color={textClr} style={{ marginRight: 5 }} />
-      <Text style={[styles.statusBadgeText, { color: textClr }]}>{meta.label}</Text>
+    <View style={[
+      styles.segmentTrack,
+      { backgroundColor: trackBg, borderColor: trackBorder },
+      stretch && styles.segmentTrackStretch,
+    ]}>
+      {STATUS_KEYS.map((key) => {
+        const meta = STATUS_META[key];
+        const active = status === key;
+        const textClr = isDark ? meta.darkText : meta.lightText;
+        return (
+          <TouchableOpacity
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={`Mark ${meta.label}`}
+            accessibilityState={{ selected: active }}
+            activeOpacity={0.75}
+            onPress={(e) => {
+              // Keep segment taps from also cycling the whole card (esp. on web).
+              // @ts-expect-error RN web event
+              e?.stopPropagation?.();
+              onSelect(key);
+            }}
+            hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+            style={[
+              styles.segmentBtn,
+              stretch && styles.segmentBtnStretch,
+              active && {
+                backgroundColor: isDark ? meta.darkBg : meta.lightBg,
+                borderColor: `${meta.dot}55`,
+              },
+            ]}
+          >
+            <Ionicons
+              name={meta.icon as any}
+              size={13}
+              color={active ? textClr : (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.32)')}
+            />
+            <Text
+              style={[
+                styles.segmentLabel,
+                { color: active ? textClr : (isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)') },
+              ]}
+            >
+              {stretch ? meta.label : meta.short}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
-// ─── Circular progress donut ──────────────────────────────────────────────────
-function DonutRing({
-  present, absent, half, total, isDark,
-}: { present: number; absent: number; half: number; total: number; isDark: boolean }) {
-  const R = 38;
-  const CIRC = 2 * Math.PI * R;
-  const pct = total > 0 ? present / total : 0;
-
-  const ringBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-
+// ─── Mini stat pill (tappable filter) ─────────────────────────────────────────
+function MiniStat({
+  value, label, color, icon, isDark, active, onPress,
+}: {
+  value: number; label: string; color: string; icon: string;
+  isDark: boolean; active: boolean; onPress: () => void;
+}) {
   return (
-    <View style={styles.donutWrapper}>
-      {/* Background ring */}
-      <View style={[styles.donutOuter, { borderColor: ringBg }]} />
-      {/* Filled arc using a gradient overlay clipped to a wedge — approximated with a
-          coloured ring + opacity since RN SVG isn't guaranteed.
-          We use a gradient LinearGradient rotated behind a masked view. */}
-      <LinearGradient
-        colors={['#00C48C', '#7C6FFF']}
-        style={[styles.donutFill, { opacity: total > 0 ? 1 : 0.2 }]}
-        start={{ x: 0, y: 1 }}
-        end={{ x: 1, y: 0 }}
-      />
-      {/* White/dark mask to create donut hole */}
-      <View style={[styles.donutHole, { backgroundColor: isDark ? '#0E0F1A' : '#FFFFFF' }]} />
-      {/* Centre text */}
-      <View style={styles.donutCenter}>
-        <Text style={[styles.donutPct, { color: isDark ? '#FFFFFF' : '#111827' }]}>
-          {total > 0 ? Math.round(pct * 100) : 0}
-          <Text style={{ fontSize: 12 }}>%</Text>
-        </Text>
-        <Text style={[styles.donutLabel, { color: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)' }]}>
-          present
-        </Text>
-      </View>
-    </View>
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Filter ${label}`}
+      accessibilityState={{ selected: active }}
+      style={[
+        styles.miniStat,
+        {
+          backgroundColor: active ? `${color}20` : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'),
+          borderColor: active ? `${color}66` : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+        },
+      ]}
+    >
+      <Ionicons name={icon as any} size={12} color={color} />
+      <Text style={[styles.miniStatValue, { color }]}>{value}</Text>
+      <Text style={[styles.miniStatLabel, { color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)' }]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
-// ─── Stat Chip ────────────────────────────────────────────────────────────────
-function StatChip({
-  value, label, color, icon, isDark,
-}: { value: number; label: string; color: string; icon: string; isDark: boolean }) {
-  const isAndroid = Platform.OS === 'android';
-  // Android elevation shadows only render as a clean rounded card when the
-  // background is opaque. With a translucent bg the platform draws the shadow
-  // as a hard grey frame around a see-through centre (the broken "white box"
-  // look), so use solid equivalents of the translucent tints on Android.
-  const chipBg = isAndroid
-    ? (isDark ? '#22242E' : '#F4F5F8')
-    : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)');
-  const chipBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
-  const labelColor = isDark ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.42)';
-
-  return (
-    <View style={[styles.statChip, { backgroundColor: chipBg, borderColor: chipBorder }, clay(isDark, 'sm')]}>
-      {/* The icon disc keeps its colour tint but drops the elevation glow on
-          Android — a tiny translucent view + elevation casts a boxy artifact. */}
-      <View style={[styles.statIcon, { backgroundColor: `${color}22` }, isAndroid ? null : clayGlow(color, 'sm')]}>
-        <Ionicons name={icon as any} size={14} color={color} />
-      </View>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: labelColor }]}>{label}</Text>
-    </View>
-  );
-}
-
-// ─── Staff Card — entire card is the tap target ───────────────────────────────
+// ─── Staff Card ───────────────────────────────────────────────────────────────
 function StaffCard({
-  staff, index, isDark, cardBg, cardBorder, onToggle,
+  staff, index, isDark, cardBg, cardBorder, onSelectStatus, compact,
 }: {
   staff: any; index: number; isDark: boolean;
-  cardBg: string; cardBorder: string; onToggle: () => void;
+  cardBg: string; cardBorder: string; onSelectStatus: (status: string) => void;
+  compact: boolean;
 }) {
   const status = staff.status || 'absent';
   const meta = STATUS_META[status] ?? STATUS_META.absent;
-  const pressScale = useSharedValue(1);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    transform: [{ scale: pressScale.value }],
-  }));
-
-  // Subtle press feedback only — no bounce/overshoot.
-  const handlePressIn = () => { pressScale.value = withSpring(0.985, { damping: 20, stiffness: 260 }); };
-  const handlePressOut = () => { pressScale.value = withSpring(1, { damping: 20, stiffness: 260 }); };
-
-  const handlePress = () => { onToggle(); };
+  const nextStatus = STATUS_CYCLE[status] ?? 'present';
+  const nextLabel = STATUS_META[nextStatus]?.label ?? 'Present';
 
   const initials = (staff.staff_name || '?')
     .split(' ')
@@ -250,51 +244,67 @@ function StaffCard({
     .join('')
     .toUpperCase();
 
+  const cycleStatus = () => {
+    onSelectStatus(STATUS_CYCLE[status] ?? 'present');
+  };
+
   return (
     <Animated.View
       entering={FadeIn.delay(Math.min(index, 8) * 28).duration(220)}
-      style={cardAnim}
     >
       <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }, clay(isDark, 'sm')]}
+        activeOpacity={0.82}
+        onPress={cycleStatus}
+        accessibilityRole="button"
+        accessibilityLabel={`${staff.staff_name || 'Staff'}, ${meta.label}. Tap to mark ${nextLabel}`}
+        style={[
+          styles.card,
+          {
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
+            borderLeftWidth: 3,
+            borderLeftColor: meta.dot,
+          },
+          clay(isDark, 'sm'),
+        ]}
       >
-        <View style={styles.cardRow}>
-          {/* Avatar — colour reflects current status */}
-          <LinearGradient
-            colors={isDark ? meta.darkColors : meta.lightColors}
-            style={[styles.avatar, clayGlow(meta.dot, 'sm')]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            {staff.photo_url ? (
-              <Image source={{ uri: staff.photo_url }} style={styles.avatarImg} resizeMode="cover" />
-            ) : (
-              <Text style={styles.avatarText}>{initials}</Text>
-            )}
-          </LinearGradient>
+        <View style={[styles.cardRow, compact && styles.cardRowStacked]}>
+          <View style={styles.cardIdentity}>
+            <LinearGradient
+              colors={isDark ? meta.darkColors : meta.lightColors}
+              style={[styles.avatar, clayGlow(meta.dot, 'sm')]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              {staff.photo_url ? (
+                <Image source={{ uri: staff.photo_url }} style={styles.avatarImg} resizeMode="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
+            </LinearGradient>
 
-          {/* Info */}
-          <View style={styles.cardInfo}>
-            <Text
-              style={[styles.staffName, { color: isDark ? '#FFFFFF' : '#111827' }]}
-              numberOfLines={1}
-            >
-              {staff.staff_name || 'Unknown'}
-            </Text>
-            <Text
-              style={[styles.staffRole, { color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.44)' }]}
-              numberOfLines={1}
-            >
-              {staff.designation || 'Staff'}
-            </Text>
+            <View style={styles.cardInfo}>
+              <Text
+                style={[styles.staffName, { color: isDark ? '#FFFFFF' : '#111827' }]}
+                numberOfLines={1}
+              >
+                {staff.staff_name || 'Unknown'}
+              </Text>
+              <Text
+                style={[styles.staffRole, { color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.44)' }]}
+                numberOfLines={1}
+              >
+                {staff.designation || 'Staff'}
+              </Text>
+            </View>
           </View>
 
-          {/* Status badge — visual indicator only */}
-          <StatusBadge status={status} isDark={isDark} />
+          <StatusSegment
+            status={status}
+            isDark={isDark}
+            onSelect={onSelectStatus}
+            stretch={compact}
+          />
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -303,10 +313,11 @@ function StaffCard({
 
 // ─── Filter dropdown chip ─────────────────────────────────────────────────────
 function FilterChip({
-  label, active, isDark, filterBg, filterBorder, filterText, onPress,
+  label, active, isDark, filterBg, filterBorder, filterText, onPress, icon,
 }: {
   label: string; active: boolean; isDark: boolean;
-  filterBg: string; filterBorder: string; filterText: string; onPress: () => void;
+  filterBg: string; filterBorder: string; filterText: string;
+  onPress: () => void; icon?: string;
 }) {
   const activeText = '#7C6FFF';
   return (
@@ -322,6 +333,9 @@ function FilterChip({
         active ? clayGlow('#7C6FFF', 'sm') : clay(isDark, 'sm'),
       ]}
     >
+      {icon ? (
+        <Ionicons name={icon as any} size={13} color={active ? activeText : filterText} style={{ marginRight: 5 }} />
+      ) : null}
       <Text style={[styles.filterChipText, { color: active ? activeText : filterText }]} numberOfLines={1}>
         {label}
       </Text>
@@ -330,7 +344,7 @@ function FilterChip({
   );
 }
 
-// ─── Filter option menu (cross-platform dropdown) ─────────────────────────────
+// ─── Filter option menu ───────────────────────────────────────────────────────
 function FilterMenu({
   visible, title, options, selected, isDark, onSelect, onClose,
 }: {
@@ -374,21 +388,23 @@ function FilterMenu({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function AdminAttendanceScreen() {
-  const { theme, isDark } = useTheme();
-  const { t } = useTranslation();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const headerHeight = insets.top + 60; // Approximate header height including spacing
-  
+  const { width: windowWidth } = useWindowDimensions();
+  const headerHeight = insets.top + 60;
+  const isCompact = windowWidth < 420;
+
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Filters ─────────────────────────────────────────────────────────────────
   const todayYMD = toYMD(new Date());
   const [selectedDate, setSelectedDate] = useState(todayYMD);
-  const [deptFilter, setDeptFilter] = useState<string | null>(null);      // null → all designations
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);  // null → all statuses
+  const [deptFilter, setDeptFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<'dept' | 'status' | null>(null);
 
   const scrollY = useSharedValue(0);
@@ -396,7 +412,6 @@ export default function AdminAttendanceScreen() {
     onScroll: (e) => { scrollY.value = e.contentOffset.y; },
   });
 
-  // ── Theme tokens ────────────────────────────────────────────────────────────
   const pageBg = isDark ? '#0E0F1A' : '#F2F3F8';
   const cardBg = isDark ? 'rgba(255,255,255,0.048)' : '#FFFFFF';
   const cardBorder = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
@@ -410,10 +425,10 @@ export default function AdminAttendanceScreen() {
   const filterText = isDark ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.65)';
   const footerBg = isDark ? 'rgba(14,15,26,0.97)' : 'rgba(242,243,248,0.97)';
   const footerBorder = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)';
+  const searchBg = isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF';
   const orb1Color = isDark ? 'rgba(124,111,255,0.08)' : 'rgba(124,111,255,0.05)';
   const orb2Color = isDark ? 'rgba(0,196,140,0.06)' : 'rgba(0,196,140,0.05)';
 
-  // ── Data ────────────────────────────────────────────────────────────────────
   const fetchAttendance = async () => {
     try {
       setLoading(true);
@@ -426,25 +441,24 @@ export default function AdminAttendanceScreen() {
     }
   };
 
-  // Refetch whenever the viewed day changes (also covers initial mount).
   useEffect(() => { fetchAttendance(); }, [selectedDate]);
 
   const onRefresh = () => { setRefreshing(true); fetchAttendance(); };
 
-  const toggleStatus = (staffId: string) => {
+  const setStaffStatus = (staffId: string, status: string) => {
     setStaffList((prev) =>
-      prev.map((s) =>
-        s.staff_id === staffId
-          ? { ...s, status: STATUS_CYCLE[s.status || 'absent'] }
-          : s
-      )
+      prev.map((s) => (s.staff_id === staffId ? { ...s, status } : s))
     );
   };
 
   const handleMarkAll = (status: string) => {
+    const count = filteredStaff.length;
+    const scope = (deptFilter || statusFilter || searchQuery.trim())
+      ? `the ${count} filtered staff`
+      : 'all staff';
     alertCompat(
       'Confirm Bulk Update',
-      `Are you sure you want to mark all staff as ${STATUS_META[status]?.label}?`,
+      `Mark ${scope} as ${STATUS_META[status]?.label}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -453,8 +467,9 @@ export default function AdminAttendanceScreen() {
           onPress: () => {
             setIsBulkUpdating(true);
             setTimeout(() => {
+              const ids = new Set(filteredStaff.map((s) => s.staff_id));
               setStaffList((prev) =>
-                prev.map((s) => ({ ...s, status }))
+                prev.map((s) => (ids.has(s.staff_id) ? { ...s, status } : s))
               );
               setIsBulkUpdating(false);
             }, 50);
@@ -466,11 +481,14 @@ export default function AdminAttendanceScreen() {
 
   const submitAttendance = async () => {
     try {
+      setIsSaving(true);
       const records = staffList.map((s) => ({ staff_id: s.staff_id, status: s.status || 'absent' }));
       await api.post('/attendance/staff', { date: selectedDate, attendance: records });
       alertCompat('✓ Saved', 'Attendance marked successfully.');
     } catch {
       alertCompat('Error', 'Failed to save attendance.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -480,12 +498,13 @@ export default function AdminAttendanceScreen() {
       if (s.status === 'present') present++;
       else if (s.status === 'absent') absent++;
       else if (s.status === 'half_day') half++;
-      else absent++;               // default unset → absent
+      else absent++;
     });
     return { present, absent, half, total: staffList.length };
   }, [staffList]);
 
-  // ── Distinct designations for the department filter ───────────────────────────
+  const presentPct = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0;
+
   const deptOptions = useMemo(() => {
     const set = new Set<string>();
     staffList.forEach((s) => { if (s.designation) set.add(s.designation); });
@@ -502,17 +521,33 @@ export default function AdminAttendanceScreen() {
     { label: 'Half-Day', value: 'half_day' },
   ];
 
-  // ── Apply department + status filters to the visible list ─────────────────────
   const filteredStaff = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return staffList.filter((s) => {
       const st = s.status || 'absent';
       if (deptFilter && s.designation !== deptFilter) return false;
       if (statusFilter && st !== statusFilter) return false;
+      if (q) {
+        const name = (s.staff_name || '').toLowerCase();
+        const role = (s.designation || '').toLowerCase();
+        if (!name.includes(q) && !role.includes(q)) return false;
+      }
       return true;
     });
-  }, [staffList, deptFilter, statusFilter]);
+  }, [staffList, deptFilter, statusFilter, searchQuery]);
 
-  // ── Date label ────────────────────────────────────────────────────────────────
+  const hasActiveFilters = !!(deptFilter || statusFilter || searchQuery.trim());
+
+  const clearFilters = () => {
+    setDeptFilter(null);
+    setStatusFilter(null);
+    setSearchQuery('');
+  };
+
+  const toggleStatusFilter = (key: string) => {
+    setStatusFilter((prev) => (prev === key ? null : key));
+  };
+
   const isToday = selectedDate === todayYMD;
   const selectedDateObj = useMemo(() => {
     const [y, m, d] = selectedDate.split('-').map(Number);
@@ -522,10 +557,8 @@ export default function AdminAttendanceScreen() {
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: pageBg }]}>
-      {/* Ambient orbs */}
       <View style={[styles.orb1, { backgroundColor: orb1Color }]} />
       <View style={[styles.orb2, { backgroundColor: orb2Color }]} />
 
@@ -537,63 +570,84 @@ export default function AdminAttendanceScreen() {
           <Text style={[styles.loaderText, { color: subColor }]}>Loading attendance…</Text>
         </View>
       ) : (
-        <Animated.ScrollView
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          contentContainerStyle={[styles.scrollContent, { paddingTop: headerHeight + 16 }]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="transparent"
-              colors={['transparent']}
-              progressBackgroundColor="transparent"
-            />
-          }
-        >
-          {/* Pull-to-refresh logo */}
-          {refreshing && (
-            <View style={{ alignItems: 'center', paddingBottom: 16 }}>
-              <LogoLoader size={30} color="#7C6FFF" />
-            </View>
-          )}
-
-          {/* ── Overview card ─────────────────────────────────────────────── */}
-          <Animated.View
-            entering={FadeInDown.duration(280)}
-            style={[styles.summaryCard, { backgroundColor: summaryBg, borderColor: summaryBorder }, clay(isDark, 'lg')]}
-          >
-            <View style={styles.summaryTop}>
-              {/* Left: title + date */}
-              <View style={{ flex: 1 }}>
-                <View style={styles.sectionAccentRow}>
-                  <LinearGradient
-                    colors={['#7C6FFF', '#5A4FE0']}
-                    style={styles.sectionAccent}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  />
-                  <Text style={[styles.overviewLabel, { color: sectionColor }]}>{isToday ? "TODAY'S OVERVIEW" : 'DAY OVERVIEW'}</Text>
-                </View>
-                <Text style={[styles.dateTitle, { color: titleColor }]}>Attendance</Text>
-                <Text style={[styles.dateSub, { color: subColor }]}>{todayStr}</Text>
+        <View style={[styles.body, { paddingTop: headerHeight + 10 }]}>
+          {/* ── Slim overview strip (fixed) ───────────────────────────────── */}
+          <View style={[
+            styles.summaryStrip,
+            { backgroundColor: summaryBg, borderColor: summaryBorder },
+            isCompact && styles.summaryStripStacked,
+            clay(isDark, 'sm'),
+          ]}>
+            <View style={styles.summaryStripLeft}>
+              <Text style={[styles.dateTitle, { color: titleColor }]} numberOfLines={1}>
+                {isToday ? 'Today' : todayStr}
+              </Text>
+              <View style={styles.pctRow}>
+                <Text style={[styles.pctText, { color: '#00C48C' }]}>{presentPct}%</Text>
+                <Text style={[styles.pctSub, { color: subColor }]}>
+                  {stats.present}/{stats.total} present
+                </Text>
+                {!isToday && (
+                  <TouchableOpacity
+                    onPress={() => setSelectedDate(todayYMD)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.todayChipText}>Today</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-
-              {/* Right: donut */}
-              <DonutRing {...stats} isDark={isDark} />
             </View>
-
-            {/* Stat chips */}
-            <View style={styles.statChipsRow}>
-              <StatChip value={stats.present} label="Present" color="#00C48C" icon="checkmark-circle" isDark={isDark} />
-              <StatChip value={stats.absent} label="Absent" color="#FF4D6A" icon="close-circle" isDark={isDark} />
-              <StatChip value={stats.half} label="Half-Day" color="#FFB800" icon="time" isDark={isDark} />
+            <View style={[styles.miniStatRow, isCompact && styles.miniStatRowFull]}>
+              <MiniStat
+                value={stats.present}
+                label="P"
+                color="#00C48C"
+                icon="checkmark-circle"
+                isDark={isDark}
+                active={statusFilter === 'present'}
+                onPress={() => toggleStatusFilter('present')}
+              />
+              <MiniStat
+                value={stats.absent}
+                label="A"
+                color="#FF4D6A"
+                icon="close-circle"
+                isDark={isDark}
+                active={statusFilter === 'absent'}
+                onPress={() => toggleStatusFilter('absent')}
+              />
+              <MiniStat
+                value={stats.half}
+                label="H"
+                color="#FFB800"
+                icon="time"
+                isDark={isDark}
+                active={statusFilter === 'half_day'}
+                onPress={() => toggleStatusFilter('half_day')}
+              />
             </View>
-          </Animated.View>
+          </View>
 
-          {/* ── Filters: department · status · date ─────────────────────────── */}
-          <Animated.View entering={FadeIn.duration(200)} style={styles.filterRow}>
+          {/* ── Search + filters (fixed) ──────────────────────────────────── */}
+          <View style={[styles.searchWrap, { backgroundColor: searchBg, borderColor: filterBorder }, clay(isDark, 'sm')]}>
+            <Ionicons name="search" size={16} color={filterText} style={{ marginRight: 8 }} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search staff…"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.32)' : 'rgba(0,0,0,0.32)'}
+              style={[styles.searchInput, { color: titleColor }]}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && Platform.OS !== 'ios' ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={filterText} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <View style={styles.filterRow}>
             <FilterChip
               label={deptFilter ?? 'All Depts'}
               active={!!deptFilter}
@@ -601,6 +655,7 @@ export default function AdminAttendanceScreen() {
               filterBg={filterBg}
               filterBorder={filterBorder}
               filterText={filterText}
+              icon="business-outline"
               onPress={() => setOpenMenu('dept')}
             />
             <FilterChip
@@ -610,6 +665,7 @@ export default function AdminAttendanceScreen() {
               filterBg={filterBg}
               filterBorder={filterBorder}
               filterText={filterText}
+              icon="funnel-outline"
               onPress={() => setOpenMenu('status')}
             />
             <AppDatePicker
@@ -621,32 +677,16 @@ export default function AdminAttendanceScreen() {
               accentColor="#7C6FFF"
               containerStyle={styles.datePickerContainer}
             />
-          </Animated.View>
+          </View>
 
-          <FilterMenu
-            visible={openMenu === 'dept'}
-            title="Filter by department"
-            options={deptOptions}
-            selected={deptFilter}
-            isDark={isDark}
-            onSelect={setDeptFilter}
-            onClose={() => setOpenMenu(null)}
-          />
-          <FilterMenu
-            visible={openMenu === 'status'}
-            title="Filter by status"
-            options={statusOptions}
-            selected={statusFilter}
-            isDark={isDark}
-            onSelect={setStatusFilter}
-            onClose={() => setOpenMenu(null)}
-          />
+          {hasActiveFilters && (
+            <TouchableOpacity onPress={clearFilters} style={styles.clearFiltersRow} activeOpacity={0.7}>
+              <Ionicons name="close-circle-outline" size={14} color="#7C6FFF" />
+              <Text style={styles.clearFiltersText}>Clear filters</Text>
+            </TouchableOpacity>
+          )}
 
-          {/* ── Section header ─────────────────────────────────────────────── */}
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={styles.listHeader}
-          >
+          <View style={styles.listHeader}>
             <View style={styles.sectionAccentRow}>
               <LinearGradient
                 colors={['#7C6FFF', '#5A4FE0']}
@@ -657,58 +697,137 @@ export default function AdminAttendanceScreen() {
               <Text style={[styles.sectionTitle, { color: sectionColor }]}>STAFF LIST</Text>
             </View>
             <View style={[styles.countBadge, { backgroundColor: isDark ? 'rgba(124,111,255,0.18)' : 'rgba(124,111,255,0.12)' }, clayGlow('#7C6FFF', 'sm')]}>
-              <Text style={styles.countBadgeText}>{filteredStaff.length}</Text>
+              <Text style={styles.countBadgeText}>
+                {hasActiveFilters ? `${filteredStaff.length} of ${staffList.length}` : filteredStaff.length}
+              </Text>
             </View>
-          </Animated.View>
+          </View>
 
-          {/* ── Staff cards ────────────────────────────────────────────────── */}
-          {filteredStaff.length === 0 ? (
-            <Animated.View entering={FadeIn.duration(240)} style={styles.emptyBox}>
-              <LinearGradient
-                colors={['rgba(124,111,255,0.15)', 'rgba(124,111,255,0.04)']}
-                style={[styles.emptyIcon, clay(isDark, 'md')]}
-              >
-                <Ionicons name={staffList.length === 0 ? 'people-outline' : 'filter-outline'} size={36} color="rgba(124,111,255,0.6)" />
-              </LinearGradient>
-              <Text style={[styles.emptyTitle, { color: titleColor }]}>
-                {staffList.length === 0 ? 'No Staff Found' : 'No Matches'}
-              </Text>
-              <Text style={[styles.emptySub, { color: subColor }]}>
-                {staffList.length === 0
-                  ? 'Pull down to refresh the list'
-                  : 'No staff match the selected filters'}
-              </Text>
-            </Animated.View>
-          ) : (
-            filteredStaff.map((staff, index) => (
+          {/* ── Scrollable staff list ─────────────────────────────────────── */}
+          <Animated.FlatList
+            data={filteredStaff}
+            keyExtractor={(item) => String(item.staff_id)}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="transparent"
+                colors={['transparent']}
+                progressBackgroundColor="transparent"
+              />
+            }
+            ListHeaderComponent={
+              refreshing ? (
+                <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+                  <LogoLoader size={28} color="#7C6FFF" />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              <Animated.View entering={FadeIn.duration(240)} style={styles.emptyBox}>
+                <LinearGradient
+                  colors={['rgba(124,111,255,0.15)', 'rgba(124,111,255,0.04)']}
+                  style={[styles.emptyIcon, clay(isDark, 'md')]}
+                >
+                  <Ionicons name={staffList.length === 0 ? 'people-outline' : 'filter-outline'} size={36} color="rgba(124,111,255,0.6)" />
+                </LinearGradient>
+                <Text style={[styles.emptyTitle, { color: titleColor }]}>
+                  {staffList.length === 0 ? 'No Staff Found' : 'No Matches'}
+                </Text>
+                <Text style={[styles.emptySub, { color: subColor }]}>
+                  {staffList.length === 0
+                    ? 'Pull down to refresh the list'
+                    : 'Try a different search or clear filters'}
+                </Text>
+                {hasActiveFilters && staffList.length > 0 ? (
+                  <TouchableOpacity onPress={clearFilters} style={styles.emptyClearBtn} activeOpacity={0.8}>
+                    <Text style={styles.emptyClearText}>Clear filters</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </Animated.View>
+            }
+            renderItem={({ item, index }) => (
               <StaffCard
-                key={staff.staff_id}
-                staff={staff}
+                staff={item}
                 index={index}
                 isDark={isDark}
                 cardBg={cardBg}
                 cardBorder={cardBorder}
-                onToggle={() => toggleStatus(staff.staff_id)}
+                compact={isCompact}
+                onSelectStatus={(status) => setStaffStatus(item.staff_id, status)}
               />
-            ))
-          )}
-        </Animated.ScrollView>
+            )}
+          />
+        </View>
       )}
 
+      <FilterMenu
+        visible={openMenu === 'dept'}
+        title="Filter by department"
+        options={deptOptions}
+        selected={deptFilter}
+        isDark={isDark}
+        onSelect={setDeptFilter}
+        onClose={() => setOpenMenu(null)}
+      />
+      <FilterMenu
+        visible={openMenu === 'status'}
+        title="Filter by status"
+        options={statusOptions}
+        selected={statusFilter}
+        isDark={isDark}
+        onSelect={setStatusFilter}
+        onClose={() => setOpenMenu(null)}
+      />
+
       {/* ── Footer CTA ──────────────────────────────────────────────────────── */}
-      <View style={[styles.footerContainer, { backgroundColor: footerBg, borderTopColor: footerBorder }, clay(isDark, 'lg')]}>
+      <View
+        style={[
+          styles.footerContainer,
+          {
+            backgroundColor: footerBg,
+            borderTopColor: footerBorder,
+            paddingBottom: Math.max(insets.bottom, 12),
+          },
+          clay(isDark, 'lg'),
+        ]}
+      >
         <View style={styles.quickActions}>
-          <TouchableOpacity onPress={() => handleMarkAll('present')} style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.present.darkBg : STATUS_META.present.lightBg }]}>
-            <Ionicons name="checkmark-circle" size={14} color={isDark ? STATUS_META.present.darkText : STATUS_META.present.lightText} />
-            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.present.darkText : STATUS_META.present.lightText }]}>All Present</Text>
+          <TouchableOpacity
+            onPress={() => handleMarkAll('present')}
+            accessibilityLabel="Mark all present"
+            style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.present.darkBg : STATUS_META.present.lightBg }]}
+          >
+            <Ionicons name="checkmark-circle" size={15} color={isDark ? STATUS_META.present.darkText : STATUS_META.present.lightText} />
+            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.present.darkText : STATUS_META.present.lightText }]}>
+              All Present
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleMarkAll('absent')} style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.absent.darkBg : STATUS_META.absent.lightBg }]}>
-            <Ionicons name="close-circle" size={14} color={isDark ? STATUS_META.absent.darkText : STATUS_META.absent.lightText} />
-            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.absent.darkText : STATUS_META.absent.lightText }]}>All Absent</Text>
+          <TouchableOpacity
+            onPress={() => handleMarkAll('absent')}
+            accessibilityLabel="Mark all absent"
+            style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.absent.darkBg : STATUS_META.absent.lightBg }]}
+          >
+            <Ionicons name="close-circle" size={15} color={isDark ? STATUS_META.absent.darkText : STATUS_META.absent.lightText} />
+            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.absent.darkText : STATUS_META.absent.lightText }]}>
+              All Absent
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleMarkAll('half_day')} style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.half_day.darkBg : STATUS_META.half_day.lightBg }]}>
-            <Ionicons name="time" size={14} color={isDark ? STATUS_META.half_day.darkText : STATUS_META.half_day.lightText} />
-            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.half_day.darkText : STATUS_META.half_day.lightText }]}>All Half</Text>
+          <TouchableOpacity
+            onPress={() => handleMarkAll('half_day')}
+            accessibilityLabel="Mark all half-day"
+            style={[styles.quickBtn, { backgroundColor: isDark ? STATUS_META.half_day.darkBg : STATUS_META.half_day.lightBg }]}
+          >
+            <Ionicons name="time" size={15} color={isDark ? STATUS_META.half_day.darkText : STATUS_META.half_day.lightText} />
+            <Text style={[styles.quickBtnText, { color: isDark ? STATUS_META.half_day.darkText : STATUS_META.half_day.lightText }]}>
+              All Half
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -716,22 +835,32 @@ export default function AdminAttendanceScreen() {
           <View style={styles.footerMeta}>
             <Text style={[styles.footerCount, { color: titleColor }]}>
               {stats.present}
-              <Text style={[styles.footerTotal, { color: subColor }]}> / {stats.total} present</Text>
+              <Text style={[styles.footerTotal, { color: subColor }]}> / {stats.total}</Text>
             </Text>
+            <Text style={[styles.footerPct, { color: subColor }]}>{presentPct}% present</Text>
           </View>
-          <TouchableOpacity onPress={submitAttendance} disabled={isBulkUpdating} activeOpacity={0.85} style={[styles.submitBtn, clayGlow('#7C6FFF', 'md')]}>
+          <TouchableOpacity
+            onPress={submitAttendance}
+            disabled={isBulkUpdating || isSaving || staffList.length === 0}
+            activeOpacity={0.85}
+            style={[
+              styles.submitBtn,
+              clayGlow('#7C6FFF', 'md'),
+              (isBulkUpdating || isSaving || staffList.length === 0) && { opacity: 0.55 },
+            ]}
+          >
             <LinearGradient
               colors={['#7C6FFF', '#5A4FE0']}
               style={styles.submitGrad}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              {isBulkUpdating ? (
+              {isSaving || isBulkUpdating ? (
                 <LogoLoader size={20} color="#fff" />
               ) : (
                 <>
                   <Ionicons name="checkmark-done" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.submitText}>Mark Attendance</Text>
+                  <Text style={styles.submitText}>Save Attendance</Text>
                 </>
               )}
             </LinearGradient>
@@ -742,80 +871,86 @@ export default function AdminAttendanceScreen() {
   );
 }
 
-// ─── Static styles (zero hardcoded colours — injected inline) ─────────────────
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
-  // Orbs
   orb1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, top: -80, right: -100 },
   orb2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, bottom: 140, left: -80 },
 
-  // Scroll
-  scrollContent: { paddingTop: 100, paddingHorizontal: 20, paddingBottom: 160 },
+  body: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
 
-  // Loader
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 14 },
   loaderText: { fontSize: 14, fontWeight: '500', letterSpacing: 0.4 },
 
-  // Summary card
-  summaryCard: {
-    borderRadius: 28, padding: 22, marginBottom: 22,
+  // Slim overview
+  summaryStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
     borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    gap: 10,
   },
-  summaryTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 18 },
+  summaryStripStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  summaryStripLeft: { flexShrink: 1, minWidth: 0, marginRight: 4 },
+  dateTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, marginBottom: 2 },
+  pctRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  pctText: { fontSize: 13, fontWeight: '800' },
+  pctSub: { fontSize: 11, fontWeight: '500' },
+  todayChipText: { fontSize: 11, fontWeight: '700', color: '#7C6FFF' },
 
-  // Section accent
-  sectionAccentRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  sectionAccent: { width: 3, height: 12, borderRadius: 2, marginRight: 7 },
-  overviewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2.2 },
+  miniStatRow: { flexDirection: 'row', gap: 6, flexShrink: 0 },
+  miniStatRowFull: { width: '100%' },
+  miniStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexGrow: 1,
+  },
+  miniStatValue: { fontSize: 13, fontWeight: '800' },
+  miniStatLabel: { fontSize: 10, fontWeight: '700' },
 
-  dateTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginBottom: 3 },
-  dateSub: { fontSize: 13, fontWeight: '500' },
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 12, borderWidth: 1,
+    paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 9 : 2,
+    marginBottom: 8,
+  },
+  searchInput: {
+    flex: 1, fontSize: 14, fontWeight: '500',
+    paddingVertical: Platform.OS === 'android' ? 7 : 0,
+    outlineStyle: 'none' as any,
+  },
 
-  // Donut
-  donutWrapper: {
-    width: 90, height: 90,
-    alignItems: 'center', justifyContent: 'center',
-    marginLeft: 10,
-  },
-  donutOuter: {
-    position: 'absolute', width: 82, height: 82, borderRadius: 41,
-    borderWidth: 6,
-  },
-  donutFill: {
-    position: 'absolute', width: 82, height: 82, borderRadius: 41,
-  },
-  donutHole: {
-    position: 'absolute', width: 62, height: 62, borderRadius: 31,
-  },
-  donutCenter: { alignItems: 'center' },
-  donutPct: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
-  donutLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginTop: 1 },
-
-  // Stat chips
-  statChipsRow: { flexDirection: 'row', gap: 10 },
-  statChip: {
-    flex: 1, alignItems: 'center', padding: 14,
-    borderRadius: 20, borderWidth: 1, gap: 5,
-  },
-  statIcon: {
-    width: 30, height: 30, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 2,
-  },
-  statValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  statLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
-
-  // Filters
-  filterRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  filterRow: { flexDirection: 'row', gap: 8, marginBottom: 6, flexWrap: 'wrap' },
   filterChip: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 15, paddingVertical: 11,
-    borderRadius: 16, borderWidth: 1,
+    paddingHorizontal: 11, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1,
   },
-  filterChipText: { fontSize: 12, fontWeight: '600', maxWidth: 120 },
-  datePickerContainer: { flex: 1 },
+  filterChipText: { fontSize: 12, fontWeight: '600', maxWidth: 110 },
+  datePickerContainer: { flexGrow: 1, flexShrink: 1, minWidth: 120 },
 
-  // Filter dropdown menu
+  clearFiltersRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    alignSelf: 'flex-start', marginBottom: 6, paddingVertical: 2,
+  },
+  clearFiltersText: { fontSize: 12, fontWeight: '700', color: '#7C6FFF' },
+
   menuBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -842,53 +977,90 @@ const styles = StyleSheet.create({
   },
   menuRowText: { fontSize: 15, fontWeight: '600' },
 
-  // List header
-  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  listHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 8, marginTop: 2,
+  },
+  sectionAccentRow: { flexDirection: 'row', alignItems: 'center' },
+  sectionAccent: { width: 3, height: 12, borderRadius: 2, marginRight: 7 },
   sectionTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 2.2 },
   countBadge: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 13 },
   countBadgeText: { fontSize: 12, fontWeight: '700', color: '#7C6FFF' },
 
-  // Staff card
+  list: { flex: 1 },
+  listContent: { paddingBottom: 170, flexGrow: 1 },
+
   card: {
-    borderRadius: 22, padding: 15, marginBottom: 13,
+    borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
     borderWidth: 1,
   },
   cardRow: { flexDirection: 'row', alignItems: 'center' },
+  cardRowStacked: { flexDirection: 'column', alignItems: 'stretch', gap: 10 },
+  cardIdentity: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
   avatar: {
-    width: 46, height: 46, borderRadius: 23,
-    alignItems: 'center', justifyContent: 'center', marginRight: 13,
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', marginRight: 10,
     overflow: 'hidden',
   },
-  avatarText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
-  avatarImg: { width: '100%', height: '100%', borderRadius: 23 },
-  cardInfo: { flex: 1 },
-  staffName: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2, marginBottom: 3 },
-  staffRole: { fontSize: 12, fontWeight: '500' },
+  avatarText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
+  avatarImg: { width: '100%', height: '100%', borderRadius: 20 },
+  cardInfo: { flex: 1, marginRight: 8, minWidth: 0 },
+  staffName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2, marginBottom: 2 },
+  staffRole: { fontSize: 11, fontWeight: '500' },
 
-  // Status badge
-  statusBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14,
+  segmentTrack: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 2,
+    gap: 2,
+    alignSelf: 'flex-start',
   },
-  statusBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+  segmentTrackStretch: {
+    alignSelf: 'stretch',
+  },
+  segmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    minWidth: 36,
+  },
+  segmentBtnStretch: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 9,
+  },
+  segmentLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
 
-  // Empty state
-  emptyBox: { alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyBox: { alignItems: 'center', paddingTop: 48, gap: 10 },
   emptyIcon: {
-    width: 76, height: 76, borderRadius: 22,
+    width: 72, height: 72, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 4, borderWidth: 1, borderColor: 'rgba(124,111,255,0.2)',
   },
   emptyTitle: { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
   emptySub: { fontSize: 13, fontWeight: '500', textAlign: 'center', paddingHorizontal: 40 },
+  emptyClearBtn: {
+    marginTop: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(124,111,255,0.12)',
+  },
+  emptyClearText: { fontSize: 13, fontWeight: '700', color: '#7C6FFF' },
 
-  // Footer
   footerContainer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 20, paddingVertical: 14,
+    paddingHorizontal: 16, paddingTop: 12,
     borderTopWidth: 1,
     flexDirection: 'column',
-    gap: 12,
+    gap: 10,
   },
   quickActions: {
     flexDirection: 'row',
@@ -896,27 +1068,28 @@ const styles = StyleSheet.create({
   },
   quickBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
   },
   quickBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   footerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
   },
-  footerMeta: { justifyContent: 'center' },
-  footerCount: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
-  footerTotal: { fontSize: 14, fontWeight: '500' },
-  submitBtn: { flex: 1, borderRadius: 18 },
+  footerMeta: { justifyContent: 'center', minWidth: 72 },
+  footerCount: { fontSize: 17, fontWeight: '800', letterSpacing: -0.4 },
+  footerTotal: { fontSize: 13, fontWeight: '500' },
+  footerPct: { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  submitBtn: { flex: 1, borderRadius: 16 },
   submitGrad: {
-    flexDirection: 'row', height: 52,
-    alignItems: 'center', justifyContent: 'center', borderRadius: 18,
+    flexDirection: 'row', height: 50,
+    alignItems: 'center', justifyContent: 'center', borderRadius: 16,
   },
   submitText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 },
 });

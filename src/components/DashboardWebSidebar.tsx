@@ -111,12 +111,12 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
   },
   Comms: {
     icon: 'megaphone-outline',
-    accent: '#FB923C',
-    accentDeep: '#C2410C',
-    soft: 'rgba(251,146,60,0.14)',
-    softDark: 'rgba(251,146,60,0.18)',
+    accent: '#C45C4A',
+    accentDeep: '#7B1A2C',
+    soft: 'rgba(93,16,29,0.08)',
+    softDark: 'rgba(196,92,74,0.16)',
     label: 'Comms',
-    gradient: ['#FDBA74', '#EA580C'],
+    gradient: ['#9B2C3C', '#5D101D'],
   },
   Support: {
     icon: 'chatbubble-ellipses-outline',
@@ -200,7 +200,6 @@ function SubItem({
 }) {
   const [hovered, setHovered] = useState(false);
   const showBadge = item.badge !== undefined && item.badge > 0;
-  const [g0, g1] = item.gradient?.length === 2 ? item.gradient : meta.gradient;
 
   return (
     <Pressable
@@ -228,13 +227,25 @@ function SubItem({
         ]}
       >
         {active ? (
-          <LinearGradient
-            colors={[g0, g1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
-            pointerEvents="none"
-          />
+          <>
+            <View
+              style={[
+                styles.subActiveRail,
+                { backgroundColor: meta.accentDeep },
+              ]}
+              pointerEvents="none"
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: isDark ? `${meta.accent}22` : `${meta.accent}18`,
+                  borderRadius: 12,
+                },
+              ]}
+              pointerEvents="none"
+            />
+          </>
         ) : null}
 
         <View
@@ -243,8 +254,8 @@ function SubItem({
             collapsed && styles.subIconCollapsed,
             active
               ? {
-                  backgroundColor: 'rgba(255,255,255,0.22)',
-                  borderColor: 'rgba(255,255,255,0.28)',
+                  backgroundColor: isDark ? meta.softDark : meta.soft,
+                  borderColor: `${meta.accent}44`,
                 }
               : {
                   backgroundColor: isDark ? meta.softDark : meta.soft,
@@ -255,13 +266,13 @@ function SubItem({
           <Ionicons
             name={item.icon}
             size={collapsed ? 17 : 14}
-            color={active ? '#FFFFFF' : meta.accentDeep}
+            color={active ? meta.accentDeep : meta.accentDeep}
           />
           {collapsed && showBadge ? <View style={styles.badgeDot} /> : null}
         </View>
 
         {!collapsed ? (
-          <Text style={[styles.subTitle, active && styles.subTitleActive]} numberOfLines={1}>
+          <Text style={[styles.subTitle, active && styles.subTitleActive, active && { color: isDark ? '#F8FAFC' : meta.accentDeep }]} numberOfLines={1}>
             {item.title}
           </Text>
         ) : null}
@@ -272,7 +283,7 @@ function SubItem({
               styles.badge,
               {
                 backgroundColor: active
-                  ? 'rgba(255,255,255,0.24)'
+                  ? meta.accentDeep
                   : isDark
                     ? 'rgba(255,255,255,0.12)'
                     : meta.accentDeep,
@@ -404,8 +415,8 @@ function CategorySection({
             {meta.label}
           </Text>
           {expanded ? (
-            <Text style={[styles.categoryHint, { color: meta.accentDeep }]}>
-              {items.length} modules
+            <Text style={[styles.categoryHint, { color: meta.accentDeep }]} numberOfLines={1}>
+              {items.map((it) => it.title).join(' · ')}
             </Text>
           ) : null}
         </View>
@@ -857,18 +868,23 @@ function createStyles(isDark: boolean, collapsed: boolean) {
       borderRadius: 13,
     },
     subItemActiveShell: {
-      borderColor: 'rgba(255,255,255,0.25)',
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
       ...(Platform.OS === 'web'
         ? ({
-            boxShadow: '0 8px 18px rgba(15,23,42,0.18)',
+            boxShadow: 'none',
           } as any)
         : {
-            shadowColor: '#0F172A',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.18,
-            shadowRadius: 10,
-            elevation: 4,
+            elevation: 0,
           }),
+    },
+    subActiveRail: {
+      position: 'absolute',
+      left: 0,
+      top: 6,
+      bottom: 6,
+      width: 3,
+      borderRadius: 2,
+      zIndex: 2,
     },
     subIcon: {
       width: 26,
@@ -893,7 +909,6 @@ function createStyles(isDark: boolean, collapsed: boolean) {
       zIndex: 1,
     },
     subTitleActive: {
-      color: '#FFFFFF',
       fontWeight: '700',
     },
     badge: {

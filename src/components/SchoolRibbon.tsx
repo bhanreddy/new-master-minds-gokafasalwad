@@ -866,7 +866,7 @@ function StaticLetterheadRibbon() {
               <AdaptiveSchoolName
                 text={schoolName}
                 baseStyle={[styles.schoolName, isSlimLetterhead && styles.schoolNameDriver]}
-                maxFontSize={isSlimLetterhead ? 18 : 23}
+                maxFontSize={isSlimLetterhead ? 18 : 18}
                 minFontSize={11}
                 fallbackWidth={titleFallbackWidth}
               />
@@ -897,7 +897,7 @@ function StaticLetterheadRibbon() {
                   <Text style={styles.infoLabel} numberOfLines={1}>
                     {col.label.toUpperCase()}
                   </Text>
-                  <Text style={styles.infoText} numberOfLines={4}>
+                  <Text style={styles.infoText} numberOfLines={2}>
                     {col.body}
                   </Text>
                 </View>
@@ -913,9 +913,9 @@ function StaticLetterheadRibbon() {
 const styles = StyleSheet.create({
   column: {
     backgroundColor: 'transparent',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 8,
   },
   columnDriver: {
     paddingHorizontal: 12,
@@ -927,7 +927,7 @@ const styles = StyleSheet.create({
   clayCard: {
     position: 'relative',
     overflow: 'hidden',
-    borderRadius: 30,
+    borderRadius: 20,
     backgroundColor: CLAY_BASE,
     flexShrink: 0,
     borderWidth: 1,
@@ -951,11 +951,11 @@ const styles = StyleSheet.create({
     }),
   },
   clayCardDriver: {
-    borderRadius: 20,
+    borderRadius: 16,
   },
   clayAccentCapDriver: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   innerDriver: {
     paddingVertical: 10,
@@ -994,9 +994,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 4,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    height: 3,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     backgroundColor: CLAY_ACCENT,
     opacity: 0.92,
   },
@@ -1021,8 +1021,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '52%',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
 
     ...Platform.select({
       web: {
@@ -1038,26 +1038,26 @@ const styles = StyleSheet.create({
   inner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    gap: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    gap: 12,
   },
 
   innerCompact: {
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 12,
-    paddingVertical: 14,
+    gap: 8,
+    paddingVertical: 8,
   },
 
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
 
     flexShrink: 0,
-    maxWidth: '42%',
-    minWidth: 150,
+    maxWidth: '40%',
+    minWidth: 140,
   },
 
   brandRowCompact: {
@@ -1069,13 +1069,13 @@ const styles = StyleSheet.create({
 
   /* Luxurious white porcelain clay puck holding the school crest. */
   logoFrame: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 7,
+    padding: 5,
     flexShrink: 0,
 
     ...Platform.select({
@@ -1095,8 +1095,8 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: 48,
-    height: 48,
+    width: 36,
+    height: 36,
   },
 
   titleBlock: {
@@ -1125,11 +1125,11 @@ const styles = StyleSheet.create({
 
   /* Accent anchor line — the theme's own "divider" colour. */
   titleUnderline: {
-    marginTop: 6,
-    marginBottom: 2,
-    height: 3,
-    width: 52,
-    borderRadius: 3,
+    marginTop: 4,
+    marginBottom: 1,
+    height: 2,
+    width: 40,
+    borderRadius: 2,
     backgroundColor: CLAY_ACCENT,
     opacity: 0.9,
 
@@ -1145,11 +1145,11 @@ const styles = StyleSheet.create({
 
   /* Tagline — SchoolTheme's own ribbonTagline (white) for maximum legibility on the clay body. */
   tagline: {
-    marginTop: 3,
+    marginTop: 2,
     color: ribbonTheme.ribbonTagline,
     fontWeight: '600',
-    fontSize: 12.5,
-    letterSpacing: 0.3,
+    fontSize: 11,
+    letterSpacing: 0.25,
     fontStyle: 'italic',
     opacity: 0.96,
 
@@ -1171,7 +1171,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
     alignItems: 'stretch',
-    gap: 10,
+    gap: 8,
     minWidth: 0,
   },
 
@@ -1184,12 +1184,12 @@ const styles = StyleSheet.create({
   infoChip: {
     flexGrow: 1,
     flexShrink: 1,
-    flexBasis: 170,
+    flexBasis: 150,
     maxWidth: '100%',
     justifyContent: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 18,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     backgroundColor: schoolColorWithAlpha(CLAY_DEEP, 0.26),
 
     ...Platform.select({
@@ -1230,10 +1230,10 @@ const styles = StyleSheet.create({
   infoText: {
     color: CLAY_SURFACE,
     opacity: 0.98,
-    fontSize: 11,
-    lineHeight: 15.5,
+    fontSize: 10.5,
+    lineHeight: 14,
     fontWeight: '600',
-    letterSpacing: 0.15,
+    letterSpacing: 0.12,
 
     ...Platform.select({
       web: {

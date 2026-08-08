@@ -154,6 +154,7 @@ export interface StudentListParams {
     page?: number;
     class_id?: string;
     section_id?: string;
+    academic_year_id?: string;
     status_id?: number | string;
     /** Exact generated admission-number format to include. */
     admission_type?: 'dummy' | 'permanent';
@@ -432,7 +433,9 @@ export const StudentService = {
     /**
      * Get student results (Typed as any for now, strict type available in backend check)
      */
-    getResults: async (id: string): Promise<any> => {
-        return api.get<any>(`/students/${id}/results`);
+    getResults: async (id: string, academicYearId?: string): Promise<any> => {
+        return api.get<any>(`/students/${id}/results`, academicYearId
+            ? { academic_year_id: academicYearId }
+            : undefined);
     },
 };
