@@ -45,7 +45,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SCHOOL_ID": "18",
+        "EXPO_PUBLIC_SCHOOL_ID": "19",
         "EXPO_PUBLIC_SCHOOL_CODE": "NMMS",
         "EXPO_PUBLIC_SCHOOL_NAME": "New Master Minds School E/M Gokafasalwad",
         "EXPO_PUBLIC_API_URL": "https://simsapi.nexsyrus.com/api/v1",
