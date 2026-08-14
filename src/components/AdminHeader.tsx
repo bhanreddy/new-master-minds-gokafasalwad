@@ -37,14 +37,14 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
     showMenuButton = true,
     showProfileButton = true,
     showBackButton = false,
-    showNotification = false,
+    showNotification = true,
     hideAppSearch = false,
     rightAction,
     scrollY,
     onMenuPress
 }) => {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, role } = useAuth();
     const { isDark } = useTheme();
     const { width: windowWidth } = useWindowDimensions();
     const isWideWeb = isWeb && windowWidth >= 768;
@@ -246,7 +246,11 @@ const AdminHeader: React.FC<AdminHeaderProps> = ({
                         <ClayIconButton
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                router.push('/admin/notifications' as any);
+                                router.push(
+                                    (role === 'admin' || role === 'principal'
+                                        ? '/admin/notifications'
+                                        : '/notifications') as any
+                                );
                             }}
                             isDark={isDark}
                             accent={accent}

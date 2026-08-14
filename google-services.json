@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:50612038206:android:5e0322a433d1f367f6ff6f",
+        "mobilesdk_app_id": "1:50612038206:android:a1aea94cb133195bf6ff6f",
         "android_client_info": {
-          "package_name": "com.nexsyrussims.bvsmahammadabad"
+          "package_name": "com.nexsyrussims.bashyammhbd"
         }
       },
       "oauth_client": [],
@@ -29,6 +29,25 @@
         "mobilesdk_app_id": "1:50612038206:android:16bb6874d1d1a719f6ff6f",
         "android_client_info": {
           "package_name": "com.nexsyrussims.chaitanyavidyanikethan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlqQRXtG4EBLSlzrYl_eO2yi51Mp09B_o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:50612038206:android:ba9b58c0ee4dcb17f6ff6f",
+        "android_client_info": {
+          "package_name": "com.nexsyrussims.chanakyamaddur"
         }
       },
       "oauth_client": [],

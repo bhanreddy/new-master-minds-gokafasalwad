@@ -137,14 +137,14 @@ type ComplaintCardProps = {
   item: Complaint;
   index: number;
   styles: Record<string, any>;
-  textTertiary: string;
+  isDark: boolean;
   resolvingId: string | null;
   onResolve: (id: string) => void;
   onAssign: () => void;
 };
 
 const ComplaintCard = React.memo(function ComplaintCard({
-  item, index, styles, textTertiary, resolvingId, onResolve, onAssign,
+  item, index, styles, isDark, resolvingId, onResolve, onAssign,
 }: ComplaintCardProps) {
   const catKey = (item.category || 'general').toLowerCase();
   const cat = CATEGORY_CFG[catKey] || CATEGORY_CFG.general;
@@ -153,6 +153,12 @@ const ComplaintCard = React.memo(function ComplaintCard({
   const isHigh = (item.priority || '').toLowerCase() === 'high';
   const isResolved = ['resolved', 'closed'].includes(normalizeStatus(item.status));
   const ticket = item.ticket_no || item.id?.substring(0, 8) || '—';
+  const title = t_field(item.title, item.title_te) || 'Untitled';
+  const description = t_field(item.description, item.description_te) || '';
+  const showDesc = !!description.trim() && description.trim().toLowerCase() !== title.trim().toLowerCase();
+  const studentName = item.student_name?.trim() || null;
+  const studentAdm = item.student_admission_no ? `#${item.student_admission_no}` : null;
+  const reporter = item.raised_by_name || item.raised_by || 'Anonymous';
   const scale = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -174,31 +180,49 @@ const ComplaintCard = React.memo(function ComplaintCard({
           />
           <View style={[styles.cardStripe, { backgroundColor: cat.color }]} />
           <View style={styles.cardInner}>
-            <View style={styles.cardTop}>
-              <View style={[styles.catIcon, { backgroundColor: cat.bg }]}>
-                <Ionicons name={cat.icon} size={16} color={cat.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.ticketLabel}>#{ticket}</Text>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {t_field(item.title, item.title_te)}
-                </Text>
-              </View>
-              <View style={[styles.priorityBadge, { backgroundColor: pri.bg, borderColor: pri.border }]}>
-                <Text style={[styles.priorityText, { color: pri.color }]}>
-                  {(item.priority || 'medium').toUpperCase()}
-                </Text>
+            {/* Student — primary identity */}
+            <View style={styles.studentRow}>
+              <StudentPhoto
+                photoUrl={item.student_photo_url}
+                displayName={studentName || title}
+                size={48}
+                borderRadius={15}
+                style={[styles.studentAvatar, { backgroundColor: cat.bg }]}
+                fallbackTextStyle={[styles.studentAvatarFallback, { color: cat.color }]}
+              />
+              <View style={styles.studentMain}>
+                <Text style={styles.studentEyebrow}>Student</Text>
+                <View style={styles.studentTitleRow}>
+                  <Text style={styles.studentName} numberOfLines={1}>
+                    {studentName || 'Student not linked'}
+                  </Text>
+                  <View style={[styles.priorityBadge, { backgroundColor: pri.bg, borderColor: pri.border }]}>
+                    <Text style={[styles.priorityText, { color: pri.color }]}>
+                      {(item.priority || 'medium').toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.studentMetaRow}>
+                  {studentAdm ? (
+                    <Text style={styles.studentAdm} numberOfLines={1}>{studentAdm}</Text>
+                  ) : null}
+                  <Text style={styles.ticketInline} numberOfLines={1}>#{ticket}</Text>
+                </View>
               </View>
             </View>
 
-            {!!item.description && (
-              <Text style={styles.cardDesc} numberOfLines={2}>
-                {t_field(item.description, item.description_te)}
-              </Text>
-            )}
+            {/* Issue */}
+            <View style={styles.issueBlock}>
+              <Text style={styles.issueEyebrow}>Issue</Text>
+              <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
+              {showDesc ? (
+                <Text style={styles.cardDesc} numberOfLines={2}>{description}</Text>
+              ) : null}
+            </View>
 
             <View style={styles.metaRow}>
               <View style={[styles.catPill, { backgroundColor: cat.bg }]}>
+                <Ionicons name={cat.icon} size={11} color={cat.color} />
                 <Text style={[styles.catPillText, { color: cat.color }]}>{cat.label}</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: stat.bg, borderColor: stat.border }]}>
@@ -214,12 +238,13 @@ const ComplaintCard = React.memo(function ComplaintCard({
                 <View style={styles.avatarMini}>
                   <Ionicons name="person" size={10} color={ROSE} />
                 </View>
-                <Text style={styles.fromText} numberOfLines={1}>
-                  {item.raised_by_name || item.raised_by || 'Anonymous'}
-                </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.metaLabel}>Reported by</Text>
+                  <Text style={styles.fromText} numberOfLines={1}>{reporter}</Text>
+                </View>
               </View>
               <View style={styles.timeRow}>
-                <Ionicons name="time-outline" size={11} color={textTertiary} />
+                <Ionicons name="time-outline" size={13} color={isDark ? '#94A3B8' : '#64748B'} />
                 <Text style={styles.dateText}>{formatTimeAgo(item.created_at)}</Text>
               </View>
             </View>
@@ -513,7 +538,16 @@ export default function AdminComplaints() {
       const desc = (item.description || '').toLowerCase();
       const ticket = (item.ticket_no || item.id || '').toLowerCase();
       const by = (item.raised_by_name || item.raised_by || '').toLowerCase();
-      return title.includes(q) || desc.includes(q) || ticket.includes(q) || by.includes(q);
+      const student = (item.student_name || '').toLowerCase();
+      const adm = (item.student_admission_no || '').toLowerCase();
+      return (
+        title.includes(q) ||
+        desc.includes(q) ||
+        ticket.includes(q) ||
+        by.includes(q) ||
+        student.includes(q) ||
+        adm.includes(q)
+      );
     });
   }, [complaints, filterType, searchQuery]);
 
@@ -522,12 +556,12 @@ export default function AdminComplaints() {
       item={item}
       index={index}
       styles={styles}
-      textTertiary={theme.colors.textTertiary}
+      isDark={isDark}
       resolvingId={resolvingId}
       onResolve={handleResolve}
       onAssign={handleAssign}
     />
-  ), [styles, theme.colors.textTertiary, resolvingId, handleResolve, handleAssign]);
+  ), [styles, isDark, resolvingId, handleResolve, handleAssign]);
 
   const sheetSubtitle = studentMode === 'multiple'
     ? `${selectedStudentIds.length || 0} student(s) · ${newComplaint.priority} priority`
@@ -550,7 +584,7 @@ export default function AdminComplaints() {
         />
         <AppTextInput
           style={styles.searchInput}
-          placeholder="Search tickets, titles, people…"
+          placeholder="Search students, tickets, titles…"
           placeholderTextColor="#94A3B8"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -564,62 +598,39 @@ export default function AdminComplaints() {
         )}
       </View>
 
-      {/* Stats */}
+      {/* Status overview — also acts as filters */}
       {!loading && complaints.length > 0 && (
         <Animated.View entering={FadeInDown.duration(340)} style={styles.statsStrip}>
-          <View style={styles.statChip}>
-            <Text style={styles.statNumber}>{counts.total}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statChip}>
-            <Text style={[styles.statNumber, { color: '#F59E0B' }]}>{counts.open}</Text>
-            <Text style={styles.statLabel}>Open</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statChip}>
-            <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{counts.active}</Text>
-            <Text style={styles.statLabel}>Active</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statChip}>
-            <Text style={[styles.statNumber, { color: ROSE }]}>{counts.high}</Text>
-            <Text style={styles.statLabel}>Urgent</Text>
-          </View>
-        </Animated.View>
-      )}
-
-      {/* Filter tabs */}
-      <Animated.View entering={FadeInDown.delay(60).duration(320)} style={styles.filterSection}>
-        <View style={styles.tabTrack}>
-          {FILTER_TABS.map((tab) => {
-            const active = filterType === tab.key;
-            const count = tab.key === 'ALL' ? counts.total
-              : tab.key === 'OPEN' ? counts.open
-                : tab.key === 'IN PROGRESS' ? counts.active
-                  : counts.closed;
+          {([
+            { key: 'ALL' as FilterKey, label: 'Total', value: counts.total, color: theme.colors.textStrong },
+            { key: 'OPEN' as FilterKey, label: 'Open', value: counts.open, color: '#D97706' },
+            { key: 'IN PROGRESS' as FilterKey, label: 'Active', value: counts.active, color: '#2563EB' },
+            { key: 'CLOSED' as FilterKey, label: 'Closed', value: counts.closed, color: '#059669' },
+          ]).map((stat, i) => {
+            const active = filterType === stat.key;
             return (
-              <PressScale key={tab.key} onPress={() => setFilterType(tab.key)} style={styles.tabFlex}>
-                <View style={[styles.tab, active && styles.activeTab]}>
-                  <Ionicons
-                    name={tab.icon}
-                    size={13}
-                    color={active ? ROSE : (isDark ? '#64748B' : '#94A3B8')}
-                  />
-                  <Text style={[styles.tabText, active && styles.activeTabText]} numberOfLines={1}>
-                    {tab.label}
+              <React.Fragment key={stat.key}>
+                {i > 0 ? <View style={styles.statDivider} /> : null}
+                <Pressable
+                  onPress={() => setFilterType(stat.key)}
+                  style={[styles.statChip, active && styles.statChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Filter ${stat.label}`}
+                >
+                  <Text style={[styles.statNumber, { color: active ? ROSE_DEEP : stat.color }]}>
+                    {stat.value}
                   </Text>
-                  {count > 0 && (
-                    <View style={[styles.tabCount, active && styles.tabCountActive]}>
-                      <Text style={[styles.tabCountText, active && styles.tabCountTextActive]}>{count}</Text>
-                    </View>
-                  )}
-                </View>
-              </PressScale>
+                  <Text style={[styles.statLabel, active && styles.statLabelActive]}>{stat.label}</Text>
+                  {stat.key === 'OPEN' && counts.high > 0 ? (
+                    <Text style={styles.statHint}>{counts.high} urgent</Text>
+                  ) : null}
+                </Pressable>
+              </React.Fragment>
             );
           })}
-        </View>
-      </Animated.View>
+        </Animated.View>
+      )}
 
       {loading ? (
         <View style={styles.centerContainer}>
@@ -1104,55 +1115,41 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: isDark ? theme.colors.card : '#fff',
     marginHorizontal: 20, marginTop: 12,
-    borderRadius: 18, paddingVertical: 14, paddingHorizontal: 8,
+    borderRadius: 18, paddingVertical: 6, paddingHorizontal: 4,
     borderWidth: 1, borderColor: isDark ? theme.colors.border : 'rgba(148,163,184,0.18)',
-    alignItems: 'center',
+    alignItems: 'stretch',
     ...(Platform.OS === 'android' ? { elevation: 2 } : {
       shadowColor: '#64748B', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8,
     }),
   },
-  statChip: { flex: 1, alignItems: 'center' },
-  statDivider: { width: 1, height: 28, backgroundColor: isDark ? theme.colors.border : '#E2E8F0' },
-  statNumber: { fontSize: 20, fontWeight: '800', color: theme.colors.textStrong, letterSpacing: -0.6 },
+  statChip: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14,
+  },
+  statChipActive: {
+    backgroundColor: isDark ? 'rgba(244,63,94,0.14)' : ROSE_SOFT,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth, alignSelf: 'center', height: 32,
+    backgroundColor: isDark ? theme.colors.border : '#E2E8F0',
+  },
+  statNumber: { fontSize: 20, fontWeight: '800', letterSpacing: -0.6 },
   statLabel: {
-    fontSize: 10, color: theme.colors.textTertiary, fontWeight: '600',
-    textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 3,
+    fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', fontWeight: '700',
+    marginTop: 3,
+  },
+  statLabelActive: { color: ROSE_DEEP },
+  statHint: {
+    marginTop: 2, fontSize: 9, fontWeight: '700', color: ROSE,
+    textTransform: 'uppercase', letterSpacing: 0.3,
   },
 
-  filterSection: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 },
-  tabTrack: {
-    flexDirection: 'row', gap: 6,
-    backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(148,163,184,0.12)',
-    borderRadius: 16, padding: 4,
-  },
-  tabFlex: { flex: 1 },
-  tab: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingVertical: 10, paddingHorizontal: 4, borderRadius: 12,
-  },
-  activeTab: {
-    backgroundColor: isDark ? theme.colors.card : '#fff',
-    ...(Platform.OS === 'android' ? { elevation: 2 } : {
-      shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4,
-    }),
-  },
-  tabText: { fontSize: 11, fontWeight: '600', color: theme.colors.textSecondary },
-  activeTabText: { color: ROSE_DEEP, fontWeight: '800' },
-  tabCount: {
-    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(148,163,184,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  tabCountActive: { backgroundColor: ROSE_MID },
-  tabCountText: { fontSize: 9, fontWeight: '800', color: theme.colors.textTertiary },
-  tabCountTextActive: { color: ROSE_DEEP },
-
-  listContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 120 },
+  listContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 120 },
   listHeader: {
     fontSize: 16, fontWeight: '800', color: theme.colors.textStrong,
     marginBottom: 12, letterSpacing: -0.4,
   },
-  listHeaderCount: { fontWeight: '600', color: theme.colors.textTertiary },
+  listHeaderCount: { fontWeight: '600', color: isDark ? '#94A3B8' : '#64748B' },
 
   card: {
     backgroundColor: isDark ? theme.colors.card : '#fff',
@@ -1173,32 +1170,66 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
   },
   cardStripe: { width: 4 },
   cardInner: { flex: 1, padding: 14, paddingLeft: 12 },
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  catIcon: {
-    width: 36, height: 36, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
+
+  studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  studentAvatar: { alignItems: 'center', justifyContent: 'center' },
+  studentAvatarFallback: { fontSize: 16, fontWeight: '800' },
+  studentMain: { flex: 1, minWidth: 0, gap: 2 },
+  studentEyebrow: {
+    fontSize: 10, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B',
+    textTransform: 'uppercase', letterSpacing: 0.55, marginBottom: 1,
   },
-  ticketLabel: {
-    fontSize: 10, fontWeight: '700', color: theme.colors.textTertiary,
-    letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2,
+  studentTitleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+  },
+  studentName: {
+    flex: 1, fontSize: 17, fontWeight: '800', color: theme.colors.textStrong,
+    letterSpacing: -0.4, lineHeight: 22,
+  },
+  studentMetaRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 1,
+  },
+  studentAdm: {
+    fontSize: 12, fontWeight: '700', color: isDark ? '#94A3B8' : '#475569',
+  },
+  studentAdmMuted: {
+    fontSize: 12, fontWeight: '600', color: isDark ? '#64748B' : '#94A3B8',
+  },
+  ticketInline: {
+    fontSize: 11, fontWeight: '700', color: isDark ? '#94A3B8' : '#64748B',
+    letterSpacing: 0.15,
+  },
+
+  issueBlock: {
+    marginBottom: 10,
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(148,163,184,0.08)',
+  },
+  issueEyebrow: {
+    fontSize: 10, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B',
+    textTransform: 'uppercase', letterSpacing: 0.55, marginBottom: 4,
   },
   cardTitle: {
-    fontSize: 15, fontWeight: '700', color: theme.colors.textStrong,
-    letterSpacing: -0.3, lineHeight: 20,
+    fontSize: 14, fontWeight: '700', color: theme.colors.textStrong,
+    letterSpacing: -0.2, lineHeight: 19,
   },
   priorityBadge: {
     paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9, borderWidth: 1, flexShrink: 0,
   },
   priorityText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   cardDesc: {
-    fontSize: 13, color: theme.colors.textSecondary, lineHeight: 19,
-    marginBottom: 10, paddingLeft: 2,
+    fontSize: 12, color: isDark ? '#94A3B8' : '#475569', lineHeight: 17,
+    marginTop: 4,
   },
   metaRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: 10, gap: 8,
   },
-  catPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
+  catPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8,
+  },
   catPillText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
   statusBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1210,25 +1241,31 @@ const getStyles = (theme: Theme, isDark: boolean) => StyleSheet.create({
     paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
   },
-  metaInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 8 },
+  metaInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, paddingRight: 8 },
   avatarMini: {
-    width: 20, height: 20, borderRadius: 7,
+    width: 22, height: 22, borderRadius: 7,
     backgroundColor: ROSE_MID, alignItems: 'center', justifyContent: 'center',
   },
-  fromText: { fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600', flexShrink: 1 },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  dateText: { fontSize: 11, color: theme.colors.textTertiary, fontWeight: '500' },
+  metaLabel: {
+    fontSize: 10, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B',
+    textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 1,
+  },
+  fromText: { fontSize: 13, color: theme.colors.textStrong, fontWeight: '700' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dateText: {
+    fontSize: 12, color: isDark ? '#94A3B8' : '#475569', fontWeight: '600',
+  },
 
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   resolveBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#10B981', paddingVertical: 11, borderRadius: 14, overflow: 'hidden',
+    flex: 1.15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: '#10B981', paddingVertical: 10, borderRadius: 12, overflow: 'hidden',
     borderBottomWidth: 1.5, borderBottomColor: 'rgba(0,0,0,0.12)',
   },
   resolveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   assignBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: ROSE_SOFT, paddingVertical: 11, borderRadius: 14,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: ROSE_SOFT, paddingVertical: 10, borderRadius: 12,
     borderWidth: 1.5, borderColor: ROSE_EDGE,
   },
   assignBtnText: { color: ROSE_DEEP, fontSize: 13, fontWeight: '700' },

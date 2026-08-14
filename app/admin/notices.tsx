@@ -72,20 +72,20 @@ type AudienceMeta = { icon: string; color: string; bg: string; soft: string; lib
 
 const buildAudienceMeta = (c: ThemeColors): Record<string, AudienceMeta> => ({
   all: {
-    icon: 'globe-outline', color: Colors.logoPurple, bg: Colors.logoPurple,
-    soft: schoolColorWithAlpha(Colors.logoPurple, 0.12), lib: 'ion', desc: 'Everyone',
+    icon: 'globe-outline', color: c.primary, bg: c.primary,
+    soft: schoolColorWithAlpha(c.primary, 0.12), lib: 'ion', desc: 'Everyone',
   },
   students: {
-    icon: 'graduation-cap', color: Colors.logoBlue, bg: Colors.logoBlue,
-    soft: schoolColorWithAlpha(Colors.logoBlue, 0.12), lib: 'fa5', desc: 'All students',
+    icon: 'graduation-cap', color: c.info, bg: c.info,
+    soft: schoolColorWithAlpha(c.info, 0.12), lib: 'fa5', desc: 'All students',
   },
   staff: {
-    icon: 'briefcase-outline', color: Colors.logoOrange, bg: Colors.logoOrange,
-    soft: schoolColorWithAlpha(Colors.logoOrange, 0.16), lib: 'ion', desc: 'Teachers & staff',
+    icon: 'briefcase-outline', color: c.warning, bg: c.warning,
+    soft: schoolColorWithAlpha(c.warning, 0.16), lib: 'ion', desc: 'Teachers & staff',
   },
   parents: {
-    icon: 'people-outline', color: Colors.logoGreen, bg: Colors.logoGreen,
-    soft: schoolColorWithAlpha(Colors.logoGreen, 0.14), lib: 'ion', desc: 'Parent portal',
+    icon: 'people-outline', color: c.secondary, bg: c.secondary,
+    soft: schoolColorWithAlpha(c.secondary, 0.14), lib: 'ion', desc: 'Parent portal',
   },
   class: {
     icon: 'layers-outline', color: c.primary, bg: c.primary,
@@ -827,7 +827,7 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => {
   const soft = ADMIN_THEME.colors.background.subtle;
   const mid = schoolColorWithAlpha(c.primary, isDark ? 0.22 : 0.12);
   const edge = c.alertBorder;
-  const overlay = schoolColorWithAlpha(Colors.logoNavy, 0.55);
+  const overlay = schoolColorWithAlpha(Colors.textStrong, 0.55);
   const track = isDark ? schoolColorWithAlpha(Colors.black, 0.25) : c.borderLight;
   const inverse = ADMIN_THEME.colors.text.inverse;
 
@@ -1038,7 +1038,7 @@ const getStyles = (theme: SchoolTheme, isDark: boolean) => {
     width: '100%',
     overflow: 'hidden',
     ...(Platform.OS === 'android' ? { elevation: 16 } : {
-      shadowColor: Colors.logoNavy, shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.22, shadowRadius: 28,
+      shadowColor: Colors.textStrong, shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.22, shadowRadius: 28,
     }),
   },
   sheetContentWide: {

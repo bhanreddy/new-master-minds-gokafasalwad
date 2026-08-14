@@ -44,12 +44,13 @@ const SCHOOL_ID_PARAM = String(SCHOOL_ID);
 export const getApiBaseUrl = () => {
   const url = API_URL.trim();
   // Web browser: ensure we use localhost (not Android emulator address)
-  if (Platform.OS === 'web' && url.includes('10.0.2.2')) {
-    return url.replace('10.0.2.2', 'localhost');
+  if (Platform.OS === 'web') {
+    return url.replace(/10\.0\.2\.2/g, 'localhost').replace(/10\.0\.3\.2/g, 'localhost');
   }
-  // Android emulator: needs 10.0.2.2 to reach host machine's localhost
-  if (Platform.OS === 'android' && url.includes('localhost')) {
-    return url.replace('localhost', '10.0.2.2');
+  // Android emulator: 10.0.2.2 reaches the host machine. Both localhost and
+  // 127.0.0.1 point at the emulator itself, so rewrite them.
+  if (Platform.OS === 'android') {
+    return url.replace(/localhost|127\.0\.0\.1/g, '10.0.2.2');
   }
   return url;
 };

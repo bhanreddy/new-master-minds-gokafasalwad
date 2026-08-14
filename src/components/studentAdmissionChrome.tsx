@@ -137,13 +137,14 @@ export function InputField({
   const isPassword = !!secureTextEntry;
   const autofill = fieldKey ? fieldAutofill(fieldKey, autofillMode) : fieldAutofill('ims-stu-field', autofillMode);
   const hasError = !!error;
+  const idleBorderColor = FORM.border(isDark);
 
   const borderAnim = useAnimatedStyle(() => ({
     borderColor: hasError
       ? '#EF4444'
       : focused.value === 1
         ? accentColor
-        : FORM.border(isDark),
+        : idleBorderColor,
     borderWidth: focused.value === 1 || hasError ? 1.5 : 1,
   }));
 

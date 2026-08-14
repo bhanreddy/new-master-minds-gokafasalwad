@@ -31,6 +31,10 @@ import Animated, {
 import * as Haptics from '@/src/utils/haptics';
 import { Ionicons } from '@expo/vector-icons';
 import AdminHeader from '../../src/components/AdminHeader';
+import AdminNotificationSwitcher, {
+  type NotificationWorkspaceTab,
+} from '../../src/components/AdminNotificationSwitcher';
+import NotificationInboxList from '../../src/components/NotificationInboxList';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/services/apiClient';
 import ResponsiveCard from '../../src/components/ResponsiveCard';
@@ -841,6 +845,7 @@ export default function NotificationsTriggerPage() {
 
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmChannel, setConfirmChannel] = useState<TriggerCard | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<NotificationWorkspaceTab>('send');
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
@@ -1089,7 +1094,12 @@ export default function NotificationsTriggerPage() {
 
   return (
     <View style={styles.container}>
-      <AdminHeader title="Notifications" showBackButton scrollY={scrollY} />
+      <AdminHeader
+        title="Notifications"
+        showBackButton
+        showNotification={false}
+        scrollY={workspaceTab === 'send' ? scrollY : undefined}
+      />
 
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <LinearGradient
@@ -1098,15 +1108,31 @@ export default function NotificationsTriggerPage() {
         />
       </View>
 
-      <Animated.ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
-      >
+      {workspaceTab === 'inbox' && (
+        <View style={[styles.inboxPane, { paddingHorizontal: horizontalPad }]}>
+          <AdminNotificationSwitcher value={workspaceTab} onChange={setWorkspaceTab} />
+          <Text style={styles.headerTitle}>Your inbox</Text>
+          <Text style={styles.headerSubtitle}>
+            Alerts for this admin account. Switch to Send when you want to notify parents.
+          </Text>
+          <NotificationInboxList onSendPress={() => setWorkspaceTab('send')} />
+        </View>
+      )}
+
+      {workspaceTab === 'send' && (
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+        >
         <ResponsiveCard maxWidth={contentWidth} fullWidth>
           <Animated.View style={heroAnimStyle}>
-            <Animated.View entering={FadeIn.delay(50)} style={styles.heroBadge}>
+            <Animated.View entering={FadeIn.delay(50)} style={styles.heroSwitcher}>
+              <AdminNotificationSwitcher value={workspaceTab} onChange={setWorkspaceTab} />
+            </Animated.View>
+
+            <Animated.View entering={FadeIn.delay(70)} style={styles.heroBadge}>
               <View style={styles.livePulseDot} />
               <Text style={styles.heroBadgeText}>PARENT NOTIFICATIONS</Text>
             </Animated.View>
@@ -1225,8 +1251,9 @@ export default function NotificationsTriggerPage() {
           </View>
         </ResponsiveCard>
 
-        <View style={{ height: 120 }} />
-      </Animated.ScrollView>
+          <View style={{ height: 120 }} />
+        </Animated.ScrollView>
+      )}
 
       <ConfirmBroadcastSheet
         visible={confirmVisible}
@@ -1267,12 +1294,21 @@ const getStyles = (
       width: '100%',
       backgroundColor: 'transparent',
     },
+    inboxPane: {
+      flex: 1,
+      minHeight: 0,
+      paddingTop: 16,
+      zIndex: 1,
+    },
     scrollContent: {
       paddingHorizontal: horizontalPad,
       paddingBottom: 24,
       paddingTop: scrollPaddingTop,
       width: '100%',
       alignSelf: 'stretch',
+    },
+    heroSwitcher: {
+      marginBottom: 18,
     },
     heroBadge: {
       flexDirection: 'row',

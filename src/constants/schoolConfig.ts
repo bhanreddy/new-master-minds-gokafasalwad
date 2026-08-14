@@ -22,8 +22,11 @@ import { defaultDarkTheme, defaultLightTheme } from '../theme/types';
  * otherwise, which blanks every dashboard after login. It remains a normal function
  * when called from the JS thread (PDFs, welcome screen, ribbon, etc.).
  */
-export function schoolColorWithAlpha(hex: string, alpha: number): string {
+export function schoolColorWithAlpha(hex: string | undefined | null, alpha: number): string {
   'worklet';
+  if (hex == null || typeof hex !== 'string') {
+    return `rgba(212,175,55,${alpha})`;
+  }
   let h = hex.trim().replace('#', '');
   if (h.length === 3) {
     h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];

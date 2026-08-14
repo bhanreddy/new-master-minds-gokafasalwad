@@ -231,6 +231,7 @@ function DigitCluster({
   placeholderChar,
   onPress,
   colors,
+  fill,
 }: {
   value: string;
   length: number;
@@ -238,10 +239,12 @@ function DigitCluster({
   placeholderChar: string;
   onPress: () => void;
   colors: ReturnType<typeof useFieldColorsWithSlot>;
+  /** Stretch to parent width (Aadhaar row); omit for content-sized DOB units. */
+  fill?: boolean;
 }) {
   const scale = useSharedValue(1);
   useEffect(() => {
-    scale.value = withSpring(focused ? 1.03 : 1, { damping: 16, stiffness: 220 });
+    scale.value = withSpring(focused ? 1.015 : 1, { damping: 16, stiffness: 220 });
   }, [focused, scale]);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -250,12 +253,13 @@ function DigitCluster({
 
   const chars = value.padEnd(length, ' ').slice(0, length).split('');
   return (
-    <Animated.View style={animStyle}>
+    <Animated.View style={[fill && styles.clusterFill, animStyle]}>
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={onPress}
         style={[
           styles.cluster,
+          fill && styles.clusterStretch,
           {
             backgroundColor: focused ? colors.focusFill : colors.field,
             borderColor: focused ? colors.accent : colors.border,
@@ -270,6 +274,7 @@ function DigitCluster({
               key={i}
               style={[
                 styles.digitCell,
+                fill ? styles.digitCellFlex : styles.digitCellFixed,
                 {
                   backgroundColor: colors.isDarkSlot,
                   borderColor: focused
@@ -286,6 +291,8 @@ function DigitCluster({
                   { color: filled ? colors.text : colors.muted },
                   !filled && styles.digitPlaceholder,
                 ]}
+                numberOfLines={1}
+                allowFontScaling={false}
               >
                 {filled ? ch : placeholderChar}
               </Text>
@@ -382,7 +389,7 @@ export function AadhaarNumberField({
                 <View style={[styles.dashDot, { backgroundColor: c.accent }]} />
               </View>
             ) : null}
-            <View style={styles.clusterWrap}>
+            <View style={styles.aadhaarClusterWrap}>
               <DigitCluster
                 value={part}
                 length={4}
@@ -390,6 +397,7 @@ export function AadhaarNumberField({
                 placeholderChar="·"
                 onPress={() => refs[index].current?.focus()}
                 colors={c}
+                fill
               />
               <TextInput
                 ref={refs[index]}
@@ -704,25 +712,34 @@ const styles = StyleSheet.create({
   aadhaarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    gap: 6,
+    width: '100%',
+    gap: 4,
     flexWrap: 'nowrap',
+  },
+  aadhaarClusterWrap: {
+    flex: 1,
+    minWidth: 0,
+    position: 'relative',
   },
   clusterWrap: {
     position: 'relative',
     alignSelf: 'center',
   },
+  clusterFill: {
+    width: '100%',
+  },
   cluster: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    gap: 3,
-    borderRadius: 14,
+    gap: 2,
+    borderRadius: 12,
     borderWidth: 1.5,
-    paddingHorizontal: 7,
-    paddingVertical: 7,
+    paddingHorizontal: 5,
+    paddingVertical: 6,
+  },
+  clusterStretch: {
+    width: '100%',
   },
   clusterFocused: {
     shadowColor: '#665990',
@@ -732,22 +749,29 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   digitCell: {
-    width: 26,
-    height: 34,
-    borderRadius: 8,
+    height: 30,
+    borderRadius: 7,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  digitCellFixed: {
+    width: 22,
+  },
+  digitCellFlex: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 26,
+  },
   digitChar: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
     fontVariant: ['tabular-nums'],
   },
   digitPlaceholder: {
     fontWeight: '700',
-    fontSize: 18,
+    fontSize: 16,
     opacity: 0.4,
   },
   hiddenInput: {
@@ -758,16 +782,17 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any, caretColor: 'transparent' as any } : {}),
   },
   dashPill: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dashDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   progressTrackWrap: {
     flexDirection: 'row',

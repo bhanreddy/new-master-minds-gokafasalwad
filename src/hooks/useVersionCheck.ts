@@ -23,11 +23,12 @@ const VERSION_CHECK_CACHE_KEY = 'version_check_result';
 
 function getApiBaseUrl() {
   const url = API_URL.trim();
-  if (Platform.OS === 'web' && url.includes('10.0.2.2')) {
-    return url.replace('10.0.2.2', 'localhost');
+  if (Platform.OS === 'web') {
+    return url.replace(/10\.0\.2\.2/g, 'localhost').replace(/10\.0\.3\.2/g, 'localhost');
   }
-  if (Platform.OS === 'android' && url.includes('localhost')) {
-    return url.replace('localhost', '10.0.2.2');
+  // Android emulator: localhost/127.0.0.1 are the emulator itself — use 10.0.2.2 for host.
+  if (Platform.OS === 'android') {
+    return url.replace(/localhost|127\.0\.0\.1/g, '10.0.2.2');
   }
   return url;
 }
